@@ -11,26 +11,27 @@
 ### Why BPR/BPRS & BMT/Koperasi?
 - **Operational Reality:** Commercial banks require complex SWIFT/RTGS integrations, FX derivatives, and global treasury modules. BPR/BPRS and BMT/Koperasi focus on core retail banking: savings (tabungan/simpanan), time deposits (deposito/mudharabah), loans/financing (kredit/pembiayaan), and COA/General Ledger management.
 - **Syariah Dual-Mode Capability:** Architecture supports conventional interest-based models as well as Syariah contracts (*Wadiah*, *Mudharabah*, *Murabahah*, *Musyarakah*).
-- **Compliance Alignment:** Aligned with OJK regulations (POJK TI BPR, SLIK reporting readiness) and Kemenkop UKM standards (SAK ETAP / SAK EP / SAK Syariah).
+- **Compliance Alignment:** Aligned with OJK regulations (POJK No. 1 Tahun 2024, POJK TI BPR, SLIK reporting readiness), UU No. 27 Tahun 2022 (UU PDP), and Kemenkop UKM standards (SAK ETAP / SAK EP / SAK Syariah).
 
 ---
 
 ## 2. Strict Rules of Engagement for AI Models
 
-> [!CAUTION]
-> **RULE #1: DO NOT GIT PUSH TO GITHUB**
-> The GitHub repository `github.com/nferdazel/cbs-core` is PUBLIC. Code changes must be tested and optimized locally. **Do NOT run `git push`** unless the user explicitly requests it.
+> [!IMPORTANT]
+> **RULE #1: GIT PUSH TO GITHUB IS AUTHORIZED FOR CI/CD**
+> The GitHub repository `github.com/nferdazel/cbs-core` is connected to the production VPS webhook deployment pipeline. Always run `go test -v ./...` and verify clean builds in `apps/api` and `apps/web` before pushing to `origin main`.
 
-1. **Architecture Guardrails:** Maintain Clean Architecture in `apps/core-api/internal/`: `domain` (interfaces/models, NO DB imports) → `repository/postgres` → `service` → `handler/http`.
+1. **Architecture Guardrails:** Maintain Clean Architecture in `apps/api/internal/`: `domain` (interfaces/models, NO DB imports) → `repository/postgres` → `service` → `handler/http`.
 2. **Double-Entry Accounting Invariant:** Every financial movement MUST balance: $\sum \text{Debit} = \sum \text{Credit}$. Never bypass double-entry validation.
-3. **Concurrency Locking:** All balance-modifying database queries MUST use `SELECT FOR UPDATE` inside a single `sql.Tx` with lexicographical row locking on account numbers to prevent deadlocks.
-4. **Verification Requirement:** Always run `go build -v ./...` and `go test -v ./...` inside `apps/core-api` before declaring any task complete.
+3. **Single Financial Rounding Function:** Use `utils.RoundMoney(val)` (Banker's Rounding IEEE 754 to exact Rupiah) for all monetary rounding. Never use arbitrary rounding methods.
+4. **Concurrency Locking:** All balance-modifying database queries MUST use `SELECT FOR UPDATE` inside a single `sql.Tx` with lexicographical row locking on account numbers to prevent deadlocks.
+5. **Verification Requirement:** Always run `go build ./...` and `go test -v ./...` inside `apps/api` before declaring any backend task complete.
 
 ---
 
 ## 3. Repository Architecture & Tech Stack
 
-Monorepo managed via **Turborepo** + **pnpm workspaces** + **Go Workspaces**:
+Monorepo managed via **Turborepo** + **pnpm workspaces** + **Go Workspaces** (Standardized pattern matching SDS & Skyward monorepos):
 
 ```
 cbs-core/
@@ -38,13 +39,13 @@ cbs-core/
 │   ├── api/                 # Clean Architecture Go Core Banking REST API Server
 │   │   ├── cmd/server/      # Application Entrypoint (main.go)
 │   │   ├── internal/        # Domain, Service, Repository, Handler, Middleware, Utils
-│   │   └── Dockerfile       # Production Multi-Stage Go Build
+│   │   └── Dockerfile       # Production Multi-Stage Go Build (golang:1.26-alpine)
 │   └── web/                 # Next.js 15 Fintech Backoffice Web Application
 │       ├── src/app/         # App Router pages (Dashboard & /login)
-│       └── Dockerfile       # Production Multi-Stage Node.js Build
+│       └── Dockerfile       # Production Multi-Stage Node.js Build (node:22-alpine)
 ├── deploy/                  # Production VPS Deployment Assets & Automation
 │   ├── deploy-vps.sh        # Differential Webhook Deployment Script
-│   ├── cbs-api.container    # Podman Quadlet Container Unit
+│   ├── cbs-api.container    # Podman Quadlet Container Unit (Port 8095)
 │   ├── Caddyfile.cbs.qouver.com # Caddy Reverse Proxy & Domain Route Config
 │   └── webhook.json         # GitHub HMAC Webhook Definition
 ├── packages/
@@ -58,9 +59,9 @@ cbs-core/
 ```
 
 ### Stack Details
-- **Backend:** Go 1.22+, `go-chi/chi/v5`, `shopspring/decimal`, `golang-jwt/jwt/v5`, `golang.org/x/crypto/bcrypt`, `jackc/pgx/v5`
+- **Backend:** Go 1.25+, `go-chi/chi/v5`, `shopspring/decimal`, `golang-jwt/jwt/v5`, `golang.org/x/crypto/bcrypt`, `jackc/pgx/v5`
 - **Frontend:** Next.js 15 (Standalone mode), React 19, TypeScript, Tailwind CSS
-- **Database:** PostgreSQL 16/18 with row-level locking and `NUMERIC(28,4)` precision
+- **Database:** PostgreSQL 18 with row-level locking and `NUMERIC(28,4)` precision
 - **Deployment:** Rocky Linux 9.8, Podman rootless Quadlet systemd services, Caddy Reverse Proxy with SSL
 
 ---
@@ -79,17 +80,6 @@ CBS uses a **Fixed 7-Role Staff Hierarchy** with granular permissions:
 | `AO` (Account Officer) | Loan/Financing origination (Kredit/Pembiayaan), field collections | Rp 250.000.000 |
 | `AUDITOR` | Read-only compliance & export capabilities across all modules | Read-only |
 
-### Permissions Structure
-- **Users:** `users:create`, `users:read`, `users:update`, `users:delete`
-- **Customers (CIF):** `customers:create`, `customers:read`, `customers:update`
-- **Accounts:** `accounts:open`, `accounts:read`, `accounts:freeze`, `accounts:close`
-- **Transactions:** `transactions:deposit`, `transactions:withdraw`, `transactions:transfer`, `transactions:reverse`
-- **Loans & Financing (BPR/BMT):** `loans:apply`, `loans:read`, `loans:approve`
-- **Collections:** `collections:input`
-- **Maker-Checker:** `maker_checker:approve`, `maker_checker:reject`
-- **Ledger & COA:** `ledger:read`, `coa:manage`
-- **Audit & System:** `audit_logs:read`, `reports:export`, `system:config`
-
 ### Authentication Architecture
 - **Access Token:** JWT (HS256), 15-minute TTL, containing `uid`, `username`, `role`, `branch`, `sid`.
 - **Refresh Token:** Cryptographically random 32-byte opaque token, stored as SHA-256 hash in `staff_sessions` table, 8-hour TTL (1 work shift). Automatic rotation on refresh.
@@ -98,86 +88,43 @@ CBS uses a **Fixed 7-Role Staff Hierarchy** with granular permissions:
 
 ---
 
-## 5. Database Schema Overview
+## 5. Database Schema & Migration Status
 
-Located in `packages/db-migrations/`:
+Database: PostgreSQL 18 in `qouver-postgres` container on VPS. Database Name: **`cbs`** (User: `cbs_app`).
+
+Executed Migrations (`packages/db-migrations/`):
 
 1. `000001_init_cbs_schema.up.sql`:
-   - `chart_of_accounts` (COA Code, Name, Account Type: ASSET/LIABILITY/EQUITY/REVENUE/EXPENSE)
-   - `customers` (CIF Number, Full Name, Identity Number / NIK, Phone, Address, Type: INDIVIDUAL/CORPORATE)
-   - `accounts` (Account Number, Customer ID, COA ID, Balance, Currency, Status, Version for Optimistic Lock)
-   - `journal_entries` (Entry Number, Transaction Date, Ref Number, Description, Created By)
-   - `journal_lines` (Entry ID, Account ID, Debit, Credit)
-   - `maker_checker_requests` (Request ID, Maker ID, Checker ID, Status: PENDING/APPROVED/REJECTED, Amount)
-   - `audit_logs` (Action, Target, User ID, Role, IP Address, Metadata)
-
+   - `chart_of_accounts`, `customers`, `accounts`, `journal_entries`, `journal_lines`, `idempotency_keys`, `maker_checker_requests`, `audit_logs`
 2. `000002_staff_auth.up.sql`:
-   - `staff_users` (Employee ID, Username, Email, Password Hash, Role, Branch Code, Lock Status)
-   - `staff_sessions` (Refresh Token Hash, IP, User Agent, Expires At, Revoked At)
-   - `system_config` (Key-Value threshold store for Maker-Checker and Role Limits)
-   - Seeded Superadmin: `superadmin` / `Admin@CBS2026!`
-
+   - `staff_users`, `staff_sessions`, `system_config` (Seeded default 7 roles & Superadmin user)
 3. `000003_loans_schema.up.sql`:
-   - `loans` (Loan Number, Customer ID, Disbursement Account, Type: Flat/Annuity/Murabahah/Mudharabah, Status, Plafond Principal, Rate/Margin, Total Payable, Term, AO ID, Approved By)
-   - `loan_schedules` (Installment No, Due Date, Principal, Interest/Margin, Total, Payment Status: Pending/Paid/Overdue)
+   - `loans`, `loan_schedules`
+
+**Total Live Production Tables: 13 Tables ✅**
 
 ---
 
-## 6. Infrastructure & Deployment Reference
+## 6. Live Production Infrastructure & Deployment Details
 
-- **Production VPS:** Rocky Linux 9.8 at `43.133.148.191` (User: `sachiel`, Sudo: `REDACTED`)
-- **Containers:** Podman Quadlet (`cbs-api.container` on port 8095, `cbs-web.container` on port 3005)
-- **Database:** Container `qouver-postgres` (PostgreSQL), DB Name `cbs`, User `cbs_app`
-- **Reverse Proxy Routing (Caddy):**
-  - `https://api.qouver.com/cbs/*` → Proxied to local port `8095` (Prefix stripped)
-  - `https://cbs.qouver.com` → Proxied to local port `3005` (Backoffice UI)
-- **Webhook CD:** Triggers `/srv/qouver/cbs/scripts/deploy-vps.sh` on port `9000` via endpoint `https://api.qouver.com/hooks/cbs-core`.
+- **Production Server:** Rocky Linux 9.8 VPS at `43.133.148.191` (User: `sachiel`, Sudo: `REDACTED`)
+- **Live Domains & Gateways:**
+  - **Backoffice Web UI:** **`https://cbs.qouver.com`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-web` on port `3005`)
+  - **API Gateway:** **`https://api.qouver.com/cbs/v1/*`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-api` on port `8095`)
+- **Containers:** Podman Quadlet (`cbs-api.container` & `cbs-web.container`)
+- **Reverse Proxy Routing (Caddy):** Automatic SSL via Let's Encrypt / Caddy Gateway
+- **Continuous Deployment:** Script `/srv/qouver/cbs/scripts/deploy-vps.sh` triggered via GitHub Webhook on port `9000` (`/hooks/cbs-deploy`) or SSH `github-cbs`.
 
 ---
 
-## 7. Current Project Status & Next Roadmap
+## 7. Current Project Status & Verified Achievements
 
 ### Completed ✅
-- Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **26/26 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery, Document PDF Generators, Centralized Banking Utilities)
-- Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
-- **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
-- **Centralized Banking Utilities Package (`apps/core-api/internal/utils`):**
-  - `BankersRound`: Round-Half-Even (IEEE 754) perbankan pembatal bias statistik akumulasi bunga/bagi hasil
-  - `HalfUpRound`: Round-Half-Away-From-Zero commercial rounding angsuran
-  - `TruncateDown`: Pembulatan kebawah / cut-off pajak (PPh 4 ayat 2)
-  - `FormatIDR`: Formatter baku rupiah (`Rp 12.500.000,00`)
-  - `TerbilangRupiah`: Generator kalimat terbilang bahasa Indonesia (`Dua Belas Juta Lima Ratus Ribu Rupiah`)
-  - `MaskNIK` & `MaskAccountNumber`: Masking privasi NIK KTP & Rekening untuk kepatuhan UU PDP
-- **Document & PDF Printable Generator Engine (`/api/v1/documents/*`):**
-  - `GET /deposit-slip/{refNo}`: Slip Setoran Tunai Teller (HTML/PDF Printable)
-  - `GET /withdrawal-slip/{refNo}`: Slip Penarikan Tunai Teller (HTML/PDF Printable)
-  - `GET /loan-agreement/{loanId}`: Surat Perjanjian Kredit / Akad Pembiayaan Murabahah & Flat lengkap dengan tabel jadwal angsuran & otorisasi tanda tangan
-  - `GET /thermal-receipt/{receiptNo}`: Struk Kasir Lapangan (Mobile Jemput Bola 58mm/80mm Thermal Print)
-- **Loans, Collectibility, Accrual & Restructuring Engine:**
-  - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
-  - **Compound Double-Entry GL Ledger Linkage & Normal Balance Engine:**
-    - Accounting Normal Balance Rules: Asset/Expense (`1`/`5`) DEBIT (+), CREDIT (-); Liability/Equity/Revenue (`2`/`3`/`4`) DEBIT (-), CREDIT (+)
-    - Lexicographical Account Number Locking (`sort.Strings`) in `PostCompoundJournal` for 100% Deadlock Prevention
-    - `DisburseLoan`: Debit `10300 - Piutang Pembiayaan`, Kredit `20100 - Simpanan Nasabah`
-    - `PayInstallment`: Debit `20100 - Simpanan Nasabah`, Kredit `10300 - Piutang Pembiayaan` (Pokok), Kredit `40100 - Pendapatan Bunga/Margin` (Bunga/Margin)
-    - `WriteOffLoan`: Debit `10900 - Cadangan PPAP`, Kredit `10300 - Piutang Pembiayaan`
-    - `RecoverWrittenOffLoan`: Debit `20100 - Simpanan Nasabah`, Kredit `40900 - Pendapatan Recovery Hapus Buku`
-  - **HTTP Endpoints & Handlers:** `/api/v1/loans/{id}/restructure`, `/{id}/write-off`, `/{id}/recover` fully registered in router.
-  - **Kolektibilitas Resmikan POJK No. 1 Tahun 2024:**
-    - **Kol 1 (Lancar):** DPD 0 (Tepat Waktu) — PPAP 0.5% — Accrual Basis
-    - **Kol 2 (DPK):** DPD 1 s/d 90 hari — PPAP 1.0% — Accrual Basis
-    - **Kol 3 (Kurang Lancar / NPL):** DPD 91 s/d 120 hari — PPAP 15.0% — Cash Basis (Stop Accrual 🛑)
-    - **Kol 4 (Diragukan / NPL):** DPD 121 s/d 180 hari — PPAP 50.0% — Cash Basis (Stop Accrual 🛑)
-    - **Kol 5 (Macet / NPL):** DPD > 180 hari — PPAP 100.0% — Cash Basis (Stop Accrual 🛑)
-  - **Engine Restrukturisasi Kredit/Pembiayaan (`RestructureLoan`):** Penjadwalan ulang tenor, penyesuaian suku bunga/margin, & otomatis ber-transisi ke Kol 2 (DPK) pasca-restrukturisasi sesuai standar OJK.
-- **Financial Statement Reports Engine:** Trial Balance (Neraca Saldo), Balance Sheet (Laporan Posisi Keuangan / Neraca), and Income Statement (Laporan Laba Rugi)
-- **Mobile Collector / Field Collection Engine (`Jemput Bola`):** Mobile API for AO/Collectors doing daily market collections with geolocation & receipt logging
-- **Third-Party Integration Gateway Layer:** SLIK OJK / CBAS Debtor check, Dukcapil NIK verification API, SMS & WhatsApp Notification Gateways
-- **Maker-Checker Workflow:** Supervisor pending approval queue & approval/rejection HTTP handlers
-- Database Schemas `000001`, `000002`, and `000003` written & verified
-- Interactive Backoffice Dashboard & **Login Screen** (`/login`) in Next.js 15 (compiles cleanly in 2.8s)
-
-### Next Action Items (Roadmap for BMT / BPR focus) 🚀
-1. **Backoffice UI Reports Tab:** Render Financial Statements (Neraca & Laba Rugi) in Next.js Backoffice UI.
-2. **Push to Production:** Trigger `git push` to deploy to VPS when ready for live launch.
+- **26/26 Go Unit Tests PASSING PERFECTLY** (100% Green)
+- Monorepo directory layout standardized to `apps/api` and `apps/web` (matching SDS & Skyward patterns).
+- Single canonical financial rounding function `utils.RoundMoney(val)` (IEEE 754 Banker's Rounding to exact Rupiah).
+- Banking Business Date & Batch Processing Engine (EOD, EOM, EOY Tutup Buku Akhir Tahun Closing Entries).
+- Document & PDF Printable Generator Engine (`/api/v1/documents/*`) for Slip Setoran/Penarikan Teller, Surat Perjanjian Kredit / Akad Pembiayaan, and 58mm/80mm ESC/POS Thermal Receipts.
+- Accounting Normal Balance Rules (Asset/Expense DEBIT +, Liability/Equity/Revenue CREDIT +) & Lexicographical Row Locking in `PostCompoundJournal` (100% Deadlock Elimination).
+- Kolektibilitas OJK POJK No. 1 Tahun 2024 (Kol 1-5 matrix, Accrual vs Cash Basis, PPAP Rates, Credit Restructuring Engine).
+- Live Production Deployment on VPS `43.133.148.191` under `https://cbs.qouver.com` with Caddy SSL and Podman Quadlet containers.
