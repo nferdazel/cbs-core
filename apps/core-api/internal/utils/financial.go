@@ -7,6 +7,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// RoundMoney is the single canonical rounding function used across the core banking system.
+// It applies the standard Banker's Rounding (Round-Half-Even, IEEE 754) to 2 decimal places.
+func RoundMoney(val decimal.Decimal) decimal.Decimal {
+	return val.RoundBank(2)
+}
+
+// RoundRupiah rounds monetary values to the nearest exact Rupiah (0 decimal places)
+func RoundRupiah(val decimal.Decimal) decimal.Decimal {
+	return val.RoundBank(0)
+}
+
 // RoundingMode defines financial decimal rounding strategies
 type RoundingMode string
 

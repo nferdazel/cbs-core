@@ -7,6 +7,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func TestFinancialUtils_RoundMoney(t *testing.T) {
+	val1 := decimal.NewFromFloat(12500.456)
+	rounded1 := utils.RoundMoney(val1)
+	if !rounded1.Equal(decimal.NewFromFloat(12500.46)) {
+		t.Fatalf("expected RoundMoney(12500.456) == 12500.46, got %s", rounded1)
+	}
+
+	val2 := decimal.NewFromFloat(12500.45)
+	rounded2 := utils.RoundRupiah(val2)
+	if !rounded2.Equal(decimal.NewFromInt(12500)) {
+		t.Fatalf("expected RoundRupiah(12500.45) == 12500, got %s", rounded2)
+	}
+}
+
 func TestFinancialUtils_RoundingModes(t *testing.T) {
 	// Test Banker's Rounding (Round Half to Even)
 	val1 := decimal.NewFromFloat(2.5) // -> 2
