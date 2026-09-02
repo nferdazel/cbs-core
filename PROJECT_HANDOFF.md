@@ -135,11 +135,17 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **20/20 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring)
+- **21/21 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
 - **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
 - **Loans, Collectibility, Accrual & Restructuring Engine:**
   - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
+  - **Compound Double-Entry GL Ledger Linkage:**
+    - `DisburseLoan`: Debit `10300 - Piutang Pembiayaan`, Kredit `20100 - Simpanan Nasabah`
+    - `PayInstallment`: Debit `20100 - Simpanan Nasabah`, Kredit `10300 - Piutang Pembiayaan` (Pokok), Kredit `40100 - Pendapatan Bunga/Margin` (Bunga/Margin)
+    - `WriteOffLoan`: Debit `10900 - Cadangan PPAP`, Kredit `10300 - Piutang Pembiayaan`
+    - `RecoverWrittenOffLoan`: Debit `20100 - Simpanan Nasabah`, Kredit `40900 - Pendapatan Recovery Hapus Buku`
+  - **HTTP Endpoints & Handlers:** `/api/v1/loans/{id}/restructure`, `/{id}/write-off`, `/{id}/recover` fully registered in router.
   - **Kolektibilitas Resmikan POJK No. 1 Tahun 2024:**
     - **Kol 1 (Lancar):** DPD 0 (Tepat Waktu) — PPAP 0.5% — Accrual Basis
     - **Kol 2 (DPK):** DPD 1 s/d 90 hari — PPAP 1.0% — Accrual Basis
