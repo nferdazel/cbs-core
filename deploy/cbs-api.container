@@ -1,23 +1,18 @@
-# Quadlet unit for CBS Core API
-# Copy to VPS: ~/.config/containers/systemd/cbs-api.container
-# Reload: systemctl --user daemon-reload && systemctl --user enable --now cbs-api
-
 [Unit]
-Description=CBS Core Banking System API Engine
-After=network-online.target
+Description=CBS Core Banking System API Container
+After=network-online.target qouver-postgres.service
 Wants=network-online.target
 
 [Container]
 Image=localhost/cbs-api:local
-ContainerName=cbs-api
-Network=qouver
-PublishPort=127.0.0.1:8095:8080
-EnvironmentFile=/srv/qouver/cbs/env/cbs-prod.env
 Pull=never
+PublishPort=127.0.0.1:8082:8080
+EnvironmentFile=/srv/qouver/cbs/env/cbs-prod.env
+Timezone=Asia/Jakarta
 
 [Service]
 Restart=always
-RestartSec=3
+RestartSec=5s
 
 [Install]
 WantedBy=default.target

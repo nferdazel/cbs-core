@@ -35,22 +35,26 @@ Monorepo managed via **Turborepo** + **pnpm workspaces** + **Go Workspaces**:
 ```
 cbs-core/
 ├── apps/
-│   ├── core-api/               # Go (Golang) REST API Backend
-│   │   ├── cmd/server/main.go  # Dependency Injection & Server entrypoint
-│   │   └── internal/
-│   │       ├── config/         # Environment variables configuration
-│   │       ├── domain/         # Models, enums, permissions, interfaces
-│   │       ├── handler/http/   # Chi Router HTTP handlers & responses
-│   │       ├── middleware/     # JWT Auth & Permission Guard middlewares
-│   │       ├── repository/     # PostgreSQL SQL implementations
-│   │       └── service/        # Business logic & Double-entry transaction engine
-│   └── backoffice-web/         # Next.js 15 (App Router, TS, Tailwind, shadcn/ui)
-│       └── src/app/            # Operations Terminal & General Ledger Dashboard
+│   ├── api/                 # Clean Architecture Go Core Banking REST API Server
+│   │   ├── cmd/server/      # Application Entrypoint (main.go)
+│   │   ├── internal/        # Domain, Service, Repository, Handler, Middleware, Utils
+│   │   └── Dockerfile       # Production Multi-Stage Go Build
+│   └── web/                 # Next.js 15 Fintech Backoffice Web Application
+│       ├── src/app/         # App Router pages (Dashboard & /login)
+│       └── Dockerfile       # Production Multi-Stage Node.js Build
+├── deploy/                  # Production VPS Deployment Assets & Automation
+│   ├── deploy-vps.sh        # Differential Webhook Deployment Script
+│   ├── cbs-api.container    # Podman Quadlet Container Unit
+│   ├── Caddyfile.cbs.qouver.com # Caddy Reverse Proxy & Domain Route Config
+│   └── webhook.json         # GitHub HMAC Webhook Definition
 ├── packages/
-│   ├── db-migrations/          # PostgreSQL DDL migrations (.sql)
-│   └── shared-types/           # TypeScript DTOs shared across packages
-├── deploy/                     # Podman Quadlet container definitions & deploy scripts
-└── scripts/                    # Maintenance & local utility scripts
+│   ├── db-migrations/       # PostgreSQL Migrations (000001, 000002, 000003)
+│   └── shared-types/        # TypeScript Definitions for Web-API Contracts
+├── docs/                    # Architectural Specifications & Expert Audit Reports
+├── docker-compose.yml       # Local PostgreSQL & Redis Infrastructure
+├── Makefile                 # Developer CLI Automation Shortcuts
+├── pnpm-workspace.yaml      # Monorepo Workspace Configuration
+└── go.work                  # Go Workspace Configuration
 ```
 
 ### Stack Details
