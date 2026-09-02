@@ -1,0 +1,194 @@
+package domain
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+// --- Errors ---
+var (
+	ErrLoanNotFound        = errors.New("loan application not found")
+	ErrLoanAlreadyApproved = errors.New("loan has already been approved or rejected")
+	ErrLoanNotApproved     = errors.New("loan must be in APPROVED status before disbursement")
+	ErrLoanAlreadyDisbursed = errors.New("loan has already been disbursed")
+	ErrInvalidLoanAmount   = errors.New("loan principal amount must be positive")
+	ErrInvalidLoanTerm     = errors.New("loan term must be at least 1 month")
+)
+
+type LoanType string
+
+const (
+	LoanTypeFlat      LoanType = "CONVENTIONAL_FLAT"
+	LoanTypeAnnuity   LoanType = "CONVENTIONAL_ANNUITY"
+	LoanTypeMurabahah LoanType = "SYARIAH_MURABAHAH"
+	LoanTypeMudharabah LoanType = "SYARIAH_MUDHARABAH"
+)
+
+type LoanStatus string
+
+const (
+	LoanStatusPendingApproval LoanStatus = "PENDING_APPROVAL"
+	LoanStatusApproved        LoanStatus = "APPROVED"
+	LoanStatusDisbursed       LoanStatus = "DISBURSED"
+	LoanStatusRejected        LoanStatus = "REJECTED"
+	LoanStatusPaidOff         LoanStatus = "PAID_OFF"
+	LoanStatusDefaulted       LoanStatus = "DEFAULTED"
+)
+
+type InstallmentStatus string
+
+const (
+	InstallmentStatusPending InstallmentStatus = "PENDING"
+	InstallmentStatusPaid    InstallmentStatus = "PAID"
+	InstallmentStatusOverdue InstallmentStatus = "OVERDUE"
+	InstallmentStatusPartial InstallmentStatus = "PARTIAL"
+)
+
+type Loan struct {
+	ID                     uuid.UUID       `json:"id"`
+	LoanNumber             string          `json:"loan_number"`
+	CustomerID             uuid.UUID       `json:"customer_id"`
+	DisbursementAccountID uuid.UUID       `json:"disbursement_account_id"`
+	Type                   LoanType        `json:"loan_type"`
+	Status                 LoanStatus      `json:"status"`
+	PrincipalAmount        decimal.Decimal `json:"principal_amount"`
+	InterestRateAnnual     decimal.Decimal `json:"interest_rate_annual"`
+	MarginAmount           decimal.Decimal `json:"margin_amount"`
+	TotalPayable           decimal.Decimal `json:"total_payable"`
+	TermMonths             int             `json:"term_months"`
+	MonthlyInstallment     decimal.Decimal `json:"monthly_installment"`
+	AOID                   *uuid.UUID      `json:"ao_id,omitempty"`
+	ApprovedBy             *uuid.UUID      `json:"approved_by,omitempty"`
+	ApprovedAt             *time.Time      `json:"approved_at,omitempty"`
+	DisbursedAt            *time.Time      `json:"disbursed_at,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+
+	Schedules []LoanSchedule `json:"schedules,omitempty"`
+}
+
+type LoanSchedule struct {
+	ID               uuid.UUID         `json:"id"`
+	LoanID           uuid.UUID         `json:"loan_id"`
+	InstallmentNo    int               `json:"installment_no"`
+	DueDate          time.Time         `json:"due_date"`
+	PrincipalAmount  decimal.Decimal   `json:"principal_amount"`
+	InterestAmount   decimal.Decimal   `json:"interest_amount"`
+	TotalInstallment decimal.Decimal   `json:"total_installment"`
+	PaidPrincipal    decimal.Decimal   `json:"paid_principal"`
+	PaidInterest     decimal.Decimal   `json:"paid_interest"`
+	Status           InstallmentStatus `json:"status"`
+	PaidAt           *time.Time        `json:"paid_at,omitempty"`
+	CreatedAt        time.Time         `json:"created_at"`
+}
+
+// --- DTOs ---
+
+type ApplyLoanInput struct {
+	CustomerID             uuid.UUID       `json:"customer_id"`
+	DisbursementAccountID uuid.UUID       `json:"disbursement_account_id"`
+	Type                   LoanType        `json:"loan_type"`
+	PrincipalAmount        decimal.Decimal `json:"principal_amount"`
+	InterestRateAnnual     decimal.Decimal `json:"interest_rate_annual"` // e.g. 12.0 for 12% p.a.
+	MarginAmount           decimal.Decimal `json:"margin_amount"`        // for Murabahah
+	TermMonths             int             `json:"term_months"`
+}
+
+type PayInstallmentInput struct {
+	LoanID        uuid.UUID       `json:"loan_id"`
+	InstallmentNo int             `json:"installment_no"`
+	Amount        decimal.Decimal `json:"amount"`
+}
+
+// --- Repayment Schedule Calculation Engine ---
+
+func GenerateFlatSchedule(loanID uuid.UUID, principal decimal.Decimal, annualRate decimal.Decimal, termMonths int, startDate time.Time) ([]LoanSchedule, decimal.Decimal, decimal.Decimal) {
+	if termMonths <= 0 {
+		termMonths = 12
+	}
+
+	termDec := decimal.NewFromInt(int64(termMonths))
+	
+	// Total Interest = Principal * (Rate / 100) * (TermMonths / 12)
+	rateFraction := annualRate.Div(decimal.NewFromInt(100))
+	totalInterest := principal.Mul(rateFraction).Mul(termDec.Div(decimal.NewFromInt(12)))
+	totalPayable := principal.Add(totalInterest)
+
+	monthlyPrincipal := principal.DivRound(termDec, 4)
+	monthlyInterest := totalInterest.DivRound(termDec, 4)
+	monthlyTotal := monthlyPrincipal.Add(monthlyInterest)
+
+	var schedules []LoanSchedule
+	for i := 1; i <= termMonths; i++ {
+		dueDate := startDate.AddDate(0, i, 0)
+		schedules = append(schedules, LoanSchedule{
+			ID:               uuid.New(),
+			LoanID:           loanID,
+			InstallmentNo:    i,
+			DueDate:          dueDate,
+			PrincipalAmount:  monthlyPrincipal,
+			InterestAmount:   monthlyInterest,
+			TotalInstallment: monthlyTotal,
+			Status:           InstallmentStatusPending,
+			CreatedAt:        time.Now().UTC(),
+		})
+	}
+	return schedules, totalPayable, monthlyTotal
+}
+
+func GenerateMurabahahSchedule(loanID uuid.UUID, principal decimal.Decimal, margin decimal.Decimal, termMonths int, startDate time.Time) ([]LoanSchedule, decimal.Decimal, decimal.Decimal) {
+	if termMonths <= 0 {
+		termMonths = 12
+	}
+
+	termDec := decimal.NewFromInt(int64(termMonths))
+	totalPayable := principal.Add(margin)
+
+	monthlyPrincipal := principal.DivRound(termDec, 4)
+	monthlyMargin := margin.DivRound(termDec, 4)
+	monthlyTotal := monthlyPrincipal.Add(monthlyMargin)
+
+	var schedules []LoanSchedule
+	for i := 1; i <= termMonths; i++ {
+		dueDate := startDate.AddDate(0, i, 0)
+		schedules = append(schedules, LoanSchedule{
+			ID:               uuid.New(),
+			LoanID:           loanID,
+			InstallmentNo:    i,
+			DueDate:          dueDate,
+			PrincipalAmount:  monthlyPrincipal,
+			InterestAmount:   monthlyMargin, // Margins act as interest component in schedules
+			TotalInstallment: monthlyTotal,
+			Status:           InstallmentStatusPending,
+			CreatedAt:        time.Now().UTC(),
+		})
+	}
+	return schedules, totalPayable, monthlyTotal
+}
+
+// --- Interfaces ---
+
+type LoanRepository interface {
+	Create(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Loan, error)
+	GetByNumber(ctx context.Context, loanNumber string) (*Loan, error)
+	List(ctx context.Context, limit, offset int) ([]Loan, int, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
+	MarkDisbursed(ctx context.Context, id uuid.UUID) error
+	GetSchedules(ctx context.Context, loanID uuid.UUID) ([]LoanSchedule, error)
+	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status InstallmentStatus) error
+}
+
+type LoanService interface {
+	ApplyLoan(ctx context.Context, input ApplyLoanInput, aoID uuid.UUID) (*Loan, error)
+	ApproveLoan(ctx context.Context, loanID uuid.UUID, supervisorID uuid.UUID) (*Loan, error)
+	RejectLoan(ctx context.Context, loanID uuid.UUID, supervisorID uuid.UUID) (*Loan, error)
+	DisburseLoan(ctx context.Context, loanID uuid.UUID, disburserID uuid.UUID) (*Loan, error)
+	GetLoan(ctx context.Context, id uuid.UUID) (*Loan, error)
+	ListLoans(ctx context.Context, page, pageSize int) ([]Loan, int, error)
+	PayInstallment(ctx context.Context, input PayInstallmentInput, tellerID uuid.UUID) (*LoanSchedule, error)
+}
