@@ -48,3 +48,7 @@ pnpm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# Redesign Tasklist
+REDESIGN_TASKLIST.md
+

@@ -8,6 +8,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-ibm-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-ibm-mono)", "ui-monospace", "monospace"],
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
