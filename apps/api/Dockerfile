@@ -10,6 +10,7 @@ RUN go mod download
 
 COPY . .
 
+ENV GOWORK=off
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/core-api ./cmd/server
 
 # Production image
