@@ -107,7 +107,7 @@ Executed Migrations (`packages/db-migrations/`):
 
 ## 6. Live Production Infrastructure & Deployment Details
 
-- **Production Server:** Rocky Linux 9.8 VPS at `43.133.148.191` (User: `sachiel`, Sudo: `REDACTED`)
+- **Production Server:** Rocky Linux 9.8 VPS at `43.133.148.191` (User: `sachiel`)
 - **Live Domains & Gateways:**
   - **Backoffice Web UI:** **`https://cbs.qouver.com`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-web` on port `3005`)
   - **API Gateway:** **`https://api.qouver.com/cbs/v1/*`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-api` on port `8095`)
