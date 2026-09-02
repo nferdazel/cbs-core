@@ -67,15 +67,20 @@ const (
 
 func CalculateCollectibility(dpd int) (OJKCollectibility, decimal.Decimal, AccrualStatus) {
 	switch {
-	case dpd <= 90:
+	case dpd <= 0:
+		// Kol 1 LANCAR: 0 hari tunggakan (Tepat waktu)
 		return CollectibilityKol1, decimal.NewFromFloat(0.005), AccrualStatusAccrual // 0.5% PPAP
-	case dpd <= 120:
+	case dpd <= 90:
+		// Kol 2 DPK: 1 - 90 hari tunggakan
 		return CollectibilityKol2, decimal.NewFromFloat(0.010), AccrualStatusAccrual // 1.0% PPAP
-	case dpd <= 180:
+	case dpd <= 120:
+		// Kol 3 KURANG LANCAR (NPL): 91 - 120 hari tunggakan
 		return CollectibilityKol3, decimal.NewFromFloat(0.150), AccrualStatusCash    // 15% PPAP & Stop Accrual
-	case dpd <= 270:
+	case dpd <= 180:
+		// Kol 4 DIRAGUKAN (NPL): 121 - 180 hari tunggakan
 		return CollectibilityKol4, decimal.NewFromFloat(0.500), AccrualStatusCash    // 50% PPAP & Stop Accrual
 	default:
+		// Kol 5 MACET (NPL): > 180 hari tunggakan
 		return CollectibilityKol5, decimal.NewFromFloat(1.000), AccrualStatusCash    // 100% PPAP & Stop Accrual
 	}
 }
@@ -91,6 +96,10 @@ type Loan struct {
 	DPD                    int               `json:"dpd"`
 	AccrualStatus          AccrualStatus     `json:"accrual_status"`
 	RequiredPPAP           decimal.Decimal   `json:"required_ppap"`
+	IsRestructured         bool              `json:"is_restructured"`
+	RestructuredCount      int               `json:"restructured_count"`
+	RestructuredAt         *time.Time        `json:"restructured_at,omitempty"`
+	RestructuringReason    string            `json:"restructuring_reason,omitempty"`
 	PrincipalAmount        decimal.Decimal   `json:"principal_amount"`
 	InterestRateAnnual     decimal.Decimal   `json:"interest_rate_annual"`
 	MarginAmount           decimal.Decimal   `json:"margin_amount"`
@@ -257,6 +266,14 @@ type LoanRepository interface {
 	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status InstallmentStatus) error
 }
 
+type RestructureLoanInput struct {
+	LoanID                uuid.UUID       `json:"loan_id"`
+	NewTermMonths         int             `json:"new_term_months"`
+	NewInterestRateAnnual decimal.Decimal `json:"new_interest_rate_annual"`
+	NewMarginAmount       decimal.Decimal `json:"new_margin_amount"`
+	Reason                string          `json:"reason"`
+}
+
 type LoanService interface {
 	ApplyLoan(ctx context.Context, input ApplyLoanInput, aoID uuid.UUID) (*Loan, error)
 	ApproveLoan(ctx context.Context, loanID uuid.UUID, supervisorID uuid.UUID) (*Loan, error)
@@ -265,4 +282,5 @@ type LoanService interface {
 	GetLoan(ctx context.Context, id uuid.UUID) (*Loan, error)
 	ListLoans(ctx context.Context, page, pageSize int) ([]Loan, int, error)
 	PayInstallment(ctx context.Context, input PayInstallmentInput, tellerID uuid.UUID) (*LoanSchedule, error)
+	RestructureLoan(ctx context.Context, input RestructureLoanInput, supervisorID uuid.UUID) (*Loan, error)
 }
