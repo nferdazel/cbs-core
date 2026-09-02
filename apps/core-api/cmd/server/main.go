@@ -58,6 +58,7 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)
+	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo)
 
 	// 4. HTTP Handlers
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
@@ -71,6 +72,7 @@ func main() {
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
+	docHandler := httpHandler.NewDocumentHandler(docSvc)
 
 	// 5. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
@@ -85,6 +87,7 @@ func main() {
 		CollectionHandler:   collectionHandler,
 		IntegrationHandler:  integrationHandler,
 		BatchProcessHandler: batchHandler,
+		DocumentHandler:     docHandler,
 		AuthService:         authSvc,
 	})
 

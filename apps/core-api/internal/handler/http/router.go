@@ -22,6 +22,7 @@ type RouterParams struct {
 	CollectionHandler   *CollectionHandler
 	IntegrationHandler  *IntegrationHandler
 	BatchProcessHandler *BatchProcessHandler
+	DocumentHandler     *DocumentHandler
 	AuthService         domain.AuthService
 }
 
@@ -187,6 +188,18 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/{id}/approve", p.MakerCheckerHandler.Approve)
 				r.With(middleware.RequirePermission(domain.PermMakerCheckerReject)).
 					Post("/{id}/reject", p.MakerCheckerHandler.Reject)
+			})
+
+			// ── Document & PDF Printable Generator (Slips, Loan Agreements, Passbooks) ──
+			r.Route("/documents", func(r chi.Router) {
+				r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
+					Get("/deposit-slip/{refNo}", p.DocumentHandler.DepositSlip)
+				r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
+					Get("/withdrawal-slip/{refNo}", p.DocumentHandler.WithdrawalSlip)
+				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+					Get("/loan-agreement/{loanId}", p.DocumentHandler.LoanAgreement)
+				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
+					Get("/thermal-receipt/{receiptNo}", p.DocumentHandler.ThermalReceipt)
 			})
 
 			// ── Chart of Accounts (Admin & above) ──
