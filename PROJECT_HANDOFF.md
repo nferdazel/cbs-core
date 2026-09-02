@@ -135,9 +135,14 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **21/21 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery)
+- **22/22 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery, Document PDF Generators)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
 - **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
+- **Document & PDF Printable Generator Engine (`/api/v1/documents/*`):**
+  - `GET /deposit-slip/{refNo}`: Slip Setoran Tunai Teller (HTML/PDF Printable)
+  - `GET /withdrawal-slip/{refNo}`: Slip Penarikan Tunai Teller (HTML/PDF Printable)
+  - `GET /loan-agreement/{loanId}`: Surat Perjanjian Kredit / Akad Pembiayaan Murabahah & Flat lengkap dengan tabel jadwal angsuran & otorisasi tanda tangan
+  - `GET /thermal-receipt/{receiptNo}`: Struk Kasir Lapangan (Mobile Jemput Bola 58mm/80mm Thermal Print)
 - **Loans, Collectibility, Accrual & Restructuring Engine:**
   - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
   - **Compound Double-Entry GL Ledger Linkage & Normal Balance Engine:**
