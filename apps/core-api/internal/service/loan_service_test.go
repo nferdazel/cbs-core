@@ -103,6 +103,49 @@ func TestRestructureLoan_OJKRules(t *testing.T) {
 	}
 }
 
+func TestWriteOffLoan_And_Recovery(t *testing.T) {
+	loanID := uuid.New()
+	loan := &domain.Loan{
+		ID:                    loanID,
+		LoanNumber:            "KRD-2026-99999",
+		Status:                domain.LoanStatusDisbursed,
+		Collectibility:        domain.CollectibilityKol5, // Kol 5 Macet
+		DPD:                   365,
+		PrincipalAmount:       decimal.NewFromInt(20000000),
+		DisbursementAccountID: uuid.New(),
+	}
+
+	repo := &stubLoanRepo{loan: loan}
+	svc := service.NewLoanService(repo, nil, nil, nil)
+
+	supervisorID := uuid.New()
+
+	// 1. Write-off execution
+	writtenOff, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: loanID,
+		Reason: "Macet total, debitur melarikan diri (Hapus Buku Kol 5)",
+	}, supervisorID)
+	if err != nil {
+		t.Fatalf("unexpected error executing write-off: %v", err)
+	}
+	if writtenOff.Status != domain.LoanStatusWrittenOff {
+		t.Fatalf("expected status WRITTEN_OFF, got %s", writtenOff.Status)
+	}
+
+	// 2. Recovery execution
+	tellerID := uuid.New()
+	recovered, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID:         loanID,
+		RecoveryAmount: decimal.NewFromInt(5000000), // Recovery 5 Juta
+	}, tellerID)
+	if err != nil {
+		t.Fatalf("unexpected error executing loan recovery: %v", err)
+	}
+	if recovered.Status != domain.LoanStatusWrittenOff {
+		t.Fatalf("expected status WRITTEN_OFF, got %s", recovered.Status)
+	}
+}
+
 func TestGenerateFlatSchedule_ExactRemainderAbsorption(t *testing.T) {
 	loanID := uuid.New()
 	principal := decimal.NewFromInt(10000000)

@@ -37,6 +37,7 @@ const (
 	LoanStatusRejected        LoanStatus = "REJECTED"
 	LoanStatusPaidOff         LoanStatus = "PAID_OFF"
 	LoanStatusDefaulted       LoanStatus = "DEFAULTED"
+	LoanStatusWrittenOff      LoanStatus = "WRITTEN_OFF"
 )
 
 type InstallmentStatus string
@@ -274,6 +275,16 @@ type RestructureLoanInput struct {
 	Reason                string          `json:"reason"`
 }
 
+type WriteOffLoanInput struct {
+	LoanID uuid.UUID `json:"loan_id"`
+	Reason string    `json:"reason"`
+}
+
+type RecoverWrittenOffLoanInput struct {
+	LoanID         uuid.UUID       `json:"loan_id"`
+	RecoveryAmount decimal.Decimal `json:"recovery_amount"`
+}
+
 type LoanService interface {
 	ApplyLoan(ctx context.Context, input ApplyLoanInput, aoID uuid.UUID) (*Loan, error)
 	ApproveLoan(ctx context.Context, loanID uuid.UUID, supervisorID uuid.UUID) (*Loan, error)
@@ -283,4 +294,6 @@ type LoanService interface {
 	ListLoans(ctx context.Context, page, pageSize int) ([]Loan, int, error)
 	PayInstallment(ctx context.Context, input PayInstallmentInput, tellerID uuid.UUID) (*LoanSchedule, error)
 	RestructureLoan(ctx context.Context, input RestructureLoanInput, supervisorID uuid.UUID) (*Loan, error)
+	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, supervisorID uuid.UUID) (*Loan, error)
+	RecoverWrittenOffLoan(ctx context.Context, input RecoverWrittenOffLoanInput, tellerID uuid.UUID) (*Loan, error)
 }
