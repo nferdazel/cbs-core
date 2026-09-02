@@ -34,7 +34,7 @@ func main() {
 		log.Println("✅ PostgreSQL connected successfully")
 	}
 
-	// 2. Repositories
+	// 2. Repositories & Third-Party Gateways
 	customerRepo := postgres.NewCustomerRepository(db)
 	accountRepo := postgres.NewAccountRepository(db)
 	ledgerRepo := postgres.NewLedgerRepository(db)
@@ -43,6 +43,9 @@ func main() {
 	configRepo := postgres.NewSystemConfigRepository(db)
 	loanRepo := postgres.NewLoanRepository(db)
 	reportRepo := postgres.NewReportRepository(db)
+
+	slikGateway := service.NewMockSLIKGateway()
+	dukcapilGateway := service.NewMockDukcapilGateway()
 
 	// 3. Services
 	customerSvc := service.NewCustomerService(customerRepo)
@@ -64,6 +67,7 @@ func main() {
 	mcHandler := httpHandler.NewMakerCheckerHandler(db)
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
+	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 
 	// 5. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
@@ -76,6 +80,7 @@ func main() {
 		MakerCheckerHandler: mcHandler,
 		ReportHandler:       reportHandler,
 		CollectionHandler:   collectionHandler,
+		IntegrationHandler:  integrationHandler,
 		AuthService:         authSvc,
 	})
 
@@ -89,6 +94,7 @@ func main() {
 
 	log.Printf("📡 HTTP Server running on http://localhost:%s\n", cfg.Port)
 	log.Printf("🔐 Auth: JWT %s access token | Session-based refresh\n", cfg.Environment)
+	log.Printf("🔌 Integration Middleware: OJK SLIK / CBAS & Dukcapil Gateways active\n")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("❌ Server error: %v", err)
 	}

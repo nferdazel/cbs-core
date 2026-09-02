@@ -20,6 +20,7 @@ type RouterParams struct {
 	MakerCheckerHandler *MakerCheckerHandler
 	ReportHandler       *ReportHandler
 	CollectionHandler   *CollectionHandler
+	IntegrationHandler  *IntegrationHandler
 	AuthService         domain.AuthService
 }
 
@@ -150,6 +151,14 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/balance-sheet", p.ReportHandler.GetBalanceSheet)
 				r.With(middleware.RequirePermission(domain.PermReportsExport)).
 					Get("/income-statement", p.ReportHandler.GetIncomeStatement)
+			})
+
+			// ── Third-Party Integration Gateway (OJK SLIK / CBAS & Dukcapil) ──
+			r.Route("/integrations", func(r chi.Router) {
+				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+					Post("/slik/check", p.IntegrationHandler.CheckSLIK)
+				r.With(middleware.RequirePermission(domain.PermCustomersRead)).
+					Post("/dukcapil/verify", p.IntegrationHandler.VerifyDukcapil)
 			})
 
 			// ── Maker-Checker Workflow Queue ──
