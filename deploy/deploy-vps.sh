@@ -41,26 +41,7 @@ if [ "$REPO" = "cbs-core" ]; then
     IS_FIRST=1
   fi
 
-  # 1. Run Database Migrations (Idempotent tracking via schema_migrations)
-  if echo "$CHANGED_FILES" | grep -q "^packages/db-migrations/" || [ "$IS_FIRST" -eq 1 ]; then
-    echo "==> [cbs-core] checking DB migrations (packages/db-migrations)" | tee -a "$LOG"
-    podman exec -i qouver-postgres psql -U qouver -d postgres -c "CREATE DATABASE cbs_db;" 2>/dev/null || true
-    podman exec -i qouver-postgres psql -U qouver -d cbs_db -c "CREATE TABLE IF NOT EXISTS schema_migrations (version varchar(255) primary key, applied_at timestamp default now());" 2>/dev/null || true
-
-    for sql in "$MONO_DIR"/packages/db-migrations/*.up.sql; do
-      fname=$(basename "$sql")
-      applied=$(podman exec -i qouver-postgres psql -U qouver -d cbs_db -t -A -c "SELECT count(*) FROM schema_migrations WHERE version='$fname';" 2>/dev/null || echo "0")
-      if [ "$applied" = "0" ] || [ -z "$applied" ]; then
-        echo "  -> applying new migration: $fname" | tee -a "$LOG"
-        podman exec -i qouver-postgres psql -U qouver -d cbs_db < "$sql" 2>&1 | tee -a "$LOG"
-        podman exec -i qouver-postgres psql -U qouver -d cbs_db -c "INSERT INTO schema_migrations (version) VALUES ('$fname');" 2>&1 | tee -a "$LOG"
-      else
-        echo "  -> migration $fname already applied, skipping." | tee -a "$LOG"
-      fi
-    done
-  fi
-
-  # 2. Deploy Go Core API Backend if apps/api/ changed or first run
+  # 1. Deploy Go Core API Backend if apps/api/ changed or first run
   if echo "$CHANGED_FILES" | grep -q "^apps/api/" || [ "$IS_FIRST" -eq 1 ]; then
     echo "==> [cbs-core] deploying API (apps/api)" | tee -a "$LOG"
     cd "$MONO_DIR/apps/api"
