@@ -2,6 +2,7 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
+ENV GOWORK=off
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -10,7 +11,6 @@ RUN go mod download
 
 COPY . .
 
-ENV GOWORK=off
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/core-api ./cmd/server
 
 # Production image
