@@ -21,6 +21,7 @@ type RouterParams struct {
 	ReportHandler       *ReportHandler
 	CollectionHandler   *CollectionHandler
 	IntegrationHandler  *IntegrationHandler
+	BatchProcessHandler *BatchProcessHandler
 	AuthService         domain.AuthService
 }
 
@@ -159,6 +160,17 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/slik/check", p.IntegrationHandler.CheckSLIK)
 				r.With(middleware.RequirePermission(domain.PermCustomersRead)).
 					Post("/dukcapil/verify", p.IntegrationHandler.VerifyDukcapil)
+			})
+
+			// ── Banking Business Date & EOD / EOM / EOY Batch Processes ──
+			r.Get("/system/business-date", p.BatchProcessHandler.GetBusinessDate)
+			r.Route("/batch", func(r chi.Router) {
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Post("/eod", p.BatchProcessHandler.RunEOD)
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Post("/eom", p.BatchProcessHandler.RunEOM)
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Post("/eoy", p.BatchProcessHandler.RunEOY)
 			})
 
 			// ── Maker-Checker Workflow Queue ──
