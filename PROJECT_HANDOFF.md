@@ -135,11 +135,15 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **15/15 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement)
+- **17/17 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
 - **Loans & Financing Engine:** Origination, Repayment Schedule generator (Flat & Murabahah Margin), Approval, Disbursement, & Installment payments
 - **Financial Statement Reports Engine:** Trial Balance (Neraca Saldo), Balance Sheet (Laporan Posisi Keuangan / Neraca), and Income Statement (Laporan Laba Rugi)
 - **Mobile Collector / Field Collection Engine (`Jemput Bola`):** Mobile API for AO/Collectors doing daily market collections with geolocation & receipt logging
+- **Third-Party Integration Gateway Layer:**
+  - `POST /api/v1/integrations/slik/check` (Checking OJK SLIK / CBAS debtor credit history & collectibility 1-5)
+  - `POST /api/v1/integrations/dukcapil/verify` (Dukcapil NIK & Identity verification API)
+  - WhatsApp & SMS Notification Gateways
 - **Maker-Checker Workflow:** Supervisor pending approval queue & approval/rejection HTTP handlers
 - Database Schemas `000001`, `000002`, and `000003` written & verified
 - Interactive Backoffice Dashboard & **Login Screen** (`/login`) in Next.js 15 (compiles cleanly in 2.8s)
