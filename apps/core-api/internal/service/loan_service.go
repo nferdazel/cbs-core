@@ -238,5 +238,21 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	target.Status = newStatus
 	now := time.Now().UTC()
 	target.PaidAt = &now
+
+	// Check if all schedules are now paid to mark loan as PAID_OFF
+	allPaid := true
+	for _, sc := range schedules {
+		if sc.ID == target.ID {
+			continue
+		}
+		if sc.Status != domain.InstallmentStatusPaid {
+			allPaid = false
+			break
+		}
+	}
+	if allPaid {
+		_ = s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusPaidOff, &tellerID)
+	}
+
 	return target, nil
 }

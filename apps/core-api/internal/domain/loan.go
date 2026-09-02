@@ -112,32 +112,51 @@ func GenerateFlatSchedule(loanID uuid.UUID, principal decimal.Decimal, annualRat
 	}
 
 	termDec := decimal.NewFromInt(int64(termMonths))
-	
+
 	// Total Interest = Principal * (Rate / 100) * (TermMonths / 12)
 	rateFraction := annualRate.Div(decimal.NewFromInt(100))
 	totalInterest := principal.Mul(rateFraction).Mul(termDec.Div(decimal.NewFromInt(12)))
 	totalPayable := principal.Add(totalInterest)
 
-	monthlyPrincipal := principal.DivRound(termDec, 4)
-	monthlyInterest := totalInterest.DivRound(termDec, 4)
-	monthlyTotal := monthlyPrincipal.Add(monthlyInterest)
+	basePrincipal := principal.DivRound(termDec, 4)
+	baseInterest := totalInterest.DivRound(termDec, 4)
 
 	var schedules []LoanSchedule
+	accPrincipal := decimal.Zero
+	accInterest := decimal.Zero
+
 	for i := 1; i <= termMonths; i++ {
 		dueDate := startDate.AddDate(0, i, 0)
+		var pAmt, iAmt decimal.Decimal
+
+		if i == termMonths {
+			// Final installment absorbs any rounding remainder
+			pAmt = principal.Sub(accPrincipal)
+			iAmt = totalInterest.Sub(accInterest)
+		} else {
+			pAmt = basePrincipal
+			iAmt = baseInterest
+			accPrincipal = accPrincipal.Add(pAmt)
+			accInterest = accInterest.Add(iAmt)
+		}
+
+		tAmt := pAmt.Add(iAmt)
+
 		schedules = append(schedules, LoanSchedule{
 			ID:               uuid.New(),
 			LoanID:           loanID,
 			InstallmentNo:    i,
 			DueDate:          dueDate,
-			PrincipalAmount:  monthlyPrincipal,
-			InterestAmount:   monthlyInterest,
-			TotalInstallment: monthlyTotal,
+			PrincipalAmount:  pAmt,
+			InterestAmount:   iAmt,
+			TotalInstallment: tAmt,
 			Status:           InstallmentStatusPending,
 			CreatedAt:        time.Now().UTC(),
 		})
 	}
-	return schedules, totalPayable, monthlyTotal
+
+	firstTotal := schedules[0].TotalInstallment
+	return schedules, totalPayable, firstTotal
 }
 
 func GenerateMurabahahSchedule(loanID uuid.UUID, principal decimal.Decimal, margin decimal.Decimal, termMonths int, startDate time.Time) ([]LoanSchedule, decimal.Decimal, decimal.Decimal) {
@@ -148,26 +167,45 @@ func GenerateMurabahahSchedule(loanID uuid.UUID, principal decimal.Decimal, marg
 	termDec := decimal.NewFromInt(int64(termMonths))
 	totalPayable := principal.Add(margin)
 
-	monthlyPrincipal := principal.DivRound(termDec, 4)
-	monthlyMargin := margin.DivRound(termDec, 4)
-	monthlyTotal := monthlyPrincipal.Add(monthlyMargin)
+	basePrincipal := principal.DivRound(termDec, 4)
+	baseMargin := margin.DivRound(termDec, 4)
 
 	var schedules []LoanSchedule
+	accPrincipal := decimal.Zero
+	accMargin := decimal.Zero
+
 	for i := 1; i <= termMonths; i++ {
 		dueDate := startDate.AddDate(0, i, 0)
+		var pAmt, mAmt decimal.Decimal
+
+		if i == termMonths {
+			// Final installment absorbs any rounding remainder
+			pAmt = principal.Sub(accPrincipal)
+			mAmt = margin.Sub(accMargin)
+		} else {
+			pAmt = basePrincipal
+			mAmt = baseMargin
+			accPrincipal = accPrincipal.Add(pAmt)
+			accMargin = accMargin.Add(mAmt)
+		}
+
+		tAmt := pAmt.Add(mAmt)
+
 		schedules = append(schedules, LoanSchedule{
 			ID:               uuid.New(),
 			LoanID:           loanID,
 			InstallmentNo:    i,
 			DueDate:          dueDate,
-			PrincipalAmount:  monthlyPrincipal,
-			InterestAmount:   monthlyMargin, // Margins act as interest component in schedules
-			TotalInstallment: monthlyTotal,
+			PrincipalAmount:  pAmt,
+			InterestAmount:   mAmt,
+			TotalInstallment: tAmt,
 			Status:           InstallmentStatusPending,
 			CreatedAt:        time.Now().UTC(),
 		})
 	}
-	return schedules, totalPayable, monthlyTotal
+
+	firstTotal := schedules[0].TotalInstallment
+	return schedules, totalPayable, firstTotal
 }
 
 // --- Interfaces ---
