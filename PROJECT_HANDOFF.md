@@ -135,9 +135,16 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **22/22 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery, Document PDF Generators)
+- **26/26 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring, Write-Off & Recovery, Document PDF Generators, Centralized Banking Utilities)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
 - **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
+- **Centralized Banking Utilities Package (`apps/core-api/internal/utils`):**
+  - `BankersRound`: Round-Half-Even (IEEE 754) perbankan pembatal bias statistik akumulasi bunga/bagi hasil
+  - `HalfUpRound`: Round-Half-Away-From-Zero commercial rounding angsuran
+  - `TruncateDown`: Pembulatan kebawah / cut-off pajak (PPh 4 ayat 2)
+  - `FormatIDR`: Formatter baku rupiah (`Rp 12.500.000,00`)
+  - `TerbilangRupiah`: Generator kalimat terbilang bahasa Indonesia (`Dua Belas Juta Lima Ratus Ribu Rupiah`)
+  - `MaskNIK` & `MaskAccountNumber`: Masking privasi NIK KTP & Rekening untuk kepatuhan UU PDP
 - **Document & PDF Printable Generator Engine (`/api/v1/documents/*`):**
   - `GET /deposit-slip/{refNo}`: Slip Setoran Tunai Teller (HTML/PDF Printable)
   - `GET /withdrawal-slip/{refNo}`: Slip Penarikan Tunai Teller (HTML/PDF Printable)
