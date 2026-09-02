@@ -173,6 +173,21 @@ type TransferRequest struct {
 	CreatedBy                string          `json:"created_by"`
 }
 
+type CustomJournalLineInput struct {
+	AccountNumber string          `json:"account_number"`
+	Direction     EntryDirection  `json:"direction"`
+	Amount        decimal.Decimal `json:"amount"`
+	Description   string          `json:"description"`
+}
+
+type CustomJournalRequest struct {
+	TransactionType TransactionType          `json:"transaction_type"`
+	Description     string                   `json:"description"`
+	IdempotencyKey  string                   `json:"idempotency_key"`
+	CreatedBy       string                   `json:"created_by"`
+	Lines           []CustomJournalLineInput `json:"lines"`
+}
+
 type LedgerRepository interface {
 	GetCOAList(ctx context.Context) ([]ChartOfAccount, error)
 	GetCOAByCode(ctx context.Context, code string) (*ChartOfAccount, error)
@@ -186,6 +201,7 @@ type LedgerService interface {
 	Deposit(ctx context.Context, req DepositRequest) (*JournalEntry, error)
 	Withdraw(ctx context.Context, req WithdrawRequest) (*JournalEntry, error)
 	TransferInternal(ctx context.Context, req TransferRequest) (*JournalEntry, error)
+	PostCompoundJournal(ctx context.Context, req CustomJournalRequest) (*JournalEntry, error)
 	GetJournalByReference(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, page, pageSize int) ([]JournalEntry, int, error)
 	GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int) ([]JournalLine, int, error)

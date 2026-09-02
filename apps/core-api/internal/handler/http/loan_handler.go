@@ -185,3 +185,96 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 
 	Success(w, http.StatusOK, "installment payment recorded successfully", schedule)
 }
+
+// Restructure handles POST /api/v1/loans/{id}/restructure (Supervisor / Admin)
+func (h *LoanHandler) Restructure(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid loan id")
+		return
+	}
+
+	var input domain.RestructureLoanInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	input.LoanID = id
+
+	loan, err := h.loanSvc.RestructureLoan(r.Context(), input, claims.UserID)
+	if err != nil {
+		Error(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	Success(w, http.StatusOK, "loan restructured successfully according to OJK rules", loan)
+}
+
+// WriteOff handles POST /api/v1/loans/{id}/write-off (Supervisor / Admin)
+func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid loan id")
+		return
+	}
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	input := domain.WriteOffLoanInput{
+		LoanID: id,
+		Reason: body.Reason,
+	}
+
+	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.UserID)
+	if err != nil {
+		Error(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	Success(w, http.StatusOK, "loan written off (hapus buku) successfully", loan)
+}
+
+// Recover handles POST /api/v1/loans/{id}/recover (Teller / Supervisor)
+func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid loan id")
+		return
+	}
+
+	var input domain.RecoverWrittenOffLoanInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	input.LoanID = id
+
+	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.UserID)
+	if err != nil {
+		Error(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
+	Success(w, http.StatusOK, "written-off loan recovery payment recorded successfully", loan)
+}
