@@ -79,6 +79,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	}
 
 	now := time.Now().UTC()
+	col, ppapRate, accrualSt := domain.CalculateCollectibility(0)
 	loan := &domain.Loan{
 		ID:                    loanID,
 		LoanNumber:            generateLoanNumber(input.Type),
@@ -86,6 +87,10 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		DisbursementAccountID: input.DisbursementAccountID,
 		Type:                  input.Type,
 		Status:                domain.LoanStatusPendingApproval,
+		Collectibility:        col,
+		DPD:                   0,
+		AccrualStatus:         accrualSt,
+		RequiredPPAP:          input.PrincipalAmount.Mul(ppapRate),
 		PrincipalAmount:       input.PrincipalAmount,
 		InterestRateAnnual:    input.InterestRateAnnual,
 		MarginAmount:          input.MarginAmount,

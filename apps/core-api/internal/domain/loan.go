@@ -48,16 +48,52 @@ const (
 	InstallmentStatusPartial InstallmentStatus = "PARTIAL"
 )
 
+type OJKCollectibility string
+
+const (
+	CollectibilityKol1 OJKCollectibility = "1_LANCAR"
+	CollectibilityKol2 OJKCollectibility = "2_DPK"
+	CollectibilityKol3 OJKCollectibility = "3_KURANG_LANCAR"
+	CollectibilityKol4 OJKCollectibility = "4_DIRAGUKAN"
+	CollectibilityKol5 OJKCollectibility = "5_MACET"
+)
+
+type AccrualStatus string
+
+const (
+	AccrualStatusAccrual AccrualStatus = "ACCRUAL_PERFORMING" // Kol 1 & Kol 2
+	AccrualStatusCash    AccrualStatus = "CASH_BASIS_NPL"     // Kol 3, 4, 5 (Stop Accrual)
+)
+
+func CalculateCollectibility(dpd int) (OJKCollectibility, decimal.Decimal, AccrualStatus) {
+	switch {
+	case dpd <= 90:
+		return CollectibilityKol1, decimal.NewFromFloat(0.005), AccrualStatusAccrual // 0.5% PPAP
+	case dpd <= 120:
+		return CollectibilityKol2, decimal.NewFromFloat(0.010), AccrualStatusAccrual // 1.0% PPAP
+	case dpd <= 180:
+		return CollectibilityKol3, decimal.NewFromFloat(0.150), AccrualStatusCash    // 15% PPAP & Stop Accrual
+	case dpd <= 270:
+		return CollectibilityKol4, decimal.NewFromFloat(0.500), AccrualStatusCash    // 50% PPAP & Stop Accrual
+	default:
+		return CollectibilityKol5, decimal.NewFromFloat(1.000), AccrualStatusCash    // 100% PPAP & Stop Accrual
+	}
+}
+
 type Loan struct {
-	ID                     uuid.UUID       `json:"id"`
-	LoanNumber             string          `json:"loan_number"`
-	CustomerID             uuid.UUID       `json:"customer_id"`
-	DisbursementAccountID uuid.UUID       `json:"disbursement_account_id"`
-	Type                   LoanType        `json:"loan_type"`
-	Status                 LoanStatus      `json:"status"`
-	PrincipalAmount        decimal.Decimal `json:"principal_amount"`
-	InterestRateAnnual     decimal.Decimal `json:"interest_rate_annual"`
-	MarginAmount           decimal.Decimal `json:"margin_amount"`
+	ID                     uuid.UUID         `json:"id"`
+	LoanNumber             string            `json:"loan_number"`
+	CustomerID             uuid.UUID         `json:"customer_id"`
+	DisbursementAccountID uuid.UUID         `json:"disbursement_account_id"`
+	Type                   LoanType          `json:"loan_type"`
+	Status                 LoanStatus        `json:"status"`
+	Collectibility         OJKCollectibility `json:"collectibility"`
+	DPD                    int               `json:"dpd"`
+	AccrualStatus          AccrualStatus     `json:"accrual_status"`
+	RequiredPPAP           decimal.Decimal   `json:"required_ppap"`
+	PrincipalAmount        decimal.Decimal   `json:"principal_amount"`
+	InterestRateAnnual     decimal.Decimal   `json:"interest_rate_annual"`
+	MarginAmount           decimal.Decimal   `json:"margin_amount"`
 	TotalPayable           decimal.Decimal `json:"total_payable"`
 	TermMonths             int             `json:"term_months"`
 	MonthlyInstallment     decimal.Decimal `json:"monthly_installment"`
