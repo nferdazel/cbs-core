@@ -41,7 +41,18 @@ if [ "$REPO" = "cbs-core" ]; then
     IS_FIRST=1
   fi
 
-  # Deploy Go Core API Backend if apps/api/ changed or first run
+  # 1. Run Database Migrations if packages/db-migrations/ changed or first run
+  if echo "$CHANGED_FILES" | grep -q "^packages/db-migrations/" || [ "$IS_FIRST" -eq 1 ]; then
+    echo "==> [cbs-core] applying DB migrations (packages/db-migrations)" | tee -a "$LOG"
+    # Ensure cbs_db database exists in qouver-postgres container
+    podman exec -i qouver-postgres psql -U qouver -d postgres -c "CREATE DATABASE cbs_db;" 2>/dev/null || true
+    for sql in "$MONO_DIR"/packages/db-migrations/*.up.sql; do
+      echo "  -> applying migration: $(basename "$sql")" | tee -a "$LOG"
+      podman exec -i qouver-postgres psql -U qouver -d cbs_db < "$sql" 2>&1 | tee -a "$LOG" || true
+    done
+  fi
+
+  # 2. Deploy Go Core API Backend if apps/api/ changed or first run
   if echo "$CHANGED_FILES" | grep -q "^apps/api/" || [ "$IS_FIRST" -eq 1 ]; then
     echo "==> [cbs-core] deploying API (apps/api)" | tee -a "$LOG"
     cd "$MONO_DIR/apps/api"
