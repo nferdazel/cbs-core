@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -477,24 +478,62 @@ func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.Cust
 	journalID := uuid.New()
 	now := time.Now().UTC()
 
-	var lines []domain.JournalLine
-	for idx, l := range req.Lines {
+	// 1. Sort account numbers lexicographically to prevent deadlocks
+	accountMap := make(map[string]domain.CustomJournalLineInput)
+	var accNumbers []string
+	for _, l := range req.Lines {
 		if l.Amount.LessThanOrEqual(decimal.Zero) {
 			return nil, domain.ErrInvalidAmount
 		}
+		if _, exists := accountMap[l.AccountNumber]; !exists {
+			accNumbers = append(accNumbers, l.AccountNumber)
+		}
+		accountMap[l.AccountNumber] = l
+	}
+	sort.Strings(accNumbers)
 
-		acc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, l.AccountNumber)
+	// Fetch & lock accounts in lexicographical order
+	lockedAccounts := make(map[string]*domain.Account)
+	for _, accNum := range accNumbers {
+		acc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, accNum)
 		if err != nil {
-			return nil, fmt.Errorf("account %s not found: %w", l.AccountNumber, err)
+			return nil, fmt.Errorf("account %s not found: %w", accNum, err)
+		}
+		lockedAccounts[accNum] = acc
+	}
+
+	// 2. Compute normal balance updates & construct journal lines
+	var lines []domain.JournalLine
+	for idx, l := range req.Lines {
+		acc, ok := lockedAccounts[l.AccountNumber]
+		if !ok {
+			return nil, fmt.Errorf("account %s missing from lock map", l.AccountNumber)
 		}
 
 		var newBal decimal.Decimal
-		if l.Direction == domain.DirectionDebit {
-			newBal = acc.Balance.Add(l.Amount)
-		} else {
-			newBal = acc.Balance.Sub(l.Amount)
+		// Normal Balance Rules:
+		// Asset (1) and Expense (5): Debit = (+), Credit = (-)
+		// Liability (2), Equity (3), Revenue (4): Debit = (-), Credit = (+)
+		isDebitNormal := true
+		if len(acc.AccountNumber) > 0 && (acc.AccountNumber[0] == '2' || acc.AccountNumber[0] == '3' || acc.AccountNumber[0] == '4') {
+			isDebitNormal = false
 		}
 
+		if isDebitNormal {
+			if l.Direction == domain.DirectionDebit {
+				newBal = acc.Balance.Add(l.Amount)
+			} else {
+				newBal = acc.Balance.Sub(l.Amount)
+			}
+		} else {
+			if l.Direction == domain.DirectionDebit {
+				newBal = acc.Balance.Sub(l.Amount)
+			} else {
+				newBal = acc.Balance.Add(l.Amount)
+			}
+		}
+
+		acc.Balance = newBal // Update in-memory for subsequent lines if same account appears
 		if err := s.accountRepo.UpdateBalance(ctx, tx, acc.ID, newBal, newBal, acc.Version); err != nil {
 			return nil, fmt.Errorf("failed to update balance for %s: %w", acc.AccountNumber, err)
 		}
