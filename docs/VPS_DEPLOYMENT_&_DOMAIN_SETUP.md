@@ -63,9 +63,9 @@ PORT=8080
 # PostgreSQL Database
 DB_HOST=localhost
 DB_PORT=5432
-DB_USER=cbs_prod_user
+DB_USER=qouver
 DB_PASSWORD=YOUR_STRONG_SECURE_PASSWORD
-DB_NAME=cbs_prod_db
+DB_NAME=cbs
 DB_SSL_MODE=disable
 
 # Security & Authentication
