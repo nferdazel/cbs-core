@@ -261,3 +261,57 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 
 	return target, nil
 }
+
+func (s *loanService) RestructureLoan(ctx context.Context, input domain.RestructureLoanInput, supervisorID uuid.UUID) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if loan.Status != domain.LoanStatusDisbursed {
+		return nil, errors.New("only active disbursed loans can be restructured")
+	}
+	if input.NewTermMonths <= 0 {
+		return nil, errors.New("new term months must be positive")
+	}
+
+	now := time.Now().UTC()
+	loan.IsRestructured = true
+	loan.RestructuredCount++
+	loan.RestructuredAt = &now
+	loan.RestructuringReason = input.Reason
+	loan.TermMonths = input.NewTermMonths
+
+	if input.NewInterestRateAnnual.GreaterThan(decimal.Zero) {
+		loan.InterestRateAnnual = input.NewInterestRateAnnual
+	}
+	if input.NewMarginAmount.GreaterThan(decimal.Zero) {
+		loan.MarginAmount = input.NewMarginAmount
+	}
+
+	// OJK Rule: Post-restructuring initial collectibility is Kol 2 DPK
+	col, ppapRate, accrualSt := domain.CalculateCollectibility(45) // DPD 45 = Kol 2 DPK
+	loan.Collectibility = col
+	loan.AccrualStatus = accrualSt
+	loan.RequiredPPAP = loan.PrincipalAmount.Mul(ppapRate)
+
+	// Re-calculate schedules with new parameters
+	var schedules []domain.LoanSchedule
+	var totalPayable, monthlyInstallment decimal.Decimal
+
+	switch loan.Type {
+	case domain.LoanTypeMurabahah:
+		schedules, totalPayable, monthlyInstallment = domain.GenerateMurabahahSchedule(
+			loan.ID, loan.PrincipalAmount, loan.MarginAmount, loan.TermMonths, now,
+		)
+	default:
+		schedules, totalPayable, monthlyInstallment = domain.GenerateFlatSchedule(
+			loan.ID, loan.PrincipalAmount, loan.InterestRateAnnual, loan.TermMonths, now,
+		)
+	}
+
+	loan.TotalPayable = totalPayable
+	loan.MonthlyInstallment = monthlyInstallment
+	loan.Schedules = schedules
+
+	return loan, nil
+}
