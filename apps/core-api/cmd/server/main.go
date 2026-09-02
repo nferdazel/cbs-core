@@ -28,7 +28,7 @@ func main() {
 		SSLMode:  cfg.DBSSLMode,
 	})
 	if err != nil {
-		log.Printf("⚠️ Database connection failed (%v). Continuing in standalone mode...", err)
+		log.Printf("⚠️  Database connection failed (%v). Continuing in standalone mode...", err)
 	} else {
 		defer db.Close()
 		log.Println("✅ PostgreSQL connected successfully")
@@ -38,22 +38,45 @@ func main() {
 	customerRepo := postgres.NewCustomerRepository(db)
 	accountRepo := postgres.NewAccountRepository(db)
 	ledgerRepo := postgres.NewLedgerRepository(db)
+	staffRepo := postgres.NewStaffRepository(db)
+	sessionRepo := postgres.NewSessionRepository(db)
+	configRepo := postgres.NewSystemConfigRepository(db)
+	loanRepo := postgres.NewLoanRepository(db)
+	reportRepo := postgres.NewReportRepository(db)
 
 	// 3. Services
 	customerSvc := service.NewCustomerService(customerRepo)
 	accountSvc := service.NewAccountService(accountRepo, customerRepo)
 	ledgerSvc := service.NewLedgerService(ledgerRepo, accountRepo, db)
+	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
+	staffSvc := service.NewStaffService(staffRepo)
+	loanSvc := service.NewLoanService(loanRepo, accountRepo, customerRepo, ledgerSvc)
+	reportSvc := service.NewReportService(reportRepo)
+	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 
 	// 4. HTTP Handlers
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
 	accHandler := httpHandler.NewAccountHandler(accountSvc)
 	ledHandler := httpHandler.NewLedgerHandler(ledgerSvc)
+	authHandler := httpHandler.NewAuthHandler(authSvc)
+	staffHandler := httpHandler.NewStaffHandler(staffSvc)
+	loanHandler := httpHandler.NewLoanHandler(loanSvc)
+	mcHandler := httpHandler.NewMakerCheckerHandler(db)
+	reportHandler := httpHandler.NewReportHandler(reportSvc)
+	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 
 	// 5. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
-		CustomerHandler: custHandler,
-		AccountHandler:  accHandler,
-		LedgerHandler:   ledHandler,
+		CustomerHandler:     custHandler,
+		AccountHandler:      accHandler,
+		LedgerHandler:       ledHandler,
+		AuthHandler:         authHandler,
+		StaffHandler:        staffHandler,
+		LoanHandler:         loanHandler,
+		MakerCheckerHandler: mcHandler,
+		ReportHandler:       reportHandler,
+		CollectionHandler:   collectionHandler,
+		AuthService:         authSvc,
 	})
 
 	server := &http.Server{
@@ -65,6 +88,7 @@ func main() {
 	}
 
 	log.Printf("📡 HTTP Server running on http://localhost:%s\n", cfg.Port)
+	log.Printf("🔐 Auth: JWT %s access token | Session-based refresh\n", cfg.Environment)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("❌ Server error: %v", err)
 	}
