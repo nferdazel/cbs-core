@@ -1,0 +1,50 @@
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+# Turborepo
+.turbo/
+
+# Environment variables & Secrets (CRITICAL for public repo)
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Go
+apps/core-api/core-api
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Database & IDE
+*.sqlite
+*.db
+.idea/
+.vscode/
+*.swp

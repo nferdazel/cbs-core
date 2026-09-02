@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cbs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cbs_user
+      POSTGRES_PASSWORD: cbs_password
+      POSTGRES_DB: cbs_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - cbs_pg_data:/var/lib/postgresql/data
+      - ./packages/db-migrations/000001_init_cbs_schema.up.sql:/docker-entrypoint-initdb.d/01_init.sql
+
+  redis:
+    image: redis:7-alpine
+    container_name: cbs-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - cbs_redis_data:/data
+
+volumes:
+  cbs_pg_data:
+  cbs_redis_data:
