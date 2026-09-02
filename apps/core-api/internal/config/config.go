@@ -17,6 +17,7 @@ type Config struct {
 	RedisHost   string
 	RedisPort   string
 	Environment string
+	JWTSecret   string
 }
 
 func Load() *Config {
@@ -33,6 +34,7 @@ func Load() *Config {
 		RedisHost:   getEnv("REDIS_HOST", "localhost"),
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
 		Environment: getEnv("APP_ENV", "development"),
+		JWTSecret:   getEnv("JWT_SECRET", "CHANGE_ME_IN_PRODUCTION_USE_A_LONG_RANDOM_STRING"),
 	}
 }
 
