@@ -50,17 +50,35 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 	}
 	defer tx.Rollback()
 
-	// 2. Lock and retrieve accounts
-	// Vault Account (Debit: Asset increases)
-	vaultAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve vault account: %w", err)
+	// 2. Lock and retrieve accounts in lexicographical order to prevent deadlocks
+	var firstAcc, secondAcc *domain.Account
+	vaultFirst := strings.Compare("GL-VAULT-001", req.AccountNumber) < 0
+
+	if vaultFirst {
+		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve vault account: %w", err)
+		}
+		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
+		if err != nil {
+			return nil, fmt.Errorf("target customer account not found: %w", err)
+		}
+	} else {
+		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
+		if err != nil {
+			return nil, fmt.Errorf("target customer account not found: %w", err)
+		}
+		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve vault account: %w", err)
+		}
 	}
 
-	// Customer Account (Credit: Liability increases)
-	custAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-	if err != nil {
-		return nil, fmt.Errorf("target customer account not found: %w", err)
+	var vaultAcc, custAcc *domain.Account
+	if vaultFirst {
+		vaultAcc, custAcc = firstAcc, secondAcc
+	} else {
+		custAcc, vaultAcc = firstAcc, secondAcc
 	}
 
 	if custAcc.Status != domain.AccountStatusActive {
@@ -173,10 +191,35 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 	}
 	defer tx.Rollback()
 
-	// 1. Lock customer account first
-	custAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-	if err != nil {
-		return nil, fmt.Errorf("customer account not found: %w", err)
+	// 1. Lock and retrieve accounts in lexicographical order to prevent deadlocks
+	var firstAcc, secondAcc *domain.Account
+	vaultFirst := strings.Compare("GL-VAULT-001", req.AccountNumber) < 0
+
+	if vaultFirst {
+		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
+		if err != nil {
+			return nil, fmt.Errorf("vault account not found: %w", err)
+		}
+		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
+		if err != nil {
+			return nil, fmt.Errorf("customer account not found: %w", err)
+		}
+	} else {
+		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
+		if err != nil {
+			return nil, fmt.Errorf("customer account not found: %w", err)
+		}
+		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
+		if err != nil {
+			return nil, fmt.Errorf("vault account not found: %w", err)
+		}
+	}
+
+	var vaultAcc, custAcc *domain.Account
+	if vaultFirst {
+		vaultAcc, custAcc = firstAcc, secondAcc
+	} else {
+		custAcc, vaultAcc = firstAcc, secondAcc
 	}
 
 	if custAcc.Status != domain.AccountStatusActive {
@@ -185,12 +228,6 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 
 	if custAcc.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
-	}
-
-	// 2. Lock vault account
-	vaultAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-	if err != nil {
-		return nil, fmt.Errorf("vault account not found: %w", err)
 	}
 
 	// 3. Balances after withdrawal
