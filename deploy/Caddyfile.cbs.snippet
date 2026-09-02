@@ -1,0 +1,22 @@
+# Snippet Caddyfile untuk CBS (Core Banking System)
+# Tambahkan ke block `api.qouver.com` di /etc/caddy/Caddyfile pada VPS kamu:
+
+api.qouver.com {
+    # ── CBS Core Banking Engine (prod) ──
+    handle /cbs/* {
+        uri strip_prefix /cbs
+        reverse_proxy 127.0.0.1:8095
+    }
+
+    # ── CBS Core Banking Engine (dev) [Optional] ──
+    handle /cbs-dev/* {
+        uri strip_prefix /cbs-dev
+        reverse_proxy 127.0.0.1:8096
+    }
+}
+
+# ── Backoffice Web Portal (Next.js) ──
+cbs.qouver.com {
+    reverse_proxy 127.0.0.1:3005
+    import LOG /var/log/caddy/cbs-web.access.log
+}

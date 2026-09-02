@@ -1,0 +1,23 @@
+# Quadlet unit for CBS Backoffice Portal (Next.js)
+# Copy to VPS: ~/.config/containers/systemd/cbs-web.container
+# Reload: systemctl --user daemon-reload && systemctl --user enable --now cbs-web
+
+[Unit]
+Description=CBS Backoffice Portal (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/cbs-web:local
+ContainerName=cbs-web
+Network=qouver
+PublishPort=127.0.0.1:3005:3000
+EnvironmentFile=/srv/qouver/cbs/env/cbs-web.env
+Pull=never
+
+[Service]
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

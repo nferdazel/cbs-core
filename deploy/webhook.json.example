@@ -1,0 +1,23 @@
+[
+  {
+    "id": "cbs-monorepo",
+    "execute-command": "/srv/qouver/cbs/scripts/deploy-vps.sh",
+    "command-working-directory": "/srv/qouver/cbs",
+    "pass-arguments-to-command": [
+      {
+        "source": "payload",
+        "name": "repository.name"
+      }
+    ],
+    "trigger-rule": {
+      "match": {
+        "type": "payload-hmac-sha1",
+        "secret": "GENERATE_A_RANDOM_SECRET_HEX_HERE",
+        "parameter": {
+          "source": "header",
+          "name": "X-Hub-Signature"
+        }
+      }
+    }
+  }
+]
