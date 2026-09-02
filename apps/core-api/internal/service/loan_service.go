@@ -334,3 +334,52 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 
 	return loan, nil
 }
+
+func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoanInput, supervisorID uuid.UUID) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if loan.Status != domain.LoanStatusDisbursed {
+		return nil, errors.New("only active disbursed loans can be written off")
+	}
+
+	if err := s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusWrittenOff, &supervisorID); err != nil {
+		return nil, fmt.Errorf("failed to update loan status to WRITTEN_OFF: %w", err)
+	}
+
+	loan.Status = domain.LoanStatusWrittenOff
+	return loan, nil
+}
+
+func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.RecoverWrittenOffLoanInput, tellerID uuid.UUID) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if loan.Status != domain.LoanStatusWrittenOff {
+		return nil, errors.New("loan is not in WRITTEN_OFF status")
+	}
+	if input.RecoveryAmount.LessThanOrEqual(decimal.Zero) {
+		return nil, errors.New("recovery amount must be positive")
+	}
+
+	// Post Recovery Double-Entry GL Journal
+	if s.ledgerSvc != nil {
+		refNo := fmt.Sprintf("RECOV-%s-%s", loan.LoanNumber, uuid.New().String()[:8])
+		desc := fmt.Sprintf("Recovery of Written-Off Loan %s", loan.LoanNumber)
+		acc, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
+		if err == nil && acc != nil {
+			_, _ = s.ledgerSvc.Deposit(ctx, domain.DepositRequest{
+				AccountNumber:  acc.AccountNumber,
+				Amount:         input.RecoveryAmount,
+				Currency:       acc.Currency,
+				Description:    desc,
+				IdempotencyKey: refNo,
+				CreatedBy:      tellerID.String(),
+			})
+		}
+	}
+
+	return loan, nil
+}
