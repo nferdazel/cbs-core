@@ -161,6 +161,7 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, disbur
 
 	// 1. Credit the customer's savings account via Deposit service (increases balance)
 	// 1. Credit customer's savings account & Debit Loan Receivable Asset (10300)
+	// 1. Post Double-Entry GL Journal: DEBIT Loan Portfolio Asset (10300), CREDIT Customer Savings (20100)
 	refNo := fmt.Sprintf("DISB-%s", loan.LoanNumber)
 	desc := fmt.Sprintf("Disbursement for Loan %s", loan.LoanNumber)
 
@@ -169,16 +170,30 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, disbur
 		return nil, fmt.Errorf("disbursement account not found: %w", err)
 	}
 
-	// Post Double-Entry: DEBIT Loan Portfolio Asset (GL-LOAN-001), CREDIT Customer Account
 	if s.ledgerSvc != nil {
-		_, _ = s.ledgerSvc.Deposit(ctx, domain.DepositRequest{
-			AccountNumber:  acc.AccountNumber,
-			Amount:         loan.PrincipalAmount,
-			Currency:       acc.Currency,
-			Description:    desc,
-			IdempotencyKey: refNo,
-			CreatedBy:      disburserID.String(),
+		_, err := s.ledgerSvc.PostCompoundJournal(ctx, domain.CustomJournalRequest{
+			TransactionType: domain.TxTypeTransferInternal,
+			Description:     desc,
+			IdempotencyKey:  refNo,
+			CreatedBy:       disburserID.String(),
+			Lines: []domain.CustomJournalLineInput{
+				{
+					AccountNumber: "10300", // Loan Receivable Portfolio Asset
+					Direction:     domain.DirectionDebit,
+					Amount:        loan.PrincipalAmount,
+					Description:   desc,
+				},
+				{
+					AccountNumber: acc.AccountNumber, // Customer Savings Deposit Account
+					Direction:     domain.DirectionCredit,
+					Amount:        loan.PrincipalAmount,
+					Description:   desc,
+				},
+			},
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to post disbursement GL journal: %w", err)
+		}
 	}
 
 	// 2. Mark loan as disbursed
@@ -235,21 +250,47 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		return nil, errors.New("this installment has already been paid in full")
 	}
 
-	// 1. Post General Ledger double-entry transaction for Installment Payment
-	// DEBIT Vault Cash (10100) or Customer Account, CREDIT Loan Portfolio Asset (10300) for Principal, CREDIT Interest Revenue (40100)
+	// 1. Post Compound GL Journal for Installment Repayment:
+	// DEBIT Customer Savings (20100) (or Vault), CREDIT Loan Portfolio Asset (10300) (Principal), CREDIT Interest Income (40100) (Interest/Margin)
 	if s.ledgerSvc != nil {
 		refNo := fmt.Sprintf("PAY-INST-%s-%d", loan.LoanNumber, input.InstallmentNo)
 		desc := fmt.Sprintf("Installment %d Payment for Loan %s", input.InstallmentNo, loan.LoanNumber)
 		acc, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 		if err == nil && acc != nil {
-			_, _ = s.ledgerSvc.Withdraw(ctx, domain.WithdrawRequest{
-				AccountNumber:  acc.AccountNumber,
-				Amount:         target.TotalInstallment,
-				Currency:       acc.Currency,
-				Description:    desc,
-				IdempotencyKey: refNo,
-				CreatedBy:      tellerID.String(),
+			var journalLines []domain.CustomJournalLineInput
+			journalLines = append(journalLines, domain.CustomJournalLineInput{
+				AccountNumber: acc.AccountNumber,
+				Direction:     domain.DirectionDebit,
+				Amount:        target.TotalInstallment,
+				Description:   desc,
 			})
+			if target.PrincipalAmount.GreaterThan(decimal.Zero) {
+				journalLines = append(journalLines, domain.CustomJournalLineInput{
+					AccountNumber: "10300", // Loan Receivable Portfolio Asset
+					Direction:     domain.DirectionCredit,
+					Amount:        target.PrincipalAmount,
+					Description:   fmt.Sprintf("Principal reduction for Loan %s", loan.LoanNumber),
+				})
+			}
+			if target.InterestAmount.GreaterThan(decimal.Zero) {
+				journalLines = append(journalLines, domain.CustomJournalLineInput{
+					AccountNumber: "40100", // Loan Interest / Margin Revenue Income
+					Direction:     domain.DirectionCredit,
+					Amount:        target.InterestAmount,
+					Description:   fmt.Sprintf("Interest/Margin revenue for Loan %s", loan.LoanNumber),
+				})
+			}
+
+			_, err = s.ledgerSvc.PostCompoundJournal(ctx, domain.CustomJournalRequest{
+				TransactionType: domain.TxTypeTransferInternal,
+				Description:     desc,
+				IdempotencyKey:  refNo,
+				CreatedBy:       tellerID.String(),
+				Lines:           journalLines,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to post installment repayment GL journal: %w", err)
+			}
 		}
 	}
 
@@ -344,6 +385,35 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 		return nil, errors.New("only active disbursed loans can be written off")
 	}
 
+	// 1. Post GL Journal: DEBIT PPAP Reserve (10900), CREDIT Loan Portfolio Asset (10300)
+	if s.ledgerSvc != nil {
+		refNo := fmt.Sprintf("WOFF-%s-%s", loan.LoanNumber, uuid.New().String()[:8])
+		desc := fmt.Sprintf("Write-off of Loan %s - Reason: %s", loan.LoanNumber, input.Reason)
+		_, err := s.ledgerSvc.PostCompoundJournal(ctx, domain.CustomJournalRequest{
+			TransactionType: domain.TxTypeTransferInternal,
+			Description:     desc,
+			IdempotencyKey:  refNo,
+			CreatedBy:       supervisorID.String(),
+			Lines: []domain.CustomJournalLineInput{
+				{
+					AccountNumber: "10900", // Allowance for Impairment / PPAP Reserve
+					Direction:     domain.DirectionDebit,
+					Amount:        loan.PrincipalAmount,
+					Description:   desc,
+				},
+				{
+					AccountNumber: "10300", // Loan Portfolio Asset
+					Direction:     domain.DirectionCredit,
+					Amount:        loan.PrincipalAmount,
+					Description:   desc,
+				},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to post write-off GL journal: %w", err)
+		}
+	}
+
 	if err := s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusWrittenOff, &supervisorID); err != nil {
 		return nil, fmt.Errorf("failed to update loan status to WRITTEN_OFF: %w", err)
 	}
@@ -364,20 +434,35 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		return nil, errors.New("recovery amount must be positive")
 	}
 
-	// Post Recovery Double-Entry GL Journal
+	// 1. Post Recovery Double-Entry GL Journal: DEBIT Customer Savings (20100), CREDIT Recovery Revenue (40900)
 	if s.ledgerSvc != nil {
 		refNo := fmt.Sprintf("RECOV-%s-%s", loan.LoanNumber, uuid.New().String()[:8])
-		desc := fmt.Sprintf("Recovery of Written-Off Loan %s", loan.LoanNumber)
+		desc := fmt.Sprintf("Recovery Income of Written-Off Loan %s", loan.LoanNumber)
 		acc, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 		if err == nil && acc != nil {
-			_, _ = s.ledgerSvc.Deposit(ctx, domain.DepositRequest{
-				AccountNumber:  acc.AccountNumber,
-				Amount:         input.RecoveryAmount,
-				Currency:       acc.Currency,
-				Description:    desc,
-				IdempotencyKey: refNo,
-				CreatedBy:      tellerID.String(),
+			_, err := s.ledgerSvc.PostCompoundJournal(ctx, domain.CustomJournalRequest{
+				TransactionType: domain.TxTypeTransferInternal,
+				Description:     desc,
+				IdempotencyKey:  refNo,
+				CreatedBy:       tellerID.String(),
+				Lines: []domain.CustomJournalLineInput{
+					{
+						AccountNumber: acc.AccountNumber, // Customer Savings Account
+						Direction:     domain.DirectionDebit,
+						Amount:        input.RecoveryAmount,
+						Description:   desc,
+					},
+					{
+						AccountNumber: "40900", // Other Operational Recovery Income
+						Direction:     domain.DirectionCredit,
+						Amount:        input.RecoveryAmount,
+						Description:   desc,
+					},
+				},
 			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to post recovery GL journal: %w", err)
+			}
 		}
 	}
 

@@ -136,6 +136,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/{id}/disburse", p.LoanHandler.Disburse)
 				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
 					Post("/{id}/pay-installment", p.LoanHandler.PayInstallment)
+				r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+					Post("/{id}/restructure", p.LoanHandler.Restructure)
+				r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+					Post("/{id}/write-off", p.LoanHandler.WriteOff)
+				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
+					Post("/{id}/recover", p.LoanHandler.Recover)
 			})
 
 			// ── Mobile Field Collections (Jemput Bola) ──

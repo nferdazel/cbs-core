@@ -462,3 +462,102 @@ func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber s
 func (s *ledgerService) GetChartOfAccounts(ctx context.Context) ([]domain.ChartOfAccount, error) {
 	return s.ledgerRepo.GetCOAList(ctx)
 }
+
+func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.CustomJournalRequest) (*domain.JournalEntry, error) {
+	if len(req.Lines) < 2 {
+		return nil, fmt.Errorf("compound journal requires at least 2 lines")
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	journalID := uuid.New()
+	now := time.Now().UTC()
+
+	var lines []domain.JournalLine
+	for idx, l := range req.Lines {
+		if l.Amount.LessThanOrEqual(decimal.Zero) {
+			return nil, domain.ErrInvalidAmount
+		}
+
+		acc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, l.AccountNumber)
+		if err != nil {
+			return nil, fmt.Errorf("account %s not found: %w", l.AccountNumber, err)
+		}
+
+		var newBal decimal.Decimal
+		if l.Direction == domain.DirectionDebit {
+			newBal = acc.Balance.Add(l.Amount)
+		} else {
+			newBal = acc.Balance.Sub(l.Amount)
+		}
+
+		if err := s.accountRepo.UpdateBalance(ctx, tx, acc.ID, newBal, newBal, acc.Version); err != nil {
+			return nil, fmt.Errorf("failed to update balance for %s: %w", acc.AccountNumber, err)
+		}
+
+		lines = append(lines, domain.JournalLine{
+			ID:             uuid.New(),
+			JournalEntryID: journalID,
+			AccountID:      acc.ID,
+			AccountNumber:  acc.AccountNumber,
+			Direction:      l.Direction,
+			Amount:         l.Amount,
+			Currency:       "IDR",
+			BalanceAfter:   newBal,
+			Sequence:       idx + 1,
+			Description:    l.Description,
+			CreatedAt:      now,
+		})
+	}
+
+	if err := domain.ValidateDoubleEntry(lines); err != nil {
+		return nil, err
+	}
+
+	var idemKeyPtr *string
+	if req.IdempotencyKey != "" {
+		idemKeyPtr = &req.IdempotencyKey
+	}
+
+	refNumber := fmt.Sprintf("CMP-%s-%s", now.Format("20060102150405"), uuid.New().String()[:8])
+	entry := &domain.JournalEntry{
+		ID:              journalID,
+		ReferenceNumber: refNumber,
+		IdempotencyKey:  idemKeyPtr,
+		TransactionType: req.TransactionType,
+		Description:     req.Description,
+		Status:          domain.JournalStatusPosted,
+		PostedAt:        now,
+		CreatedBy:       req.CreatedBy,
+		Lines:           lines,
+		CreatedAt:       now,
+	}
+
+	entryQuery := `
+		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	if _, err := tx.ExecContext(ctx, entryQuery, entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt); err != nil {
+		return nil, fmt.Errorf("failed to insert journal entry: %w", err)
+	}
+
+	lineQuery := `
+		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	for _, l := range lines {
+		if _, err := tx.ExecContext(ctx, lineQuery, l.ID, l.JournalEntryID, l.AccountID, l.Direction, l.Amount, l.Currency, l.BalanceAfter, l.Sequence, l.Description, l.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to insert journal line: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return entry, nil
+}
