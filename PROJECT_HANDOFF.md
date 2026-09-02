@@ -135,14 +135,18 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **21/21 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, OJK Collectibility Kol 1-5 & Accrual Rules)
+- **20/20 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, POJK 1/2024 DPD Rules & Credit Restructuring)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
 - **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
-- **Loans, Collectibility & Accrual Engine:**
+- **Loans, Collectibility, Accrual & Restructuring Engine:**
   - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
-  - **DPD (Days Past Due) & Kolektibilitas OJK Kol 1 s/d 5** (Kol 1 Lancar, Kol 2 DPK, Kol 3 KL, Kol 4 Diragukan, Kol 5 Macet/NPL)
-  - **PPAP (Penyisihan Penghapusan Aset Produktif):** Reserve rate calculation (0.5%, 1%, 15%, 50%, 100%)
-  - **Pengakuan Akrual vs Cash Basis (NPL):** Otomatis *Stop Accrual* (menghentikan pengakuan pendapatan bunga) ketika pinjaman memburuk ke NPL Kol 3, 4, 5.
+  - **Kolektibilitas Resmikan POJK No. 1 Tahun 2024:**
+    - **Kol 1 (Lancar):** DPD 0 (Tepat Waktu) — PPAP 0.5% — Accrual Basis
+    - **Kol 2 (DPK):** DPD 1 s/d 90 hari — PPAP 1.0% — Accrual Basis
+    - **Kol 3 (Kurang Lancar / NPL):** DPD 91 s/d 120 hari — PPAP 15.0% — Cash Basis (Stop Accrual 🛑)
+    - **Kol 4 (Diragukan / NPL):** DPD 121 s/d 180 hari — PPAP 50.0% — Cash Basis (Stop Accrual 🛑)
+    - **Kol 5 (Macet / NPL):** DPD > 180 hari — PPAP 100.0% — Cash Basis (Stop Accrual 🛑)
+  - **Engine Restrukturisasi Kredit/Pembiayaan (`RestructureLoan`):** Penjadwalan ulang tenor, penyesuaian suku bunga/margin, & otomatis ber-transisi ke Kol 2 (DPK) pasca-restrukturisasi sesuai standar OJK.
 - **Financial Statement Reports Engine:** Trial Balance (Neraca Saldo), Balance Sheet (Laporan Posisi Keuangan / Neraca), and Income Statement (Laporan Laba Rugi)
 - **Mobile Collector / Field Collection Engine (`Jemput Bola`):** Mobile API for AO/Collectors doing daily market collections with geolocation & receipt logging
 - **Third-Party Integration Gateway Layer:** SLIK OJK / CBAS Debtor check, Dukcapil NIK verification API, SMS & WhatsApp Notification Gateways
