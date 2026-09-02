@@ -43,6 +43,7 @@ func main() {
 	configRepo := postgres.NewSystemConfigRepository(db)
 	loanRepo := postgres.NewLoanRepository(db)
 	reportRepo := postgres.NewReportRepository(db)
+	dateRepo := postgres.NewBusinessDateRepository(db)
 
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
@@ -56,6 +57,7 @@ func main() {
 	loanSvc := service.NewLoanService(loanRepo, accountRepo, customerRepo, ledgerSvc)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
+	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)
 
 	// 4. HTTP Handlers
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
@@ -68,6 +70,7 @@ func main() {
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
+	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
 
 	// 5. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
@@ -81,6 +84,7 @@ func main() {
 		ReportHandler:       reportHandler,
 		CollectionHandler:   collectionHandler,
 		IntegrationHandler:  integrationHandler,
+		BatchProcessHandler: batchHandler,
 		AuthService:         authSvc,
 	})
 
@@ -95,6 +99,7 @@ func main() {
 	log.Printf("📡 HTTP Server running on http://localhost:%s\n", cfg.Port)
 	log.Printf("🔐 Auth: JWT %s access token | Session-based refresh\n", cfg.Environment)
 	log.Printf("🔌 Integration Middleware: OJK SLIK / CBAS & Dukcapil Gateways active\n")
+	log.Printf("📅 Batch Processing: Business Date Engine & EOD/EOM/EOY Ready\n")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("❌ Server error: %v", err)
 	}
