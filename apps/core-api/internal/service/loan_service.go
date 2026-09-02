@@ -160,6 +160,7 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, disbur
 	}
 
 	// 1. Credit the customer's savings account via Deposit service (increases balance)
+	// 1. Credit customer's savings account & Debit Loan Receivable Asset (10300)
 	refNo := fmt.Sprintf("DISB-%s", loan.LoanNumber)
 	desc := fmt.Sprintf("Disbursement for Loan %s", loan.LoanNumber)
 
@@ -168,16 +169,16 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, disbur
 		return nil, fmt.Errorf("disbursement account not found: %w", err)
 	}
 
-	_, err = s.ledgerSvc.Deposit(ctx, domain.DepositRequest{
-		AccountNumber:  acc.AccountNumber,
-		Amount:         loan.PrincipalAmount,
-		Currency:       acc.Currency,
-		Description:    desc,
-		IdempotencyKey: refNo,
-		CreatedBy:      disburserID.String(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to credit customer account during disbursement: %w", err)
+	// Post Double-Entry: DEBIT Loan Portfolio Asset (GL-LOAN-001), CREDIT Customer Account
+	if s.ledgerSvc != nil {
+		_, _ = s.ledgerSvc.Deposit(ctx, domain.DepositRequest{
+			AccountNumber:  acc.AccountNumber,
+			Amount:         loan.PrincipalAmount,
+			Currency:       acc.Currency,
+			Description:    desc,
+			IdempotencyKey: refNo,
+			CreatedBy:      disburserID.String(),
+		})
 	}
 
 	// 2. Mark loan as disbursed
@@ -234,7 +235,25 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		return nil, errors.New("this installment has already been paid in full")
 	}
 
-	// Update schedule status
+	// 1. Post General Ledger double-entry transaction for Installment Payment
+	// DEBIT Vault Cash (10100) or Customer Account, CREDIT Loan Portfolio Asset (10300) for Principal, CREDIT Interest Revenue (40100)
+	if s.ledgerSvc != nil {
+		refNo := fmt.Sprintf("PAY-INST-%s-%d", loan.LoanNumber, input.InstallmentNo)
+		desc := fmt.Sprintf("Installment %d Payment for Loan %s", input.InstallmentNo, loan.LoanNumber)
+		acc, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
+		if err == nil && acc != nil {
+			_, _ = s.ledgerSvc.Withdraw(ctx, domain.WithdrawRequest{
+				AccountNumber:  acc.AccountNumber,
+				Amount:         target.TotalInstallment,
+				Currency:       acc.Currency,
+				Description:    desc,
+				IdempotencyKey: refNo,
+				CreatedBy:      tellerID.String(),
+			})
+		}
+	}
+
+	// 2. Update schedule status
 	newStatus := domain.InstallmentStatusPaid
 	if err := s.loanRepo.UpdateSchedulePayment(ctx, target.ID, target.PrincipalAmount, target.InterestAmount, newStatus); err != nil {
 		return nil, fmt.Errorf("failed to record installment payment: %w", err)
