@@ -140,7 +140,9 @@ Located in `packages/db-migrations/`:
 - **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
 - **Loans, Collectibility, Accrual & Restructuring Engine:**
   - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
-  - **Compound Double-Entry GL Ledger Linkage:**
+  - **Compound Double-Entry GL Ledger Linkage & Normal Balance Engine:**
+    - Accounting Normal Balance Rules: Asset/Expense (`1`/`5`) DEBIT (+), CREDIT (-); Liability/Equity/Revenue (`2`/`3`/`4`) DEBIT (-), CREDIT (+)
+    - Lexicographical Account Number Locking (`sort.Strings`) in `PostCompoundJournal` for 100% Deadlock Prevention
     - `DisburseLoan`: Debit `10300 - Piutang Pembiayaan`, Kredit `20100 - Simpanan Nasabah`
     - `PayInstallment`: Debit `20100 - Simpanan Nasabah`, Kredit `10300 - Piutang Pembiayaan` (Pokok), Kredit `40100 - Pendapatan Bunga/Margin` (Bunga/Margin)
     - `WriteOffLoan`: Debit `10900 - Cadangan PPAP`, Kredit `10300 - Piutang Pembiayaan`
