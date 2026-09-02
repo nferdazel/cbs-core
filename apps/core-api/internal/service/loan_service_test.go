@@ -50,7 +50,10 @@ func (s *stubLoanRepo) MarkDisbursed(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *stubLoanRepo) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
-	return s.loan.Schedules, nil
+	if s != nil && s.loan != nil {
+		return s.loan.Schedules, nil
+	}
+	return nil, nil
 }
 
 func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status domain.InstallmentStatus) error {
