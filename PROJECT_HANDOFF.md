@@ -135,14 +135,14 @@ Located in `packages/db-migrations/`:
 
 ### Completed ✅
 - Clean Architecture Go Backend with Double-Entry Transaction Engine
-- **19/19 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries)
+- **21/21 Go Unit Tests PASS** (Double-entry balance, Auth service, Role-Permission checks, Loan Schedules, Trial Balance, Balance Sheet, Income Statement, SLIK OJK, Dukcapil NIK, EOD & EOY Closing Entries, OJK Collectibility Kol 1-5 & Accrual Rules)
 - Staff User Management & JWT + Session Auth with RBAC Middlewares (7 Roles: SUPERADMIN, ADMIN, SUPERVISOR, TELLER, CS, AO, AUDITOR)
-- **Banking Business Date & Batch Processing Engine:**
-  - `GET /api/v1/system/business-date` (System Business Date control)
-  - `POST /api/v1/batch/eod` (End of Day closing & business date advancing)
-  - `POST /api/v1/batch/eom` (End of Month admin fee & interest distribution)
-  - `POST /api/v1/batch/eoy` (End of Year Tutup Buku Akhir Tahun & Closing Double-Entry Journal to Retained Earnings)
-- **Loans & Financing Engine:** Origination, Repayment Schedule generator (Flat & Murabahah Margin), Approval, Disbursement, & Installment payments
+- **Banking Business Date & Batch Processing Engine:** EOD, EOM, & EOY Tutup Buku Akhir Tahun Closing Entries
+- **Loans, Collectibility & Accrual Engine:**
+  - Origination, Flat & Murabahah Repayment Schedules, Approval, Disbursement, & Installments
+  - **DPD (Days Past Due) & Kolektibilitas OJK Kol 1 s/d 5** (Kol 1 Lancar, Kol 2 DPK, Kol 3 KL, Kol 4 Diragukan, Kol 5 Macet/NPL)
+  - **PPAP (Penyisihan Penghapusan Aset Produktif):** Reserve rate calculation (0.5%, 1%, 15%, 50%, 100%)
+  - **Pengakuan Akrual vs Cash Basis (NPL):** Otomatis *Stop Accrual* (menghentikan pengakuan pendapatan bunga) ketika pinjaman memburuk ke NPL Kol 3, 4, 5.
 - **Financial Statement Reports Engine:** Trial Balance (Neraca Saldo), Balance Sheet (Laporan Posisi Keuangan / Neraca), and Income Statement (Laporan Laba Rugi)
 - **Mobile Collector / Field Collection Engine (`Jemput Bola`):** Mobile API for AO/Collectors doing daily market collections with geolocation & receipt logging
 - **Third-Party Integration Gateway Layer:** SLIK OJK / CBAS Debtor check, Dukcapil NIK verification API, SMS & WhatsApp Notification Gateways
