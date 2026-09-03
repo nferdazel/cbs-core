@@ -1,8 +1,8 @@
 [
   {
     "id": "cbs-monorepo",
-    "execute-command": "/srv/qouver/cbs/scripts/deploy-vps.sh",
-    "command-working-directory": "/srv/qouver/cbs",
+    "execute-command": "/srv/qouver/apps/cbs/scripts/deploy-vps.sh",
+    "command-working-directory": "/srv/qouver/apps/cbs",
     "pass-arguments-to-command": [
       {
         "source": "payload",

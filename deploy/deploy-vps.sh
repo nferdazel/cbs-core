@@ -2,11 +2,11 @@
 set -euo pipefail
 
 REPO="${1:-cbs-core}"
-LOG="/srv/qouver/cbs/logs/deploy.log"
-mkdir -p /srv/qouver/cbs/logs
+LOG="/srv/qouver/apps/cbs/logs/deploy.log"
+mkdir -p /srv/qouver/apps/cbs/logs
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Deploy trigger received for: $REPO" | tee -a "$LOG"
 
-MONO_DIR="/srv/qouver/cbs/monorepo"
+MONO_DIR="/srv/qouver/apps/cbs/monorepo"
 IS_FIRST=0
 
 if [ -d "$MONO_DIR/.git" ]; then

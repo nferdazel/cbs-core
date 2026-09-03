@@ -12,7 +12,7 @@ Image=localhost/cbs-web:local
 ContainerName=cbs-web
 Network=qouver
 PublishPort=127.0.0.1:3005:3000
-EnvironmentFile=/srv/qouver/cbs/env/cbs-web.env
+EnvironmentFile=/srv/qouver/apps/cbs/env/cbs-web.env
 Pull=never
 
 [Service]
