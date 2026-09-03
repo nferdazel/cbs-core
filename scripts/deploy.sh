@@ -21,5 +21,5 @@ if [ "$MODE" = "setup" ]; then
   echo "    /srv/qouver/cbs/env/cbs-web.env"
 else
   echo "==> [update] Triggering deploy script on VPS..."
-  ssh "$VPS" "/srv/qouver/cbs/scripts/deploy-vps.sh cbs-monorepo"
+  ssh "$VPS" "/srv/qouver/cbs/scripts/deploy-vps.sh cbs-core"
 fi
