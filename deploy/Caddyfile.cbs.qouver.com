@@ -26,7 +26,7 @@ cbs.qouver.com {
 
 	# Serve static web frontend build or proxy to Next.js
 	handle {
-		root * /srv/qouver/cbs/web
+		root * /srv/qouver/apps/cbs/web
 		file_server
 		try_files {path} {path}/ /index.html
 	}

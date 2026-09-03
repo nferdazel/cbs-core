@@ -113,7 +113,7 @@ Executed Migrations (`packages/db-migrations/`):
   - **API Gateway:** **`https://api.qouver.com/cbs/v1/*`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-api` on port `8095`)
 - **Containers:** Podman Quadlet (`cbs-api.container` & `cbs-web.container`)
 - **Reverse Proxy Routing (Caddy):** Automatic SSL via Let's Encrypt / Caddy Gateway
-- **Continuous Deployment:** Script `/srv/qouver/cbs/scripts/deploy-vps.sh` triggered via GitHub Webhook on port `9000` (`/hooks/cbs-deploy`) or SSH `github-cbs`.
+- **Continuous Deployment:** Script `/srv/qouver/apps/cbs/scripts/deploy-vps.sh` triggered via GitHub Webhook on port `9000` (`/hooks/cbs-deploy`) or SSH `github-cbs`.
 
 ---
 
