@@ -87,7 +87,7 @@ func (r *AccountRepository) GetByNumberForUpdate(ctx context.Context, tx any, ac
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
 		WHERE a.account_number = $1
-		FOR UPDATE
+		FOR UPDATE OF a
 	`
 	var a domain.Account
 	err := sqlTx.QueryRowContext(ctx, query, accountNumber).Scan(
