@@ -3,6 +3,8 @@
  * Field disalin dari struct Go di apps/api/internal/domain (jangan menebak).
  */
 
+import type { Account } from "@cbs/shared-types";
+
 export interface StaffUser {
   id: string;
   employee_id: string;
@@ -26,6 +28,17 @@ export interface LoginResponse {
   expires_in: number;
   refresh_expires_in?: number;
   user: StaffUser;
+}
+
+/**
+ * domain.Account (account.go) dengan field yang belum ada di @cbs/shared-types.
+ * branch_code, last_activity_at, dan dormant_at dipakai halaman rekening serta
+ * transaksi untuk menampilkan status dormant dan aksi reaktivasi.
+ */
+export interface AccountRecord extends Account {
+  branch_code?: string;
+  last_activity_at?: string;
+  dormant_at?: string;
 }
 
 /** domain.SystemBusinessDate (system_date.go) */

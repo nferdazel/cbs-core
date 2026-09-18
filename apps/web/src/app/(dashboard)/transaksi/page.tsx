@@ -4,15 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import type { JournalLine } from "@cbs/shared-types";
 import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import type { AccountRecord } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DefinitionList } from "@/components/ui/DefinitionList";
 import { Pagination } from "@/components/ui/Pagination";
 import { ErrorState, EmptyState } from "@/components/ui/States";
+import { AccountReactivation } from "@/components/account/AccountReactivation";
 
 const PAGE_SIZE = 25;
 
@@ -32,6 +36,8 @@ export default function TransaksiPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [accountInfo, setAccountInfo] = useState<AccountRecord | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const load = useCallback(async (accNumber: string, targetPage: number) => {
     setLoading(true);
@@ -58,12 +64,38 @@ export default function TransaksiPage() {
     if (account) load(account, page);
   }, [account, page, load]);
 
+  const loadAccount = useCallback(async (accNumber: string) => {
+    setAccountInfo(null);
+    try {
+      const response = await request<AccountRecord>(
+        `/accounts/${encodeURIComponent(accNumber)}`
+      );
+      setAccountInfo(response.data ?? null);
+    } catch {
+      // Status rekening tidak wajib untuk membaca mutasi; panel rincian cukup
+      // tidak ditampilkan bila endpoint detail menolak.
+      setAccountInfo(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (account) loadAccount(account);
+  }, [account, loadAccount]);
+
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = accountInput.trim();
     if (!trimmed) return;
     setPage(1);
+    setSuccessMessage(null);
     setAccount(trimmed);
+  };
+
+  const handleReactivated = (updated: AccountRecord) => {
+    setAccountInfo(updated);
+    setSuccessMessage(
+      `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`
+    );
   };
 
   const columns: Column<JournalLine>[] = [
@@ -106,6 +138,15 @@ export default function TransaksiPage() {
         description="Telusuri mutasi satu rekening dari buku besar. Masukkan nomor rekening untuk melihat."
       />
 
+      {successMessage && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3 text-body text-credit-700"
+        >
+          {successMessage}
+        </div>
+      )}
+
       <Card className="mb-4">
         <CardContent>
           <form onSubmit={handleSearch} className="flex items-end gap-3">
@@ -124,6 +165,48 @@ export default function TransaksiPage() {
           </form>
         </CardContent>
       </Card>
+
+      {accountInfo && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Rincian Rekening</CardTitle>
+            <div className="flex items-center gap-3">
+              <StatusBadge status={accountInfo.status} />
+              <AccountReactivation
+                account={accountInfo}
+                onReactivated={handleReactivated}
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <DefinitionList
+              items={[
+                {
+                  label: "Nomor Rekening",
+                  value: accountInfo.account_number,
+                  isMono: true,
+                },
+                {
+                  label: "Pemilik",
+                  value: accountInfo.customer_name || "-",
+                },
+                {
+                  label: "Cabang",
+                  value: accountInfo.branch_code || "-",
+                  isMono: true,
+                },
+                {
+                  label: "Aktivitas Terakhir",
+                  value: accountInfo.last_activity_at
+                    ? formatDateTime(accountInfo.last_activity_at)
+                    : "-",
+                  isMono: true,
+                },
+              ]}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {error && !loading ? (
         <ErrorState
