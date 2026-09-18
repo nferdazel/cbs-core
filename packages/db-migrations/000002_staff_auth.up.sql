@@ -87,9 +87,10 @@ INSERT INTO system_config (key, value, description) VALUES
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS staff_user_id UUID REFERENCES staff_users(id) ON DELETE SET NULL;
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS staff_role VARCHAR(32);
 
--- 6. Seed: first SUPERADMIN user
--- Password: "Admin@CBS2026!" (bcrypt hash — MUST BE CHANGED on first login)
--- Generated with: bcrypt.GenerateFromPassword([]byte("Admin@CBS2026!"), 12)
+-- 6. Seed: akun SUPERADMIN awal
+-- Hash di bawah adalah placeholder yang tidak dapat dipakai login. Set password
+-- lewat proses provisioning (env AUTH_BOOTSTRAP_PASSWORD) atau reset manual dengan
+-- bcrypt sebelum akun dipakai. Jangan pernah menuliskan password asli di migration.
 INSERT INTO staff_users (
     id, employee_id, username, full_name, email,
     password_hash, role, branch_code, is_active

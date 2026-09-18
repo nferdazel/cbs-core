@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/middleware"
@@ -9,6 +11,24 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
+
+// allowedOrigins membaca CORS_ALLOWED_ORIGINS (dipisah koma). Default pengembangan
+// hanya localhost, tidak ada wildcard: go-chi/cors mencocokkan origin secara literal,
+// sehingga "https://*.domain" tidak pernah cocok dan hanya menyesatkan.
+func allowedOrigins() []string {
+	raw := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
+	if raw == "" {
+		raw = "http://localhost:3000,http://localhost:3001"
+	}
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			origins = append(origins, p)
+		}
+	}
+	return origins
+}
 
 type RouterParams struct {
 	CustomerHandler     *CustomerHandler

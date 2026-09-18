@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Deploy CBS Core ke VPS via SSH
+# Deploy CBS Core ke VPS via SSH.
+# Alamat VPS tidak disimpan di repo publik. Set dulu:
+#   export CBS_VPS=user@host
 set -euo pipefail
 
-VPS="${VPS:-sachiel@192.0.2.10}"
+VPS="${CBS_VPS:-${VPS:-}}"
+if [ -z "$VPS" ]; then
+  echo "CBS_VPS belum di-set. Contoh: export CBS_VPS=user@host" >&2
+  exit 1
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 DEPLOY_DIR="$ROOT_DIR/deploy"

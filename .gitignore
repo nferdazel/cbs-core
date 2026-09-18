@@ -52,3 +52,7 @@ pnpm-debug.log*
 # Redesign Tasklist
 REDESIGN_TASKLIST.md
 
+# Rework planning (local only)
+DESIGN.md
+BACKLOG.md
+
