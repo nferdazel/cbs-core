@@ -12,21 +12,19 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full space-y-1">
         {label && (
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-            {label}
-          </label>
+          <label className="block text-meta font-medium text-ink-600">{label}</label>
         )}
         <input
           ref={ref}
-          className={`w-full bg-white border border-slate-300 rounded-lg px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-700 focus:ring-1 focus:ring-blue-700 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors ${
+          className={`h-9 w-full rounded-md border bg-surface px-3 text-body text-ink-900 placeholder:text-ink-400 transition-colors duration-fast focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-400 ${
             isMono ? "font-mono" : "font-sans"
-          } ${error ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""} ${className}`}
+          } ${error ? "border-debit-700 focus:border-debit-700 focus:ring-debit-700" : "border-border-strong"} ${className}`}
           {...props}
         />
         {error ? (
-          <p className="text-[11px] font-medium text-red-600">{error}</p>
+          <p className="text-meta text-debit-700">{error}</p>
         ) : helperText ? (
-          <p className="text-[11px] text-slate-500">{helperText}</p>
+          <p className="text-meta text-ink-600">{helperText}</p>
         ) : null}
       </div>
     );

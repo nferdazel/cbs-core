@@ -2,12 +2,20 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, AlertCircle, ShieldCheck } from "lucide-react";
+import { AlertCircle, Building2 } from "lucide-react";
 import { useTranslation } from "@/i18n/context";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/Card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
+import { ApiError, request, unwrap } from "@/lib/api";
+import { saveSession } from "@/lib/auth";
+import type { LoginResponse } from "@/lib/types";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,92 +32,64 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiHost = process.env.NEXT_PUBLIC_API_URL || "https://api.qouver.com/cbs";
-      const res = await fetch(`${apiHost}/api/v1/auth/login`, {
+      const response = await request<LoginResponse>("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        auth: false,
+        body: { username, password },
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Login gagal, silakan periksa username & password.");
-      }
-
-      localStorage.setItem("cbs_access_token", data.data.access_token);
-      localStorage.setItem("cbs_refresh_token", data.data.refresh_token);
-      localStorage.setItem("cbs_user", JSON.stringify(data.data.user));
-
-      router.push("/");
-    } catch (err: any) {
-      // Fallback demo login if API unavailable locally
-      if (username === "superadmin" || username === "teller01" || username === "ao01") {
-        localStorage.setItem(
-          "cbs_user",
-          JSON.stringify({
-            username: username,
-            full_name: username === "superadmin" ? "System Administrator" : username.toUpperCase(),
-            role: username === "superadmin" ? "SUPERADMIN" : username.startsWith("teller") ? "TELLER" : "AO",
-            branch_code: "HO",
-          })
-        );
-        router.push("/");
-        return;
-      }
-      setError(err.message || "Terjadi kesalahan jaringan.");
+      saveSession(unwrap(response));
+      router.replace("/");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Terjadi kesalahan jaringan.";
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4 selection:bg-blue-900 selection:text-white">
-      <div className="w-full max-w-md space-y-4">
-        {/* Language switcher top right */}
+    <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
+      <div className="w-full max-w-sm space-y-4">
         <div className="flex justify-end">
-          <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 text-xs font-medium shadow-xs">
+          <div className="flex items-center rounded-md border border-border bg-surface p-0.5 text-meta">
             <button
               type="button"
               onClick={() => setLanguage("id")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${
-                language === "id"
-                  ? "bg-slate-900 text-white font-bold"
-                  : "text-slate-600 hover:text-slate-900"
+              className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
+                language === "id" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"
               }`}
             >
-              🇮🇩 ID
+              ID
             </button>
             <button
               type="button"
               onClick={() => setLanguage("en")}
-              className={`px-2.5 py-1 rounded-md transition-colors ${
-                language === "en"
-                  ? "bg-slate-900 text-white font-bold"
-                  : "text-slate-600 hover:text-slate-900"
+              className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
+                language === "en" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"
               }`}
             >
-              🇬🇧 EN
+              EN
             </button>
           </div>
         </div>
 
-        <Card className="shadow-md">
-          <CardHeader className="text-center flex flex-col items-center justify-center py-6 bg-slate-50 border-b border-slate-200">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900 text-white font-bold text-xl mb-2 shadow-xs">
-              <Building2 className="w-6 h-6" />
+        <Card>
+          <CardHeader className="flex flex-col items-center justify-center py-6 text-center">
+            <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-md bg-navy-700 text-white">
+              <Building2 className="h-5 w-5" aria-hidden />
             </div>
-            <CardTitle className="text-xl font-bold text-slate-900">
-              {t.login.title}
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              {t.login.subtitle}
-            </CardDescription>
+            <CardTitle>{t.login.title}</CardTitle>
+            <CardDescription>{t.login.subtitle}</CardDescription>
           </CardHeader>
 
-          <CardContent className="p-6 space-y-4">
+          <CardContent>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <div
+                className="flex items-center gap-2 rounded-md border border-debit-700/30 bg-debit-50 p-3 text-meta text-debit-700"
+                role="alert"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
                 <span>{error}</span>
               </div>
             )}
@@ -119,39 +99,25 @@ export default function LoginPage() {
                 label={t.login.staffUsername}
                 type="text"
                 required
+                autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. superadmin / teller01"
               />
 
               <Input
                 label={t.login.password}
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
               />
 
-              <Button
-                type="submit"
-                loading={loading}
-                variant="primary"
-                size="lg"
-                className="w-full mt-2"
-              >
+              <Button type="submit" loading={loading} className="w-full">
                 {loading ? t.login.processing : t.login.submitBtn}
               </Button>
             </form>
           </CardContent>
-
-          <CardFooter className="justify-center text-center text-xs text-slate-500 bg-slate-50 border-t border-slate-200 py-3">
-            <span>
-              {t.login.demoCredentials}:{" "}
-              <span className="font-mono text-slate-900 font-semibold">superadmin</span> /{" "}
-              <span className="font-mono text-slate-900 font-semibold">Admin@CBS2026!</span>
-            </span>
-          </CardFooter>
         </Card>
       </div>
     </div>

@@ -2,21 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Token desain — sumber kebenaran ada di DESIGN.md.
+ * Komponen hanya boleh memakai token ini (lewat Tailwind theme.extend),
+ * tidak boleh warna hex langsung. Jangan tambah nilai di luar DESIGN.md.
+ */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --font-sans: var(--font-ibm-sans);
-  --font-mono: var(--font-ibm-mono);
+  /* 3.1 Warna */
+  --color-navy-700: #1e3a5f;
+  --color-navy-800: #152b47;
+  --color-navy-600: #2b527f;
+  --color-accent-600: #b45309;
+  --color-accent-50: #fffbeb;
+  --color-credit-700: #15803d;
+  --color-credit-50: #f0fdf4;
+  --color-debit-700: #b91c1c;
+  --color-debit-50: #fef2f2;
+  --color-info-700: #1d4ed8;
+  --color-surface: #ffffff;
+  --color-canvas: #f4f4f5;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-ink-900: #18181b;
+  --color-ink-600: #52525b;
+  --color-ink-400: #a1a1aa;
+
+  /* 3.2 Tipografi */
+  --font-sans: var(--font-ibm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-ibm-mono), ui-monospace, monospace;
+  --text-meta: 12px;
+  --leading-meta: 16px;
+  --text-body: 14px;
+  --leading-body: 20px;
+  --text-title: 16px;
+  --leading-title: 24px;
+  --text-page: 20px;
+  --leading-page: 28px;
+
+  /* 3.3 Spasi — skala 4px */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 3.4 Radius & kedalaman. Kedalaman = batas 1px, bukan bayangan. */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --shadow-overlay: 0 8px 24px rgba(24, 24, 27, 0.16);
+
+  /* 3.5 Gerak */
+  --transition-fast: 120ms ease-out;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-ibm-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--color-ink-900);
+  background: var(--color-canvas);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
 }
 
-/* Ensure tabular numbers for monospace monetary values */
+/* Angka monospace selalu tabular agar kolom nominal lurus. */
 .font-mono {
-  font-family: var(--font-ibm-mono), monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* Indikator fokus terlihat (DESIGN.md bagian 6). */
+:focus-visible {
+  outline: 2px solid var(--color-navy-600);
+  outline-offset: 1px;
 }

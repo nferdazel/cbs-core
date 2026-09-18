@@ -2,34 +2,28 @@ import React from "react";
 
 export interface BadgeProps {
   children: React.ReactNode;
-  variant?: "default" | "success" | "warning" | "danger" | "info" | "outline";
-  size?: "sm" | "md";
+  /** Varian mengikuti semantik DESIGN.md, bukan nama warna generik. */
+  variant?: "neutral" | "outline" | "accent" | "credit" | "debit" | "info";
   className?: string;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
   children,
-  variant = "default",
-  size = "md",
+  variant = "neutral",
   className = "",
 }) => {
   const variantStyles = {
-    default: "bg-slate-100 text-slate-800 border-slate-200",
-    success: "bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold",
-    warning: "bg-amber-50 text-amber-800 border-amber-200 font-semibold",
-    danger: "bg-red-50 text-red-800 border-red-200 font-semibold",
-    info: "bg-blue-50 text-blue-800 border-blue-200 font-semibold",
-    outline: "bg-transparent text-slate-700 border-slate-300",
-  };
-
-  const sizeStyles = {
-    sm: "text-[10px] px-1.5 py-0.5",
-    md: "text-xs px-2.5 py-0.5",
+    neutral: "bg-canvas text-ink-900 border-border",
+    outline: "bg-transparent text-ink-600 border-border-strong",
+    accent: "bg-accent-50 text-accent-600 border-accent-600/30",
+    credit: "bg-credit-50 text-credit-700 border-credit-700/30",
+    debit: "bg-debit-50 text-debit-700 border-debit-700/30",
+    info: "bg-surface text-info-700 border-info-700/40",
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-md border font-sans font-medium tracking-tight ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center rounded-sm border px-1.5 py-0.5 text-meta font-medium ${variantStyles[variant]} ${className}`}
     >
       {children}
     </span>

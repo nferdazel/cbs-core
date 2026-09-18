@@ -18,8 +18,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CBS Core Portal | Core Banking System",
-  description: "BPR/BPRS & BMT Next-Generation Core Banking Management & Ledger Portal",
+  title: "CBS Core Backoffice",
+  description: "Backoffice core banking BPR: operasional, kredit, dan akuntansi.",
 };
 
 export default function RootLayout({
@@ -29,10 +29,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
-      <body className="font-sans bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col selection:bg-blue-900 selection:text-white">
-        <LanguageProvider>
-          {children}
-        </LanguageProvider>
+      <body className="min-h-screen bg-canvas font-sans text-ink-900 antialiased">
+        <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>
   );

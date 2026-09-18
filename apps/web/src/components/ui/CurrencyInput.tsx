@@ -7,51 +7,51 @@ export interface CurrencyInputProps extends Omit<InputProps, "onChange" | "value
   currencyPrefix?: string;
 }
 
+/**
+ * Input nominal. Menampilkan pemisah ribuan; nilai mentah disertakan lewat
+ * hidden input ber-`name` agar bisa dikirim sebagai angka tanpa format.
+ */
 export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   value,
   onChange,
-  currencyPrefix = "Rp ",
+  currencyPrefix = "Rp",
   label,
   error,
   helperText,
   className = "",
+  name,
   ...props
 }) => {
-  const numericValue = typeof value === "string" ? parseFloat(value) || 0 : value;
+  const numericValue = typeof value === "string" ? Number(value) || 0 : value;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawVal = e.target.value.replace(/[^0-9]/g, "");
-    const parsed = parseInt(rawVal, 10) || 0;
-    onChange(parsed);
+    const raw = e.target.value.replace(/[^0-9]/g, "");
+    onChange(raw ? parseInt(raw, 10) : 0);
   };
 
-  const formattedDisplay = numericValue.toLocaleString("id-ID");
+  const formatted = new Intl.NumberFormat("id-ID").format(numericValue);
 
   return (
     <div className="w-full space-y-1">
       {label && (
-        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-          {label}
-        </label>
+        <label className="block text-meta font-medium text-ink-600">{label}</label>
       )}
-      <div className="relative rounded-lg shadow-sm">
-        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-          <span className="text-slate-500 font-mono text-xs font-bold">{currencyPrefix}</span>
-        </div>
+      <div className="flex h-9 items-center rounded-md border border-border-strong bg-surface focus-within:border-navy-600 focus-within:ring-1 focus-within:ring-navy-600">
+        <span className="pl-3 font-mono text-body text-ink-600">{currencyPrefix}</span>
         <input
           type="text"
-          value={formattedDisplay}
+          inputMode="numeric"
+          value={formatted}
           onChange={handleChange}
-          className={`w-full bg-white border border-slate-300 rounded-lg pl-10 pr-3.5 py-2 text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-blue-700 focus:ring-1 focus:ring-blue-700 transition-colors ${
-            error ? "border-red-500" : ""
-          } ${className}`}
+          className={`h-full w-full rounded-md bg-transparent px-2 text-right font-mono text-body text-ink-900 focus:outline-none ${className}`}
           {...props}
         />
       </div>
+      {name && <input type="hidden" name={name} value={numericValue} />}
       {error ? (
-        <p className="text-[11px] font-medium text-red-600">{error}</p>
+        <p className="text-meta text-debit-700">{error}</p>
       ) : helperText ? (
-        <p className="text-[11px] text-slate-500">{helperText}</p>
+        <p className="text-meta text-ink-600">{helperText}</p>
       ) : null}
     </div>
   );

@@ -1,110 +1,116 @@
 "use client";
 
-import React from "react";
-import { Building2, LogOut, Globe, ShieldCheck, Lock, Landmark } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Building2, LogOut, ShieldCheck } from "lucide-react";
 import { useTranslation } from "@/i18n/context";
-import { Badge } from "@/components/ui/Badge";
+import { request } from "@/lib/api";
+import { formatDate } from "@/lib/format";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import type { SystemBusinessDate, StaffUser } from "@/lib/types";
 
 interface AppHeaderProps {
-  user: any;
+  user: StaffUser | null;
   onLogout: () => void;
 }
 
+/**
+ * Header 56px. Tanggal buku diambil dari GET /system/business-date; bila gagal
+ * ditampilkan "tidak diketahui", bukan tanggal hardcode.
+ */
 export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
   const { language, setLanguage, t } = useTranslation();
+  const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(null);
+  const [dateUnavailable, setDateUnavailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    request<SystemBusinessDate>("/system/business-date")
+      .then((res) => {
+        if (!cancelled && res.data) setBusinessDate(res.data);
+        else if (!cancelled) setDateUnavailable(true);
+      })
+      .catch(() => {
+        if (!cancelled) setDateUnavailable(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-6 py-2.5 shadow-xs">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        {/* Brand & System Info */}
-        <div className="flex items-center space-x-3">
-          <div className="bg-slate-900 text-white p-2 rounded-lg shadow-sm">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-base text-slate-900 tracking-tight">
-                {t.common.systemTitle}
+    <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-navy-800 px-4 text-white">
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-navy-700">
+          <Building2 className="h-4 w-4 text-white" aria-hidden />
+        </div>
+        <div>
+          <div className="text-title font-semibold leading-tight">{t.common.systemTitle}</div>
+          <div className="text-meta text-white/60">{t.common.systemSubtitle}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 text-meta">
+          <span className="text-white/60">{t.header.businessDate}:</span>
+          {businessDate ? (
+            <>
+              <span className="font-mono text-white">
+                {formatDate(businessDate.current_date)}
               </span>
-              <Badge variant="info" size="sm">
-                {t.common.bprBmtReady}
-              </Badge>
-            </div>
-            <p className="text-[11px] text-slate-500 hidden sm:block">
-              {t.common.systemSubtitle}
-            </p>
-          </div>
+              <StatusBadge status={businessDate.status} />
+            </>
+          ) : (
+            <span className="font-mono text-white/70">
+              {dateUnavailable ? t.header.businessDateUnknown : t.common.loading}
+            </span>
+          )}
         </div>
 
-        {/* Operational Status Badges */}
-        <div className="hidden lg:flex items-center space-x-4 text-xs font-mono">
-          <div className="flex items-center space-x-1.5 bg-slate-100 border border-slate-200 px-3 py-1 rounded-md text-slate-700">
-            <Landmark className="w-3.5 h-3.5 text-slate-500" />
-            <span className="font-sans font-medium text-slate-500">{t.header.businessDate}:</span>
-            <span className="font-bold text-slate-900">02 Sep 2026</span>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded font-bold">OPEN</span>
-          </div>
-
-          <div className="flex items-center space-x-1.5 bg-slate-100 border border-slate-200 px-3 py-1 rounded-md text-slate-700">
-            <Lock className="w-3.5 h-3.5 text-emerald-600" />
-            <span className="font-sans font-medium text-slate-500">{t.header.vaultStatus}:</span>
-            <span className="font-bold text-emerald-700">OPEN</span>
-          </div>
-        </div>
-
-        {/* Right Section: Language Toggle & User Profile */}
-        <div className="flex items-center space-x-3">
-          {/* Language Switcher */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-medium">
-            <button
-              onClick={() => setLanguage("id")}
-              className={`px-2 py-1 rounded-md transition-colors ${
-                language === "id"
-                  ? "bg-white text-slate-900 font-bold shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              🇮🇩 ID
-            </button>
-            <button
-              onClick={() => setLanguage("en")}
-              className={`px-2 py-1 rounded-md transition-colors ${
-                language === "en"
-                  ? "bg-white text-slate-900 font-bold shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              🇬🇧 EN
-            </button>
-          </div>
-
-          {/* User Badge */}
-          <div className="flex items-center space-x-2.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1">
-            <div className="w-7 h-7 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-xs font-mono">
-              {user?.role?.slice(0, 2) || "SA"}
-            </div>
-            <div className="text-left hidden md:block">
-              <div className="text-xs font-bold text-slate-900 flex items-center space-x-1">
-                <span>{user?.full_name || "Staff User"}</span>
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-700" />
-              </div>
-              <div className="text-[10px] text-slate-500 flex items-center space-x-1">
-                <span className="font-semibold text-emerald-700">{user?.role || "SUPERADMIN"}</span>
-                <span>• {user?.branch_code || "HO"}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Logout Button */}
+        <div className="flex items-center rounded-md border border-white/20 p-0.5 text-meta">
           <button
-            onClick={onLogout}
-            className="p-2 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 hover:border-red-200 transition-colors text-xs flex items-center gap-1 font-medium"
-            title={t.common.logout}
+            type="button"
+            onClick={() => setLanguage("id")}
+            className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
+              language === "id" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"
+            }`}
           >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden xl:inline">{t.common.logout}</span>
+            ID
+          </button>
+          <button
+            type="button"
+            onClick={() => setLanguage("en")}
+            className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
+              language === "en" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"
+            }`}
+          >
+            EN
           </button>
         </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-navy-700 text-meta font-medium uppercase">
+            {user?.role?.slice(0, 2) || "??"}
+          </div>
+          <div className="text-left">
+            <div className="flex items-center gap-1 text-meta font-medium">
+              <span>{user?.full_name || user?.username || "-"}</span>
+              <ShieldCheck className="h-3 w-3 text-white/60" aria-hidden />
+            </div>
+            <div className="text-meta text-white/60">
+              {user?.role || "-"} &middot; {user?.branch_code || "-"}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          title={t.common.logout}
+          className="flex items-center gap-1 rounded-md border border-white/20 px-2 py-1 text-meta text-white/80 transition-colors duration-fast hover:bg-navy-700 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" aria-hidden />
+          <span>{t.common.logout}</span>
+        </button>
       </div>
     </header>
   );

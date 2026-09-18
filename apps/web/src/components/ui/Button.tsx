@@ -2,8 +2,8 @@ import React from "react";
 import { Loader2 } from "lucide-react";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "emerald" | "amber" | "danger" | "outline" | "ghost";
-  size?: "sm" | "md" | "lg";
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+  size?: "sm" | "md";
   loading?: boolean;
   icon?: React.ReactNode;
 }
@@ -18,22 +18,23 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseStyles = "inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
-  
+  const baseStyles =
+    "inline-flex items-center justify-center font-medium rounded-md border transition-colors duration-fast disabled:opacity-50 disabled:cursor-not-allowed";
+
   const variantStyles = {
-    primary: "bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 shadow-sm",
-    secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200 focus:ring-slate-400 border border-slate-200",
-    emerald: "bg-emerald-700 text-white hover:bg-emerald-800 focus:ring-emerald-700 shadow-sm",
-    amber: "bg-amber-600 text-white hover:bg-amber-700 focus:ring-amber-600 shadow-sm",
-    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-600 shadow-sm",
-    outline: "bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 focus:ring-slate-400 shadow-sm",
-    ghost: "bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:ring-slate-400",
+    primary:
+      "bg-navy-700 text-white border-navy-700 hover:bg-navy-600 hover:border-navy-600",
+    secondary:
+      "bg-surface text-ink-900 border-border-strong hover:bg-canvas",
+    ghost:
+      "bg-transparent text-ink-600 border-transparent hover:bg-canvas hover:text-ink-900",
+    danger:
+      "bg-debit-700 text-white border-debit-700 hover:opacity-90",
   };
 
   const sizeStyles = {
-    sm: "text-xs px-2.5 py-1.5 gap-1.5",
-    md: "text-xs font-semibold px-3.5 py-2 gap-2",
-    lg: "text-sm font-semibold px-4 py-2.5 gap-2",
+    sm: "h-8 px-3 text-meta gap-1.5",
+    md: "h-9 px-3 text-body gap-2",
   };
 
   return (
@@ -43,7 +44,7 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {loading ? (
-        <Loader2 className="w-4 h-4 animate-spin text-current" />
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
       ) : icon ? (
         <span className="shrink-0">{icon}</span>
       ) : null}
