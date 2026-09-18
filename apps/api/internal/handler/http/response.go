@@ -2,8 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
+	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -61,4 +64,89 @@ func InternalError(w http.ResponseWriter, r *http.Request, err error) {
 	observability.FromContext(r.Context()).Error("kegagalan internal saat menangani permintaan",
 		"method", r.Method, "path", r.URL.Path, "error", err)
 	Error(w, http.StatusInternalServerError, "terjadi kesalahan internal, silakan coba lagi")
+}
+
+// businessErrors adalah error yang aman ditampilkan ke pengguna karena maknanya
+// jelas bagi mereka: kesalahan input, aturan bisnis, atau otorisasi. Error di luar
+// daftar ini dianggap kegagalan internal dan pesannya disembunyikan.
+var businessErrors = []error{
+	domain.ErrInvalidCredentials,
+	domain.ErrAccountLocked,
+	domain.ErrAccountInactiveUser,
+	domain.ErrSessionExpired,
+	domain.ErrSessionRevoked,
+	domain.ErrInvalidToken,
+	domain.ErrForbidden,
+	domain.ErrPasswordExpired,
+	domain.ErrCustomerNotFound,
+	domain.ErrDuplicateIDCard,
+	domain.ErrDuplicateEmail,
+	domain.ErrAccountNotFound,
+	domain.ErrAccountInactive,
+	domain.ErrInsufficientFunds,
+	domain.ErrInvalidAmount,
+	domain.ErrDuplicateIdempotencyKey,
+	domain.ErrLedgerUnbalanced,
+	domain.ErrProductNotFound,
+	domain.ErrBranchNotFound,
+	domain.ErrLoanNotFound,
+	domain.ErrLoanAlreadyApproved,
+	domain.ErrInvalidBusinessDate,
+	domain.ErrEODAlreadyRunForDate,
+	domain.ErrCipherNotConfigured,
+}
+
+// isBusinessError melaporkan apakah error termasuk yang aman ditampilkan ke pengguna.
+// Pemeriksaan juga memakai pesan karena banyak service membungkus error dengan %w.
+func isBusinessError(err error) bool {
+	for _, sentinel := range businessErrors {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
+
+// internalLeakMarkers adalah penanda bahwa sebuah pesan error berasal dari lapisan
+// bawah (database, driver, filesystem) dan tidak boleh terlihat pengguna.
+var internalLeakMarkers = []string{
+	"sql:", "pq:", "pgx", "sqlstate", "constraint", "relation ", "column ",
+	"table ", "syntax error", "foreign key", "unique violation",
+	".go:", "goroutine", "runtime error", "nil pointer",
+	"/srv/", "/home/", "/Users/", "postgres://",
+}
+
+// looksLikeInternalError melaporkan apakah pesan error membawa jejak implementasi.
+func looksLikeInternalError(msg string) bool {
+	lower := strings.ToLower(msg)
+	for _, marker := range internalLeakMarkers {
+		if strings.Contains(lower, strings.ToLower(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Fail membalas error dengan satu aturan: error bisnis yang dikenali ditampilkan
+// apa adanya, sisanya dicatat ke log dan diganti pesan generik. Ini mencegah detail
+// internal (SQL, nama tabel, path) bocor lewat status 4xx sekalipun.
+func Fail(w http.ResponseWriter, r *http.Request, status int, err error) {
+	if err == nil {
+		InternalError(w, r, errors.New("Fail dipanggil tanpa error"))
+		return
+	}
+	if isBusinessError(err) {
+		Error(w, status, err.Error())
+		return
+	}
+
+	// Error tanpa sentinel yang pesannya bersih dianggap pesan validasi/aturan bisnis
+	// yang memang ditujukan untuk pengguna. Yang membawa jejak internal disembunyikan.
+	if msg := err.Error(); msg != "" && !looksLikeInternalError(msg) {
+		if status >= 400 && status < 500 {
+			Error(w, status, msg)
+			return
+		}
+	}
+	InternalError(w, r, err)
 }

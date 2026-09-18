@@ -67,7 +67,7 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	cust, err := h.service.GetCustomer(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 
@@ -93,7 +93,7 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 

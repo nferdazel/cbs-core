@@ -32,7 +32,7 @@ func (h *CollectionHandler) ProcessMobileCollection(w http.ResponseWriter, r *ht
 
 	result, err := h.collectionSvc.ProcessMobileCollection(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 

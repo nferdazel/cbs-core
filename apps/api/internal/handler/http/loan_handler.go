@@ -35,7 +35,7 @@ func (h *LoanHandler) Apply(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.ApplyLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	loans, total, err := h.loanSvc.ListLoans(r.Context(), page, pageSize)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (h *LoanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.GetLoan(r.Context(), id)
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *LoanHandler) Approve(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.ApproveLoan(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -121,7 +121,7 @@ func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.RejectLoan(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -144,7 +144,7 @@ func (h *LoanHandler) Disburse(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.DisburseLoan(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 
 	schedule, err := h.loanSvc.PayInstallment(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -210,7 +210,7 @@ func (h *LoanHandler) Restructure(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.RestructureLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -243,7 +243,7 @@ func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -273,7 +273,7 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 

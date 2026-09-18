@@ -38,7 +38,7 @@ func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request
 
 	rows, err := h.db.QueryContext(r.Context(), q)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	defer rows.Close()
@@ -50,7 +50,7 @@ func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request
 			&req.ID, &req.MakerID, &req.TransactionType, &req.Amount,
 			&req.Payload, &req.Status, &req.CreatedAt,
 		); err != nil {
-			Error(w, http.StatusInternalServerError, err.Error())
+			InternalError(w, r, err)
 			return
 		}
 		list = append(list, req)
@@ -79,7 +79,7 @@ func (h *MakerCheckerHandler) Approve(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.db.ExecContext(r.Context(), q, claims.UserID, id)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -112,7 +112,7 @@ func (h *MakerCheckerHandler) Reject(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.db.ExecContext(r.Context(), q, claims.UserID, id)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 

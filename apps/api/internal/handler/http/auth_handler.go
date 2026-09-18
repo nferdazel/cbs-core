@@ -41,11 +41,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case domain.ErrInvalidCredentials:
-			Error(w, http.StatusUnauthorized, err.Error())
+			Fail(w, r, http.StatusUnauthorized, err)
 		case domain.ErrAccountLocked:
-			Error(w, http.StatusTooManyRequests, err.Error())
+			Fail(w, r, http.StatusTooManyRequests, err)
 		case domain.ErrAccountInactiveUser:
-			Error(w, http.StatusForbidden, err.Error())
+			Fail(w, r, http.StatusForbidden, err)
 		default:
 			Error(w, http.StatusInternalServerError, "login failed")
 		}
@@ -69,7 +69,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case domain.ErrSessionExpired, domain.ErrSessionRevoked, domain.ErrInvalidToken:
-			Error(w, http.StatusUnauthorized, err.Error())
+			Fail(w, r, http.StatusUnauthorized, err)
 		default:
 			Error(w, http.StatusInternalServerError, "token refresh failed")
 		}

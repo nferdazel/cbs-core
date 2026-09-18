@@ -39,7 +39,7 @@ func (h *StaffHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.staffSvc.CreateStaff(r.Context(), input, claims.UserID)
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -59,7 +59,7 @@ func (h *StaffHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	users, total, err := h.staffSvc.ListStaff(r.Context(), page, pageSize)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *StaffHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.staffSvc.GetStaff(r.Context(), id)
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 
@@ -102,7 +102,7 @@ func (h *StaffHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.staffSvc.UpdateStaff(r.Context(), id, input)
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (h *StaffHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.staffSvc.ChangePassword(r.Context(), claims.UserID, input); err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (h *StaffHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.staffSvc.ResetPassword(r.Context(), id, body.NewPassword, claims.UserID); err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 

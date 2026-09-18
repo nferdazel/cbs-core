@@ -45,7 +45,7 @@ func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := h.service.Deposit(r.Context(), req)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -80,10 +80,10 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	entry, err := h.service.Withdraw(r.Context(), req)
 	if err != nil {
 		if err == domain.ErrInsufficientFunds {
-			Error(w, http.StatusUnprocessableEntity, err.Error())
+			Fail(w, r, http.StatusUnprocessableEntity, err)
 			return
 		}
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -118,10 +118,10 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	entry, err := h.service.TransferInternal(r.Context(), req)
 	if err != nil {
 		if err == domain.ErrInsufficientFunds {
-			Error(w, http.StatusUnprocessableEntity, err.Error())
+			Fail(w, r, http.StatusUnprocessableEntity, err)
 			return
 		}
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -137,7 +137,7 @@ func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) 
 
 	entry, err := h.service.GetJournalByReference(r.Context(), ref)
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
 
 	journals, total, err := h.service.ListJournals(r.Context(), page, pageSize)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 
 	lines, total, err := h.service.GetAccountStatement(r.Context(), accNum, page, pageSize)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -202,7 +202,7 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 func (h *LedgerHandler) ListCOA(w http.ResponseWriter, r *http.Request) {
 	list, err := h.service.GetChartOfAccounts(r.Context())
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 

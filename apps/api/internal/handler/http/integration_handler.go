@@ -31,7 +31,7 @@ func (h *IntegrationHandler) CheckSLIK(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.slikGateway.CheckDebtor(r.Context(), body.NIK)
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *IntegrationHandler) VerifyDukcapil(w http.ResponseWriter, r *http.Reque
 
 	result, err := h.dukcapilGateway.VerifyIdentity(r.Context(), input)
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 

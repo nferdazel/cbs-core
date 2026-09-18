@@ -26,7 +26,7 @@ func (h *DocumentHandler) DepositSlip(w http.ResponseWriter, r *http.Request) {
 
 	html, err := h.docSvc.GenerateDepositSlipHTML(r.Context(), refNo)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *DocumentHandler) WithdrawalSlip(w http.ResponseWriter, r *http.Request)
 
 	html, err := h.docSvc.GenerateWithdrawalSlipHTML(r.Context(), refNo)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *DocumentHandler) LoanAgreement(w http.ResponseWriter, r *http.Request) 
 
 	html, err := h.docSvc.GenerateLoanAgreementHTML(r.Context(), id)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *DocumentHandler) ThermalReceipt(w http.ResponseWriter, r *http.Request)
 
 	text, err := h.docSvc.GenerateThermalReceiptText(r.Context(), receiptNo)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 

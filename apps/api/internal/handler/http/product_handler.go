@@ -34,7 +34,7 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	product, err := h.service.GetProduct(r.Context(), id)
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 	Success(w, http.StatusOK, "detail produk", product)

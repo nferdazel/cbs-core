@@ -21,7 +21,7 @@ func NewReportHandler(reportSvc domain.ReportService) *ReportHandler {
 func (h *ReportHandler) GetTrialBalance(w http.ResponseWriter, r *http.Request) {
 	report, err := h.reportSvc.GenerateTrialBalance(r.Context())
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Trial Balance report generated", report)
@@ -32,7 +32,7 @@ func (h *ReportHandler) GetBalanceSheet(w http.ResponseWriter, r *http.Request) 
 	asOf := time.Now().UTC()
 	report, err := h.reportSvc.GenerateBalanceSheet(r.Context(), asOf)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Balance Sheet report generated", report)
@@ -45,7 +45,7 @@ func (h *ReportHandler) GetIncomeStatement(w http.ResponseWriter, r *http.Reques
 
 	report, err := h.reportSvc.GenerateIncomeStatement(r.Context(), startDate, endDate)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Income Statement report generated", report)
@@ -88,12 +88,12 @@ func reportRange(r *http.Request) (from, to time.Time, err error) {
 func (h *ReportHandler) TrialBalance(w http.ResponseWriter, r *http.Request) {
 	from, to, err := reportRange(r)
 	if err != nil {
-		Error(w, http.StatusBadRequest, err.Error())
+		Fail(w, r, http.StatusBadRequest, err)
 		return
 	}
 	report, err := h.reportSvc.GetTrialBalance(r.Context(), from, to, r.URL.Query().Get("book"))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Trial Balance report generated", report)
@@ -103,12 +103,12 @@ func (h *ReportHandler) TrialBalance(w http.ResponseWriter, r *http.Request) {
 func (h *ReportHandler) IncomeStatement(w http.ResponseWriter, r *http.Request) {
 	from, to, err := reportRange(r)
 	if err != nil {
-		Error(w, http.StatusBadRequest, err.Error())
+		Fail(w, r, http.StatusBadRequest, err)
 		return
 	}
 	report, err := h.reportSvc.GetIncomeStatement(r.Context(), from, to, r.URL.Query().Get("book"))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Income Statement report generated", report)
@@ -119,12 +119,12 @@ func (h *ReportHandler) BalanceSheet(w http.ResponseWriter, r *http.Request) {
 	today, _ := reportToday()
 	asOf, err := parseReportDate(r, "as_of", today)
 	if err != nil {
-		Error(w, http.StatusBadRequest, err.Error())
+		Fail(w, r, http.StatusBadRequest, err)
 		return
 	}
 	report, err := h.reportSvc.GetBalanceSheet(r.Context(), asOf, r.URL.Query().Get("book"))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Balance Sheet report generated", report)
@@ -134,12 +134,12 @@ func (h *ReportHandler) BalanceSheet(w http.ResponseWriter, r *http.Request) {
 func (h *ReportHandler) CashFlow(w http.ResponseWriter, r *http.Request) {
 	from, to, err := reportRange(r)
 	if err != nil {
-		Error(w, http.StatusBadRequest, err.Error())
+		Fail(w, r, http.StatusBadRequest, err)
 		return
 	}
 	report, err := h.reportSvc.GetCashFlow(r.Context(), from, to, r.URL.Query().Get("book"))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "Cash Flow report generated", report)

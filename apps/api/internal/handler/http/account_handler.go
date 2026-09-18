@@ -49,7 +49,7 @@ func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 
 	account, err := h.service.OpenAccount(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Error(w, http.StatusUnprocessableEntity, err.Error())
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
 
@@ -65,7 +65,7 @@ func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 
 	acc, err := h.service.GetAccountByNumber(r.Context(), accNum)
 	if err != nil {
-		Error(w, http.StatusNotFound, err.Error())
+		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	accounts, total, err := h.service.ListAccounts(r.Context(), page, pageSize)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		InternalError(w, r, err)
 		return
 	}
 
