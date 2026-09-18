@@ -3,6 +3,8 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+
+	"cbs-core/apps/core-api/internal/observability"
 )
 
 type APIResponse struct {
@@ -43,9 +45,20 @@ func SuccessWithMeta(w http.ResponseWriter, statusCode int, message string, data
 	})
 }
 
+// Error mengirim pesan yang sudah aman ditampilkan ke pengguna. Jangan lewatkan
+// error internal mentah ke sini; pakai InternalError untuk itu.
 func Error(w http.ResponseWriter, statusCode int, errMessage string) {
 	JSON(w, statusCode, APIResponse{
 		Success: false,
 		Error:   errMessage,
 	})
+}
+
+// InternalError membalas pesan generik untuk kegagalan tak terduga, sementara detail
+// aslinya hanya dicatat ke log dengan request id. Ini mencegah nama tabel, query SQL,
+// atau path internal bocor ke klien.
+func InternalError(w http.ResponseWriter, r *http.Request, err error) {
+	observability.FromContext(r.Context()).Error("kegagalan internal saat menangani permintaan",
+		"method", r.Method, "path", r.URL.Path, "error", err)
+	Error(w, http.StatusInternalServerError, "terjadi kesalahan internal, silakan coba lagi")
 }

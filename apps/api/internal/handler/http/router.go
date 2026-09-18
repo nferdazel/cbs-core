@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -46,22 +47,31 @@ type RouterParams struct {
 	BatchProcessHandler *BatchProcessHandler
 	DocumentHandler     *DocumentHandler
 	AuthService         domain.AuthService
+	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
+	Logger *slog.Logger
 }
 
 func NewRouter(p RouterParams) *chi.Mux {
 	r := chi.NewRouter()
 
-	// Global Middlewares
-	r.Use(chiMiddleware.RequestID)
+	logger := p.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	// Middleware global. RequestID milik kita menangani korelasi; Recoverer dan
+	// AccessLog memakai logger terstruktur agar data sensitif tersaring.
+	r.Use(middleware.SecurityHeaders)
+	r.Use(middleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
-	r.Use(chiMiddleware.Logger)
-	r.Use(chiMiddleware.Recoverer)
+	r.Use(middleware.AccessLog(logger))
+	r.Use(middleware.Recoverer(logger))
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:3001", "https://cbs.qouver.com", "https://*.qouver.com"},
+		AllowedOrigins:   allowedOrigins(),
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key"},
-		ExposedHeaders:   []string{"Link", "Idempotency-Key"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID"},
+		ExposedHeaders:   []string{"Link", "Idempotency-Key", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 )
 
 type CollectionHandler struct {
@@ -29,7 +30,7 @@ func (h *CollectionHandler) ProcessMobileCollection(w http.ResponseWriter, r *ht
 		return
 	}
 
-	result, err := h.collectionSvc.ProcessMobileCollection(r.Context(), input, claims.ToActor(r.RemoteAddr))
+	result, err := h.collectionSvc.ProcessMobileCollection(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return

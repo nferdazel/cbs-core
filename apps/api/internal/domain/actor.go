@@ -14,6 +14,8 @@ type Actor struct {
 	BranchCode string
 	SessionID  uuid.UUID
 	IPAddress  string
+	// RequestID menghubungkan aksi bisnis ke application log permintaan asalnya.
+	RequestID string
 }
 
 // DisplayName mengembalikan nama yang disimpan di kolom created_by jurnal.

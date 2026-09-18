@@ -1,23 +1,26 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"cbs-core/apps/core-api/internal/config"
 	"cbs-core/apps/core-api/internal/crypto"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
+	"cbs-core/apps/core-api/internal/observability"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
 )
 
 func main() {
 	cfg := config.Load()
+	logger := observability.NewLogger(cfg.Environment)
+	slog.SetDefault(logger)
 
-	log.Println("==================================================")
-	log.Println("🚀 Starting Core Banking System (CBS) Core API...")
-	log.Println("==================================================")
+	logger.Info("memulai Core Banking System (CBS) Core API",
+		"environment", cfg.Environment, "port", cfg.Port)
 
 	// 1. Initialize Database
 	db, err := postgres.NewDB(postgres.Config{
@@ -29,10 +32,10 @@ func main() {
 		SSLMode:  cfg.DBSSLMode,
 	})
 	if err != nil {
-		log.Printf("⚠️  Database connection failed (%v). Continuing in standalone mode...", err)
+		logger.Error("koneksi database gagal; server berjalan tanpa database", "error", err)
 	} else {
 		defer db.Close()
-		log.Println("✅ PostgreSQL connected successfully")
+		logger.Info("postgresql terhubung")
 	}
 
 	// 2. Enkripsi data pribadi (envelope encryption, master key dari environment)
@@ -40,7 +43,8 @@ func main() {
 	if cfg.EncryptionMasterKey != "" {
 		cipher, err = crypto.NewCipher(cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey)
 		if err != nil {
-			log.Fatalf("konfigurasi enkripsi tidak valid: %v", err)
+			logger.Error("konfigurasi enkripsi tidak valid", "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -112,6 +116,7 @@ func main() {
 		BatchProcessHandler: batchHandler,
 		DocumentHandler:     docHandler,
 		AuthService:         authSvc,
+		Logger:              logger,
 	})
 
 	server := &http.Server{
@@ -122,11 +127,13 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("📡 HTTP Server running on http://localhost:%s\n", cfg.Port)
-	log.Printf("🔐 Auth: JWT %s access token | Session-based refresh\n", cfg.Environment)
-	log.Printf("🔌 Integration Middleware: OJK SLIK / CBAS & Dukcapil Gateways active\n")
-	log.Printf("📅 Batch Processing: Business Date Engine & EOD/EOM/EOY Ready\n")
+	logger.Info("server HTTP siap menerima permintaan",
+		"addr", server.Addr,
+		"environment", cfg.Environment,
+		"enkripsi_nasabah", cfg.EncryptionMasterKey != "",
+	)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("❌ Server error: %v", err)
+		logger.Error("server berhenti dengan error", "error", err)
+		os.Exit(1)
 	}
 }

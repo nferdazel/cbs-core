@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -46,7 +47,7 @@ func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 		input.BranchCode = claims.BranchCode
 	}
 
-	account, err := h.service.OpenAccount(r.Context(), input, claims.ToActor(r.RemoteAddr))
+	account, err := h.service.OpenAccount(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return

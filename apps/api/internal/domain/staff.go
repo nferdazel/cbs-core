@@ -217,7 +217,10 @@ type JWTClaims struct {
 
 // ToActor membangun identitas pelaku dari claims. IP address diisi terpisah oleh
 // handler dari koneksi, bukan dari token.
-func (c *JWTClaims) ToActor(ip string) Actor {
+// ToActor membangun identitas pelaku dari claims. ip dan requestID berasal dari
+// permintaan HTTP; requestID dipakai untuk mengkorelasikan aksi bisnis dengan
+// application log permintaan asalnya.
+func (c *JWTClaims) ToActor(ip, requestID string) Actor {
 	return Actor{
 		UserID:     c.UserID,
 		Username:   c.Username,
@@ -225,6 +228,7 @@ func (c *JWTClaims) ToActor(ip string) Actor {
 		BranchCode: c.BranchCode,
 		SessionID:  c.SessionID,
 		IPAddress:  ip,
+		RequestID:  requestID,
 	}
 }
 

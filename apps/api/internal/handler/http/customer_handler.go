@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -37,7 +38,7 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cust, err := h.service.RegisterCustomer(r.Context(), input, claims.ToActor(r.RemoteAddr))
+	cust, err := h.service.RegisterCustomer(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		if errors.Is(err, domain.ErrDuplicateIDCard) || errors.Is(err, domain.ErrDuplicateEmail) {
@@ -64,7 +65,7 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cust, err := h.service.GetCustomer(r.Context(), id, claims.ToActor(r.RemoteAddr))
+	cust, err := h.service.GetCustomer(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Error(w, http.StatusNotFound, err.Error())
 		return
@@ -90,7 +91,7 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr))
+	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return
