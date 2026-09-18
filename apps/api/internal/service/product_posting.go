@@ -79,7 +79,13 @@ func (p *ProductPoster) PostEventTx(
 	}
 
 	lines := make([]domain.PostingLine, 0, len(rules))
+	overridesUsed := make(map[string]bool, len(meta.AccountOverrides))
 	for _, rule := range rules {
+		override, hasOverride := meta.AccountOverrides[rule.COACode]
+		if hasOverride && override != "" {
+			overridesUsed[rule.COACode] = true
+		}
+
 		amount := amounts.pick(rule.AmountSource)
 		if amount.IsZero() {
 			continue
@@ -89,7 +95,7 @@ func (p *ProductPoster) PostEventTx(
 		}
 
 		var accountNumber string
-		if override, ok := meta.AccountOverrides[rule.COACode]; ok && override != "" {
+		if hasOverride && override != "" {
 			accountNumber = override
 		} else {
 			accountNumber, err = p.resolver.ResolveGLAccount(ctx, tx, rule.COACode)
@@ -103,6 +109,18 @@ func (p *ProductPoster) PostEventTx(
 			Amount:        amount,
 			Description:   meta.Description,
 		})
+	}
+
+	// Override yang tidak dipakai berarti pemetaan produk tidak memuat akun rekening
+	// nasabah pada kode COA itu — biasanya karena produk dan rekening berada di buku
+	// berbeda. Tanpa pemeriksaan ini jurnal akan diam-diam jatuh ke akun kontrol GL
+	// dan dana nasabah tidak pernah masuk rekeningnya.
+	for coa := range meta.AccountOverrides {
+		if !overridesUsed[coa] {
+			return nil, fmt.Errorf(
+				"pemetaan %s/%s tidak memuat akun rekening nasabah (COA %s); periksa kesesuaian buku produk dan buku rekening",
+				product.Code, event, coa)
+		}
 	}
 
 	if len(lines) < 2 {

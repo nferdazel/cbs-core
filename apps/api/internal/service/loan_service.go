@@ -115,8 +115,12 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		Status:                domain.LoanStatusPendingApproval,
 		Collectibility:        domain.CollectibilityKol1,
 		AccrualStatus:         domain.AccrualStatusAccrual,
-		// Kredit baru selalu Lancar; tarif diambil dari konfigurasi yang sama dengan PPAP harian.
-		RequiredPPAP:         domain.PPAPAmount(input.PrincipalAmount, domain.KolLancar, collectibilityRates(ctx, s.config)),
+		// required_ppap berarti cadangan yang SUDAH dibukukan untuk kredit ini, bukan
+		// cadangan yang seharusnya. Kredit baru belum dicadangkan, jadi nilainya nol;
+		// batch PPAP harian yang menetapkan target dan memposting selisihnya. Mengisi
+		// angka di sini tanpa jurnal membuat GL cadangan tidak pernah menerima nominal
+		// itu sehingga buku dan rekonsiliasi tidak cocok.
+		RequiredPPAP:         decimal.Zero,
 		PrincipalAmount:      input.PrincipalAmount,
 		AcquisitionCost:      input.PrincipalAmount,
 		DeferredMargin:       margin,
@@ -140,13 +144,23 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	return loan, nil
 }
 
-// customerAccountOverrides mengarahkan baris jurnal yang pada pemetaan produk
-// menunjuk akun kontrol (mis. 20100 Tabungan) ke rekening nasabah yang sebenarnya.
-// Tanpa ini dana tercatat di akun kontrol dan saldo rekening nasabah tidak pernah
-// bergerak: pencairan tidak bisa dipakai dan angsuran tidak terpotong.
-func customerAccountOverrides(acc *domain.Account) (map[string]string, error) {
+// customerAccountOverrides memvalidasi bahwa rekening nasabah berada pada buku yang
+// sama dengan produk, lalu mengarahkan baris jurnal yang pada pemetaan produk menunjuk
+// akun kontrol (mis. 20100 Tabungan) ke rekening nasabah yang sebenarnya. Tanpa ini
+// dana tercatat di akun kontrol dan saldo rekening nasabah tidak pernah bergerak:
+// pencairan tidak bisa dipakai dan angsuran tidak terpotong.
+//
+// Validasi buku penting karena dana UUS tidak boleh bercampur dengan konvensional.
+// Bila produk syariah mencairkan ke rekening konvensional, kode COA rekening tidak
+// akan cocok dengan pemetaan produk dan jurnal akan jatuh ke buku yang salah.
+func customerAccountOverrides(product *domain.BankingProduct, acc *domain.Account) (map[string]string, error) {
 	if acc == nil || acc.COACode == "" {
 		return nil, errors.New("rekening nasabah tidak punya kode COA; jurnal tidak dapat dipetakan")
+	}
+	if product != nil && product.Book != "" && acc.COABook != "" && product.Book != acc.COABook {
+		return nil, fmt.Errorf(
+			"rekening %s berada pada buku %s sedangkan produk %s berada pada buku %s; buku tidak boleh dicampur",
+			acc.AccountNumber, acc.COABook, product.Code, product.Book)
 	}
 	return map[string]string{acc.COACode: acc.AccountNumber}, nil
 }
@@ -256,7 +270,7 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	if err != nil {
 		return nil, errors.New("rekening pencairan tidak ditemukan")
 	}
-	overrides, err := customerAccountOverrides(acc)
+	overrides, err := customerAccountOverrides(product, acc)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +362,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	if err != nil {
 		return nil, errors.New("rekening pembayaran angsuran tidak ditemukan")
 	}
-	overrides, err := customerAccountOverrides(payAccount)
+	overrides, err := customerAccountOverrides(product, payAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -480,12 +494,13 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 		loan.DeferredMargin = input.NewMarginAmount
 	}
 
-	// Kolektibilitas dan tarif PPAP mengikuti DPD kredit dari konfigurasi yang sama
-	// dengan proses PPAP harian, bukan aturan tersendiri.
+	// Kolektibilitas mengikuti DPD kredit dari konfigurasi yang sama dengan proses
+	// PPAP harian, bukan aturan tersendiri. required_ppap sengaja TIDAK dihitung ulang
+	// di sini: nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP
+	// yang boleh mengubahnya karena ia pula yang memposting selisih jurnalnya.
 	col, accrual := CollectibilityForDPD(ctx, s.config, loan.DPD)
 	loan.Collectibility = col.OJKCode()
 	loan.AccrualStatus = accrual
-	loan.RequiredPPAP = domain.PPAPAmount(loan.PrincipalAmount, col, collectibilityRates(ctx, s.config))
 
 	method, profitType, margin := scheduleTermsFor(product, loan.MarginAmount)
 	schedules, totalPayable, monthly := domain.BuildSchedule(loan.ID, domain.ScheduleParams{
@@ -582,7 +597,7 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 	if err != nil {
 		return nil, errors.New("rekening recovery tidak ditemukan")
 	}
-	overrides, err := customerAccountOverrides(recoveryAccount)
+	overrides, err := customerAccountOverrides(product, recoveryAccount)
 	if err != nil {
 		return nil, err
 	}

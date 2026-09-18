@@ -175,6 +175,67 @@ export interface Deposit {
   updated_at: string;
 }
 
+/**
+ * domain.Collectibility (ppap.go): kualitas aset versi numerik, 1 Lancar s.d.
+ * 5 Macet. JSON mengirimnya sebagai angka karena tipe dasarnya int.
+ */
+export type PPAPCollectibility = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * domain.PPAPRunItem (ppap.go). Struct Go ini tidak punya json tag, sehingga
+ * encoding/json memakai nama field apa adanya (PascalCase). Jangan pakai
+ * snake_case di sini.
+ */
+export interface PPAPRunItem {
+  LoanID: string;
+  LoanNumber: string;
+  DPD: number;
+  Collectibility: PPAPCollectibility;
+  Outstanding: string;
+  Target: string;
+  Existing: string;
+  Adjustment: string;
+  CollectibilityChanged: boolean;
+  StopAccrual: boolean;
+  Posted: boolean;
+}
+
+/** domain.PPAPRunFailure (ppap.go). Tanpa json tag: key PascalCase. */
+export interface PPAPRunFailure {
+  LoanID: string;
+  LoanNumber: string;
+  Error: string;
+}
+
+/**
+ * domain.PPAPRunSummary (ppap.go). Tanpa json tag: key PascalCase. Saat preview,
+ * ReserveAfter dibiarkan nol dan Posted selalu false karena tidak ada jurnal.
+ */
+export interface PPAPRunSummary {
+  AsOf: string;
+  Total: number;
+  Processed: number;
+  Failed: number;
+  Skipped: number;
+  TotalAdjustment: string;
+  Items: PPAPRunItem[] | null;
+  Failures: PPAPRunFailure[] | null;
+  ReserveBefore: string;
+  ReserveAfter: string;
+  Preview: boolean;
+}
+
+/** domain.Branch (branch.go). address & phone omitempty: bisa tidak dikirim. */
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  is_head_office: boolean;
+  is_active: boolean;
+}
+
 /** domain.MakerCheckerStatus (maker_checker.go) */
 export type MakerCheckerStatus = "PENDING" | "APPROVED" | "REJECTED";
 

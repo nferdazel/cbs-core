@@ -200,8 +200,10 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	if loan.AccrualStatus != domain.AccrualStatusCash {
 		t.Fatalf("NPL harus cash basis, dapat %s", loan.AccrualStatus)
 	}
-	// Tarif Kurang Lancar 15% dari pokok terutang.
-	if !loan.RequiredPPAP.Equal(decimal.NewFromInt(1_500_000)) {
-		t.Fatalf("required_ppap %s, ingin 1.500.000", loan.RequiredPPAP)
+	// required_ppap tidak dihitung ulang di sini: nilainya berarti cadangan yang sudah
+	// dibukukan dan hanya batch PPAP yang boleh mengubahnya, karena batch itulah yang
+	// memposting selisih jurnalnya. Kredit ini belum pernah dicadangkan, jadi tetap nol.
+	if !loan.RequiredPPAP.IsZero() {
+		t.Fatalf("required_ppap %s, ingin tetap 0 sampai batch PPAP berjalan", loan.RequiredPPAP)
 	}
 }

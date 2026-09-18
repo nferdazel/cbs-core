@@ -39,6 +39,10 @@ type Account struct {
 	BranchID         *uuid.UUID      `json:"branch_id,omitempty"`
 	COAID            uuid.UUID       `json:"coa_id"`
 	COACode          string          `json:"coa_code,omitempty"`
+	// COABook adalah buku COA rekening (konvensional/syariah). Dipakai untuk
+	// menolak transaksi yang mencampur buku, mis. pembiayaan syariah yang
+	// mencairkan dana ke rekening konvensional.
+	COABook          COABook         `json:"coa_book,omitempty"`
 	NormalBalance    BalanceType     `json:"normal_balance"`
 	AccountType      AccountType     `json:"account_type"`
 	Currency         string          `json:"currency"`

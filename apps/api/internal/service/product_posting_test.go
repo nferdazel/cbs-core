@@ -82,3 +82,49 @@ func TestProductPosterAccountOverrideReplacesControlAccount(t *testing.T) {
 		t.Fatalf("debit ke %q, ingin tetap 10301", debit)
 	}
 }
+
+// Override yang tidak dipakai oleh satu pun aturan pemetaan berarti kaki rekening
+// nasabah tidak ada di pemetaan itu; jurnal akan diam-diam jatuh ke akun kontrol GL.
+// Keadaan ini harus gagal keras, bukan berjalan dengan tujuan yang salah.
+func TestProductPosterMenolakOverrideYangTidakDipakai(t *testing.T) {
+	products := disbursementProduct()
+	posting := &stubPosting{}
+	poster := NewProductPoster(products, stubResolver{}, posting)
+
+	amount := decimal.NewFromInt(1000)
+	_, err := poster.PostEventTx(context.Background(), nil, products.product, domain.EventLoanDisbursement,
+		Amounts{Principal: amount, Total: amount},
+		PostingMeta{
+			IdempotencyKey: "DISB-3",
+			// COA rekening syariah, sedangkan pemetaan menunjuk 20100 konvensional.
+			AccountOverrides: map[string]string{"12100": customerAccountNo},
+		})
+	if err == nil {
+		t.Fatal("override yang tidak dipakai seharusnya ditolak")
+	}
+	if len(posting.requests) != 0 {
+		t.Fatalf("jurnal tidak boleh terkirim, tetapi ada %d permintaan", len(posting.requests))
+	}
+}
+
+// Produk syariah tidak boleh mencairkan dana ke rekening konvensional: dana UUS
+// tidak boleh bercampur dan pemetaan bukunya akan salah.
+func TestCustomerAccountOverridesMenolakBukuBerbeda(t *testing.T) {
+	product := &domain.BankingProduct{ID: uuid.New(), Code: "PMB-MURABAHAH", Book: domain.BookSyariah}
+	acc := &domain.Account{AccountNumber: customerAccountNo, COACode: "20100", COABook: domain.BookConventional}
+
+	if _, err := customerAccountOverrides(product, acc); err == nil {
+		t.Fatal("buku produk dan rekening yang berbeda seharusnya ditolak")
+	}
+
+	// Buku yang sama tetap lolos dan menghasilkan override.
+	acc.COACode = "12100"
+	acc.COABook = domain.BookSyariah
+	overrides, err := customerAccountOverrides(product, acc)
+	if err != nil {
+		t.Fatalf("buku yang sama seharusnya diterima: %v", err)
+	}
+	if overrides["12100"] != customerAccountNo {
+		t.Fatalf("override %v, ingin 12100 -> %s", overrides, customerAccountNo)
+	}
+}

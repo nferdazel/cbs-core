@@ -3,13 +3,16 @@ import {
   BarChart3,
   BookOpenCheck,
   Briefcase,
+  Building2,
   CheckSquare,
   CreditCard,
   HandCoins,
   Home,
   Landmark,
+  Package,
   PiggyBank,
   Settings,
+  ShieldCheck,
   Users,
   Wallet,
 } from "lucide-react";
@@ -35,6 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/teller", labelKey: "teller", icon: Wallet },
       { href: "/transaksi", labelKey: "transaksi", icon: CreditCard },
       { href: "/deposito", labelKey: "deposito", icon: PiggyBank },
+      { href: "/ppap", labelKey: "ppap", icon: ShieldCheck },
     ],
   },
   {
@@ -50,6 +54,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/nasabah", labelKey: "nasabah", icon: Users },
       { href: "/rekening", labelKey: "rekening", icon: Briefcase },
+      { href: "/produk", labelKey: "produk", icon: Package },
+      { href: "/cabang", labelKey: "cabang", icon: Building2 },
     ],
   },
   {

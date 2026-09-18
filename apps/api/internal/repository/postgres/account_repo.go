@@ -22,7 +22,7 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 // accountColumns tidak mengambil nama nasabah: nama tersimpan terenkripsi dan hanya
 // service yang boleh membukanya. CustomerName diisi oleh service, bukan oleh SQL.
 const accountColumns = `a.id, a.account_number, a.customer_id, NULL,
-	a.product_id, a.branch_id, a.coa_id, coa.code, coa.normal_balance,
+	a.product_id, a.branch_id, a.coa_id, coa.code, coa.book::text, coa.normal_balance,
 	a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance,
 	a.status, a.version, a.opened_at, a.created_at, a.updated_at`
 
@@ -161,7 +161,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 	var customerName sql.NullString
 	err := row.Scan(
 		&a.ID, &a.AccountNumber, &a.CustomerID, &customerName,
-		&a.ProductID, &a.BranchID, &a.COAID, &a.COACode, &a.NormalBalance,
+		&a.ProductID, &a.BranchID, &a.COAID, &a.COACode, &a.COABook, &a.NormalBalance,
 		&a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance,
 		&a.Status, &a.Version, &a.OpenedAt, &a.CreatedAt, &a.UpdatedAt,
 	)

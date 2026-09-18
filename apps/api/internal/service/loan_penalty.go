@@ -142,7 +142,7 @@ func (s *loanService) accruePenaltyForLoan(
 	if err != nil {
 		return failPenalty(item, "rekening nasabah tidak ditemukan: "+err.Error())
 	}
-	overrides, err := customerAccountOverrides(acc)
+	overrides, err := customerAccountOverrides(product, acc)
 	if err != nil {
 		return failPenalty(item, err.Error())
 	}
