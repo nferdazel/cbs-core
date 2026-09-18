@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"cbs-core/apps/core-api/internal/crypto"
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -17,20 +18,51 @@ type documentService struct {
 	accountRepo domain.AccountRepository
 	loanRepo    domain.LoanRepository
 	custRepo    domain.CustomerRepository
+	cipher      *crypto.Cipher
 }
 
+// NewDocumentService membangun generator dokumen. cipher bersifat opsional agar
+// pemanggil lama tetap kompilasi; tanpa cipher nama nasabah tidak dapat didekripsi
+// dan dokumen memakai placeholder.
 func NewDocumentService(
 	ledgerRepo domain.LedgerRepository,
 	accountRepo domain.AccountRepository,
 	loanRepo domain.LoanRepository,
 	custRepo domain.CustomerRepository,
+	cipher ...*crypto.Cipher,
 ) domain.DocumentService {
+	var c *crypto.Cipher
+	if len(cipher) > 0 {
+		c = cipher[0]
+	}
 	return &documentService{
 		ledgerRepo:  ledgerRepo,
 		accountRepo: accountRepo,
 		loanRepo:    loanRepo,
 		custRepo:    custRepo,
+		cipher:      c,
 	}
+}
+
+// decryptCustomerName mengambil nama nasabah dari repository (ciphertext) lalu
+// mendekripsinya dengan kunci enkripsi. Mengembalikan string kosong bila jaringan
+// data nasabah atau cipher tidak tersedia, supaya dokumen tetap bisa dicetak.
+func (s *documentService) decryptCustomerName(ctx context.Context, customerID uuid.UUID) (string, error) {
+	if s.custRepo == nil || s.cipher == nil {
+		return "", nil
+	}
+	record, err := s.custRepo.GetByID(ctx, customerID)
+	if err != nil {
+		return "", fmt.Errorf("mengambil data nasabah: %w", err)
+	}
+	if record == nil {
+		return "", nil
+	}
+	name, err := s.cipher.Decrypt(record.FullNameEnc)
+	if err != nil {
+		return "", fmt.Errorf("mendekripsi nama nasabah: %w", err)
+	}
+	return name, nil
 }
 
 func (s *documentService) GenerateDepositSlipHTML(ctx context.Context, refNo string) (string, error) {
@@ -165,6 +197,14 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
 		return "", err
 	}
 
+	customerName, err := s.decryptCustomerName(ctx, loan.CustomerID)
+	if err != nil {
+		return "", err
+	}
+	if customerName == "" {
+		customerName = "-"
+	}
+
 	schedules, err := s.loanRepo.GetSchedules(ctx, loan.ID)
 	if err != nil {
 		return "", err
@@ -210,6 +250,7 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
     
     <div class="section">
         <div class="section-title">I. IDENTITAS FASILITAS PEMBIAYAAN</div>
+        <p>Nama Debitur: <strong>%s</strong></p>
         <p>Pada hari ini <strong>%s</strong>, disetujui perjanjian pembiayaan jenis <strong>%s</strong> antara Bank dan Debitur dengan rincian:</p>
         <ul>
             <li>Plafond Pinjaman (Pokok): <strong>Rp %s</strong></li>
@@ -243,7 +284,7 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
         <div class="sig-box"><div class="sig-space"></div>____________________<br><strong>BANK / SUPERVISOR OTORISASI</strong></div>
     </div>
 </body>
-</html>`, loan.LoanNumber, loan.LoanNumber, loan.CreatedAt.Format("02 January 2006"), loan.ProfitSchemeLabel(), loan.PrincipalAmount.StringFixed(2), loan.InterestRateAnnual.StringFixed(2), loan.TermMonths, loan.MonthlyInstallment.StringFixed(2), loan.TotalPayable.StringFixed(2), tableRows.String())
+</html>`, loan.LoanNumber, loan.LoanNumber, customerName, loan.CreatedAt.Format("02 January 2006"), loan.ProfitSchemeLabel(), loan.PrincipalAmount.StringFixed(2), loan.InterestRateAnnual.StringFixed(2), loan.TermMonths, loan.MonthlyInstallment.StringFixed(2), loan.TotalPayable.StringFixed(2), tableRows.String())
 
 	return html, nil
 }

@@ -17,6 +17,7 @@ type accountService struct {
 	db           *sql.DB
 	accountRepo  domain.AccountRepository
 	customerRepo domain.CustomerRepository
+	customerSvc  domain.CustomerService
 	productRepo  domain.ProductRepository
 	branchRepo   domain.BranchRepository
 	numbering    domain.AccountNumberGenerator
@@ -26,6 +27,7 @@ func NewAccountService(
 	db *sql.DB,
 	accountRepo domain.AccountRepository,
 	customerRepo domain.CustomerRepository,
+	customerSvc domain.CustomerService,
 	productRepo domain.ProductRepository,
 	branchRepo domain.BranchRepository,
 	numbering domain.AccountNumberGenerator,
@@ -34,6 +36,7 @@ func NewAccountService(
 		db:           db,
 		accountRepo:  accountRepo,
 		customerRepo: customerRepo,
+		customerSvc:  customerSvc,
 		productRepo:  productRepo,
 		branchRepo:   branchRepo,
 		numbering:    numbering,
@@ -196,7 +199,14 @@ func isUniqueViolation(err error) bool {
 }
 
 func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber string) (*domain.Account, error) {
-	return s.accountRepo.GetByNumber(ctx, accountNumber)
+	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	s.fillCustomerNames(ctx, []domain.Account{*account}, func(acc *domain.Account, name string) {
+		account.CustomerName = name
+	})
+	return account, nil
 }
 
 func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int) ([]domain.Account, int, error) {
@@ -207,5 +217,44 @@ func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int) (
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
-	return s.accountRepo.ListAll(ctx, pageSize, offset)
+
+	accounts, total, err := s.accountRepo.ListAll(ctx, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	s.fillCustomerNames(ctx, accounts, func(acc *domain.Account, name string) {
+		acc.CustomerName = name
+	})
+	return accounts, total, nil
+}
+
+// fillCustomerNames melengkapi nama nasabah pada daftar rekening dengan satu query
+// batch, lalu mendekripsinya lewat customer service. Kegagalan pelengkapan nama
+// tidak boleh menggagalkan operasi rekening; nama dibiarkan kosong.
+func (s *accountService) fillCustomerNames(ctx context.Context, accounts []domain.Account, set func(*domain.Account, string)) {
+	if s.customerSvc == nil || len(accounts) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(accounts))
+	for i := range accounts {
+		if accounts[i].CustomerID != nil {
+			ids = append(ids, *accounts[i].CustomerID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	names, err := s.customerSvc.NamesByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range accounts {
+		if accounts[i].CustomerID == nil {
+			continue
+		}
+		if name, ok := names[*accounts[i].CustomerID]; ok {
+			set(&accounts[i], name)
+		}
+	}
 }

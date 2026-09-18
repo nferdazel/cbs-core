@@ -112,6 +112,49 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 	return customers, total, nil
 }
 
+// NamesByIDs mengembalikan nama nasabah yang sudah didekripsi. Hanya field nama yang
+// dibuka; NIK/email/telepon/alamat tidak perlu untuk pelengkapan tampilan. Record yang
+// gagal didekripsi dilewati agar satu data rusak tidak menggagalkan seluruh daftar.
+func (s *customerService) NamesByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	names := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	if err := s.cipherOrError(); err != nil {
+		return names, err
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	unique := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if id == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	records, err := s.repo.GetByIDs(ctx, unique)
+	if err != nil {
+		return names, err
+	}
+	for id, rec := range records {
+		if rec.FullNameEnc == "" {
+			continue
+		}
+		name, err := s.cipher.Decrypt(rec.FullNameEnc)
+		if err != nil {
+			slog.ErrorContext(ctx, "gagal mendekripsi nama nasabah", "customer_id", id, "error", err)
+			continue
+		}
+		names[id] = name
+	}
+	return names, nil
+}
+
 func (s *customerService) encryptInput(input domain.CreateCustomerInput) (*domain.CustomerRecord, error) {
 	fullName, err := s.cipher.Encrypt(input.FullName)
 	if err != nil {

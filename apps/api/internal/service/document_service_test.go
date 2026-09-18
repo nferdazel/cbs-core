@@ -2,15 +2,59 @@ package service_test
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
 
+	"cbs-core/apps/core-api/internal/crypto"
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/service"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
+
+// stubCustomerRepo menyediakan record nasabah (ciphertext) untuk test dokumen.
+type stubCustomerRepo struct {
+	record *domain.CustomerRecord
+}
+
+func (s *stubCustomerRepo) Create(ctx context.Context, record *domain.CustomerRecord) error {
+	return nil
+}
+
+func (s *stubCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.CustomerRecord, error) {
+	if s.record == nil || s.record.ID != id {
+		return nil, domain.ErrCustomerNotFound
+	}
+	return s.record, nil
+}
+
+func (s *stubCustomerRepo) GetByCIF(ctx context.Context, cif string) (*domain.CustomerRecord, error) {
+	return nil, domain.ErrCustomerNotFound
+}
+
+func (s *stubCustomerRepo) FindByIDCard(ctx context.Context, idCardIndex string) (*domain.CustomerRecord, error) {
+	return nil, domain.ErrCustomerNotFound
+}
+
+func (s *stubCustomerRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*domain.CustomerRecord, error) {
+	result := make(map[uuid.UUID]*domain.CustomerRecord, len(ids))
+	if s.record != nil {
+		result[s.record.ID] = s.record
+	}
+	return result, nil
+}
+
+func (s *stubCustomerRepo) List(ctx context.Context, limit, offset int) ([]domain.CustomerRecord, int, error) {
+	return nil, 0, nil
+}
+
+func (s *stubCustomerRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.CustomerStatus) error {
+	return nil
+}
+
+var _ domain.CustomerRepository = (*stubCustomerRepo)(nil)
 
 func TestDocumentService_HTMLGenerators(t *testing.T) {
 	loanID := uuid.New()
@@ -83,5 +127,44 @@ func TestDocumentService_LoanAgreementRejectsMissingLoan(t *testing.T) {
 	docSvc := service.NewDocumentService(nil, nil, &stubLoanRepo{}, nil)
 	if _, err := docSvc.GenerateLoanAgreementHTML(context.Background(), uuid.New()); err == nil {
 		t.Fatal("diharapkan error saat kredit tidak ditemukan")
+	}
+}
+
+// Nama debitur harus diambil dari ciphertext lalu didekripsi, bukan dari placeholder.
+func TestDocumentService_LoanAgreementUsesDecryptedCustomerName(t *testing.T) {
+	c, err := crypto.NewCipher("k1", base64.StdEncoding.EncodeToString(make([]byte, 32)), nil)
+	if err != nil {
+		t.Fatalf("membangun cipher: %v", err)
+	}
+	encName, err := c.Encrypt("Siti Aminah")
+	if err != nil {
+		t.Fatalf("mengenkripsi nama: %v", err)
+	}
+
+	customerID := uuid.New()
+	loanID := uuid.New()
+	loanRepo := &stubLoanRepo{
+		loan: &domain.Loan{
+			ID:                 loanID,
+			LoanNumber:         "KRD-2026-00009",
+			CustomerID:         customerID,
+			PrincipalAmount:    decimal.NewFromInt(1000000),
+			InterestRateAnnual: decimal.NewFromInt(12),
+			TermMonths:         6,
+			TotalPayable:       decimal.NewFromInt(1060000),
+			MonthlyInstallment: decimal.NewFromInt(176667),
+			Status:             domain.LoanStatusApproved,
+			CreatedAt:          time.Now().UTC(),
+		},
+	}
+	custRepo := &stubCustomerRepo{record: &domain.CustomerRecord{ID: customerID, FullNameEnc: encName}}
+
+	docSvc := service.NewDocumentService(nil, nil, loanRepo, custRepo, c)
+	loanHTML, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID)
+	if err != nil {
+		t.Fatalf("generate loan agreement: %v", err)
+	}
+	if !strings.Contains(loanHTML, "Siti Aminah") {
+		t.Fatal("nama debitur hasil dekripsi tidak muncul di surat perjanjian")
 	}
 }

@@ -67,7 +67,7 @@ func main() {
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
 	customerSvc := service.NewCustomerService(customerRepo, cipher, referenceGen)
-	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, productRepo, branchRepo, numberingRepo)
+	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo)
 	branchSvc := service.NewBranchService(branchRepo)
 	productSvc := service.NewProductService(productRepo)
 	ledgerSvc := service.NewLedgerService(ledgerRepo, accountRepo, db)
@@ -77,7 +77,7 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)
-	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo)
+	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
 
 	// 5. HTTP Handlers
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)

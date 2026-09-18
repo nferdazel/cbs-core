@@ -78,6 +78,8 @@ type CustomerRepository interface {
 	GetByCIF(ctx context.Context, cif string) (*CustomerRecord, error)
 	// FindByIDCard mencari nasabah lewat blind index NIK tanpa membuka enkripsi.
 	FindByIDCard(ctx context.Context, idCardIndex string) (*CustomerRecord, error)
+	// GetByIDs mengambil banyak nasabah sekaligus untuk menghindari N+1 pada daftar.
+	GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*CustomerRecord, error)
 	List(ctx context.Context, limit, offset int) ([]CustomerRecord, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
@@ -86,4 +88,6 @@ type CustomerService interface {
 	RegisterCustomer(ctx context.Context, input CreateCustomerInput, actor Actor) (*Customer, error)
 	GetCustomer(ctx context.Context, id uuid.UUID, actor Actor) (*Customer, error)
 	ListCustomers(ctx context.Context, page, pageSize int, actor Actor) ([]Customer, int, error)
+	// NamesByIDs mengembalikan nama nasabah yang sudah didekripsi untuk pelengkapan tampilan.
+	NamesByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
