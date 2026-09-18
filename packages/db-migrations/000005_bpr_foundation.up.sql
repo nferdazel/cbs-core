@@ -311,6 +311,11 @@ INSERT INTO accounts (id, account_number, customer_id, coa_id, account_type, cur
     ('b0000000-0000-0000-0000-000000000020', '11320', NULL, 'b1000000-0000-0000-0000-000000000006', 'INTERNAL_GL', 'IDR', 0.0000, 0.0000, 'ACTIVE', NOW())
 ON CONFLICT (account_number) DO NOTHING;
 
+-- ── Sequence nomor referensi jurnal ─────────────────────────────────────────
+-- Nomor referensi dibangkitkan database agar unik walau posting paralel.
+-- Satu sequence global cukup: prefiks tipe transaksi membuat nomor mudah dibaca.
+CREATE SEQUENCE IF NOT EXISTS journal_reference_seq START 1 INCREMENT 1;
+
 -- ── Produk contoh ───────────────────────────────────────────────────────────
 INSERT INTO banking_products (id, code, name, family, book, profit_scheme, schedule_method, rate_annual, profit_sharing_ratio, min_amount, min_term_months, max_term_months, allow_partial_payment, tax_rate) VALUES
     ('e0000000-0000-0000-0000-000000000001', 'TAB-CONV', 'Tabungan Konvensional', 'SAVINGS', 'CONVENTIONAL', 'INTEREST', 'NONE', 2.0000, 0, 10000, 0, 0, FALSE, 20),

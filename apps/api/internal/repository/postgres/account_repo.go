@@ -35,7 +35,7 @@ func (r *AccountRepository) Create(ctx context.Context, a *domain.Account) error
 
 func (r *AccountRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
 	query := `
-		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
+		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, coa.normal_balance, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
@@ -43,7 +43,7 @@ func (r *AccountRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 	`
 	var a domain.Account
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.NormalBalance, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -56,7 +56,7 @@ func (r *AccountRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 
 func (r *AccountRepository) GetByNumber(ctx context.Context, accountNumber string) (*domain.Account, error) {
 	query := `
-		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
+		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, coa.normal_balance, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
@@ -64,7 +64,7 @@ func (r *AccountRepository) GetByNumber(ctx context.Context, accountNumber strin
 	`
 	var a domain.Account
 	err := r.db.QueryRowContext(ctx, query, accountNumber).Scan(
-		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.NormalBalance, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -82,7 +82,7 @@ func (r *AccountRepository) GetByNumberForUpdate(ctx context.Context, tx any, ac
 	}
 
 	query := `
-		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
+		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, coa.normal_balance, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
@@ -91,7 +91,7 @@ func (r *AccountRepository) GetByNumberForUpdate(ctx context.Context, tx any, ac
 	`
 	var a domain.Account
 	err := sqlTx.QueryRowContext(ctx, query, accountNumber).Scan(
-		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
+		&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.NormalBalance, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -104,7 +104,7 @@ func (r *AccountRepository) GetByNumberForUpdate(ctx context.Context, tx any, ac
 
 func (r *AccountRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]domain.Account, error) {
 	query := `
-		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
+		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, coa.normal_balance, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
@@ -121,7 +121,7 @@ func (r *AccountRepository) ListByCustomer(ctx context.Context, customerID uuid.
 	for rows.Next() {
 		var a domain.Account
 		if err := rows.Scan(
-			&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.NormalBalance, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -138,7 +138,7 @@ func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int) ([]d
 	}
 
 	query := `
-		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
+		SELECT a.id, a.account_number, a.customer_id, COALESCE(c.full_name, 'INTERNAL'), a.coa_id, coa.code, coa.normal_balance, a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance, a.status, a.version, a.created_at, a.updated_at
 		FROM accounts a
 		LEFT JOIN customers c ON a.customer_id = c.id
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
@@ -155,7 +155,7 @@ func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int) ([]d
 	for rows.Next() {
 		var a domain.Account
 		if err := rows.Scan(
-			&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
+			&a.ID, &a.AccountNumber, &a.CustomerID, &a.CustomerName, &a.COAID, &a.COACode, &a.NormalBalance, &a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance, &a.Status, &a.Version, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
 		}

@@ -54,40 +54,111 @@ func (r *LedgerRepository) GetCOAByCode(ctx context.Context, code string) (*doma
 	return &coa, nil
 }
 
-func (r *LedgerRepository) PostJournal(ctx context.Context, entry *domain.JournalEntry) error {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return err
+// ResolveGLAccount menerjemahkan kode COA menjadi nomor akun kontrol GL yang bisa
+// diposting. Konvensinya: akun internal dengan account_number sama dengan kode COA.
+// Akun kontrol inilah yang menampung agregat saldo seluruh rekening anak.
+func (r *LedgerRepository) ResolveGLAccount(ctx context.Context, tx any, coaCode string) (string, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return "", errors.New("resolve gl account: transaksi tidak valid")
 	}
-	defer tx.Rollback()
 
-	// 1. Insert Journal Entry Header
+	var accountNumber string
+	err := sqlTx.QueryRowContext(ctx, `
+		SELECT account_number FROM accounts
+		WHERE account_number = $1 AND account_type = 'INTERNAL_GL'
+		LIMIT 1`, coaCode).Scan(&accountNumber)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("akun kontrol GL untuk COA %s belum ada", coaCode)
+		}
+		return "", err
+	}
+	return accountNumber, nil
+}
+
+// InsertJournal menyimpan header dan seluruh baris jurnal di dalam transaksi yang
+// disediakan pemanggil. Posting engine bertanggung jawab atas transaksinya.
+func (r *LedgerRepository) InsertJournal(ctx context.Context, tx any, entry *domain.JournalEntry) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("insert journal: transaksi tidak valid")
+	}
+
 	entryQuery := `
 		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
-	_, err = tx.ExecContext(ctx, entryQuery,
+	if _, err := sqlTx.ExecContext(ctx, entryQuery,
 		entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to insert journal entry: %w", err)
+	); err != nil {
+		return fmt.Errorf("insert journal entry: %w", err)
 	}
 
-	// 2. Insert Journal Lines
 	lineQuery := `
 		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	for _, line := range entry.Lines {
-		_, err = tx.ExecContext(ctx, lineQuery,
+		if _, err := sqlTx.ExecContext(ctx, lineQuery,
 			line.ID, line.JournalEntryID, line.AccountID, line.Direction, line.Amount, line.Currency, line.BalanceAfter, line.Sequence, line.Description, line.CreatedAt,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert journal line: %w", err)
+		); err != nil {
+			return fmt.Errorf("insert journal line: %w", err)
 		}
 	}
+	return nil
+}
 
-	return tx.Commit()
+// FindJournalByIdempotencyKey mengembalikan jurnal yang sudah diposting untuk kunci
+// idempotency tertentu, atau nil bila belum ada.
+func (r *LedgerRepository) FindJournalByIdempotencyKey(ctx context.Context, key string) (*domain.JournalEntry, error) {
+	query := `
+		SELECT id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at
+		FROM journal_entries WHERE idempotency_key = $1
+	`
+	var entry domain.JournalEntry
+	err := r.db.QueryRowContext(ctx, query, key).Scan(
+		&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.CreatedBy, &entry.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	lines, err := r.loadLines(ctx, entry.ID)
+	if err != nil {
+		return nil, err
+	}
+	entry.Lines = lines
+	return &entry, nil
+}
+
+// loadLines memuat baris jurnal beserta nomor akunnya.
+func (r *LedgerRepository) loadLines(ctx context.Context, journalID uuid.UUID) ([]domain.JournalLine, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT jl.id, jl.journal_entry_id, jl.account_id, a.account_number, jl.direction, jl.amount, jl.currency, jl.balance_after, jl.sequence, jl.description, jl.created_at
+		FROM journal_lines jl
+		JOIN accounts a ON jl.account_id = a.id
+		WHERE jl.journal_entry_id = $1
+		ORDER BY jl.sequence ASC`, journalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lines []domain.JournalLine
+	for rows.Next() {
+		var line domain.JournalLine
+		if err := rows.Scan(
+			&line.ID, &line.JournalEntryID, &line.AccountID, &line.AccountNumber, &line.Direction, &line.Amount, &line.Currency, &line.BalanceAfter, &line.Sequence, &line.Description, &line.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		lines = append(lines, line)
+	}
+	return lines, nil
 }
 
 func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*domain.JournalEntry, error) {

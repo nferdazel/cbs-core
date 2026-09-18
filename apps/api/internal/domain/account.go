@@ -33,6 +33,7 @@ type Account struct {
 	CustomerName     string          `json:"customer_name,omitempty"`
 	COAID            uuid.UUID       `json:"coa_id"`
 	COACode          string          `json:"coa_code,omitempty"`
+	NormalBalance    BalanceType     `json:"normal_balance"`
 	AccountType      AccountType     `json:"account_type"`
 	Currency         string          `json:"currency"`
 	Balance          decimal.Decimal `json:"balance"`

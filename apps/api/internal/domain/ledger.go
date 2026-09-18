@@ -191,7 +191,6 @@ type CustomJournalRequest struct {
 type LedgerRepository interface {
 	GetCOAList(ctx context.Context) ([]ChartOfAccount, error)
 	GetCOAByCode(ctx context.Context, code string) (*ChartOfAccount, error)
-	PostJournal(ctx context.Context, entry *JournalEntry) error
 	GetJournalByRef(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, limit, offset int) ([]JournalEntry, int, error)
 	ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]JournalLine, int, error)
