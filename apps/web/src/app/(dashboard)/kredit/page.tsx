@@ -1,13 +1,16 @@
 "use client";
 
-import { FeatureUnavailable } from "@/components/layout/FeatureUnavailable";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { LoanWorkspace } from "@/components/loan/LoanWorkspace";
 
 export default function KreditPage() {
   return (
-    <FeatureUnavailable
-      title="Kredit"
-      description="Pengajuan, analisa, akad, pencairan, angsuran, dan pelunasan kredit konvensional."
-      reason="Endpoint kredit sudah ada, namun form origination belum aman dipasang tanpa validasi produk dan jadwal angsuran yang lengkap."
-    />
+    <>
+      <PageHeader
+        title="Kredit"
+        description="Pengajuan, persetujuan, pencairan, dan angsuran kredit konvensional."
+      />
+      <LoanWorkspace book="CONVENTIONAL" />
+    </>
   );
 }

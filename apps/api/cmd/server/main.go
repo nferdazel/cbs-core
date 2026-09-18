@@ -9,6 +9,7 @@ import (
 	"cbs-core/apps/core-api/internal/config"
 	"cbs-core/apps/core-api/internal/crypto"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
+	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
@@ -106,12 +107,20 @@ func main() {
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
 
 	// 5. HTTP Handlers
+	cookies := middleware.CookieConfig{
+		AccessName:  cfg.AccessCookieName,
+		RefreshName: cfg.RefreshCookieName,
+		CSRFName:    cfg.CSRFCookieName,
+		CSRFHeader:  cfg.CSRFHeaderName,
+		Domain:      cfg.CookieDomain,
+		Secure:      cfg.Environment == "production",
+	}
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
 	accHandler := httpHandler.NewAccountHandler(accountSvc)
 	branchHandler := httpHandler.NewBranchHandler(branchSvc)
 	productHandler := httpHandler.NewProductHandler(productSvc)
 	ledHandler := httpHandler.NewLedgerHandler(ledgerSvc)
-	authHandler := httpHandler.NewAuthHandler(authSvc)
+	authHandler := httpHandler.NewAuthHandler(authSvc, cookies)
 	staffHandler := httpHandler.NewStaffHandler(staffSvc)
 	loanHandler := httpHandler.NewLoanHandler(loanSvc)
 	mcHandler := httpHandler.NewMakerCheckerHandler(mcSvc)
@@ -142,6 +151,7 @@ func main() {
 		DepositHandler:      depositHandler,
 		PPAPHandler:         ppapHandler,
 		AuthService:         authSvc,
+		Cookies:             cookies,
 		Logger:              logger,
 	})
 

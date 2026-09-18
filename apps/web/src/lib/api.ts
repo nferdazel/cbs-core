@@ -1,10 +1,5 @@
 import type { APIResponse } from "@cbs/shared-types";
-import {
-  clearSession,
-  getAccessToken,
-  getRefreshToken,
-  saveSession,
-} from "./auth";
+import { clearSession, getCsrfToken, setStoredUser } from "./auth";
 import type { LoginResponse } from "./types";
 
 /**
@@ -51,11 +46,13 @@ export class ApiError extends Error {
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   /** Body JSON; otomatis di-stringify. */
   body?: unknown;
-  /** Kirim header Authorization (default true). */
+  /** Izinkan refresh otomatis saat 401 (default true). */
   auth?: boolean;
   /** Nilai header Idempotency-Key untuk transaksi finansial. */
   idempotencyKey?: string;
 }
+
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function redirectToLogin(): void {
   if (typeof window === "undefined") return;
@@ -79,17 +76,16 @@ async function refreshSession(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) return false;
     try {
+      // Refresh token ada di httpOnly cookie; tidak ada yang dikirim di body.
       const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
       });
       const payload = (await res.json()) as APIResponse<LoginResponse>;
       if (!res.ok || !payload?.success || !payload.data) return false;
-      saveSession(payload.data);
+      if (payload.data.user) setStoredUser(payload.data.user);
       return true;
     } catch {
       return false;
@@ -101,26 +97,33 @@ async function refreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
-async function fetchWithToken(
+async function performFetch(
   path: string,
-  options: RequestOptions,
-  token: string | null
+  options: RequestOptions
 ): Promise<Response> {
-  const { body, auth = true, idempotencyKey, headers, ...init } = options;
+  const { body, idempotencyKey, headers, ...init } = options;
+  const method = (init.method ?? "GET").toString().toUpperCase();
   const mergedHeaders = new Headers(headers);
   mergedHeaders.set("Accept", "application/json");
   if (body !== undefined) {
     mergedHeaders.set("Content-Type", "application/json");
   }
-  if (auth && token) {
-    mergedHeaders.set("Authorization", `Bearer ${token}`);
+
+  // CSRF double-submit: kirim kembali nilai cookie non-httpOnly hanya untuk
+  // request yang mengubah state. Login/refresh tidak memerlukannya (backend
+  // juga tidak memeriksanya).
+  if (STATE_CHANGING_METHODS.has(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) mergedHeaders.set("X-CSRF-Token", csrf);
   }
+
   if (idempotencyKey) {
     mergedHeaders.set("Idempotency-Key", idempotencyKey);
   }
 
   return fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: mergedHeaders,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -128,7 +131,8 @@ async function fetchWithToken(
 
 /**
  * Permintaan generik ke API.
- * - Menempelkan `Authorization: Bearer <token>`.
+ * - Mengirim cookie sesi (`credentials: "include"`) dan header `X-CSRF-Token`
+ *   untuk metode yang mengubah state. Tidak ada token di JS/localStorage.
  * - Mengembalikan `APIResponse<T>`.
  * - Melempar `ApiError` (status + pesan) untuk status non-2xx.
  * - Menangani 401 sekali dengan refresh lalu mengulang; bila gagal, sesi
@@ -138,12 +142,12 @@ export async function request<T = unknown>(
   path: string,
   options: RequestOptions = {}
 ): Promise<APIResponse<T>> {
-  let response = await fetchWithToken(path, options, getAccessToken());
+  let response = await performFetch(path, options);
 
   if (response.status === 401 && options.auth !== false) {
     const refreshed = await refreshSession();
     if (refreshed) {
-      response = await fetchWithToken(path, options, getAccessToken());
+      response = await performFetch(path, options);
     } else {
       clearSession();
       redirectToLogin();

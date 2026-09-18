@@ -112,10 +112,11 @@ func (s *authService) Login(ctx context.Context, input domain.LoginInput) (*doma
 	}
 
 	return &domain.LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    atTTL * 60,
-		User:         user,
+		AccessToken:      accessToken,
+		RefreshToken:     refreshToken,
+		ExpiresIn:        atTTL * 60,
+		RefreshExpiresIn: rtTTL * 3600,
+		User:             user,
 	}, nil
 }
 
@@ -128,6 +129,9 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*domain
 
 	if !session.IsValid() {
 		if session.RevokedAt != nil {
+			// Refresh token sudah pernah dirotasi tetapi dipakai lagi: indikasi
+			// pencurian token. Cabut seluruh sesi user agar token curian mati.
+			_ = s.sessionRepo.RevokeAllForUser(ctx, session.UserID)
 			return nil, domain.ErrSessionRevoked
 		}
 		return nil, domain.ErrSessionExpired
@@ -169,10 +173,11 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*domain
 	}
 
 	return &domain.LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
-		ExpiresIn:    atTTL * 60,
-		User:         user,
+		AccessToken:      accessToken,
+		RefreshToken:     newRefreshToken,
+		ExpiresIn:        atTTL * 60,
+		RefreshExpiresIn: rtTTL * 3600,
+		User:             user,
 	}, nil
 }
 

@@ -1,13 +1,16 @@
 "use client";
 
-import { FeatureUnavailable } from "@/components/layout/FeatureUnavailable";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { LoanWorkspace } from "@/components/loan/LoanWorkspace";
 
 export default function PembiayaanPage() {
   return (
-    <FeatureUnavailable
-      title="Pembiayaan"
-      description="Pembiayaan syariah: Murabahah, Mudharabah/Musyarakah, dan Ijarah."
-      reason="Skema bagi hasil dan margin belum tersedia lengkap di sisi API; menampilkan data tiruan akan menyesatkan."
-    />
+    <>
+      <PageHeader
+        title="Pembiayaan"
+        description="Pembiayaan syariah: murabahah, mudharabah, dan musyarakah dengan margin atau bagi hasil."
+      />
+      <LoanWorkspace book="SYARIAH" />
+    </>
   );
 }

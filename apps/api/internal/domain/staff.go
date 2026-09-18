@@ -252,11 +252,15 @@ type LoginInput struct {
 	UserAgent string `json:"-"`
 }
 
+// LoginResponse membawa token ke handler (yang menuliskannya sebagai httpOnly
+// cookie) tetapi token TIDAK diserialisasi ke body. Hanya expires_in dan profil
+// user yang dikirim ke klien.
 type LoginResponse struct {
-	AccessToken  string     `json:"access_token"`
-	RefreshToken string     `json:"refresh_token"`
-	ExpiresIn    int        `json:"expires_in"` // seconds
-	User         *StaffUser `json:"user"`
+	AccessToken      string     `json:"-"`
+	RefreshToken     string     `json:"-"`
+	ExpiresIn        int        `json:"expires_in"`         // access token, detik
+	RefreshExpiresIn int        `json:"refresh_expires_in"` // refresh token, detik
+	User             *StaffUser `json:"user"`
 }
 
 type RefreshInput struct {

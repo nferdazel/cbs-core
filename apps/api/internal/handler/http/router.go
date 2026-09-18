@@ -24,7 +24,9 @@ func allowedOrigins() []string {
 	parts := strings.Split(raw, ",")
 	origins := make([]string, 0, len(parts))
 	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
+		if p = strings.TrimSpace(p); p != "" && p != "*" {
+			// Wildcard ditolak: dengan AllowCredentials=true, origin harus eksplisit
+			// agar browser tidak mengirim cookie ke origin sembarang.
 			origins = append(origins, p)
 		}
 	}
@@ -49,6 +51,8 @@ type RouterParams struct {
 	DepositHandler      *DepositHandler
 	PPAPHandler         *PPAPHandler
 	AuthService         domain.AuthService
+	// Cookies menentukan nama/atribut cookie sesi & CSRF.
+	Cookies middleware.CookieConfig
 	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
 	Logger *slog.Logger
 }
@@ -87,20 +91,28 @@ func NewRouter(p RouterParams) *chi.Mux {
 
 		// ── Public: Auth endpoints (no JWT required) ──
 		r.Route("/auth", func(r chi.Router) {
+			// Login & refresh tidak memakai CSRF: keduanya pintu masuk sesi,
+			// belum ada sesi terautentikasi yang bisa disalahgunakan.
 			r.Post("/login", p.AuthHandler.Login)
 			r.Post("/refresh", p.AuthHandler.Refresh)
 
+			// Logout di luar AuthMiddleware agar cookie tetap terhapus walau
+			// access token kedaluwarsa, tetapi tetap wajib lolos CSRF.
+			r.With(middleware.CSRFMiddleware(p.Cookies)).
+				Post("/logout", p.AuthHandler.Logout)
+
 			// Protected auth routes (require valid token)
 			r.Group(func(r chi.Router) {
-				r.Use(middleware.AuthMiddleware(p.AuthService))
-				r.Post("/logout", p.AuthHandler.Logout)
+				r.Use(middleware.AuthMiddleware(p.AuthService, p.Cookies))
+				r.Use(middleware.CSRFMiddleware(p.Cookies))
 				r.Get("/me", p.AuthHandler.Me)
 			})
 		})
 
 		// ── All routes below require authentication ──
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware(p.AuthService))
+			r.Use(middleware.AuthMiddleware(p.AuthService, p.Cookies))
+			r.Use(middleware.CSRFMiddleware(p.Cookies))
 
 			// ── Staff Management (Admin & SuperAdmin only) ──
 			r.Route("/staff", func(r chi.Router) {

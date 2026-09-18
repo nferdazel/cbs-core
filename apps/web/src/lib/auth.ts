@@ -1,32 +1,26 @@
 "use client";
 
-import type { StaffUser, LoginResponse } from "./types";
+import type { StaffUser } from "./types";
 
 /**
  * Penyimpanan sesi.
  *
- * TODO(security): saat ini token disimpan di localStorage karena backend masih
- * mengembalikan token di body. Standar produksi (lihat BACKLOG "Baseline security")
- * adalah httpOnly + Secure + SameSite cookie dengan CSRF double-submit. Perubahan
- * itu memerlukan perubahan backend dan tidak bisa dilakukan murni di frontend.
+ * Token TIDAK disimpan di JavaScript. Access & refresh token berada di httpOnly
+ * cookie yang ditetapkan backend, sehingga skrip XSS tidak dapat membacanya.
+ * localStorage hanya menyimpan profil user non-sensitif untuk tampilan.
+ *
+ * Status login yang otoritatif ditentukan cookie di server; verifikasi
+ * dilakukan lewat GET /auth/me (lihat useAuth). Tidak ada flag token lokal yang
+ * bisa dipalsukan.
  */
 
-const ACCESS_TOKEN_KEY = "cbs_access_token";
-const REFRESH_TOKEN_KEY = "cbs_refresh_token";
 const USER_KEY = "cbs_user";
+
+/** Nama cookie CSRF non-httpOnly, harus sama dengan backend (CBS_CSRF_COOKIE). */
+const CSRF_COOKIE = process.env.NEXT_PUBLIC_CSRF_COOKIE || "csrf_token";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
-}
-
-export function getAccessToken(): string | null {
-  if (!isBrowser()) return null;
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
-}
-
-export function getRefreshToken(): string | null {
-  if (!isBrowser()) return null;
-  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export function getStoredUser(): StaffUser | null {
@@ -45,22 +39,22 @@ export function setStoredUser(user: StaffUser): void {
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
-export function saveSession(session: LoginResponse): void {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, session.access_token);
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refresh_token);
-  if (session.user) {
-    window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
-  }
-}
-
+/** Membersihkan cache profil non-sensitif. Cookie sesi hanya bisa dihapus server. */
 export function clearSession(): void {
   if (!isBrowser()) return;
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
 }
 
-export function hasSession(): boolean {
-  return Boolean(getAccessToken());
+/**
+ * Membaca token CSRF double-submit dari cookie non-httpOnly. Backend menetapkan
+ * cookie ini saat login/refresh; JS mengirimnya kembali lewat header
+ * X-CSRF-Token untuk request yang mengubah state.
+ */
+export function getCsrfToken(): string | null {
+  if (!isBrowser()) return null;
+  const escaped = CSRF_COOKIE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = document.cookie.match(
+    new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`)
+  );
+  return match ? decodeURIComponent(match[1]) : null;
 }

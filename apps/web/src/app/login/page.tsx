@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ApiError, request, unwrap } from "@/lib/api";
-import { saveSession } from "@/lib/auth";
+import { setStoredUser } from "@/lib/auth";
 import type { LoginResponse } from "@/lib/types";
 
 export default function LoginPage() {
@@ -37,7 +37,9 @@ export default function LoginPage() {
         auth: false,
         body: { username, password },
       });
-      saveSession(unwrap(response));
+      // Token sudah ditetapkan backend sebagai httpOnly cookie; simpan hanya
+      // profil non-sensitif untuk tampilan.
+      setStoredUser(unwrap(response).user);
       router.replace("/");
     } catch (err) {
       const message =

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearSession, getAccessToken, getStoredUser, setStoredUser } from "./auth";
+import { clearSession, getStoredUser, setStoredUser } from "./auth";
 import { request } from "./api";
 import type { StaffUser } from "./types";
 
@@ -21,8 +21,12 @@ interface UseAuthResult {
 }
 
 /**
- * Guard sesi untuk halaman dashboard. Redirect ke /login bila tidak ada token.
- * Bila token ada tetapi data user hilang, ambil ulang dari GET /auth/me.
+ * Guard sesi untuk halaman dashboard.
+ *
+ * Karena token ada di httpOnly cookie, status login tidak bisa dibaca dari JS.
+ * Sumber kebenaran adalah GET /auth/me: bila cookie tidak valid, request()
+ * membersihkan cache dan mengarahkan ke /login. Profil tersimpan hanya dipakai
+ * untuk menampilkan UI lebih cepat sebelum verifikasi server selesai.
  */
 export function useAuth(): UseAuthResult {
   const router = useRouter();
@@ -32,28 +36,14 @@ export function useAuth(): UseAuthResult {
   useEffect(() => {
     let cancelled = false;
 
-    if (!getAccessToken()) {
-      router.replace("/login");
-      setReady(true);
-      return () => {
-        cancelled = true;
-      };
-    }
-
     const stored = getStoredUser();
-    if (stored) {
-      setUser(stored);
-      setReady(true);
-      return () => {
-        cancelled = true;
-      };
-    }
+    if (stored) setUser(stored);
 
     request<MeResponse>("/auth/me")
       .then((res) => {
         if (cancelled || !res.data) return;
         const me = res.data;
-        const fallback: StaffUser = {
+        const profile: StaffUser = {
           id: me.user_id,
           employee_id: "",
           username: me.username,
@@ -66,11 +56,12 @@ export function useAuth(): UseAuthResult {
           created_at: "",
           updated_at: "",
         };
-        setStoredUser(fallback);
-        setUser(fallback);
+        setStoredUser(profile);
+        setUser(profile);
       })
       .catch(() => {
-        // request() sudah mengarahkan ke /login bila sesi tidak valid.
+        // request() sudah membersihkan cache dan mengarahkan ke /login bila sesi
+        // tidak valid.
       })
       .finally(() => {
         if (!cancelled) setReady(true);
@@ -82,7 +73,7 @@ export function useAuth(): UseAuthResult {
   }, [router]);
 
   const logout = () => {
-    // Best-effort revoke di server; kegagalan tidak menghalangi keluar lokal.
+    // Server menghapus cookie sesi & CSRF; kegagalan tidak menghalangi keluar lokal.
     request("/auth/logout", { method: "POST" }).catch(() => undefined);
     clearSession();
     router.replace("/login");

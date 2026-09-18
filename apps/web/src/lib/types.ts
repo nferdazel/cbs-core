@@ -18,10 +18,13 @@ export interface StaffUser {
   updated_at: string;
 }
 
+/**
+ * Respons login/refresh. Token tidak lagi dikirim di body; backend menulisnya
+ * sebagai httpOnly cookie. Body hanya membawa masa berlaku dan profil user.
+ */
 export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
   expires_in: number;
+  refresh_expires_in?: number;
   user: StaffUser;
 }
 
@@ -84,3 +87,17 @@ export type ReportKind =
   | "balance-sheet"
   | "income-statement"
   | "cash-flow";
+
+/**
+ * Shim kompatibilitas: sebagian modul operasional mengimpor tipe ini dari
+ * "@/lib/types", padahal definisinya ada di "@/lib/operations-types".
+ * Re-export agar build tetap jalan tanpa mengubah modul tersebut.
+ */
+export type {
+  BankingProduct,
+  COABook,
+  Loan,
+  LoanSchedule,
+  OJKCollectibility,
+  ProfitType,
+} from "./operations-types";

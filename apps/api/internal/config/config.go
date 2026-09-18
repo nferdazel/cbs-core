@@ -21,6 +21,14 @@ type Config struct {
 	Environment string
 	JWTSecret   string
 
+	// Cookie sesi & CSRF. Nama dapat dikonfigurasi agar selaras dengan domain
+	// deployment; Domain opsional untuk cookie lintas subdomain.
+	AccessCookieName  string
+	RefreshCookieName string
+	CSRFCookieName    string
+	CSRFHeaderName    string
+	CookieDomain      string
+
 	// Enkripsi data pribadi nasabah (envelope encryption).
 	EncryptionKeyID       string
 	EncryptionMasterKey   string
@@ -42,6 +50,12 @@ func Load() *Config {
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
 		Environment: getEnv("APP_ENV", "development"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
+
+		AccessCookieName:  getEnv("CBS_ACCESS_COOKIE", "cbs_access_token"),
+		RefreshCookieName: getEnv("CBS_REFRESH_COOKIE", "cbs_refresh_token"),
+		CSRFCookieName:    getEnv("CBS_CSRF_COOKIE", "csrf_token"),
+		CSRFHeaderName:    getEnv("CBS_CSRF_HEADER", "X-CSRF-Token"),
+		CookieDomain:      strings.TrimSpace(os.Getenv("CBS_COOKIE_DOMAIN")),
 
 		EncryptionKeyID:       getEnv("ENCRYPTION_KEY_ID", "k1"),
 		EncryptionMasterKey:   os.Getenv("ENCRYPTION_MASTER_KEY"),
