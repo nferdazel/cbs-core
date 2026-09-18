@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/config"
+	"cbs-core/apps/core-api/internal/crypto"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
@@ -34,11 +35,22 @@ func main() {
 		log.Println("✅ PostgreSQL connected successfully")
 	}
 
-	// 2. Repositories & Third-Party Gateways
+	// 2. Enkripsi data pribadi (envelope encryption, master key dari environment)
+	var cipher *crypto.Cipher
+	if cfg.EncryptionMasterKey != "" {
+		cipher, err = crypto.NewCipher(cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey)
+		if err != nil {
+			log.Fatalf("konfigurasi enkripsi tidak valid: %v", err)
+		}
+	}
+
+	// 3. Repositories & Third-Party Gateways
 	customerRepo := postgres.NewCustomerRepository(db)
 	accountRepo := postgres.NewAccountRepository(db)
 	ledgerRepo := postgres.NewLedgerRepository(db)
 	productRepo := postgres.NewProductRepository(db)
+	branchRepo := postgres.NewBranchRepository(db)
+	numberingRepo := postgres.NewNumberingRepository(db)
 	staffRepo := postgres.NewStaffRepository(db)
 	sessionRepo := postgres.NewSessionRepository(db)
 	configRepo := postgres.NewSystemConfigRepository(db)
@@ -50,12 +62,14 @@ func main() {
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
 
-	// 3. Core services
+	// 4. Core services
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
-	customerSvc := service.NewCustomerService(customerRepo)
-	accountSvc := service.NewAccountService(accountRepo, customerRepo)
+	customerSvc := service.NewCustomerService(customerRepo, cipher, referenceGen)
+	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, productRepo, branchRepo, numberingRepo)
+	branchSvc := service.NewBranchService(branchRepo)
+	productSvc := service.NewProductService(productRepo)
 	ledgerSvc := service.NewLedgerService(ledgerRepo, accountRepo, db)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo)
@@ -65,9 +79,11 @@ func main() {
 	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo)
 
-	// 4. HTTP Handlers
+	// 5. HTTP Handlers
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
 	accHandler := httpHandler.NewAccountHandler(accountSvc)
+	branchHandler := httpHandler.NewBranchHandler(branchSvc)
+	productHandler := httpHandler.NewProductHandler(productSvc)
 	ledHandler := httpHandler.NewLedgerHandler(ledgerSvc)
 	authHandler := httpHandler.NewAuthHandler(authSvc)
 	staffHandler := httpHandler.NewStaffHandler(staffSvc)
@@ -79,10 +95,12 @@ func main() {
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 
-	// 5. Router
+	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
 		CustomerHandler:     custHandler,
 		AccountHandler:      accHandler,
+		BranchHandler:       branchHandler,
+		ProductHandler:      productHandler,
 		LedgerHandler:       ledHandler,
 		AuthHandler:         authHandler,
 		StaffHandler:        staffHandler,

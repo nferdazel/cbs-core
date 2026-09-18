@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,16 @@ const (
 	CustomerStatusClosed     CustomerStatus = "CLOSED"
 )
 
+var (
+	ErrCustomerNotFound    = errors.New("nasabah tidak ditemukan")
+	ErrDuplicateIDCard     = errors.New("NIK sudah terdaftar")
+	ErrDuplicateEmail      = errors.New("email sudah terdaftar")
+	ErrCipherNotConfigured = errors.New("kunci enkripsi data nasabah belum dikonfigurasi")
+)
+
+// Customer menyatukan data pribadi. Nilai pribadi (nama, NIK, email, telepon, alamat)
+// disimpan terenkripsi di database; struct ini membawa nilai yang sudah didekripsi
+// untuk dipakai lapisan atas. Jangan menuliskan struct ini ke log.
 type Customer struct {
 	ID           uuid.UUID      `json:"id"`
 	CIFNumber    string         `json:"cif_number"`
@@ -25,9 +36,30 @@ type Customer struct {
 	PhoneNumber  string         `json:"phone_number"`
 	Address      string         `json:"address"`
 	Status       CustomerStatus `json:"status"`
+	BranchID     *uuid.UUID     `json:"branch_id,omitempty"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+// CustomerRecord adalah representasi penyimpanan: nilai pribadi dalam bentuk
+// terenkripsi beserta blind index untuk pencarian. Dipakai repository, tidak
+// diekspos ke API.
+type CustomerRecord struct {
+	ID              uuid.UUID
+	CIFNumber       string
+	FullNameEnc     string
+	IDCardNumberEnc string
+	EmailEnc        string
+	PhoneNumberEnc  string
+	AddressEnc      string
+	IDCardIndex     string
+	EmailIndex      string
+	Status          CustomerStatus
+	BranchID        *uuid.UUID
+	Metadata        map[string]any
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type CreateCustomerInput struct {
@@ -36,19 +68,22 @@ type CreateCustomerInput struct {
 	Email        string         `json:"email"`
 	PhoneNumber  string         `json:"phone_number"`
 	Address      string         `json:"address"`
+	BranchCode   string         `json:"branch_code"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
 type CustomerRepository interface {
-	Create(ctx context.Context, customer *Customer) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Customer, error)
-	GetByCIF(ctx context.Context, cif string) (*Customer, error)
-	List(ctx context.Context, limit, offset int) ([]Customer, int, error)
+	Create(ctx context.Context, record *CustomerRecord) error
+	GetByID(ctx context.Context, id uuid.UUID) (*CustomerRecord, error)
+	GetByCIF(ctx context.Context, cif string) (*CustomerRecord, error)
+	// FindByIDCard mencari nasabah lewat blind index NIK tanpa membuka enkripsi.
+	FindByIDCard(ctx context.Context, idCardIndex string) (*CustomerRecord, error)
+	List(ctx context.Context, limit, offset int) ([]CustomerRecord, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 
 type CustomerService interface {
-	RegisterCustomer(ctx context.Context, input CreateCustomerInput) (*Customer, error)
-	GetCustomer(ctx context.Context, id uuid.UUID) (*Customer, error)
-	ListCustomers(ctx context.Context, page, pageSize int) ([]Customer, int, error)
+	RegisterCustomer(ctx context.Context, input CreateCustomerInput, actor Actor) (*Customer, error)
+	GetCustomer(ctx context.Context, id uuid.UUID, actor Actor) (*Customer, error)
+	ListCustomers(ctx context.Context, page, pageSize int, actor Actor) ([]Customer, int, error)
 }

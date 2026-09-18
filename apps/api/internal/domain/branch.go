@@ -2,9 +2,12 @@ package domain
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 )
+
+var ErrBranchNotFound = errors.New("cabang tidak ditemukan")
 
 type Branch struct {
 	ID           uuid.UUID `json:"id"`

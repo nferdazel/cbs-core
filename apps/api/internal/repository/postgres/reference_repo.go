@@ -40,6 +40,17 @@ func (g *ReferenceGenerator) Next(txType domain.TransactionType, at time.Time) s
 	return fmt.Sprintf("%s-%s-%06d", prefix, at.Format("20060102"), seq)
 }
 
+// NextCIF mengembalikan nomor CIF berurutan. CIF dipakai sebagai identitas nasabah
+// lintas cabang dan tidak boleh berulang, sehingga diambil dari sequence database.
+func (g *ReferenceGenerator) NextCIF() string {
+	var seq int64
+	if err := g.db.QueryRowContext(context.Background(), `SELECT nextval('cif_number_seq')`).Scan(&seq); err != nil {
+		// CIF yang tidak unik jauh lebih berbahaya daripada kegagalan sesaat.
+		return fmt.Sprintf("CIF-ERR-%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("CIF%09d", seq)
+}
+
 // nextSeq mengambil nilai sequence. Bila sequence tidak tersedia (mis. DB belum
 // dimigrasi), dipakai waktu Unix nano sebagai cadangan agar posting tidak gagal.
 func (g *ReferenceGenerator) nextSeq() int64 {

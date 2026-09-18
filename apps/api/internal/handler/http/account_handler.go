@@ -19,6 +19,12 @@ func NewAccountHandler(service domain.AccountService) *AccountHandler {
 }
 
 func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	var input domain.OpenAccountInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -29,21 +35,20 @@ func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusBadRequest, "customer_id is required")
 		return
 	}
-	if input.AccountType == "" {
-		input.AccountType = domain.AccountTypeSavings
+	if input.ProductID == uuid.Nil {
+		Error(w, http.StatusBadRequest, "product_id is required")
+		return
 	}
 	if input.Currency == "" {
 		input.Currency = "IDR"
 	}
-
-	// Default to Third-Party Savings Deposits COA if not provided
-	if input.COAID == uuid.Nil {
-		input.COAID = uuid.MustParse("a0000000-0000-0000-0000-000000000003")
+	if input.BranchCode == "" {
+		input.BranchCode = claims.BranchCode
 	}
 
-	account, err := h.service.OpenAccount(r.Context(), input)
+	account, err := h.service.OpenAccount(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 

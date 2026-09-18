@@ -33,6 +33,8 @@ func allowedOrigins() []string {
 type RouterParams struct {
 	CustomerHandler     *CustomerHandler
 	AccountHandler      *AccountHandler
+	BranchHandler       *BranchHandler
+	ProductHandler      *ProductHandler
 	LedgerHandler       *LedgerHandler
 	AuthHandler         *AuthHandler
 	StaffHandler        *StaffHandler
@@ -113,6 +115,18 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.CustomerHandler.List)
 				r.With(middleware.RequirePermission(domain.PermCustomersRead)).
 					Get("/{id}", p.CustomerHandler.GetByID)
+			})
+
+			// ── Master data: cabang & produk ──
+			r.Route("/branches", func(r chi.Router) {
+				r.With(middleware.RequirePermission(domain.PermUsersRead)).
+					Get("/", p.BranchHandler.List)
+			})
+			r.Route("/products", func(r chi.Router) {
+				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+					Get("/", p.ProductHandler.List)
+				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+					Get("/{id}", p.ProductHandler.GetByID)
 			})
 
 			// ── Accounts ──

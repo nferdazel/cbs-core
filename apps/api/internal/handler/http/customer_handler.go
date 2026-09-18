@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -19,6 +20,12 @@ func NewCustomerHandler(service domain.CustomerService) *CustomerHandler {
 }
 
 func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	var input domain.CreateCustomerInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -30,9 +37,13 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cust, err := h.service.RegisterCustomer(r.Context(), input)
+	cust, err := h.service.RegisterCustomer(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
-		Error(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, domain.ErrDuplicateIDCard) || errors.Is(err, domain.ErrDuplicateEmail) {
+			status = http.StatusConflict
+		}
+		Error(w, status, err.Error())
 		return
 	}
 
@@ -40,6 +51,12 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -47,7 +64,7 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cust, err := h.service.GetCustomer(r.Context(), id)
+	cust, err := h.service.GetCustomer(r.Context(), id, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusNotFound, err.Error())
 		return
@@ -57,6 +74,12 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 
@@ -67,7 +90,7 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize)
+	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusInternalServerError, err.Error())
 		return

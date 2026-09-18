@@ -2,11 +2,15 @@ package domain
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
+
+var ErrAccountNotFound = errors.New("rekening tidak ditemukan")
 
 type AccountType string
 
@@ -31,6 +35,8 @@ type Account struct {
 	AccountNumber    string          `json:"account_number"`
 	CustomerID       *uuid.UUID      `json:"customer_id,omitempty"`
 	CustomerName     string          `json:"customer_name,omitempty"`
+	ProductID        *uuid.UUID      `json:"product_id,omitempty"`
+	BranchID         *uuid.UUID      `json:"branch_id,omitempty"`
 	COAID            uuid.UUID       `json:"coa_id"`
 	COACode          string          `json:"coa_code,omitempty"`
 	NormalBalance    BalanceType     `json:"normal_balance"`
@@ -41,19 +47,23 @@ type Account struct {
 	HoldBalance      decimal.Decimal `json:"hold_balance"`
 	Status           AccountStatus   `json:"status"`
 	Version          int             `json:"version"`
+	OpenedAt         *time.Time      `json:"opened_at,omitempty"`
 	CreatedAt        time.Time       `json:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"`
 }
 
+// OpenAccountInput membuka rekening dari produk. COA kewajiban ditentukan produk,
+// bukan dipilih teller, supaya pemetaan akuntansi konsisten.
 type OpenAccountInput struct {
-	CustomerID  uuid.UUID   `json:"customer_id"`
-	AccountType AccountType `json:"account_type"`
-	Currency    string      `json:"currency"`
-	COAID       uuid.UUID   `json:"coa_id"`
+	CustomerID uuid.UUID `json:"customer_id"`
+	ProductID  uuid.UUID `json:"product_id"`
+	Currency   string    `json:"currency"`
+	BranchCode string    `json:"branch_code"`
 }
 
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
+	CreateTx(ctx context.Context, tx *sql.Tx, account *Account) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Account, error)
 	GetByNumber(ctx context.Context, accountNumber string) (*Account, error)
 	GetByNumberForUpdate(ctx context.Context, tx any, accountNumber string) (*Account, error)
@@ -63,7 +73,7 @@ type AccountRepository interface {
 }
 
 type AccountService interface {
-	OpenAccount(ctx context.Context, input OpenAccountInput) (*Account, error)
+	OpenAccount(ctx context.Context, input OpenAccountInput, actor Actor) (*Account, error)
 	GetAccountByNumber(ctx context.Context, accountNumber string) (*Account, error)
 	ListAccounts(ctx context.Context, page, pageSize int) ([]Account, int, error)
 }
