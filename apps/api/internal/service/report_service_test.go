@@ -44,6 +44,22 @@ func (s *stubReportRepo) GetCOABalances(ctx context.Context) (map[string]decimal
 	return balances, types, names, nil
 }
 
+func (s *stubReportRepo) TrialBalance(ctx context.Context, from, to time.Time, book string) ([]domain.TrialBalanceRow, error) {
+	return nil, nil
+}
+
+func (s *stubReportRepo) IncomeStatement(ctx context.Context, from, to time.Time, book string) (domain.IncomeStatement, error) {
+	return domain.IncomeStatement{}, nil
+}
+
+func (s *stubReportRepo) BalanceSheet(ctx context.Context, asOf time.Time, book string) (domain.BalanceSheet, error) {
+	return domain.BalanceSheet{}, nil
+}
+
+func (s *stubReportRepo) CashFlow(ctx context.Context, from, to time.Time, book string) (domain.CashFlow, error) {
+	return domain.CashFlow{}, nil
+}
+
 func TestGenerateTrialBalance(t *testing.T) {
 	svc := service.NewReportService(&stubReportRepo{})
 	report, err := svc.GenerateTrialBalance(context.Background())

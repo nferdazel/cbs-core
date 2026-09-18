@@ -185,14 +185,16 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/mobile-collect", p.CollectionHandler.ProcessMobileCollection)
 			})
 
-			// ── Financial Statement Reports ──
+			// ── Financial Statement Reports (dihitung dari jurnal) ──
 			r.Route("/reports", func(r chi.Router) {
-				r.With(middleware.RequirePermission(domain.PermReportsExport)).
-					Get("/trial-balance", p.ReportHandler.GetTrialBalance)
-				r.With(middleware.RequirePermission(domain.PermReportsExport)).
-					Get("/balance-sheet", p.ReportHandler.GetBalanceSheet)
-				r.With(middleware.RequirePermission(domain.PermReportsExport)).
-					Get("/income-statement", p.ReportHandler.GetIncomeStatement)
+				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+					Get("/trial-balance", p.ReportHandler.TrialBalance)
+				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+					Get("/balance-sheet", p.ReportHandler.BalanceSheet)
+				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+					Get("/income-statement", p.ReportHandler.IncomeStatement)
+				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+					Get("/cash-flow", p.ReportHandler.CashFlow)
 			})
 
 			// ── Third-Party Integration Gateway (OJK SLIK / CBAS & Dukcapil) ──

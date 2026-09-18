@@ -10,10 +10,13 @@ import (
 
 type ReportRepository struct {
 	db *sql.DB
+	// Laporan berbasis jurnal di-delegasikan ke ReportingRepository; embedding membuat
+	// *ReportRepository tetap memenuhi domain.ReportRepository tanpa kode perantara.
+	*ReportingRepository
 }
 
 func NewReportRepository(db *sql.DB) *ReportRepository {
-	return &ReportRepository{db: db}
+	return &ReportRepository{db: db, ReportingRepository: NewReportingRepository(db)}
 }
 
 func (r *ReportRepository) GetTrialBalance(ctx context.Context) ([]domain.TrialBalanceItem, error) {

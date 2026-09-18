@@ -130,3 +130,40 @@ func (s *reportService) GenerateIncomeStatement(ctx context.Context, startDate, 
 		NetIncome:    netIncome,
 	}, nil
 }
+
+// GetTrialBalance menghitung neraca saldo periode dari jurnal. Repositori melakukan
+// agregasi SQL dan saldo akhir memakai domain.ClosingBalance.
+func (s *reportService) GetTrialBalance(ctx context.Context, from, to time.Time, book string) ([]domain.TrialBalanceRow, error) {
+	return s.reportRepo.TrialBalance(ctx, from, to, book)
+}
+
+// GetIncomeStatement menghitung laba/rugi periode dari jurnal.
+func (s *reportService) GetIncomeStatement(ctx context.Context, from, to time.Time, book string) (*domain.IncomeStatement, error) {
+	report, err := s.reportRepo.IncomeStatement(ctx, from, to, book)
+	if err != nil {
+		return nil, err
+	}
+	// Penjumlahan akhir laba/rugi memakai fungsi murni domain.
+	report.NetIncome = domain.NetIncome(report.TotalRevenue, report.TotalExpense)
+	return &report, nil
+}
+
+// GetBalanceSheet menyusun neraca per tanggal dari jurnal.
+func (s *reportService) GetBalanceSheet(ctx context.Context, asOf time.Time, book string) (*domain.BalanceSheet, error) {
+	report, err := s.reportRepo.BalanceSheet(ctx, asOf, book)
+	if err != nil {
+		return nil, err
+	}
+	return &report, nil
+}
+
+// GetCashFlow menyusun arus kas periode dari jurnal pada akun kas/bank.
+func (s *reportService) GetCashFlow(ctx context.Context, from, to time.Time, book string) (*domain.CashFlow, error) {
+	report, err := s.reportRepo.CashFlow(ctx, from, to, book)
+	if err != nil {
+		return nil, err
+	}
+	// Netto arus kas selalu sama dengan jumlah ketiga aktivitas.
+	report.NetChange = report.Operating.Add(report.Investing).Add(report.Financing)
+	return &report, nil
+}
