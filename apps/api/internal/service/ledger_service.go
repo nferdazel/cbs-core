@@ -120,15 +120,22 @@ func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType 
 		currency = "IDR"
 	}
 
+	// Jurnal mencatat PEMBUAT transaksi, bukan pemeriksa. Peran pemeriksa tercatat
+	// di audit log; mencatatnya sebagai pembuat akan menyesatkan penelusuran.
+	createdBy := actor.DisplayName()
+	if maker, ok := payload["maker_username"].(string); ok && maker != "" {
+		createdBy = maker
+	}
+
 	switch normalizeAction(actionType) {
 	case ActionDeposit:
-		return s.postDepositTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, actor)
+		return s.postDepositTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy)
 	case ActionWithdraw:
-		return s.postWithdrawTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, actor)
+		return s.postWithdrawTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy)
 	case ActionTransfer:
 		source, _ := payload["source_account_number"].(string)
 		destination, _ := payload["destination_account_number"].(string)
-		return s.postTransferTx(ctx, tx, source, destination, amount, currency, description, idempotencyKey, actor)
+		return s.postTransferTx(ctx, tx, source, destination, amount, currency, description, idempotencyKey, createdBy)
 	default:
 		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
 	}
@@ -173,6 +180,7 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 		"currency":        req.Currency,
 		"description":     req.Description,
 		"idempotency_key": req.IdempotencyKey,
+		"maker_username":  req.Actor.DisplayName(),
 	}); err != nil {
 		return nil, err
 	}
@@ -212,6 +220,7 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 		"currency":        req.Currency,
 		"description":     req.Description,
 		"idempotency_key": req.IdempotencyKey,
+		"maker_username":  req.Actor.DisplayName(),
 	}); err != nil {
 		return nil, err
 	}
@@ -256,6 +265,7 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 		"currency":                   req.Currency,
 		"description":                req.Description,
 		"idempotency_key":            req.IdempotencyKey,
+		"maker_username":             req.Actor.DisplayName(),
 	}); err != nil {
 		return nil, err
 	}
@@ -274,7 +284,7 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 
 // postDepositTx, postWithdrawTx, dan postTransferTx dipakai eksekusi persetujuan:
 // jurnal ditulis pada transaksi pemanggil, bukan membuka transaksi baru.
-func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey string, actor domain.Actor) error {
+func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return err
@@ -291,7 +301,7 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 		TransactionType: domain.TxTypeDeposit,
 		Description:     defaultDescription(description, "Setoran tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
-		CreatedBy:       actor.DisplayName(),
+		CreatedBy:       createdBy,
 		Lines: []domain.PostingLine{
 			{AccountNumber: cashAccount, Direction: domain.DirectionDebit, Amount: amount, Description: "Kas masuk"},
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionCredit, Amount: amount, Description: description},
@@ -300,7 +310,7 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 	return err
 }
 
-func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey string, actor domain.Actor) error {
+func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return err
@@ -320,7 +330,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 		TransactionType: domain.TxTypeWithdrawal,
 		Description:     defaultDescription(description, "Penarikan tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
-		CreatedBy:       actor.DisplayName(),
+		CreatedBy:       createdBy,
 		Lines: []domain.PostingLine{
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionDebit, Amount: amount, Description: description},
 			{AccountNumber: cashAccount, Direction: domain.DirectionCredit, Amount: amount, Description: "Kas keluar"},
@@ -329,7 +339,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 	return err
 }
 
-func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, destination string, amount decimal.Decimal, currency, description, idempotencyKey string, actor domain.Actor) error {
+func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, destination string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
 	if source == destination {
 		return fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
 	}
@@ -352,7 +362,7 @@ func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, dest
 		TransactionType: domain.TxTypeTransferInternal,
 		Description:     defaultDescription(description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
-		CreatedBy:       actor.DisplayName(),
+		CreatedBy:       createdBy,
 		Lines: []domain.PostingLine{
 			{AccountNumber: src.AccountNumber, Direction: domain.DirectionDebit, Amount: amount, Description: "Transfer keluar"},
 			{AccountNumber: dest.AccountNumber, Direction: domain.DirectionCredit, Amount: amount, Description: "Transfer masuk"},

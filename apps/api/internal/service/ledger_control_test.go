@@ -240,3 +240,41 @@ func TestExecutorRegistryDispatchesToRegisteredExecutor(t *testing.T) {
 		t.Fatalf("eksekutor terdaftar harus dipanggil, dapat %d", posting.calls)
 	}
 }
+
+// Jurnal harus mencatat PEMBUAT transaksi, bukan pejabat yang menyetujui. Peran
+// pemeriksa tercatat di audit log; mencatatnya sebagai pembuat menyesatkan penelusuran.
+func TestExecuteApprovedRecordsMakerNotApprover(t *testing.T) {
+	posting := &stubPostingSvc{}
+	svc := newLedgerForTest(stubLimits{}, &stubApprovals{}, posting)
+
+	approver := domain.Actor{UserID: uuid.New(), Username: "supervisor01", Role: domain.RoleSupervisor}
+	err := svc.ExecuteApproved(context.Background(), nil, ActionDeposit, map[string]any{
+		"account_number": "0011010000000014",
+		"amount":         "25000000",
+		"maker_username": "teller01",
+	}, approver)
+	if err != nil {
+		t.Fatalf("eksekusi gagal: %v", err)
+	}
+	if posting.last.CreatedBy != "teller01" {
+		t.Fatalf("created_by = %q, mau pembuat transaksi (teller01)", posting.last.CreatedBy)
+	}
+}
+
+// Tanpa identitas pembuat pada payload (permintaan lama), pelaku yang menyetujui
+// dipakai agar jurnal tetap punya jejak, bukan kosong.
+func TestExecuteApprovedFallsBackToActingUser(t *testing.T) {
+	posting := &stubPostingSvc{}
+	svc := newLedgerForTest(stubLimits{}, &stubApprovals{}, posting)
+
+	approver := domain.Actor{UserID: uuid.New(), Username: "supervisor01", Role: domain.RoleSupervisor}
+	if err := svc.ExecuteApproved(context.Background(), nil, ActionDeposit, map[string]any{
+		"account_number": "0011010000000014",
+		"amount":         "1000",
+	}, approver); err != nil {
+		t.Fatalf("eksekusi gagal: %v", err)
+	}
+	if posting.last.CreatedBy != "supervisor01" {
+		t.Fatalf("created_by = %q, mau pelaku yang menyetujui", posting.last.CreatedBy)
+	}
+}
