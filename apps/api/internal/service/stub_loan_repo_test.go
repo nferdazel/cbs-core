@@ -46,12 +46,20 @@ func (s *stubLoanRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status do
 	return nil
 }
 
+func (s *stubLoanRepo) UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
+	return s.UpdateStatus(ctx, id, status, approvedBy)
+}
+
 func (s *stubLoanRepo) MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error {
 	if s.loan != nil {
 		s.loan.Status = domain.LoanStatusDisbursed
 		s.loan.OutstandingPrincipal = outstanding
 	}
 	return nil
+}
+
+func (s *stubLoanRepo) MarkDisbursedTx(ctx context.Context, tx any, id uuid.UUID, outstanding decimal.Decimal) error {
+	return s.MarkDisbursed(ctx, id, outstanding)
 }
 
 func (s *stubLoanRepo) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {

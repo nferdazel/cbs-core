@@ -19,6 +19,7 @@ type loanService struct {
 	accountRepo domain.AccountRepository
 	poster      *ProductPoster
 	references  domain.ReferenceGenerator
+	auditRepo   domain.AuditRepository
 }
 
 func NewLoanService(
@@ -28,7 +29,12 @@ func NewLoanService(
 	accountRepo domain.AccountRepository,
 	poster *ProductPoster,
 	references domain.ReferenceGenerator,
+	auditSinks ...domain.AuditRepository,
 ) domain.LoanService {
+	var auditRepo domain.AuditRepository
+	if len(auditSinks) > 0 {
+		auditRepo = auditSinks[0]
+	}
 	return &loanService{
 		db:          db,
 		loanRepo:    loanRepo,
@@ -36,6 +42,7 @@ func NewLoanService(
 		accountRepo: accountRepo,
 		poster:      poster,
 		references:  references,
+		auditRepo:   auditRepo,
 	}
 }
 
@@ -143,9 +150,26 @@ func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, actor d
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
 	}
-	if err := s.loanRepo.UpdateStatus(ctx, loanID, domain.LoanStatusApproved, &actor.UserID); err != nil {
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loanID, domain.LoanStatusApproved, &actor.UserID); err != nil {
 		return nil, fmt.Errorf("menyetujui kredit: %w", err)
 	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "APPROVE_LOAN", "loan", loan.ID.String(), map[string]any{
+		"status": domain.LoanStatusApproved,
+		"amount": loan.PrincipalAmount.String(),
+	}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	loan.Status = domain.LoanStatusApproved
 	loan.ApprovedBy = &actor.UserID
 	now := time.Now().UTC()
@@ -161,9 +185,26 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, actor do
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
 	}
-	if err := s.loanRepo.UpdateStatus(ctx, loanID, domain.LoanStatusRejected, &actor.UserID); err != nil {
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loanID, domain.LoanStatusRejected, &actor.UserID); err != nil {
 		return nil, fmt.Errorf("menolak kredit: %w", err)
 	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "REJECT_LOAN", "loan", loan.ID.String(), map[string]any{
+		"status": domain.LoanStatusRejected,
+		"amount": loan.PrincipalAmount.String(),
+	}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	loan.Status = domain.LoanStatusRejected
 	return loan, nil
 }
@@ -217,8 +258,14 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 
 	// Dana masuk ke rekening nasabah: debit akun nasabah pada jurnal mapping produk;
 	// liabilitas bank bertambah. Loan outstanding diisi pokok penuh.
-	if err := s.loanRepo.MarkDisbursed(ctx, loan.ID, loan.PrincipalAmount); err != nil {
+	if err := s.loanRepo.MarkDisbursedTx(ctx, tx, loan.ID, loan.PrincipalAmount); err != nil {
 		return nil, fmt.Errorf("menandai kredit dicairkan: %w", err)
+	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "DISBURSE_LOAN", "loan", loan.ID.String(), map[string]any{
+		"status": domain.LoanStatusDisbursed,
+		"amount": loan.PrincipalAmount.String(),
+	}); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {

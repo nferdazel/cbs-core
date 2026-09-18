@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -74,6 +75,9 @@ type CreateCustomerInput struct {
 
 type CustomerRepository interface {
 	Create(ctx context.Context, record *CustomerRecord) error
+	// CreateTx menyimpan nasabah di dalam transaksi pemanggil agar pendaftaran dan
+	// audit log-nya atomik.
+	CreateTx(ctx context.Context, tx *sql.Tx, record *CustomerRecord) error
 	GetByID(ctx context.Context, id uuid.UUID) (*CustomerRecord, error)
 	GetByCIF(ctx context.Context, cif string) (*CustomerRecord, error)
 	// FindByIDCard mencari nasabah lewat blind index NIK tanpa membuka enkripsi.

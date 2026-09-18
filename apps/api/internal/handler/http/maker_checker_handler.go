@@ -2,60 +2,78 @@ package http
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
+	"cbs-core/apps/core-api/internal/repository/postgres"
+	"cbs-core/apps/core-api/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 )
 
-type MakerCheckerRequest struct {
-	ID              uuid.UUID       `json:"id"`
-	MakerID         uuid.UUID       `json:"maker_id"`
-	CheckerID       *uuid.UUID      `json:"checker_id,omitempty"`
-	TransactionType string          `json:"transaction_type"`
-	Amount          decimal.Decimal `json:"amount"`
-	Payload         string          `json:"payload"`
-	Status          string          `json:"status"`
-	CreatedAt       time.Time       `json:"created_at"`
-	ProcessedAt     *time.Time      `json:"processed_at,omitempty"`
+type makerCheckerResponse struct {
+	ID           uuid.UUID                 `json:"id"`
+	ActionType   string                    `json:"action_type"`
+	Payload      map[string]any            `json:"payload,omitempty"`
+	Status       domain.MakerCheckerStatus `json:"status"`
+	MakerID      string                    `json:"maker_id"`
+	CheckerID    *string                   `json:"checker_id,omitempty"`
+	MakerNotes   string                    `json:"maker_notes,omitempty"`
+	CheckerNotes string                    `json:"checker_notes,omitempty"`
+	ReviewedAt   *time.Time                `json:"reviewed_at,omitempty"`
+	CreatedAt    time.Time                 `json:"created_at"`
+}
+
+func toMakerCheckerResponse(req *domain.MakerCheckerRequest) makerCheckerResponse {
+	return makerCheckerResponse{
+		ID:           req.ID,
+		ActionType:   req.ActionType,
+		Payload:      req.Payload,
+		Status:       req.Status,
+		MakerID:      req.MakerID,
+		CheckerID:    req.CheckerID,
+		MakerNotes:   req.MakerNotes,
+		CheckerNotes: req.CheckerNotes,
+		ReviewedAt:   req.ReviewedAt,
+		CreatedAt:    req.CreatedAt,
+	}
 }
 
 type MakerCheckerHandler struct {
-	db *sql.DB
+	svc domain.MakerCheckerService
 }
 
+// NewMakerCheckerHandler menyusun dependency maker-checker dari koneksi database.
+// Signature dipertahankan agar wiring cmd/server/main.go tidak berubah; pemeriksa
+// dan penulis audit tetap dijalankan service, bukan handler.
 func NewMakerCheckerHandler(db *sql.DB) *MakerCheckerHandler {
-	return &MakerCheckerHandler{db: db}
+	configRepo := postgres.NewSystemConfigRepository(db)
+	configSvc := service.NewSystemConfigService(configRepo)
+	mcRepo := postgres.NewMakerCheckerRepository(db)
+	auditRepo := postgres.NewAuditRepository(db)
+	return NewMakerCheckerHandlerWithService(service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc))
+}
+
+func NewMakerCheckerHandlerWithService(svc domain.MakerCheckerService) *MakerCheckerHandler {
+	return &MakerCheckerHandler{svc: svc}
 }
 
 // ListPending handles GET /api/v1/maker-checker/pending
 func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request) {
-	q := `SELECT id, maker_id, transaction_type, amount, payload, status, created_at
-		FROM maker_checker_requests WHERE status = 'PENDING' ORDER BY created_at ASC`
-
-	rows, err := h.db.QueryContext(r.Context(), q)
+	requests, err := h.svc.ListPending(r.Context())
 	if err != nil {
 		InternalError(w, r, err)
 		return
 	}
-	defer rows.Close()
 
-	var list []MakerCheckerRequest
-	for rows.Next() {
-		var req MakerCheckerRequest
-		if err := rows.Scan(
-			&req.ID, &req.MakerID, &req.TransactionType, &req.Amount,
-			&req.Payload, &req.Status, &req.CreatedAt,
-		); err != nil {
-			InternalError(w, r, err)
-			return
-		}
-		list = append(list, req)
+	list := make([]makerCheckerResponse, 0, len(requests))
+	for i := range requests {
+		list = append(list, toMakerCheckerResponse(&requests[i]))
 	}
-
 	Success(w, http.StatusOK, "pending maker-checker requests", list)
 }
 
@@ -73,22 +91,11 @@ func (h *MakerCheckerHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := `UPDATE maker_checker_requests
-		SET status = 'APPROVED', checker_id = $1, processed_at = NOW()
-		WHERE id = $2 AND status = 'PENDING'`
-
-	res, err := h.db.ExecContext(r.Context(), q, claims.UserID, id)
-	if err != nil {
-		InternalError(w, r, err)
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+	if err := h.svc.Approve(r.Context(), id, actor, decodeNotes(r)); err != nil {
+		writeMakerCheckerError(w, r, err)
 		return
 	}
-
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		Error(w, http.StatusNotFound, "pending maker-checker request not found")
-		return
-	}
-
 	Success(w, http.StatusOK, "request approved successfully", nil)
 }
 
@@ -106,21 +113,34 @@ func (h *MakerCheckerHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := `UPDATE maker_checker_requests
-		SET status = 'REJECTED', checker_id = $1, processed_at = NOW()
-		WHERE id = $2 AND status = 'PENDING'`
-
-	res, err := h.db.ExecContext(r.Context(), q, claims.UserID, id)
-	if err != nil {
-		InternalError(w, r, err)
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+	if err := h.svc.Reject(r.Context(), id, actor, decodeNotes(r)); err != nil {
+		writeMakerCheckerError(w, r, err)
 		return
 	}
-
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		Error(w, http.StatusNotFound, "pending maker-checker request not found")
-		return
-	}
-
 	Success(w, http.StatusOK, "request rejected", nil)
+}
+
+// decodeNotes membaca catatan pemeriksa; body opsional.
+func decodeNotes(r *http.Request) string {
+	var body struct {
+		Notes string `json:"notes"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	return body.Notes
+}
+
+func writeMakerCheckerError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrCannotSelfApprove):
+		Error(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, domain.ErrMakerCheckerNotFound):
+		Error(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, domain.ErrMakerCheckerNotPending):
+		Error(w, http.StatusConflict, err.Error())
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
 }

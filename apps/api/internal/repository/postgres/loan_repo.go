@@ -170,14 +170,41 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int) ([]domain.
 }
 
 func (r *LoanRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
+	return updateLoanStatus(ctx, r.db, id, status, approvedBy)
+}
+
+// UpdateStatusTx menjalankan update status di dalam transaksi pemanggil, agar
+// perubahan status dan penulisan audit bisa commit bersama.
+func (r *LoanRepository) UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return updateLoanStatus(ctx, sqlTx, id, status, approvedBy)
+}
+
+func updateLoanStatus(ctx context.Context, exec execer, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
 	q := `UPDATE loans SET status=$1, approved_by=$2, approved_at=NOW(), updated_at=NOW() WHERE id=$3`
-	_, err := r.db.ExecContext(ctx, q, status, approvedBy, id)
+	_, err := exec.ExecContext(ctx, q, status, approvedBy, id)
 	return err
 }
 
 func (r *LoanRepository) MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error {
+	return markLoanDisbursed(ctx, r.db, id, outstanding)
+}
+
+// MarkDisbursedTx menjalankan penandaan pencairan di dalam transaksi pemanggil.
+func (r *LoanRepository) MarkDisbursedTx(ctx context.Context, tx any, id uuid.UUID, outstanding decimal.Decimal) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return markLoanDisbursed(ctx, sqlTx, id, outstanding)
+}
+
+func markLoanDisbursed(ctx context.Context, exec execer, id uuid.UUID, outstanding decimal.Decimal) error {
 	q := `UPDATE loans SET status=$1, disbursed_at=NOW(), outstanding_principal=$2, updated_at=NOW() WHERE id=$3`
-	_, err := r.db.ExecContext(ctx, q, domain.LoanStatusDisbursed, outstanding, id)
+	_, err := exec.ExecContext(ctx, q, domain.LoanStatusDisbursed, outstanding, id)
 	return err
 }
 

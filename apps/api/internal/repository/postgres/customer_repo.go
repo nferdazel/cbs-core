@@ -27,6 +27,18 @@ const customerColumns = `id, cif_number, full_name_enc, id_card_number_enc, emai
 	metadata, created_at, updated_at`
 
 func (r *CustomerRepository) Create(ctx context.Context, c *domain.CustomerRecord) error {
+	return r.executeCreate(ctx, r.db, c)
+}
+
+// CreateTx menyimpan nasabah di dalam transaksi pemanggil, sehingga pendaftaran
+// nasabah dan audit log-nya commit bersama.
+func (r *CustomerRepository) CreateTx(ctx context.Context, tx *sql.Tx, c *domain.CustomerRecord) error {
+	return r.executeCreate(ctx, tx, c)
+}
+
+func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, c *domain.CustomerRecord) error {
 	metaJSON, err := json.Marshal(c.Metadata)
 	if err != nil {
 		metaJSON = []byte("{}")
@@ -40,7 +52,7 @@ func (r *CustomerRepository) Create(ctx context.Context, c *domain.CustomerRecor
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
-	_, err = r.db.ExecContext(ctx, query,
+	_, err = exec.ExecContext(ctx, query,
 		c.ID, c.CIFNumber, c.FullNameEnc, c.IDCardNumberEnc, c.EmailEnc,
 		c.PhoneNumberEnc, c.AddressEnc, c.IDCardIndex, c.EmailIndex,
 		c.Status, c.BranchID, metaJSON, c.CreatedAt, c.UpdatedAt,

@@ -196,7 +196,9 @@ type LoanRepository interface {
 	GetByNumber(ctx context.Context, loanNumber string) (*Loan, error)
 	List(ctx context.Context, limit, offset int) ([]Loan, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
+	UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error
+	MarkDisbursedTx(ctx context.Context, tx any, id uuid.UUID, outstanding decimal.Decimal) error
 	GetSchedules(ctx context.Context, loanID uuid.UUID) ([]LoanSchedule, error)
 	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit decimal.Decimal, status InstallmentStatus) error
 	UpdateRestructure(ctx context.Context, loan *Loan, schedules []LoanSchedule) error

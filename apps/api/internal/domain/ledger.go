@@ -194,6 +194,7 @@ type LedgerRepository interface {
 	GetJournalByRef(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, limit, offset int) ([]JournalEntry, int, error)
 	ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]JournalLine, int, error)
+	SumDebitByCreatedByAndDate(ctx context.Context, createdBy string, date time.Time) (decimal.Decimal, error)
 }
 
 type LedgerService interface {

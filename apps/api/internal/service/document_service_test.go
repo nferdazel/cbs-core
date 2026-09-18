@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -20,6 +21,10 @@ type stubCustomerRepo struct {
 }
 
 func (s *stubCustomerRepo) Create(ctx context.Context, record *domain.CustomerRecord) error {
+	return nil
+}
+
+func (s *stubCustomerRepo) CreateTx(ctx context.Context, tx *sql.Tx, record *domain.CustomerRecord) error {
 	return nil
 }
 

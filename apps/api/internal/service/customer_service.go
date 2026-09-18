@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,13 +17,19 @@ import (
 // customerService menangani data pribadi nasabah. Nilai pribadi dienkripsi sebelum
 // disimpan dan baru didekripsi saat dibaca; repository tidak pernah melihat plaintext.
 type customerService struct {
+	db        *sql.DB
 	repo      domain.CustomerRepository
 	cipher    *crypto.Cipher
 	cifSource domain.CIFGenerator
+	auditRepo domain.AuditRepository
 }
 
-func NewCustomerService(repo domain.CustomerRepository, cipher *crypto.Cipher, cifSource domain.CIFGenerator) domain.CustomerService {
-	return &customerService{repo: repo, cipher: cipher, cifSource: cifSource}
+func NewCustomerService(db *sql.DB, repo domain.CustomerRepository, cipher *crypto.Cipher, cifSource domain.CIFGenerator, auditSinks ...domain.AuditRepository) domain.CustomerService {
+	var auditRepo domain.AuditRepository
+	if len(auditSinks) > 0 {
+		auditRepo = auditSinks[0]
+	}
+	return &customerService{db: db, repo: repo, cipher: cipher, cifSource: cifSource, auditRepo: auditRepo}
 }
 
 // cipherOrError memastikan kunci enkripsi tersedia sebelum menyentuh data nasabah.
@@ -70,11 +77,47 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 		return nil, err
 	}
 
-	if err := s.repo.Create(ctx, record); err != nil {
+	if err := s.persistCustomer(ctx, record, actor); err != nil {
 		return nil, err
 	}
 
 	return s.decryptRecord(ctx, record)
+}
+
+// persistCustomer menyimpan nasabah dan audit log dalam satu transaksi bila database
+// tersedia. Tanpa database (mis. test unit), penyimpanan dilakukan langsung.
+func (s *customerService) persistCustomer(ctx context.Context, record *domain.CustomerRecord, actor domain.Actor) error {
+	changes := map[string]any{
+		"cif_number": record.CIFNumber,
+		"status":     record.Status,
+	}
+
+	if s.db == nil {
+		if err := s.repo.Create(ctx, record); err != nil {
+			if isUniqueViolation(err) {
+				return domain.ErrDuplicateIDCard
+			}
+			return err
+		}
+		return writeAudit(ctx, s.auditRepo, nil, actor, "REGISTER_CUSTOMER", "customer", record.ID.String(), changes)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := s.repo.CreateTx(ctx, tx, record); err != nil {
+		if isUniqueViolation(err) {
+			return domain.ErrDuplicateIDCard
+		}
+		return err
+	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "REGISTER_CUSTOMER", "customer", record.ID.String(), changes); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *customerService) GetCustomer(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.Customer, error) {

@@ -21,6 +21,7 @@ type accountService struct {
 	productRepo  domain.ProductRepository
 	branchRepo   domain.BranchRepository
 	numbering    domain.AccountNumberGenerator
+	auditRepo    domain.AuditRepository
 }
 
 func NewAccountService(
@@ -31,7 +32,12 @@ func NewAccountService(
 	productRepo domain.ProductRepository,
 	branchRepo domain.BranchRepository,
 	numbering domain.AccountNumberGenerator,
+	auditSinks ...domain.AuditRepository,
 ) domain.AccountService {
+	var auditRepo domain.AuditRepository
+	if len(auditSinks) > 0 {
+		auditRepo = auditSinks[0]
+	}
 	return &accountService{
 		db:           db,
 		accountRepo:  accountRepo,
@@ -40,6 +46,7 @@ func NewAccountService(
 		productRepo:  productRepo,
 		branchRepo:   branchRepo,
 		numbering:    numbering,
+		auditRepo:    auditRepo,
 	}
 }
 
@@ -164,6 +171,15 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 		if isUniqueViolation(err) {
 			return nil, fmt.Errorf("nomor rekening sudah terpakai, silakan coba lagi")
 		}
+		return nil, err
+	}
+
+	// Audit hanya memuat data non-pribadi rekening; nama/NIK nasabah tidak dicatat.
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "OPEN_ACCOUNT", "account", account.ID.String(), map[string]any{
+		"account_number": account.AccountNumber,
+		"product":        product.Code,
+		"branch":         branch.Code,
+	}); err != nil {
 		return nil, err
 	}
 
