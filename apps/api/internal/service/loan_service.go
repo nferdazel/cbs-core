@@ -373,6 +373,10 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	loan.MonthlyInstallment = monthlyInstallment
 	loan.Schedules = schedules
 
+	if err := s.loanRepo.UpdateRestructure(ctx, loan, schedules); err != nil {
+		return nil, fmt.Errorf("failed to persist loan restructuring: %w", err)
+	}
+
 	return loan, nil
 }
 

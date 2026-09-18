@@ -60,6 +60,11 @@ func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uui
 	return nil
 }
 
+func (s *stubLoanRepo) UpdateRestructure(ctx context.Context, loan *domain.Loan, schedules []domain.LoanSchedule) error {
+	s.loan = loan
+	return nil
+}
+
 func TestRestructureLoan_OJKRules(t *testing.T) {
 	loanID := uuid.New()
 	loan := &domain.Loan{

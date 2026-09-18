@@ -265,6 +265,7 @@ type LoanRepository interface {
 	MarkDisbursed(ctx context.Context, id uuid.UUID) error
 	GetSchedules(ctx context.Context, loanID uuid.UUID) ([]LoanSchedule, error)
 	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status InstallmentStatus) error
+	UpdateRestructure(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
 }
 
 type RestructureLoanInput struct {

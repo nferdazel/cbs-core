@@ -18,16 +18,26 @@ func NewLoanRepository(db *sql.DB) *LoanRepository {
 	return &LoanRepository{db: db}
 }
 
+// loanColumns adalah daftar kolom kanonik untuk scanLoan, dipakai oleh semua query SELECT.
+const loanColumns = `id, loan_number, customer_id, disbursement_account_id, loan_type, status,
+	principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
+	monthly_installment, ao_id, approved_by, approved_at, disbursed_at,
+	collectibility, dpd, accrual_status, required_ppap,
+	is_restructured, restructured_count, restructured_at, restructuring_reason,
+	created_at, updated_at`
+
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
 	var aoID, approvedBy sql.NullString
-	var approvedAt, disbursedAt sql.NullTime
+	var approvedAt, disbursedAt, restructuredAt sql.NullTime
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.DisbursementAccountID,
 		&l.Type, &l.Status, &l.PrincipalAmount, &l.InterestRateAnnual,
 		&l.MarginAmount, &l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment,
 		&aoID, &approvedBy, &approvedAt, &disbursedAt,
+		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
+		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &l.RestructuringReason,
 		&l.CreatedAt, &l.UpdatedAt,
 	)
 	if err != nil {
@@ -47,6 +57,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	if disbursedAt.Valid {
 		l.DisbursedAt = &disbursedAt.Time
 	}
+	if restructuredAt.Valid {
+		l.RestructuredAt = &restructuredAt.Time
+	}
 	return &l, nil
 }
 
@@ -60,13 +73,17 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 	q := `INSERT INTO loans
 		(id, loan_number, customer_id, disbursement_account_id, loan_type, status,
 		 principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-		 monthly_installment, ao_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`
+		 monthly_installment, ao_id,
+		 collectibility, dpd, accrual_status, required_ppap,
+		 is_restructured, restructured_count, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`
 
 	_, err = tx.ExecContext(ctx, q,
 		l.ID, l.LoanNumber, l.CustomerID, l.DisbursementAccountID, l.Type, l.Status,
 		l.PrincipalAmount, l.InterestRateAnnual, l.MarginAmount, l.TotalPayable, l.TermMonths,
-		l.MonthlyInstallment, l.AOID, l.CreatedAt, l.UpdatedAt,
+		l.MonthlyInstallment, l.AOID,
+		l.Collectibility, l.DPD, l.AccrualStatus, l.RequiredPPAP,
+		l.IsRestructured, l.RestructuredCount, l.CreatedAt, l.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -91,10 +108,7 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 }
 
 func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loan, error) {
-	q := `SELECT id, loan_number, customer_id, disbursement_account_id, loan_type, status,
-		principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-		monthly_installment, ao_id, approved_by, approved_at, disbursed_at,
-		created_at, updated_at
+	q := `SELECT ` + loanColumns + `
 		FROM loans WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	l, err := scanLoan(row)
@@ -113,10 +127,7 @@ func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loa
 }
 
 func (r *LoanRepository) GetByNumber(ctx context.Context, loanNumber string) (*domain.Loan, error) {
-	q := `SELECT id, loan_number, customer_id, disbursement_account_id, loan_type, status,
-		principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-		monthly_installment, ao_id, approved_by, approved_at, disbursed_at,
-		created_at, updated_at
+	q := `SELECT ` + loanColumns + `
 		FROM loans WHERE loan_number = $1`
 	row := r.db.QueryRowContext(ctx, q, loanNumber)
 	l, err := scanLoan(row)
@@ -132,10 +143,7 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int) ([]domain.
 		return nil, 0, err
 	}
 
-	q := `SELECT id, loan_number, customer_id, disbursement_account_id, loan_type, status,
-		principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-		monthly_installment, ao_id, approved_by, approved_at, disbursed_at,
-		created_at, updated_at
+	q := `SELECT ` + loanColumns + `
 		FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 
 	rows, err := r.db.QueryContext(ctx, q, limit, offset)
@@ -204,6 +212,52 @@ func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID u
 		WHERE id = $4`
 	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidInterest, status, scheduleID)
 	return err
+}
+
+// UpdateRestructure menyimpan hasil restrukturisasi loan beserta jadwal angsuran baru
+// dalam satu transaksi: update kolom OJK + parameter dan replace seluruh schedule lama.
+func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, schedules []domain.LoanSchedule) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	q := `UPDATE loans SET
+		term_months=$1, interest_rate_annual=$2, margin_amount=$3, total_payable=$4, monthly_installment=$5,
+		collectibility=$6, accrual_status=$7, required_ppap=$8,
+		is_restructured=$9, restructured_count=$10, restructured_at=$11, restructuring_reason=$12,
+		updated_at=NOW()
+		WHERE id=$13`
+
+	_, err = tx.ExecContext(ctx, q,
+		l.TermMonths, l.InterestRateAnnual, l.MarginAmount, l.TotalPayable, l.MonthlyInstallment,
+		l.Collectibility, l.AccrualStatus, l.RequiredPPAP,
+		l.IsRestructured, l.RestructuredCount, l.RestructuredAt, l.RestructuringReason,
+		l.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM loan_schedules WHERE loan_id = $1`, l.ID); err != nil {
+		return err
+	}
+
+	sq := `INSERT INTO loan_schedules
+		(id, loan_id, installment_no, due_date, principal_amount, interest_amount,
+		 total_installment, status, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+	for _, s := range schedules {
+		if _, err := tx.ExecContext(ctx, sq,
+			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.InterestAmount,
+			s.TotalInstallment, s.Status, s.CreatedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 var _ domain.LoanRepository = (*LoanRepository)(nil)
