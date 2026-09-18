@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { JournalLine } from "@cbs/shared-types";
-import { ApiError, request } from "@/lib/api";
+import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -31,10 +31,12 @@ export default function TransaksiPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
 
   const load = useCallback(async (accNumber: string, targetPage: number) => {
     setLoading(true);
     setError(null);
+    setForbidden(false);
     try {
       const response = await request<JournalLine[]>(
         `/accounts/${encodeURIComponent(accNumber)}/statements?page=${targetPage}&page_size=${PAGE_SIZE}`
@@ -42,6 +44,9 @@ export default function TransaksiPage() {
       setLines(response.data ?? []);
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
+      // Rekening cabang lain dibalas 403, bukan daftar mutasi kosong. Tampilkan
+      // sebabnya agar tidak disalahartikan sebagai "tidak ada transaksi".
+      setForbidden(isCrossBranchError(err));
       setError(err instanceof ApiError ? err.message : "Gagal memuat mutasi rekening.");
       setLines([]);
     } finally {
@@ -121,7 +126,14 @@ export default function TransaksiPage() {
       </Card>
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat mutasi" description={error} />
+        <ErrorState
+          title={
+            forbidden
+              ? "Akses lintas cabang ditolak"
+              : "Gagal memuat mutasi"
+          }
+          description={error}
+        />
       ) : account === null ? (
         <EmptyState
           title="Belum ada rekening dipilih"

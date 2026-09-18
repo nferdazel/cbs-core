@@ -3,6 +3,10 @@
 import { useState } from "react";
 import type { JournalEntry, JournalLine } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
+import {
+  isPendingApproval,
+  type PendingApprovalResult,
+} from "@/lib/operations-types";
 import { formatDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -46,6 +50,8 @@ export default function TellerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<JournalEntry | null>(null);
+  const [pendingApproval, setPendingApproval] =
+    useState<PendingApprovalResult | null>(null);
 
   const validate = (): string | null => {
     if (amount <= 0) return "Nominal harus lebih besar dari nol.";
@@ -73,6 +79,7 @@ export default function TellerPage() {
   const submit = async () => {
     setSubmitting(true);
     setFormError(null);
+    setPendingApproval(null);
     try {
       const idempotencyKey = newIdempotencyKey();
       const payload =
@@ -93,12 +100,23 @@ export default function TellerPage() {
               idempotency_key: idempotencyKey,
             };
 
-      const response = await request<JournalEntry>(trxPath(type), {
-        method: "POST",
-        body: payload,
-        idempotencyKey,
-      });
-      setResult(unwrap(response));
+      const response = await request<JournalEntry | PendingApprovalResult>(
+        trxPath(type),
+        {
+          method: "POST",
+          body: payload,
+          idempotencyKey,
+        }
+      );
+      // Transaksi di atas ambang limit dibalas 202: masuk antrean maker-checker dan
+      // BELUM diposting, sehingga tidak boleh ditampilkan sebagai bukti posting.
+      const data = unwrap(response);
+      if (isPendingApproval(data)) {
+        setPendingApproval(data);
+        setResult(null);
+      } else {
+        setResult(data);
+      }
       setAmount(0);
       setDescription("");
       setConfirmOpen(false);
@@ -202,6 +220,36 @@ export default function TellerPage() {
         </div>
 
         <div>
+          {pendingApproval && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Menunggu Persetujuan</CardTitle>
+                <StatusBadge status={pendingApproval.status} />
+              </CardHeader>
+              <CardContent>
+                <p className="text-body text-ink-600">
+                  Transaksi melewati ambang limit dan belum diposting. Pejabat
+                  berwenang harus menyetujuinya lewat menu Persetujuan sebelum
+                  jurnal diterbitkan.
+                </p>
+                <DefinitionList
+                  columns={1}
+                  items={[
+                    {
+                      label: "ID Permintaan",
+                      value: pendingApproval.request_id,
+                      isMono: true,
+                    },
+                    {
+                      label: "Jenis Aksi",
+                      value: pendingApproval.action_type,
+                    },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           {result && (
             <Card>
               <CardHeader>

@@ -55,9 +55,14 @@ type MakerCheckerRequest struct {
 	CheckerID    *string
 	MakerNotes   string
 	CheckerNotes string
-	ReviewedAt   *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// BranchCode adalah kode cabang pengajuan. Diisi dari Actor.BranchCode saat
+	// pembuatan; dibaca kembali lewat join untuk menolak pemeriksa cabang lain.
+	// Kosong berarti cabang tidak diketahui (data pra-migrasi) dan aksesnya
+	// mengikuti semantik Actor.CanAccessBranch.
+	BranchCode string
+	ReviewedAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type CreateMakerCheckerInput struct {
@@ -71,12 +76,12 @@ type MakerCheckerRepository interface {
 	CreateTx(ctx context.Context, tx any, req *MakerCheckerRequest) error
 	GetByID(ctx context.Context, id uuid.UUID) (*MakerCheckerRequest, error)
 	UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status MakerCheckerStatus, checkerID, notes string) error
-	ListPending(ctx context.Context) ([]MakerCheckerRequest, error)
+	ListPending(ctx context.Context, actor Actor) ([]MakerCheckerRequest, error)
 }
 
 type MakerCheckerService interface {
 	CreateRequest(ctx context.Context, input CreateMakerCheckerInput, actor Actor) (*MakerCheckerRequest, error)
 	Approve(ctx context.Context, id uuid.UUID, actor Actor, notes string) error
 	Reject(ctx context.Context, id uuid.UUID, actor Actor, notes string) error
-	ListPending(ctx context.Context) ([]MakerCheckerRequest, error)
+	ListPending(ctx context.Context, actor Actor) ([]MakerCheckerRequest, error)
 }

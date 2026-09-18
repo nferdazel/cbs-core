@@ -63,7 +63,7 @@ export default function RekeningPage() {
     <>
       <PageHeader
         title="Rekening"
-        description="Direktori rekening simpanan nasabah dan akun buku besar internal."
+        description="Direktori rekening nasabah: tabungan, giro, dan kredit. Akun buku besar internal tidak ditampilkan di sini."
       />
       {error && !loading ? (
         <ErrorState title="Gagal memuat rekening" description={error} />

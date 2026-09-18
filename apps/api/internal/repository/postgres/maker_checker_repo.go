@@ -28,12 +28,15 @@ func (r *MakerCheckerRepository) CreateTx(ctx context.Context, tx any, req *doma
 	if err != nil {
 		return fmt.Errorf("maker-checker: payload tidak bisa diserialkan: %w", err)
 	}
+	// Cabang pengajuan diisi lewat subquery di INSERT yang sama agar tidak
+	// menambah round-trip. Bila BranchCode kosong, subquery menghasilkan NULL —
+	// pengajuan tanpa cabang tetap sah dan terlihat semua cabang.
 	_, err = sqlTx.ExecContext(ctx, `
 		INSERT INTO maker_checker_requests
-			(id, action_type, payload, status, maker_id, maker_notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(id, action_type, payload, status, maker_id, maker_notes, created_at, updated_at, branch_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT id FROM branches WHERE code = $9))`,
 		req.ID, req.ActionType, payload, req.Status, req.MakerID,
-		nullIfEmpty(req.MakerNotes), req.CreatedAt, req.UpdatedAt,
+		nullIfEmpty(req.MakerNotes), req.CreatedAt, req.UpdatedAt, req.BranchCode,
 	)
 	if err != nil {
 		return fmt.Errorf("maker-checker: menyimpan permintaan: %w", err)
@@ -47,13 +50,20 @@ func (r *MakerCheckerRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	var checkerID sql.NullString
 	var reviewedAt sql.NullTime
 
+	// branch_id diambil lewat join: pemeriksaan cabang di Approve/Reject
+	// bergantung padanya, dan bila kosong pemeriksaan lintas cabang akan lolos
+	// diam-diam. Baris lama tanpa cabang menghasilkan kode kosong.
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, action_type, payload, status, maker_id, checker_id,
-		       COALESCE(maker_notes, ''), COALESCE(checker_notes, ''), reviewed_at, created_at, updated_at
-		FROM maker_checker_requests WHERE id = $1`, id,
+		SELECT mcr.id, mcr.action_type, mcr.payload, mcr.status, mcr.maker_id, mcr.checker_id,
+		       COALESCE(mcr.maker_notes, ''), COALESCE(mcr.checker_notes, ''), mcr.reviewed_at, mcr.created_at, mcr.updated_at,
+		       COALESCE(b.code, '')
+		FROM maker_checker_requests mcr
+		LEFT JOIN branches b ON b.id = mcr.branch_id
+		WHERE mcr.id = $1`, id,
 	).Scan(
 		&req.ID, &req.ActionType, &payload, &req.Status, &req.MakerID, &checkerID,
 		&req.MakerNotes, &req.CheckerNotes, &reviewedAt, &req.CreatedAt, &req.UpdatedAt,
+		&req.BranchCode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrMakerCheckerNotFound
@@ -97,13 +107,29 @@ func (r *MakerCheckerRepository) UpdateStatusTx(ctx context.Context, tx any, id 
 	return nil
 }
 
-func (r *MakerCheckerRepository) ListPending(ctx context.Context) ([]domain.MakerCheckerRequest, error) {
-	rows, err := r.db.QueryContext(ctx, `
+// buildPendingListQuery menyusun query daftar pengajuan PENDING beserta klausa
+// filter cabang dan argumennya. Dipisah sebagai fungsi murni supaya penentuan
+// scope cabang dapat diuji tanpa database; SQL akhirnya sendiri tetap hanya
+// terverifikasi saat runtime. Aktor lintas cabang tidak difilter; aktor cabang
+// hanya melihat cabangnya, dan baris branch_id NULL tetap terlihat.
+func buildPendingListQuery(actor domain.Actor) (string, []any) {
+	where, whereArgs := branchReadClause("branch_id", actor)
+
+	query := `
 		SELECT id, action_type, payload, status, maker_id, checker_id,
 		       COALESCE(maker_notes, ''), COALESCE(checker_notes, ''), reviewed_at, created_at, updated_at
 		FROM maker_checker_requests
-		WHERE status = 'PENDING'
-		ORDER BY created_at ASC`)
+		WHERE status = 'PENDING'`
+	if where != "" {
+		query += " AND " + where
+	}
+	query += " ORDER BY created_at ASC"
+	return query, whereArgs
+}
+
+func (r *MakerCheckerRepository) ListPending(ctx context.Context, actor domain.Actor) ([]domain.MakerCheckerRequest, error) {
+	query, args := buildPendingListQuery(actor)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, request } from "@/lib/api";
+import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { MakerCheckerRequest } from "@/lib/operations-types";
 import { useAuth } from "@/lib/useAuth";
@@ -107,11 +107,17 @@ export default function PersetujuanPage() {
       setReloadKey((key) => key + 1);
     } catch (err) {
       if (err instanceof ApiError) {
-        setActionError(
-          err.status === 403
-            ? `Tidak dapat menyetujui (403): ${err.message}`
-            : err.message
-        );
+        // Penolakan lintas cabang sudah membawa pesan yang jelas dari backend;
+        // jangan dibungkus lagi agar tidak terkesan sekadar izin kurang.
+        if (err.status === 403 && !isCrossBranchError(err)) {
+          setActionError(
+            `Tidak dapat ${
+              target.kind === "approve" ? "menyetujui" : "menolak"
+            } (403): ${err.message}`
+          );
+        } else {
+          setActionError(err.message);
+        }
       } else {
         setActionError("Tindakan gagal diproses.");
       }

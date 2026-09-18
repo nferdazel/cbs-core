@@ -4,6 +4,38 @@
  * Dipisah dari lib/types.ts agar tidak bertabrakan dengan pekerjaan auth paralel.
  */
 
+import type { JournalEntry } from "@cbs/shared-types";
+
+/**
+ * domain.JournalEntry + branch_code. Atribusi cabang jurnal ditambahkan backend
+ * belakangan; shared-types belum memuatnya, jadi tipe turunannya ada di sini.
+ * branch_code kosong berarti jurnal sistem/batch yang bank-wide (branch_id NULL).
+ */
+export interface JournalEntryWithBranch extends JournalEntry {
+  branch_code?: string;
+}
+
+/**
+ * Respons 202 dari transaksi yang melewati ambang persetujuan: transaksi tidak
+ * diposting, melainkan masuk antrean maker-checker. Bentuknya BUKAN JournalEntry,
+ * jadi harus dibedakan sebelum ditampilkan sebagai bukti posting.
+ */
+export interface PendingApprovalResult {
+  request_id: string;
+  action_type: string;
+  status: "PENDING_APPROVAL";
+}
+
+/** Membedakan respons 202 maker-checker dari jurnal yang benar-benar diposting. */
+export function isPendingApproval(value: unknown): value is PendingApprovalResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "request_id" in value &&
+    "status" in value
+  );
+}
+
 /** domain.ProductFamily (product.go) */
 export type ProductFamily =
   | "SAVINGS"

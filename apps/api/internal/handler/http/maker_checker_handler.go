@@ -54,7 +54,14 @@ func NewMakerCheckerHandler(svc domain.MakerCheckerService) *MakerCheckerHandler
 
 // ListPending handles GET /api/v1/maker-checker/pending
 func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request) {
-	requests, err := h.svc.ListPending(r.Context())
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	requests, err := h.svc.ListPending(r.Context(), actor)
 	if err != nil {
 		InternalError(w, r, err)
 		return
@@ -124,6 +131,8 @@ func decodeNotes(r *http.Request) string {
 
 func writeMakerCheckerError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, domain.ErrCrossBranchAccess):
+		Error(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrCannotSelfApprove):
 		Error(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrMakerCheckerNotFound):

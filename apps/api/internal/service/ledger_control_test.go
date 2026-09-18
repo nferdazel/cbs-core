@@ -41,7 +41,7 @@ func (s *stubApprovals) Approve(ctx context.Context, id uuid.UUID, actor domain.
 func (s *stubApprovals) Reject(ctx context.Context, id uuid.UUID, actor domain.Actor, notes string) error {
 	return nil
 }
-func (s *stubApprovals) ListPending(ctx context.Context) ([]domain.MakerCheckerRequest, error) {
+func (s *stubApprovals) ListPending(ctx context.Context, actor domain.Actor) ([]domain.MakerCheckerRequest, error) {
 	return nil, nil
 }
 

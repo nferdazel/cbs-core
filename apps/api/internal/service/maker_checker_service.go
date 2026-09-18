@@ -65,6 +65,7 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 		Status:     domain.MakerCheckerPending,
 		MakerID:    actor.UserID.String(),
 		MakerNotes: input.Notes,
+		BranchCode: actor.BranchCode,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -96,6 +97,12 @@ func (s *makerCheckerService) Approve(ctx context.Context, id uuid.UUID, actor d
 	if err != nil {
 		return err
 	}
+	// Penegakan cabang didahulukan atas status: pemeriksa cabang lain tidak boleh
+	// mengetahui status internal pengajuan. Baris tanpa cabang (data pra-migrasi)
+	// tetap boleh diproses, mengikuti semantik CanAccessBranch.
+	if !actor.CanAccessBranch(req.BranchCode) {
+		return domain.ErrCrossBranchAccess
+	}
 	if req.Status != domain.MakerCheckerPending {
 		return domain.ErrMakerCheckerNotPending
 	}
@@ -110,6 +117,11 @@ func (s *makerCheckerService) Reject(ctx context.Context, id uuid.UUID, actor do
 	req, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	// Penolakan pun lintas cabang: pengawas cabang lain tidak boleh memutuskan
+	// pengajuan yang bukan wewenangnya.
+	if !actor.CanAccessBranch(req.BranchCode) {
+		return domain.ErrCrossBranchAccess
 	}
 	if req.Status != domain.MakerCheckerPending {
 		return domain.ErrMakerCheckerNotPending
@@ -151,6 +163,6 @@ func (s *makerCheckerService) process(ctx context.Context, req *domain.MakerChec
 	return tx.Commit()
 }
 
-func (s *makerCheckerService) ListPending(ctx context.Context) ([]domain.MakerCheckerRequest, error) {
-	return s.repo.ListPending(ctx)
+func (s *makerCheckerService) ListPending(ctx context.Context, actor domain.Actor) ([]domain.MakerCheckerRequest, error) {
+	return s.repo.ListPending(ctx, actor)
 }

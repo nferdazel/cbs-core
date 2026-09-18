@@ -68,6 +68,25 @@ function defaultErrorMessage(status: number): string {
   return "Permintaan gagal diproses.";
 }
 
+/**
+ * Pola pesan penolakan lintas cabang backend (domain.ErrCrossBranchAccess):
+ * "akses lintas cabang ditolak: data berada di cabang lain". 403 bisa juga
+ * berarti izin kurang, jadi penandaannya lewat pesan, bukan status saja.
+ */
+const CROSS_BRANCH_PATTERN = /lintas cabang/i;
+
+/**
+ * Apakah galat adalah penolakan lintas cabang. Halaman memakainya untuk
+ * menampilkan sebab sebenarnya, bukan pesan generik "gagal memuat".
+ */
+export function isCrossBranchError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status === 403 &&
+    CROSS_BRANCH_PATTERN.test(err.message)
+  );
+}
+
 // Satu refresh berjalan sekaligus: beberapa permintaan yang kena 401 bersamaan
 // tidak memicu beberapa kali POST /auth/refresh.
 let refreshInFlight: Promise<boolean> | null = null;
