@@ -391,6 +391,106 @@ func (s *savingsInterestService) resolveInterestCOAs(ctx context.Context, produc
 		s.configString(ctx, configSavingsPayableCOAConv, defaultSavingsPayableCOAConv), false
 }
 
+// PayInterestToAccounts memindahkan akrual bunga/bagi hasil yang belum dibayar ke
+// rekening nasabah: debit utang bunga, kredit rekening nasabah. Akrual disimpan
+// sebagai utang saat EOM; tanpa langkah ini bunga tidak pernah diterima nasabah.
+// Idempoten: akrual yang sudah ditandai dibayar tidak muncul lagi.
+func (s *savingsInterestService) PayInterestToAccounts(ctx context.Context, period time.Time, createdBy string) (*domain.SavingsInterestSummary, error) {
+	periodStr := period.Format("2006-01")
+
+	records, err := s.repo.ListUnpaidAccruals(ctx, periodStr)
+	if err != nil {
+		return nil, fmt.Errorf("membaca akrual yang belum dibayar: %w", err)
+	}
+
+	summary := &domain.SavingsInterestSummary{Period: periodStr}
+	for _, rec := range records {
+		result := s.payAccrual(ctx, rec, period, createdBy)
+		summary.Results = append(summary.Results, result)
+		switch result.Status {
+		case domain.BatchItemPaid:
+			summary.ProcessedAccounts++
+			summary.TotalInterest = summary.TotalInterest.Add(result.Amount)
+		case domain.BatchItemFailed:
+			summary.FailedAccounts++
+		default:
+			summary.SkippedAccounts++
+		}
+	}
+	return summary, nil
+}
+
+// payAccrual membayarkan satu akrual ke rekening nasabah dalam satu transaksi
+// bersama penandaan paid_at, sehingga jurnal dan penanda tidak pernah terpisah.
+func (s *savingsInterestService) payAccrual(
+	ctx context.Context,
+	rec domain.InterestAccrualRecord,
+	period time.Time,
+	createdBy string,
+) domain.SavingsInterestResult {
+	res := domain.SavingsInterestResult{
+		AccountNumber:  rec.AccountNumber,
+		Book:           rec.Book,
+		ProfitScheme:   rec.ProfitScheme,
+		AverageBalance: rec.AverageBalance,
+		Amount:         rec.Amount,
+		ExpenseCOACode: rec.ExpenseCOACode,
+		PayableCOACode: rec.PayableCOACode,
+		Status:         domain.BatchItemFailed,
+	}
+
+	if !rec.Amount.IsPositive() {
+		res.Status = domain.BatchItemSkipped
+		res.Message = "nominal akrual nol"
+		return res
+	}
+
+	// Bunga dibayakan pada akhir bulan periode, sama dengan biaya administrasi.
+	entryDate := time.Date(period.Year(), period.Month()+1, 0, 0, 0, 0, 0, time.UTC)
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		res.Message = err.Error()
+		return res
+	}
+	defer tx.Rollback()
+
+	payableAcc, err := s.resolver.ResolveGLAccount(ctx, tx, rec.PayableCOACode)
+	if err != nil {
+		res.Message = fmt.Sprintf("akun utang bunga: %v", err)
+		return res
+	}
+
+	entry, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: domain.TxTypeInterestAccrual,
+		Description:     fmt.Sprintf("Pembayaran bunga tabungan %s periode %s", rec.AccountNumber, rec.Period),
+		IdempotencyKey:  fmt.Sprintf("SAV-INT-PAY-%s-%s", rec.AccountNumber, rec.Period),
+		CreatedBy:       createdBy,
+		EntryDate:       entryDate,
+		Lines: []domain.PostingLine{
+			{AccountNumber: payableAcc, Direction: domain.DirectionDebit, Amount: rec.Amount, Description: "Pelunasan utang bunga tabungan"},
+			{AccountNumber: rec.AccountNumber, Direction: domain.DirectionCredit, Amount: rec.Amount, Description: "Bunga tabungan"},
+		},
+	})
+	if err != nil {
+		res.Message = fmt.Sprintf("posting pembayaran bunga: %v", err)
+		return res
+	}
+	if err := s.repo.MarkAccrualPaid(ctx, tx, rec.ID, entry.ID); err != nil {
+		res.Message = fmt.Sprintf("menandai akrual sudah dibayar: %v", err)
+		return res
+	}
+	if err := tx.Commit(); err != nil {
+		res.Message = err.Error()
+		return res
+	}
+
+	res.Status = domain.BatchItemPaid
+	res.JournalReference = entry.ReferenceNumber
+	res.Message = ""
+	return res
+}
+
 // ChargeAdminFees memotong biaya administrasi bulanan setiap rekening aktif. Biaya
 // diambil dari konfigurasi fee.admin.monthly, dengan fallback admin_fee produk.
 // Rekening bersaldo kurang dari biaya tidak dipotong agar saldo tidak negatif.

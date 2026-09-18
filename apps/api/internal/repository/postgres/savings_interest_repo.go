@@ -179,6 +179,53 @@ func (r *SavingsInterestRepository) UpdateInterestAccrualJournal(ctx context.Con
 	return err
 }
 
+// ListUnpaidAccruals mengembalikan akrual satu periode yang belum dipindahkan ke
+// rekening nasabah. book bertipe enum sehingga perlu cast ::text.
+func (r *SavingsInterestRepository) ListUnpaidAccruals(ctx context.Context, period string) ([]domain.InterestAccrualRecord, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, account_id, account_number, period, book::text, profit_scheme,
+		       amount, average_balance, expense_coa, payable_coa, journal_entry_id
+		FROM interest_accruals
+		WHERE period = $1 AND paid_at IS NULL
+		ORDER BY account_number`, period)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.InterestAccrualRecord
+	for rows.Next() {
+		var rec domain.InterestAccrualRecord
+		var journalID sql.NullString
+		if err := rows.Scan(
+			&rec.ID, &rec.AccountID, &rec.AccountNumber, &rec.Period, &rec.Book, &rec.ProfitScheme,
+			&rec.Amount, &rec.AverageBalance, &rec.ExpenseCOACode, &rec.PayableCOACode, &journalID,
+		); err != nil {
+			return nil, err
+		}
+		if journalID.Valid {
+			id, _ := uuid.Parse(journalID.String)
+			rec.JournalEntryID = &id
+		}
+		list = append(list, rec)
+	}
+	return list, rows.Err()
+}
+
+// MarkAccrualPaid menandai akrual sudah dipindahkan ke rekening nasabah. Syarat
+// paid_at IS NULL menjaga agar penandaan tidak menimpa pembayaran yang sudah ada.
+func (r *SavingsInterestRepository) MarkAccrualPaid(ctx context.Context, tx any, id uuid.UUID, journalID uuid.UUID) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		UPDATE interest_accruals
+		SET paid_at = NOW(), payment_journal_entry_id = $1
+		WHERE id = $2 AND paid_at IS NULL`, journalID, id)
+	return err
+}
+
 // InsertAdminFeeCharge menyimpan penanda pemotongan biaya administrasi bulanan.
 func (r *SavingsInterestRepository) InsertAdminFeeCharge(ctx context.Context, tx any, rec *domain.AdminFeeChargeRecord) (bool, error) {
 	sqlTx, ok := tx.(*sql.Tx)

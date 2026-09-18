@@ -123,6 +123,12 @@ func (s *batchProcessService) RunEOM(ctx context.Context, executedBy uuid.UUID) 
 		return nil, fmt.Errorf("akrual bunga tabungan: %w", err)
 	}
 
+	// Akrual disimpan sebagai utang; pembayaran memindahkannya ke rekening nasabah.
+	payment, err := s.savingsSvc.PayInterestToAccounts(ctx, period, createdBy)
+	if err != nil {
+		return nil, fmt.Errorf("pembayaran bunga tabungan: %w", err)
+	}
+
 	fees, err := s.savingsSvc.ChargeAdminFees(ctx, period, createdBy)
 	if err != nil {
 		return nil, fmt.Errorf("pemotongan biaya administrasi: %w", err)
@@ -136,9 +142,9 @@ func (s *batchProcessService) RunEOM(ctx context.Context, executedBy uuid.UUID) 
 	return &domain.EOMSummaryResult{
 		ExecutedMonth:          period.Format("2006-01"),
 		TotalAdminFeesDeducted: fees.TotalAdminFees,
-		TotalInterestPaid:      interest.TotalInterest,
+		TotalInterestPaid:      payment.TotalInterest,
 		ProcessedAccounts:      processed,
-		FailedAccounts:         interest.FailedAccounts + fees.FailedAccounts,
+		FailedAccounts:         interest.FailedAccounts + payment.FailedAccounts + fees.FailedAccounts,
 		CompletedAt:            time.Now().UTC(),
 	}, nil
 }

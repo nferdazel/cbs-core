@@ -12,6 +12,7 @@ import (
 const (
 	BatchItemAccrued = "ACCRUED"
 	BatchItemCharged = "CHARGED"
+	BatchItemPaid    = "PAID"
 	BatchItemSkipped = "SKIPPED"
 	BatchItemFailed  = "FAILED"
 )
@@ -63,6 +64,9 @@ type InterestAccrualRecord struct {
 	ExpenseCOACode string
 	PayableCOACode string
 	JournalEntryID *uuid.UUID
+	// PaidAt terisi setelah bunga dipindahkan ke rekening nasabah. Akrual yang
+	// belum dibayar tidak boleh dibayar dua kali.
+	PaidAt *time.Time
 }
 
 // AdminFeeChargeRecord adalah penanda pemotongan biaya administrasi bulanan.
@@ -178,6 +182,12 @@ type SavingsInterestRepository interface {
 
 	InsertInterestAccrual(ctx context.Context, tx any, rec *InterestAccrualRecord) (bool, error)
 	UpdateInterestAccrualJournal(ctx context.Context, tx any, accountID uuid.UUID, period string, journalID uuid.UUID) error
+	// ListUnpaidAccruals mengembalikan akrual satu periode yang belum dipindahkan
+	// ke rekening nasabah.
+	ListUnpaidAccruals(ctx context.Context, period string) ([]InterestAccrualRecord, error)
+	// MarkAccrualPaid menandai akrual sudah dibayar. Hanya berlaku bila belum
+	// pernah ditandai, sehingga pembayaran ganda tidak terjadi.
+	MarkAccrualPaid(ctx context.Context, tx any, id uuid.UUID, journalID uuid.UUID) error
 	InsertAdminFeeCharge(ctx context.Context, tx any, rec *AdminFeeChargeRecord) (bool, error)
 	UpdateAdminFeeChargeJournal(ctx context.Context, tx any, accountID uuid.UUID, period string, journalID uuid.UUID) error
 }
@@ -187,5 +197,8 @@ type SavingsInterestRepository interface {
 type SavingsInterestService interface {
 	AccrueAll(ctx context.Context, period time.Time, book COABook, createdBy string) (*SavingsInterestSummary, error)
 	AccrueAccount(ctx context.Context, accountNumber string, period time.Time, createdBy string) (*SavingsInterestResult, error)
+	// PayInterestToAccounts memindahkan akrual yang belum dibayar ke rekening
+	// nasabah: debit utang bunga, kredit rekening nasabah.
+	PayInterestToAccounts(ctx context.Context, period time.Time, createdBy string) (*SavingsInterestSummary, error)
 	ChargeAdminFees(ctx context.Context, period time.Time, createdBy string) (*AdminFeeSummary, error)
 }
