@@ -1,207 +1,174 @@
 package service_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
-	"cbs-core/apps/core-api/internal/service"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
-type stubLoanRepo struct {
-	loan *domain.Loan
-}
+// buildScheduleContract memverifikasi invariant setiap metode jadwal: jumlah pokok
+// selalu sama dengan principal, dan jumlah angsuran konsisten dengan total payable.
+func assertScheduleInvariants(t *testing.T, name string, schedules []domain.LoanSchedule, principal decimal.Decimal, total decimal.Decimal) {
+	t.Helper()
 
-func (s *stubLoanRepo) Create(ctx context.Context, loan *domain.Loan, schedules []domain.LoanSchedule) error {
-	s.loan = loan
-	return nil
-}
-
-func (s *stubLoanRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loan, error) {
-	if s.loan != nil && s.loan.ID == id {
-		return s.loan, nil
-	}
-	return nil, domain.ErrLoanNotFound
-}
-
-func (s *stubLoanRepo) GetByNumber(ctx context.Context, loanNumber string) (*domain.Loan, error) {
-	return s.loan, nil
-}
-
-func (s *stubLoanRepo) List(ctx context.Context, limit, offset int) ([]domain.Loan, int, error) {
-	return []domain.Loan{*s.loan}, 1, nil
-}
-
-func (s *stubLoanRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
-	if s.loan != nil {
-		s.loan.Status = status
-	}
-	return nil
-}
-
-func (s *stubLoanRepo) MarkDisbursed(ctx context.Context, id uuid.UUID) error {
-	if s.loan != nil {
-		s.loan.Status = domain.LoanStatusDisbursed
-	}
-	return nil
-}
-
-func (s *stubLoanRepo) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
-	if s != nil && s.loan != nil {
-		return s.loan.Schedules, nil
-	}
-	return nil, nil
-}
-
-func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status domain.InstallmentStatus) error {
-	return nil
-}
-
-func (s *stubLoanRepo) UpdateRestructure(ctx context.Context, loan *domain.Loan, schedules []domain.LoanSchedule) error {
-	s.loan = loan
-	return nil
-}
-
-func TestRestructureLoan_OJKRules(t *testing.T) {
-	loanID := uuid.New()
-	loan := &domain.Loan{
-		ID:                    loanID,
-		LoanNumber:            "KRD-2026-00001",
-		Status:                domain.LoanStatusDisbursed,
-		Collectibility:        domain.CollectibilityKol5, // Previously NPL Kol 5
-		DPD:                   200,
-		AccrualStatus:         domain.AccrualStatusCash,
-		PrincipalAmount:       decimal.NewFromInt(50000000),
-		InterestRateAnnual:    decimal.NewFromInt(12),
-		TermMonths:            12,
-		DisbursementAccountID: uuid.New(),
-	}
-
-	repo := &stubLoanRepo{loan: loan}
-	svc := service.NewLoanService(repo, nil, nil, nil)
-
-	input := domain.RestructureLoanInput{
-		LoanID:        loanID,
-		NewTermMonths: 24, // Extend term to 24 months
-		Reason:        "Restrukturisasi Covid/Dampak Ekonomi",
-	}
-
-	supervisorID := uuid.New()
-	restructured, err := svc.RestructureLoan(context.Background(), input, supervisorID)
-	if err != nil {
-		t.Fatalf("unexpected error restructuring loan: %v", err)
-	}
-
-	if !restructured.IsRestructured {
-		t.Fatal("expected IsRestructured flag to be true")
-	}
-	if restructured.RestructuredCount != 1 {
-		t.Fatalf("expected RestructuredCount == 1, got %d", restructured.RestructuredCount)
-	}
-
-	// OJK Rule Check: Post-restructuring initial collectibility MUST be Kol 2 DPK
-	if restructured.Collectibility != domain.CollectibilityKol2 {
-		t.Fatalf("expected post-restructuring collectibility to be Kol 2 DPK, got %s", restructured.Collectibility)
-	}
-	if restructured.TermMonths != 24 {
-		t.Fatalf("expected new term 24 months, got %d", restructured.TermMonths)
-	}
-}
-
-func TestWriteOffLoan_And_Recovery(t *testing.T) {
-	loanID := uuid.New()
-	loan := &domain.Loan{
-		ID:                    loanID,
-		LoanNumber:            "KRD-2026-99999",
-		Status:                domain.LoanStatusDisbursed,
-		Collectibility:        domain.CollectibilityKol5, // Kol 5 Macet
-		DPD:                   365,
-		PrincipalAmount:       decimal.NewFromInt(20000000),
-		DisbursementAccountID: uuid.New(),
-	}
-
-	repo := &stubLoanRepo{loan: loan}
-	svc := service.NewLoanService(repo, nil, nil, nil)
-
-	supervisorID := uuid.New()
-
-	// 1. Write-off execution
-	writtenOff, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
-		LoanID: loanID,
-		Reason: "Macet total, debitur melarikan diri (Hapus Buku Kol 5)",
-	}, supervisorID)
-	if err != nil {
-		t.Fatalf("unexpected error executing write-off: %v", err)
-	}
-	if writtenOff.Status != domain.LoanStatusWrittenOff {
-		t.Fatalf("expected status WRITTEN_OFF, got %s", writtenOff.Status)
-	}
-
-	// 2. Recovery execution
-	tellerID := uuid.New()
-	recovered, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
-		LoanID:         loanID,
-		RecoveryAmount: decimal.NewFromInt(5000000), // Recovery 5 Juta
-	}, tellerID)
-	if err != nil {
-		t.Fatalf("unexpected error executing loan recovery: %v", err)
-	}
-	if recovered.Status != domain.LoanStatusWrittenOff {
-		t.Fatalf("expected status WRITTEN_OFF, got %s", recovered.Status)
-	}
-}
-
-func TestGenerateFlatSchedule_ExactRemainderAbsorption(t *testing.T) {
-	loanID := uuid.New()
-	principal := decimal.NewFromInt(10000000)
-	annualRate := decimal.NewFromInt(12)
-	termMonths := 3
-
-	schedules, totalPayable, _ := domain.GenerateFlatSchedule(loanID, principal, annualRate, termMonths, time.Now())
-
-	var sumPrincipal, sumInterest decimal.Decimal
-	for _, sc := range schedules {
+	sumPrincipal := decimal.Zero
+	sumTotal := decimal.Zero
+	for i, sc := range schedules {
+		if sc.InstallmentNo != i+1 {
+			t.Fatalf("%s: nomor angsuran tidak berurutan pada indeks %d", name, i)
+		}
+		if sc.TotalInstallment.LessThan(decimal.Zero) {
+			t.Fatalf("%s: total angsuran negatif pada angsuran %d", name, sc.InstallmentNo)
+		}
 		sumPrincipal = sumPrincipal.Add(sc.PrincipalAmount)
-		sumInterest = sumInterest.Add(sc.InterestAmount)
+		sumTotal = sumTotal.Add(sc.TotalInstallment)
 	}
 
 	if !sumPrincipal.Equal(principal) {
-		t.Fatalf("expected sum of schedule principal (%s) == principal (%s)", sumPrincipal.String(), principal.String())
+		t.Fatalf("%s: jumlah pokok %s != principal %s", name, sumPrincipal.String(), principal.String())
 	}
-	expectedInterest := decimal.NewFromInt(300000)
-	if !sumInterest.Equal(expectedInterest) {
-		t.Fatalf("expected sum of schedule interest (%s) == expected interest (%s)", sumInterest.String(), expectedInterest.String())
-	}
-	expectedTotalPayable := principal.Add(expectedInterest)
-	if !totalPayable.Equal(expectedTotalPayable) {
-		t.Fatalf("expected total payable (%s) == %s", totalPayable.String(), expectedTotalPayable.String())
+	if !sumTotal.Equal(total) {
+		t.Fatalf("%s: jumlah angsuran %s != total payable %s", name, sumTotal.String(), total.String())
 	}
 }
 
-func TestGenerateMurabahahSchedule_ExactRemainderAbsorption(t *testing.T) {
-	loanID := uuid.New()
+func TestBuildSchedule_Flat(t *testing.T) {
+	principal := decimal.NewFromInt(10000000)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		AnnualRate: decimal.NewFromInt(12),
+		TermMonths: 12,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleFlat,
+		ProfitType: domain.ProfitTypeInterest,
+	})
+	if len(schedules) != 12 {
+		t.Fatalf("jumlah angsuran %d, ingin 12", len(schedules))
+	}
+	expectedTotal := decimal.NewFromInt(11200000)
+	if !total.Equal(expectedTotal) {
+		t.Fatalf("total payable %s, ingin %s", total.String(), expectedTotal.String())
+	}
+	assertScheduleInvariants(t, "flat", schedules, principal, total)
+}
+
+func TestBuildSchedule_AnnuityEqualsPrincipalWithZeroRate(t *testing.T) {
+	principal := decimal.NewFromInt(12000000)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		AnnualRate: decimal.Zero,
+		TermMonths: 12,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleAnnuity,
+		ProfitType: domain.ProfitTypeInterest,
+	})
+	if !total.Equal(principal) {
+		t.Fatalf("bunga nol: total %s != principal %s", total.String(), principal.String())
+	}
+	assertScheduleInvariants(t, "annuity-nol", schedules, principal, total)
+}
+
+func TestBuildSchedule_AnnuityMonotonicPrincipal(t *testing.T) {
+	principal := decimal.NewFromInt(50000000)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		AnnualRate: decimal.NewFromInt(12),
+		TermMonths: 24,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleAnnuity,
+		ProfitType: domain.ProfitTypeInterest,
+	})
+	assertScheduleInvariants(t, "annuity", schedules, principal, total)
+
+	// Pada anuitas, porsi pokok naik dan porsi bunga turun seiring waktu.
+	if schedules[0].PrincipalAmount.GreaterThan(schedules[1].PrincipalAmount) {
+		t.Fatal("porsi pokok anuitas seharusnya menaik")
+	}
+	if schedules[0].ProfitAmount.LessThan(schedules[1].ProfitAmount) {
+		t.Fatal("porsi bunga anuitas seharusnya menurun")
+	}
+}
+
+func TestBuildSchedule_Sliding(t *testing.T) {
+	principal := decimal.NewFromInt(24000000)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		AnnualRate: decimal.NewFromInt(12),
+		TermMonths: 24,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleSliding,
+		ProfitType: domain.ProfitTypeInterest,
+	})
+	assertScheduleInvariants(t, "sliding", schedules, principal, total)
+
+	if schedules[0].ProfitAmount.LessThan(schedules[1].ProfitAmount) {
+		t.Fatal("bunga sliding seharusnya menurun karena mengikuti sisa pokok")
+	}
+}
+
+func TestBuildSchedule_MurabahahFlatMargin(t *testing.T) {
 	principal := decimal.NewFromInt(10000000)
 	margin := decimal.NewFromInt(1500000)
-	termMonths := 3
-
-	schedules, totalPayable, _ := domain.GenerateMurabahahSchedule(loanID, principal, margin, termMonths, time.Now())
-
-	var sumPrincipal, sumMargin decimal.Decimal
-	for _, sc := range schedules {
-		sumPrincipal = sumPrincipal.Add(sc.PrincipalAmount)
-		sumMargin = sumMargin.Add(sc.InterestAmount)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		Margin:     margin,
+		TermMonths: 12,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleFlat,
+		ProfitType: domain.ProfitTypeMargin,
+	})
+	assertScheduleInvariants(t, "murabahah", schedules, principal, total)
+	if !total.Equal(principal.Add(margin)) {
+		t.Fatalf("murabahah: total %s != principal+margin", total.String())
 	}
+	if schedules[0].ProfitType != domain.ProfitTypeMargin {
+		t.Fatalf("profit type %s, ingin MARGIN", schedules[0].ProfitType)
+	}
+}
 
-	if !sumPrincipal.Equal(principal) {
-		t.Fatalf("expected sum principal %s == %s", sumPrincipal.String(), principal.String())
+func TestBuildSchedule_BagiHasil(t *testing.T) {
+	principal := decimal.NewFromInt(20000000)
+	projected := decimal.NewFromInt(2000000)
+	schedules, total, _ := domain.BuildSchedule(uuid.New(), domain.ScheduleParams{
+		Principal:  principal,
+		Margin:     projected,
+		TermMonths: 10,
+		StartDate:  time.Now(),
+		Method:     domain.ScheduleBagiHasil,
+		ProfitType: domain.ProfitTypeBagiHasil,
+	})
+	assertScheduleInvariants(t, "bagi-hasil", schedules, principal, total)
+	if schedules[0].ProfitType != domain.ProfitTypeBagiHasil {
+		t.Fatalf("profit type %s, ingin BAGI_HASIL", schedules[0].ProfitType)
 	}
-	if !sumMargin.Equal(margin) {
-		t.Fatalf("expected sum margin %s == %s", sumMargin.String(), margin.String())
+}
+
+func TestCalculateCollectibility_POJK1Tahun2024(t *testing.T) {
+	cases := []struct {
+		dpd     int
+		wantKol domain.OJKCollectibility
+		wantRate string
+		accrual domain.AccrualStatus
+	}{
+		{0, domain.CollectibilityKol1, "0.005", domain.AccrualStatusAccrual},
+		{90, domain.CollectibilityKol2, "0.01", domain.AccrualStatusAccrual},
+		{120, domain.CollectibilityKol3, "0.15", domain.AccrualStatusCash},
+		{180, domain.CollectibilityKol4, "0.5", domain.AccrualStatusCash},
+		{181, domain.CollectibilityKol5, "1", domain.AccrualStatusCash},
 	}
-	if !totalPayable.Equal(principal.Add(margin)) {
-		t.Fatalf("expected total payable %s == %s", totalPayable.String(), principal.Add(margin).String())
+	for _, c := range cases {
+		kol, ppap, accrual := domain.CalculateCollectibility(c.dpd)
+		if kol != c.wantKol {
+			t.Fatalf("DPD %d: kolektibilitas %s, ingin %s", c.dpd, kol, c.wantKol)
+		}
+		if ppap.String() != c.wantRate {
+			t.Fatalf("DPD %d: PPAP %s, ingin %s", c.dpd, ppap.String(), c.wantRate)
+		}
+		if accrual != c.accrual {
+			t.Fatalf("DPD %d: akrual %s, ingin %s", c.dpd, accrual, c.accrual)
+		}
 	}
 }

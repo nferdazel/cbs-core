@@ -18,27 +18,29 @@ func NewLoanRepository(db *sql.DB) *LoanRepository {
 	return &LoanRepository{db: db}
 }
 
-// loanColumns adalah daftar kolom kanonik untuk scanLoan, dipakai oleh semua query SELECT.
-const loanColumns = `id, loan_number, customer_id, disbursement_account_id, loan_type, status,
-	principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-	monthly_installment, ao_id, approved_by, approved_at, disbursed_at,
+const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, status,
+	principal_amount, acquisition_cost, deferred_margin, interest_rate_annual, margin_amount, profit_sharing_ratio,
+	total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
 	collectibility, dpd, accrual_status, required_ppap,
 	is_restructured, restructured_count, restructured_at, restructuring_reason,
+	akad_number, akad_date, purpose,
+	ao_id, approved_by, approved_at, disbursed_at,
 	created_at, updated_at`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
 	var aoID, approvedBy sql.NullString
-	var approvedAt, disbursedAt, restructuredAt sql.NullTime
-	var restructuringReason sql.NullString
+	var approvedAt, disbursedAt, restructuredAt, akadDate sql.NullTime
+	var restructuringReason, akadNumber, purpose sql.NullString
 
 	err := row.Scan(
-		&l.ID, &l.LoanNumber, &l.CustomerID, &l.DisbursementAccountID,
-		&l.Type, &l.Status, &l.PrincipalAmount, &l.InterestRateAnnual,
-		&l.MarginAmount, &l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment,
-		&aoID, &approvedBy, &approvedAt, &disbursedAt,
+		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.Status,
+		&l.PrincipalAmount, &l.AcquisitionCost, &l.DeferredMargin, &l.InterestRateAnnual, &l.MarginAmount, &l.ProfitSharingRatio,
+		&l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment, &l.OutstandingPrincipal, &l.PenaltyAccrued,
 		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
 		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &restructuringReason,
+		&akadNumber, &akadDate, &purpose,
+		&aoID, &approvedBy, &approvedAt, &disbursedAt,
 		&l.CreatedAt, &l.UpdatedAt,
 	)
 	if err != nil {
@@ -64,6 +66,15 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	if restructuringReason.Valid {
 		l.RestructuringReason = restructuringReason.String
 	}
+	if akadNumber.Valid {
+		l.AkadNumber = akadNumber.String
+	}
+	if akadDate.Valid {
+		l.AkadDate = &akadDate.Time
+	}
+	if purpose.Valid {
+		l.Purpose = purpose.String
+	}
 	return &l, nil
 }
 
@@ -75,35 +86,33 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 	defer tx.Rollback()
 
 	q := `INSERT INTO loans
-		(id, loan_number, customer_id, disbursement_account_id, loan_type, status,
-		 principal_amount, interest_rate_annual, margin_amount, total_payable, term_months,
-		 monthly_installment, ao_id,
+		(id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, status,
+		 principal_amount, acquisition_cost, deferred_margin, interest_rate_annual, margin_amount, profit_sharing_ratio,
+		 total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
 		 collectibility, dpd, accrual_status, required_ppap,
-		 is_restructured, restructured_count, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`
+		 akad_number, akad_date, purpose, ao_id, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`
 
 	_, err = tx.ExecContext(ctx, q,
-		l.ID, l.LoanNumber, l.CustomerID, l.DisbursementAccountID, l.Type, l.Status,
-		l.PrincipalAmount, l.InterestRateAnnual, l.MarginAmount, l.TotalPayable, l.TermMonths,
-		l.MonthlyInstallment, l.AOID,
+		l.ID, l.LoanNumber, l.CustomerID, l.ProductID, l.BranchID, l.DisbursementAccountID, l.Status,
+		l.PrincipalAmount, l.AcquisitionCost, l.DeferredMargin, l.InterestRateAnnual, l.MarginAmount, l.ProfitSharingRatio,
+		l.TotalPayable, l.TermMonths, l.MonthlyInstallment, l.OutstandingPrincipal, l.PenaltyAccrued,
 		l.Collectibility, l.DPD, l.AccrualStatus, l.RequiredPPAP,
-		l.IsRestructured, l.RestructuredCount, l.CreatedAt, l.UpdatedAt,
+		l.AkadNumber, l.AkadDate, l.Purpose, l.AOID, l.CreatedAt, l.UpdatedAt,
 	)
 	if err != nil {
 		return err
 	}
 
 	sq := `INSERT INTO loan_schedules
-		(id, loan_id, installment_no, due_date, principal_amount, interest_amount,
-		 total_installment, status, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
-
+		(id, loan_id, installment_no, due_date, principal_amount, profit_amount, total_installment,
+		 paid_principal, paid_profit, profit_type, outstanding_principal, status, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
 	for _, s := range schedules {
-		_, err := tx.ExecContext(ctx, sq,
-			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.InterestAmount,
-			s.TotalInstallment, s.Status, s.CreatedAt,
-		)
-		if err != nil {
+		if _, err := tx.ExecContext(ctx, sq,
+			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.ProfitAmount, s.TotalInstallment,
+			s.PaidPrincipal, s.PaidProfit, s.ProfitType, s.OutstandingPrincipal, s.Status, s.CreatedAt,
+		); err != nil {
 			return err
 		}
 	}
@@ -112,9 +121,7 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 }
 
 func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loan, error) {
-	q := `SELECT ` + loanColumns + `
-		FROM loans WHERE id = $1`
-	row := r.db.QueryRowContext(ctx, q, id)
+	row := r.db.QueryRowContext(ctx, `SELECT `+loanColumns+` FROM loans WHERE id = $1`, id)
 	l, err := scanLoan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrLoanNotFound
@@ -131,9 +138,7 @@ func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loa
 }
 
 func (r *LoanRepository) GetByNumber(ctx context.Context, loanNumber string) (*domain.Loan, error) {
-	q := `SELECT ` + loanColumns + `
-		FROM loans WHERE loan_number = $1`
-	row := r.db.QueryRowContext(ctx, q, loanNumber)
+	row := r.db.QueryRowContext(ctx, `SELECT `+loanColumns+` FROM loans WHERE loan_number = $1`, loanNumber)
 	l, err := scanLoan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrLoanNotFound
@@ -147,10 +152,7 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int) ([]domain.
 		return nil, 0, err
 	}
 
-	q := `SELECT ` + loanColumns + `
-		FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-
-	rows, err := r.db.QueryContext(ctx, q, limit, offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+loanColumns+` FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -173,15 +175,15 @@ func (r *LoanRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status 
 	return err
 }
 
-func (r *LoanRepository) MarkDisbursed(ctx context.Context, id uuid.UUID) error {
-	q := `UPDATE loans SET status=$1, disbursed_at=NOW(), updated_at=NOW() WHERE id=$2`
-	_, err := r.db.ExecContext(ctx, q, domain.LoanStatusDisbursed, id)
+func (r *LoanRepository) MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error {
+	q := `UPDATE loans SET status=$1, disbursed_at=NOW(), outstanding_principal=$2, updated_at=NOW() WHERE id=$3`
+	_, err := r.db.ExecContext(ctx, q, domain.LoanStatusDisbursed, outstanding, id)
 	return err
 }
 
 func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
-	q := `SELECT id, loan_id, installment_no, due_date, principal_amount, interest_amount,
-		total_installment, paid_principal, paid_interest, status, paid_at, created_at
+	q := `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
+		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status, paid_at, created_at
 		FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
 
 	rows, err := r.db.QueryContext(ctx, q, loanID)
@@ -196,8 +198,8 @@ func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]
 		var paidAt sql.NullTime
 		if err := rows.Scan(
 			&s.ID, &s.LoanID, &s.InstallmentNo, &s.DueDate, &s.PrincipalAmount,
-			&s.InterestAmount, &s.TotalInstallment, &s.PaidPrincipal, &s.PaidInterest,
-			&s.Status, &paidAt, &s.CreatedAt,
+			&s.ProfitAmount, &s.TotalInstallment, &s.PaidPrincipal, &s.PaidProfit,
+			&s.ProfitType, &s.OutstandingPrincipal, &s.Status, &paidAt, &s.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -209,17 +211,17 @@ func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]
 	return list, nil
 }
 
-func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidInterest decimal.Decimal, status domain.InstallmentStatus) error {
+func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit decimal.Decimal, status domain.InstallmentStatus) error {
 	q := `UPDATE loan_schedules
-		SET paid_principal = paid_principal + $1, paid_interest = paid_interest + $2,
+		SET paid_principal = paid_principal + $1, paid_profit = paid_profit + $2,
 		    status = $3, paid_at = NOW()
 		WHERE id = $4`
-	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidInterest, status, scheduleID)
+	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidProfit, status, scheduleID)
 	return err
 }
 
 // UpdateRestructure menyimpan hasil restrukturisasi loan beserta jadwal angsuran baru
-// dalam satu transaksi: update kolom OJK + parameter dan replace seluruh schedule lama.
+// dalam satu transaksi: update parameter dan replace seluruh schedule lama.
 func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, schedules []domain.LoanSchedule) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -249,19 +251,31 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 	}
 
 	sq := `INSERT INTO loan_schedules
-		(id, loan_id, installment_no, due_date, principal_amount, interest_amount,
-		 total_installment, status, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+		(id, loan_id, installment_no, due_date, principal_amount, profit_amount, total_installment,
+		 paid_principal, paid_profit, profit_type, outstanding_principal, status, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
 	for _, s := range schedules {
 		if _, err := tx.ExecContext(ctx, sq,
-			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.InterestAmount,
-			s.TotalInstallment, s.Status, s.CreatedAt,
+			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.ProfitAmount, s.TotalInstallment,
+			s.PaidPrincipal, s.PaidProfit, s.ProfitType, s.OutstandingPrincipal, s.Status, s.CreatedAt,
 		); err != nil {
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID, col domain.OJKCollectibility, dpd int, accrual domain.AccrualStatus, ppap decimal.Decimal) error {
+	q := `UPDATE loans SET collectibility=$1, dpd=$2, accrual_status=$3, required_ppap=$4, updated_at=NOW() WHERE id=$5`
+	_, err := r.db.ExecContext(ctx, q, col, dpd, accrual, ppap, id)
+	return err
+}
+
+func (r *LoanRepository) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	q := `UPDATE loans SET outstanding_principal=$1, penalty_accrued=$2, updated_at=NOW() WHERE id=$3`
+	_, err := r.db.ExecContext(ctx, q, outstanding, penalty, id)
+	return err
 }
 
 var _ domain.LoanRepository = (*LoanRepository)(nil)

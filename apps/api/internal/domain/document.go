@@ -40,10 +40,12 @@ type LoanAgreementData struct {
 	BankName            string          `json:"bank_name"`
 	BranchName          string          `json:"branch_name"`
 	LoanNumber          string          `json:"loan_number"`
+	AkadNumber          string          `json:"akad_number,omitempty"`
 	CustomerName        string          `json:"customer_name"`
 	IDCardNumber        string          `json:"id_card_number"`
 	Address             string          `json:"address"`
-	LoanType            LoanType        `json:"loan_type"`
+	ProductName         string          `json:"product_name"`
+	ProfitScheme        string          `json:"profit_scheme"`
 	PrincipalAmount     decimal.Decimal `json:"principal_amount"`
 	InterestRateAnnual  decimal.Decimal `json:"interest_rate_annual"`
 	MarginAmount        decimal.Decimal `json:"margin_amount"`

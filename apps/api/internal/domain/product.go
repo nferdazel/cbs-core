@@ -2,9 +2,14 @@ package domain
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+)
+
+var (
+	ErrProductNotFound = errors.New("produk tidak ditemukan")
 )
 
 type COABook string
@@ -39,11 +44,11 @@ const (
 type ScheduleMethod string
 
 const (
-	ScheduleFlat       ScheduleMethod = "FLAT"
-	ScheduleAnnuity    ScheduleMethod = "ANNUITY"
-	ScheduleSliding    ScheduleMethod = "SLIDING"
-	ScheduleBagiHasil  ScheduleMethod = "BAGI_HASIL"
-	ScheduleNone       ScheduleMethod = "NONE"
+	ScheduleFlat      ScheduleMethod = "FLAT"
+	ScheduleAnnuity   ScheduleMethod = "ANNUITY"
+	ScheduleSliding   ScheduleMethod = "SLIDING"
+	ScheduleBagiHasil ScheduleMethod = "BAGI_HASIL"
+	ScheduleNone      ScheduleMethod = "NONE"
 )
 
 // PostingEvent adalah peristiwa bisnis yang menghasilkan jurnal. Produk memetakan
@@ -51,25 +56,25 @@ const (
 type PostingEvent string
 
 const (
-	EventAccountOpen       PostingEvent = "ACCOUNT_OPEN"
-	EventDeposit           PostingEvent = "DEPOSIT"
-	EventWithdrawal        PostingEvent = "WITHDRAWAL"
-	EventAccountClose      PostingEvent = "ACCOUNT_CLOSE"
-	EventAccountDormant    PostingEvent = "ACCOUNT_DORMANT"
-	EventInterestAccrual   PostingEvent = "INTEREST_ACCRUAL"
-	EventInterestPayment   PostingEvent = "INTEREST_PAYMENT"
-	EventTaxWithholding    PostingEvent = "TAX_WITHHOLDING"
-	EventLoanDisbursement  PostingEvent = "LOAN_DISBURSEMENT"
-	EventLoanPrincipalPay  PostingEvent = "LOAN_PRINCIPAL_PAYMENT"
-	EventLoanProfitPay     PostingEvent = "LOAN_PROFIT_PAYMENT"
-	EventLoanPenalty       PostingEvent = "LOAN_PENALTY"
-	EventLoanWriteOff      PostingEvent = "LOAN_WRITE_OFF"
-	EventLoanRecovery      PostingEvent = "LOAN_RECOVERY"
-	EventPPAPProvision     PostingEvent = "PPAP_PROVISION"
-	EventPPAPReversal      PostingEvent = "PPAP_REVERSAL"
-	EventFeeIncome         PostingEvent = "FEE_INCOME"
-	EventCashIn            PostingEvent = "CASH_IN"
-	EventCashOut           PostingEvent = "CASH_OUT"
+	EventAccountOpen      PostingEvent = "ACCOUNT_OPEN"
+	EventDeposit          PostingEvent = "DEPOSIT"
+	EventWithdrawal       PostingEvent = "WITHDRAWAL"
+	EventAccountClose     PostingEvent = "ACCOUNT_CLOSE"
+	EventAccountDormant   PostingEvent = "ACCOUNT_DORMANT"
+	EventInterestAccrual  PostingEvent = "INTEREST_ACCRUAL"
+	EventInterestPayment  PostingEvent = "INTEREST_PAYMENT"
+	EventTaxWithholding   PostingEvent = "TAX_WITHHOLDING"
+	EventLoanDisbursement PostingEvent = "LOAN_DISBURSEMENT"
+	EventLoanPrincipalPay PostingEvent = "LOAN_PRINCIPAL_PAYMENT"
+	EventLoanProfitPay    PostingEvent = "LOAN_PROFIT_PAYMENT"
+	EventLoanPenalty      PostingEvent = "LOAN_PENALTY"
+	EventLoanWriteOff     PostingEvent = "LOAN_WRITE_OFF"
+	EventLoanRecovery     PostingEvent = "LOAN_RECOVERY"
+	EventPPAPProvision    PostingEvent = "PPAP_PROVISION"
+	EventPPAPReversal     PostingEvent = "PPAP_REVERSAL"
+	EventFeeIncome        PostingEvent = "FEE_INCOME"
+	EventCashIn           PostingEvent = "CASH_IN"
+	EventCashOut          PostingEvent = "CASH_OUT"
 )
 
 // AmountSource menamai sisi transaksi yang dipakai sebagai nominal jurnal.
@@ -85,11 +90,11 @@ const (
 )
 
 type BankingProduct struct {
-	ID      uuid.UUID `json:"id"`
-	Code    string    `json:"code"`
-	Name    string    `json:"name"`
-	Family  ProductFamily `json:"family"`
-	Book    COABook        `json:"book"`
+	ID     uuid.UUID     `json:"id"`
+	Code   string        `json:"code"`
+	Name   string        `json:"name"`
+	Family ProductFamily `json:"family"`
+	Book   COABook       `json:"book"`
 
 	ProfitScheme   ProfitScheme   `json:"profit_scheme"`
 	ScheduleMethod ScheduleMethod `json:"schedule_method"`
@@ -99,11 +104,11 @@ type BankingProduct struct {
 	// ProfitSharingRatio nisbah bagi hasil pemilik dana (0-1) untuk produk syariah.
 	ProfitSharingRatio decimal.Decimal `json:"profit_sharing_ratio"`
 
-	MinAmount             decimal.Decimal `json:"min_amount"`
-	MaxAmount             decimal.Decimal `json:"max_amount"`
-	MinTermMonths         int             `json:"min_term_months"`
-	MaxTermMonths         int             `json:"max_term_months"`
-	AllowPartialPayment   bool            `json:"allow_partial_payment"`
+	MinAmount                  decimal.Decimal `json:"min_amount"`
+	MaxAmount                  decimal.Decimal `json:"max_amount"`
+	MinTermMonths              int             `json:"min_term_months"`
+	MaxTermMonths              int             `json:"max_term_months"`
+	AllowPartialPayment        bool            `json:"allow_partial_payment"`
 	EarlyWithdrawalPenaltyRate decimal.Decimal `json:"early_withdrawal_penalty_rate"`
 
 	AdminFee decimal.Decimal `json:"admin_fee"`
@@ -121,7 +126,7 @@ type JournalMappingRule struct {
 }
 
 type ProductJournalMapping struct {
-	ProductID uuid.UUID            `json:"product_id"`
+	ProductID uuid.UUID                             `json:"product_id"`
 	Rules     map[PostingEvent][]JournalMappingRule `json:"rules"`
 }
 

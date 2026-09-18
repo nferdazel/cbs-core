@@ -32,7 +32,7 @@ func (h *LoanHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loan, err := h.loanSvc.ApplyLoan(r.Context(), input, claims.UserID)
+	loan, err := h.loanSvc.ApplyLoan(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -95,7 +95,7 @@ func (h *LoanHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loan, err := h.loanSvc.ApproveLoan(r.Context(), id, claims.UserID)
+	loan, err := h.loanSvc.ApproveLoan(r.Context(), id, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -118,7 +118,7 @@ func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loan, err := h.loanSvc.RejectLoan(r.Context(), id, claims.UserID)
+	loan, err := h.loanSvc.RejectLoan(r.Context(), id, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -141,7 +141,7 @@ func (h *LoanHandler) Disburse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loan, err := h.loanSvc.DisburseLoan(r.Context(), id, claims.UserID)
+	loan, err := h.loanSvc.DisburseLoan(r.Context(), id, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -177,7 +177,7 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 		InstallmentNo: body.InstallmentNo,
 	}
 
-	schedule, err := h.loanSvc.PayInstallment(r.Context(), input, claims.UserID)
+	schedule, err := h.loanSvc.PayInstallment(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -207,7 +207,7 @@ func (h *LoanHandler) Restructure(w http.ResponseWriter, r *http.Request) {
 	}
 	input.LoanID = id
 
-	loan, err := h.loanSvc.RestructureLoan(r.Context(), input, claims.UserID)
+	loan, err := h.loanSvc.RestructureLoan(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -240,7 +240,7 @@ func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 		Reason: body.Reason,
 	}
 
-	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.UserID)
+	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -270,7 +270,7 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 	}
 	input.LoanID = id
 
-	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.UserID)
+	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return

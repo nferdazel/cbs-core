@@ -215,6 +215,19 @@ type JWTClaims struct {
 	SessionID  uuid.UUID `json:"sid"`
 }
 
+// ToActor membangun identitas pelaku dari claims. IP address diisi terpisah oleh
+// handler dari koneksi, bukan dari token.
+func (c *JWTClaims) ToActor(ip string) Actor {
+	return Actor{
+		UserID:     c.UserID,
+		Username:   c.Username,
+		Role:       c.Role,
+		BranchCode: c.BranchCode,
+		SessionID:  c.SessionID,
+		IPAddress:  ip,
+	}
+}
+
 // ContextKey for storing claims in request context
 type contextKey string
 

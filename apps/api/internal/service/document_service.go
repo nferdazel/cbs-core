@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -156,34 +157,17 @@ func (s *documentService) GenerateWithdrawalSlipHTML(ctx context.Context, refNo 
 }
 
 func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID uuid.UUID) (string, error) {
-	var loan *domain.Loan
-	var err error
-	if s.loanRepo != nil {
-		loan, err = s.loanRepo.GetByID(ctx, loanID)
+	if s.loanRepo == nil {
+		return "", errors.New("repositori kredit tidak tersedia")
 	}
-	if err != nil || loan == nil {
-		// Mock loan agreement structure for preview
-		now := time.Now().UTC()
-		loan = &domain.Loan{
-			ID:                 loanID,
-			LoanNumber:         "KRD-2026-00088",
-			Type:               domain.LoanTypeFlat,
-			PrincipalAmount:    decimal.NewFromInt(50000000),
-			InterestRateAnnual: decimal.NewFromInt(12),
-			TermMonths:         12,
-			TotalPayable:       decimal.NewFromInt(56000000),
-			MonthlyInstallment: decimal.NewFromInt(4666667),
-			Status:             domain.LoanStatusApproved,
-			CreatedAt:          now,
-		}
+	loan, err := s.loanRepo.GetByID(ctx, loanID)
+	if err != nil {
+		return "", err
 	}
 
-	var schedules []domain.LoanSchedule
-	if s.loanRepo != nil {
-		schedules, _ = s.loanRepo.GetSchedules(ctx, loan.ID)
-	}
-	if len(schedules) == 0 {
-		schedules, _, _ = domain.GenerateFlatSchedule(loan.ID, loan.PrincipalAmount, loan.InterestRateAnnual, loan.TermMonths, time.Now().UTC())
+	schedules, err := s.loanRepo.GetSchedules(ctx, loan.ID)
+	if err != nil {
+		return "", err
 	}
 
 	var tableRows strings.Builder
@@ -194,7 +178,7 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
             <td>Rp %s</td>
             <td>Rp %s</td>
             <td><strong>Rp %s</strong></td>
-        </tr>`, sc.InstallmentNo, sc.DueDate.Format("02/01/2006"), sc.PrincipalAmount.StringFixed(2), sc.InterestAmount.StringFixed(2), sc.TotalInstallment.StringFixed(2)))
+        </tr>`, sc.InstallmentNo, sc.DueDate.Format("02/01/2006"), sc.PrincipalAmount.StringFixed(2), sc.ProfitAmount.StringFixed(2), sc.TotalInstallment.StringFixed(2)))
 	}
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
@@ -259,7 +243,7 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
         <div class="sig-box"><div class="sig-space"></div>____________________<br><strong>BANK / SUPERVISOR OTORISASI</strong></div>
     </div>
 </body>
-</html>`, loan.LoanNumber, loan.LoanNumber, loan.CreatedAt.Format("02 January 2006"), loan.Type, loan.PrincipalAmount.StringFixed(2), loan.InterestRateAnnual.StringFixed(2), loan.TermMonths, loan.MonthlyInstallment.StringFixed(2), loan.TotalPayable.StringFixed(2), tableRows.String())
+</html>`, loan.LoanNumber, loan.LoanNumber, loan.CreatedAt.Format("02 January 2006"), loan.ProfitSchemeLabel(), loan.PrincipalAmount.StringFixed(2), loan.InterestRateAnnual.StringFixed(2), loan.TermMonths, loan.MonthlyInstallment.StringFixed(2), loan.TotalPayable.StringFixed(2), tableRows.String())
 
 	return html, nil
 }

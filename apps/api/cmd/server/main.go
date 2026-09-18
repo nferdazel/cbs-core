@@ -38,23 +38,28 @@ func main() {
 	customerRepo := postgres.NewCustomerRepository(db)
 	accountRepo := postgres.NewAccountRepository(db)
 	ledgerRepo := postgres.NewLedgerRepository(db)
+	productRepo := postgres.NewProductRepository(db)
 	staffRepo := postgres.NewStaffRepository(db)
 	sessionRepo := postgres.NewSessionRepository(db)
 	configRepo := postgres.NewSystemConfigRepository(db)
 	loanRepo := postgres.NewLoanRepository(db)
 	reportRepo := postgres.NewReportRepository(db)
 	dateRepo := postgres.NewBusinessDateRepository(db)
+	referenceGen := postgres.NewReferenceGenerator(db)
 
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
 
-	// 3. Services
+	// 3. Core services
+	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
+	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
+
 	customerSvc := service.NewCustomerService(customerRepo)
 	accountSvc := service.NewAccountService(accountRepo, customerRepo)
 	ledgerSvc := service.NewLedgerService(ledgerRepo, accountRepo, db)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo)
-	loanSvc := service.NewLoanService(loanRepo, accountRepo, customerRepo, ledgerSvc)
+	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)

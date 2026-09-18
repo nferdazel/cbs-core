@@ -29,12 +29,7 @@ func (h *CollectionHandler) ProcessMobileCollection(w http.ResponseWriter, r *ht
 		return
 	}
 
-	input.CollectorID = claims.UserID
-	if input.IdempotencyKey == "" {
-		input.IdempotencyKey = "COLLECT-" + claims.UserID.String() + "-" + r.Header.Get("X-Request-ID")
-	}
-
-	result, err := h.collectionSvc.ProcessMobileCollection(r.Context(), input)
+	result, err := h.collectionSvc.ProcessMobileCollection(r.Context(), input, claims.ToActor(r.RemoteAddr))
 	if err != nil {
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 		return

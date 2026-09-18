@@ -20,7 +20,7 @@ func NewCollectionService(ledgerSvc domain.LedgerService, loanSvc domain.LoanSer
 	}
 }
 
-func (s *collectionService) ProcessMobileCollection(ctx context.Context, input domain.MobileCollectionInput) (*domain.MobileCollectionResult, error) {
+func (s *collectionService) ProcessMobileCollection(ctx context.Context, input domain.MobileCollectionInput, actor domain.Actor) (*domain.MobileCollectionResult, error) {
 	receiptNo := fmt.Sprintf("MBL-%s-%05d", time.Now().Format("20060102"), time.Now().Nanosecond()%100000)
 	var refNo string
 
@@ -32,8 +32,8 @@ func (s *collectionService) ProcessMobileCollection(ctx context.Context, input d
 			Amount:         input.Amount,
 			Currency:       "IDR",
 			Description:    desc,
-			IdempotencyKey: input.IdempotencyKey,
-			CreatedBy:      input.CollectorID.String(),
+			IdempotencyKey: receiptNo,
+			CreatedBy:      actor.DisplayName(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to process mobile deposit: %w", err)
@@ -48,7 +48,7 @@ func (s *collectionService) ProcessMobileCollection(ctx context.Context, input d
 			LoanID:        *input.LoanID,
 			InstallmentNo: *input.InstallmentNo,
 			Amount:        input.Amount,
-		}, input.CollectorID)
+		}, actor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process mobile loan payment: %w", err)
 		}
@@ -64,7 +64,7 @@ func (s *collectionService) ProcessMobileCollection(ctx context.Context, input d
 		AccountNumber:   input.AccountNumber,
 		Amount:          input.Amount,
 		CollectedAt:     time.Now().UTC(),
-		CollectorID:     input.CollectorID,
+		CollectorID:     actor.UserID,
 		Latitude:        input.Latitude,
 		Longitude:       input.Longitude,
 		ReferenceNumber: refNo,
