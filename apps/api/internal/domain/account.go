@@ -10,7 +10,21 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-var ErrAccountNotFound = errors.New("rekening tidak ditemukan")
+var (
+	ErrAccountNotFound = errors.New("rekening tidak ditemukan")
+	// ErrAccountDormant menandai rekening pasif yang tidak boleh didebit. Nasabah
+	// harus melakukan reaktivasi di cabang sebelum dana keluar.
+	ErrAccountDormant = errors.New("rekening dormant: nasabah harus melakukan reaktivasi di cabang")
+	// ErrAccountNotDormant dipakai endpoint reaktivasi: rekening yang statusnya bukan
+	// DORMANT ditolak beserta status sebenarnya, bukan diam-diam dianggap sukses.
+	ErrAccountNotDormant = errors.New("rekening tidak berstatus dormant dan tidak dapat direaktivasi")
+)
+
+// DormantAfterMonthsFallback adalah ambang sementara agar proses tetap berjalan di
+// lingkungan yang belum di-provision. Nilai produksi WAJIB diisi operator lewat
+// system_config "account.dormant.after_months"; pemakaian fallback menghasilkan
+// peringatan pada ringkasan EOD, bukan sukses diam-diam.
+const DormantAfterMonthsFallback = 12
 
 type AccountType string
 
@@ -53,8 +67,74 @@ type Account struct {
 	Status           AccountStatus   `json:"status"`
 	Version          int             `json:"version"`
 	OpenedAt         *time.Time      `json:"opened_at,omitempty"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	// LastActivityAt adalah waktu transaksi berhasil terakhir pada rekening. Menjadi
+	// dasar penilaian dormant; nil berarti belum ada transaksi sehingga opened_at
+	// atau created_at dipakai sebagai gantinya.
+	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	// DormantAt adalah waktu rekening ditandai dormant; nil bila tidak sedang dormant.
+	DormantAt *time.Time `json:"dormant_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// AccountDebitAllowed mengembalikan error bila status rekening tidak boleh didebit.
+// Debit (penarikan, transfer keluar) hanya boleh dari rekening ACTIVE: rekening
+// dormant harus direaktivasi lebih dulu di cabang. FROZEN dan CLOSED tetap ditolak
+// dengan ErrAccountInactive, sehingga pesan keduanya tidak tertukar.
+func AccountDebitAllowed(status AccountStatus) error {
+	switch status {
+	case AccountStatusActive:
+		return nil
+	case AccountStatusDormant:
+		return ErrAccountDormant
+	default:
+		return ErrAccountInactive
+	}
+}
+
+// AccountCreditAllowed mengembalikan error bila status rekening tidak boleh dikredit.
+// Kredit (setoran, transfer masuk) diterima untuk ACTIVE maupun DORMANT: dana masuk
+// tidak boleh tertahan hanya karena rekening pasif, sementara justru dana keluarlah
+// yang perlu dilindungi. Setoran TIDAK mengaktifkan kembali rekening; reaktivasi
+// tetap harus eksplisit di cabang. FROZEN dan CLOSED tetap ditolak.
+func AccountCreditAllowed(status AccountStatus) error {
+	switch status {
+	case AccountStatusActive, AccountStatusDormant:
+		return nil
+	default:
+		return ErrAccountInactive
+	}
+}
+
+// DormantCutoff menghitung batas waktu penandaan dormant: rekening yang aktivitas
+// terakhirnya sebelum cutoff dianggap sudah pasif. afterMonths dijamin > 0 oleh
+// pemanggil (lihat dormantAfterMonths).
+func DormantCutoff(asOf time.Time, afterMonths int) time.Time {
+	return asOf.AddDate(0, -afterMonths, 0)
+}
+
+// AccountActivityBase menentukan dasar waktu aktivitas rekening untuk penilaian
+// dormant: COALESCE(last_activity_at, opened_at, created_at). Hasil kedua false
+// berarti tidak ada waktu yang bisa dipakai (rekening lama tanpa opened_at dan
+// created_at); rekening seperti itu dilewati, bukan dikarang waktunya.
+func AccountActivityBase(lastActivityAt, openedAt *time.Time, createdAt time.Time) (time.Time, bool) {
+	if lastActivityAt != nil {
+		return *lastActivityAt, true
+	}
+	if openedAt != nil {
+		return *openedAt, true
+	}
+	if !createdAt.IsZero() {
+		return createdAt, true
+	}
+	return time.Time{}, false
+}
+
+// IsDormantDue menentukan apakah rekening sudah melewati ambang dormant.
+// Perbandingan ketat (Before) membuat aktivitas tepat di ambang belum dianggap
+// dormant; batas eksklusif ini disengaja agar tidak ada penandaan lebih awal.
+func IsDormantDue(base, cutoff time.Time) bool {
+	return base.Before(cutoff)
 }
 
 // OpenAccountInput membuka rekening dari produk. COA kewajiban ditentukan produk,
@@ -77,6 +157,15 @@ type AccountRepository interface {
 	// diterapkan di query agar pagination dan total tetap benar.
 	ListAll(ctx context.Context, limit, offset int, actor Actor) ([]Account, int, error)
 	UpdateBalance(ctx context.Context, tx any, accountID uuid.UUID, balance, available decimal.Decimal, version int) error
+	// ListDormantCandidates mengembalikan rekening nasabah (SAVINGS/CHECKING) yang
+	// masih ACTIVE untuk dinilai dormannya secara bank-wide saat EOD.
+	ListDormantCandidates(ctx context.Context) ([]Account, error)
+	// MarkDormant menandai satu rekening DORMANT hanya bila masih ACTIVE, sehingga
+	// aman dijalankan ulang (idempoten). Hasil false berarti tidak ada yang diubah.
+	MarkDormant(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)
+	// Reactivate memulihkan rekening DORMANT ke ACTIVE. Hasil false berarti rekening
+	// tidak lagi DORMANT (mis. balapan dengan aksi lain).
+	Reactivate(ctx context.Context, tx any, accountID uuid.UUID, reactivatedAt time.Time) (bool, error)
 }
 
 type AccountService interface {
@@ -85,4 +174,9 @@ type AccountService interface {
 	// bukan menyamarkannya sebagai tidak ditemukan.
 	GetAccountByNumber(ctx context.Context, accountNumber string, actor Actor) (*Account, error)
 	ListAccounts(ctx context.Context, page, pageSize int, actor Actor) ([]Account, int, error)
+	// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Rekening yang bukan
+	// DORMANT ditolak ErrAccountNotDormant; cabang lain ditolak ErrCrossBranchAccess.
+	ReactivateAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
+	// MarkDormant menandai rekening pasif bank-wide. Dipanggil batch EOD, bukan HTTP.
+	MarkDormant(ctx context.Context, asOf time.Time, actor Actor) (DormantRunSummary, error)
 }

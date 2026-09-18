@@ -38,6 +38,7 @@ type batchProcessService struct {
 	aroSvc     domain.ARORunner
 	ppapSvc    domain.PPAPRunner
 	penaltySvc domain.LoanPenaltyService
+	dormantSvc domain.DormantRunner
 }
 
 func NewBatchProcessService(
@@ -52,6 +53,7 @@ func NewBatchProcessService(
 	aro domain.ARORunner,
 	ppap domain.PPAPRunner,
 	penalty domain.LoanPenaltyService,
+	dormant domain.DormantRunner,
 ) domain.BatchProcessService {
 	return &batchProcessService{
 		dateRepo:    dateRepo,
@@ -65,6 +67,7 @@ func NewBatchProcessService(
 		aroSvc:      aro,
 		ppapSvc:     ppap,
 		penaltySvc:  penalty,
+		dormantSvc:  dormant,
 	}
 }
 
@@ -119,11 +122,11 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 }
 
 // runDailyJobs menjalankan pekerjaan harian yang menyertai tutup hari: perpanjangan
-// otomatis deposito, perhitungan PPAP, dan akrual denda kredit. Setiap pekerjaan
-// terisolasi — kegagalannya hanya menghasilkan peringatan dan tidak menghentikan
-// pekerjaan berikutnya maupun tutup hari, karena tutup hari yang gagal akan
-// menghentikan seluruh operasional bank. Layanan yang belum dikonfigurasi (nil)
-// dilewati tanpa peringatan.
+// otomatis deposito, perhitungan PPAP, akrual denda kredit, dan penandaan rekening
+// dormant. Setiap pekerjaan terisolasi — kegagalannya hanya menghasilkan peringatan
+// dan tidak menghentikan pekerjaan berikutnya maupun tutup hari, karena tutup hari
+// yang gagal akan menghentikan seluruh operasional bank. Layanan yang belum
+// dikonfigurasi (nil) dilewati tanpa peringatan.
 func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
 	logger := observability.FromContext(ctx)
 
@@ -157,6 +160,20 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		// terlihat: tanpa peringatan, batch tampak sukses padahal tidak menagih apa pun.
 		if penalty.Warning != "" {
 			summary.Warnings = append(summary.Warnings, penalty.Warning)
+		}
+	}
+
+	if s.dormantSvc != nil {
+		dormant, err := s.dormantSvc.MarkDormant(ctx, businessDate, actor)
+		summary.AccountsMarkedDormant = dormant.Marked
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("penandaan rekening dormant gagal: %v", err))
+			logger.ErrorContext(ctx, "penandaan rekening dormant gagal saat EOD", "error", err)
+		}
+		// Ambang yang tidak valid bukan kegagalan teknis, tetapi tetap harus terlihat:
+		// tanpa peringatan, batch tampak memakai ambang yang disetel operator.
+		if dormant.Warning != "" {
+			summary.Warnings = append(summary.Warnings, dormant.Warning)
 		}
 	}
 }

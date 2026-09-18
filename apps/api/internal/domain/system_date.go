@@ -38,13 +38,14 @@ type EODSummaryResult struct {
 	// Pekerjaan harian berikut bersifat best-effort: kegagalannya tidak
 	// menggagalkan tutup hari, tetapi selalu tampil di Warnings agar tidak
 	// terlihat sukses padahal tidak berjalan.
-	DepositsRolledOver   int             `json:"deposits_rolled_over"`
-	PPAPProcessed        int             `json:"ppap_processed"`
-	LoanPenaltiesAccrued int             `json:"loan_penalties_accrued"`
-	LoanPenaltyAmount    decimal.Decimal `json:"loan_penalty_amount"`
-	Warnings             []string        `json:"warnings,omitempty"`
-	ExecutedBy           uuid.UUID       `json:"executed_by"`
-	CompletedAt          time.Time       `json:"completed_at"`
+	DepositsRolledOver    int             `json:"deposits_rolled_over"`
+	PPAPProcessed         int             `json:"ppap_processed"`
+	LoanPenaltiesAccrued  int             `json:"loan_penalties_accrued"`
+	LoanPenaltyAmount     decimal.Decimal `json:"loan_penalty_amount"`
+	AccountsMarkedDormant int             `json:"accounts_marked_dormant"`
+	Warnings              []string        `json:"warnings,omitempty"`
+	ExecutedBy            uuid.UUID       `json:"executed_by"`
+	CompletedAt           time.Time       `json:"completed_at"`
 }
 
 type EOMSummaryResult struct {

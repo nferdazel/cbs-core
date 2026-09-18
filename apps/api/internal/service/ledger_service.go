@@ -165,7 +165,7 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 		return nil, err
 	}
 
-	acc, err := s.loadActiveAccount(ctx, req.AccountNumber)
+	acc, err := s.loadCreditAccount(ctx, req.AccountNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 		return nil, err
 	}
 
-	acc, err := s.loadActiveAccount(ctx, req.AccountNumber)
+	acc, err := s.loadDebitAccount(ctx, req.AccountNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -257,11 +257,11 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 		return nil, fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
 	}
 
-	src, err := s.loadActiveAccount(ctx, req.SourceAccountNumber)
+	src, err := s.loadDebitAccount(ctx, req.SourceAccountNumber)
 	if err != nil {
 		return nil, err
 	}
-	dest, err := s.loadActiveAccount(ctx, req.DestinationAccountNumber)
+	dest, err := s.loadCreditAccount(ctx, req.DestinationAccountNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -310,8 +310,8 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 	if err != nil {
 		return err
 	}
-	if acc.Status != domain.AccountStatusActive {
-		return domain.ErrAccountInactive
+	if err := domain.AccountCreditAllowed(acc.Status); err != nil {
+		return err
 	}
 	cashAccount, err := s.resolveCashAccount(ctx, acc)
 	if err != nil {
@@ -337,8 +337,8 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 	if err != nil {
 		return err
 	}
-	if acc.Status != domain.AccountStatusActive {
-		return domain.ErrAccountInactive
+	if err := domain.AccountDebitAllowed(acc.Status); err != nil {
+		return err
 	}
 	if acc.AvailableBalance.LessThan(amount) {
 		return domain.ErrInsufficientFunds
@@ -374,8 +374,13 @@ func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, dest
 	if err != nil {
 		return err
 	}
-	if src.Status != domain.AccountStatusActive || dest.Status != domain.AccountStatusActive {
-		return domain.ErrAccountInactive
+	// Transfer menyentuh dua rekening: sumber wajib ACTIVE (dana keluar), tujuan
+	// boleh ACTIVE atau DORMANT (dana masuk tidak boleh tertahan).
+	if err := domain.AccountDebitAllowed(src.Status); err != nil {
+		return err
+	}
+	if err := domain.AccountCreditAllowed(dest.Status); err != nil {
+		return err
 	}
 	if src.AvailableBalance.LessThan(amount) {
 		return domain.ErrInsufficientFunds
@@ -403,14 +408,28 @@ func (s *ledgerService) validateAmount(amount decimal.Decimal) error {
 	return nil
 }
 
-// loadActiveAccount mengambil rekening dan memastikan statusnya aktif.
-func (s *ledgerService) loadActiveAccount(ctx context.Context, accountNumber string) (*domain.Account, error) {
+// loadDebitAccount mengambil rekening dan memastikan rekening boleh didebit.
+// Rekening dormant ditolak ErrAccountDormant; FROZEN/CLOSED tetap ErrAccountInactive.
+func (s *ledgerService) loadDebitAccount(ctx context.Context, accountNumber string) (*domain.Account, error) {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return nil, err
 	}
-	if acc.Status != domain.AccountStatusActive {
-		return nil, domain.ErrAccountInactive
+	if err := domain.AccountDebitAllowed(acc.Status); err != nil {
+		return nil, err
+	}
+	return acc, nil
+}
+
+// loadCreditAccount mengambil rekening dan memastikan rekening boleh dikredit.
+// Rekening ACTIVE maupun DORMANT diterima; FROZEN/CLOSED ditolak ErrAccountInactive.
+func (s *ledgerService) loadCreditAccount(ctx context.Context, accountNumber string) (*domain.Account, error) {
+	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	if err := domain.AccountCreditAllowed(acc.Status); err != nil {
+		return nil, err
 	}
 	return acc, nil
 }

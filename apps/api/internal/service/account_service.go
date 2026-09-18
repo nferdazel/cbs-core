@@ -21,6 +21,7 @@ type accountService struct {
 	productRepo  domain.ProductRepository
 	branchRepo   domain.BranchRepository
 	numbering    domain.AccountNumberGenerator
+	configSvc    domain.SystemConfigService
 	auditRepo    domain.AuditRepository
 }
 
@@ -32,6 +33,7 @@ func NewAccountService(
 	productRepo domain.ProductRepository,
 	branchRepo domain.BranchRepository,
 	numbering domain.AccountNumberGenerator,
+	configSvc domain.SystemConfigService,
 	auditSinks ...domain.AuditRepository,
 ) domain.AccountService {
 	var auditRepo domain.AuditRepository
@@ -46,6 +48,7 @@ func NewAccountService(
 		productRepo:  productRepo,
 		branchRepo:   branchRepo,
 		numbering:    numbering,
+		configSvc:    configSvc,
 		auditRepo:    auditRepo,
 	}
 }
@@ -291,4 +294,125 @@ func (s *accountService) fillCustomerNames(ctx context.Context, accounts []domai
 			set(&accounts[i], name)
 		}
 	}
+}
+
+// Kunci konfigurasi ambang dormant. Nilai produksi WAJIB diisi operator lewat
+// system_config; fallback di domain.DormantAfterMonthsFallback hanya agar sistem
+// tetap berjalan di lingkungan yang belum di-provision.
+const cfgAccountDormantAfterMonths = "account.dormant.after_months"
+
+// dormantAfterMonths membaca ambang dormant dari konfigurasi. Nilai <= 0 dianggap
+// tidak valid sehingga fallback terdokumentasi dipakai disertai peringatan, bukan
+// diam-diam melewati pekerjaan. Nilai non-numerik sudah ditangani SystemConfigService
+// (memakai fallback + log), sehingga di sini cukup menjaga batas bawah.
+func dormantAfterMonths(ctx context.Context, config domain.SystemConfigService) (int, string) {
+	months := configIntOr(ctx, config, cfgAccountDormantAfterMonths, domain.DormantAfterMonthsFallback)
+	if months <= 0 {
+		return domain.DormantAfterMonthsFallback, fmt.Sprintf(
+			"konfigurasi %s tidak valid (%d); memakai fallback %d bulan",
+			cfgAccountDormantAfterMonths, months, domain.DormantAfterMonthsFallback)
+	}
+	return months, ""
+}
+
+// MarkDormant menandai rekening nasabah yang tidak ada aktivitas dalam ambang
+// tertentu sebagai DORMANT. Pekerjaan ini bank-wide, jadi tidak ada filter cabang.
+// Penandaan idempoten: hanya rekening ACTIVE yang disentuh, dan penjalanan ulang
+// tidak mengubah apa pun. Tidak ada jurnal — dormant bukan peristiwa ekonomi.
+func (s *accountService) MarkDormant(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.DormantRunSummary, error) {
+	months, warning := dormantAfterMonths(ctx, s.configSvc)
+	summary := domain.DormantRunSummary{Warning: warning}
+
+	candidates, err := s.accountRepo.ListDormantCandidates(ctx)
+	if err != nil {
+		return summary, fmt.Errorf("mengambil kandidat rekening dormant: %w", err)
+	}
+
+	cutoff := domain.DormantCutoff(asOf, months)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return summary, err
+	}
+	defer tx.Rollback()
+
+	for _, acc := range candidates {
+		base, ok := domain.AccountActivityBase(acc.LastActivityAt, acc.OpenedAt, acc.CreatedAt)
+		if !ok {
+			// Tidak ada waktu sama sekali: dilewati, bukan dikarang agar tidak menandai
+			// rekening yang sebenarnya baru.
+			summary.Skipped++
+			continue
+		}
+		if !domain.IsDormantDue(base, cutoff) {
+			continue
+		}
+		marked, err := s.accountRepo.MarkDormant(ctx, tx, acc.ID)
+		if err != nil {
+			return summary, fmt.Errorf("menandai rekening %s dormant: %w", acc.AccountNumber, err)
+		}
+		if marked {
+			summary.Marked++
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return summary, err
+	}
+	return summary, nil
+}
+
+// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Reaktivasi adalah tindakan
+// eksplisit di cabang: setoran tidak pernah mengaktifkan rekening. Rekening yang
+// berstatus selain DORMANT (termasuk FROZEN/CLOSED) ditolak dengan pesan status
+// sebenarnya agar operator tidak salah paham, bukan diam-diam sukses.
+func (s *accountService) ReactivateAccount(ctx context.Context, accountNumber, notes string, actor domain.Actor) (*domain.Account, error) {
+	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	// Reaktivasi terikat cabang rekening; aktor cabang lain ditolak 403, sama seperti
+	// operasi rekening lain. Rekening tanpa cabang (data pra-migrasi) tetap boleh.
+	if !actor.CanAccessBranch(account.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	if account.Status != domain.AccountStatusDormant {
+		return nil, fmt.Errorf("%w: status rekening saat ini %s", domain.ErrAccountNotDormant, account.Status)
+	}
+
+	now := time.Now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	changed, err := s.accountRepo.Reactivate(ctx, tx, account.ID, now)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		// Status berubah antara pembacaan dan penulisan; operator perlu memuat ulang.
+		return nil, fmt.Errorf("%w: status rekening berubah, silakan muat ulang", domain.ErrAccountNotDormant)
+	}
+
+	// Audit mengikuti pola OpenAccount: non-pribadi, di dalam transaksi bisnis.
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "REACTIVATE_ACCOUNT", "account", account.ID.String(), map[string]any{
+		"account_number": account.AccountNumber,
+		"status_before":  string(domain.AccountStatusDormant),
+		"status_after":   string(domain.AccountStatusActive),
+		"notes":          notes,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	account.Status = domain.AccountStatusActive
+	account.DormantAt = nil
+	account.LastActivityAt = &now
+	account.UpdatedAt = now
+	return account, nil
 }

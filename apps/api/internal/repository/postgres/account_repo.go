@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -24,7 +25,8 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 const accountColumns = `a.id, a.account_number, a.customer_id, NULL,
 	a.product_id, a.branch_id, a.coa_id, coa.code, coa.book::text, coa.normal_balance,
 	a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance,
-	a.status, a.version, a.opened_at, a.created_at, a.updated_at,
+	a.status, a.version, a.opened_at, a.last_activity_at, a.dormant_at,
+	a.created_at, a.updated_at,
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = a.branch_id), '')`
 
 func (r *AccountRepository) Create(ctx context.Context, a *domain.Account) error {
@@ -136,9 +138,13 @@ func (r *AccountRepository) UpdateBalance(ctx context.Context, tx any, accountID
 		return errors.New("invalid transaction context")
 	}
 
+	// last_activity_at dicatat di UPDATE yang sama agar tidak menambah round-trip pada
+	// jalur terpanas. Hanya rekening nasabah (customer_id terisi); akun GL internal
+	// tidak dianggap punya aktivitas nasabah dan dibiarkan apa adanya.
 	query := `
 		UPDATE accounts
-		SET balance = $1, available_balance = $2, version = version + 1, updated_at = NOW()
+		SET balance = $1, available_balance = $2, version = version + 1, updated_at = NOW(),
+		    last_activity_at = CASE WHEN customer_id IS NOT NULL THEN NOW() ELSE last_activity_at END
 		WHERE id = $3 AND version = $4
 	`
 	res, err := sqlTx.ExecContext(ctx, query, balance, available, accountID, version)
@@ -153,6 +159,70 @@ func (r *AccountRepository) UpdateBalance(ctx context.Context, tx any, accountID
 		return errors.New("optimistic lock conflict: account was modified concurrently")
 	}
 	return nil
+}
+
+// ListDormantCandidates mengambil rekening nasabah yang masih ACTIVE. Cakupan
+// sengaja hanya SAVINGS/CHECKING milik nasabah: akun GL internal adalah akuntansi
+// bank dan rekening kredit bukan rekening transaksional nasabah.
+func (r *AccountRepository) ListDormantCandidates(ctx context.Context) ([]domain.Account, error) {
+	query := `SELECT ` + accountColumns + `
+		FROM accounts a
+		JOIN chart_of_accounts coa ON a.coa_id = coa.id
+		WHERE a.status = 'ACTIVE'
+			AND a.customer_id IS NOT NULL
+			AND a.account_type IN ('SAVINGS', 'CHECKING')`
+	return r.queryAccounts(ctx, query)
+}
+
+// MarkDormant menandai satu rekening dormant. Penjaga status = 'ACTIVE' membuat
+// operasi idempoten: pemanggilan ulang tidak mengubah apa pun. Tidak ada jurnal
+// karena penandaan dormant bukan peristiwa ekonomi dan tidak memindahkan uang.
+func (r *AccountRepository) MarkDormant(ctx context.Context, tx any, accountID uuid.UUID) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("invalid transaction context")
+	}
+
+	query := `
+		UPDATE accounts
+		SET status = 'DORMANT', dormant_at = NOW(), updated_at = NOW(), version = version + 1
+		WHERE id = $1 AND status = 'ACTIVE'
+	`
+	res, err := sqlTx.ExecContext(ctx, query, accountID)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
+// Reactivate memulihkan rekening dormant. Reaktivasi dihitung sebagai aktivitas
+// rekening, sehingga last_activity_at ikut diperbarui. Penjaga status = 'DORMANT'
+// membuat hasil false bila status sudah berubah (mis. balapan dengan aksi lain).
+func (r *AccountRepository) Reactivate(ctx context.Context, tx any, accountID uuid.UUID, reactivatedAt time.Time) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("invalid transaction context")
+	}
+
+	query := `
+		UPDATE accounts
+		SET status = 'ACTIVE', dormant_at = NULL, last_activity_at = $1,
+		    updated_at = NOW(), version = version + 1
+		WHERE id = $2 AND status = 'DORMANT'
+	`
+	res, err := sqlTx.ExecContext(ctx, query, reactivatedAt, accountID)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
 }
 
 func (r *AccountRepository) queryAccounts(ctx context.Context, query string, args ...any) ([]domain.Account, error) {
@@ -180,7 +250,8 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		&a.ID, &a.AccountNumber, &a.CustomerID, &customerName,
 		&a.ProductID, &a.BranchID, &a.COAID, &a.COACode, &a.COABook, &a.NormalBalance,
 		&a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance,
-		&a.Status, &a.Version, &a.OpenedAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.Status, &a.Version, &a.OpenedAt, &a.LastActivityAt, &a.DormantAt,
+		&a.CreatedAt, &a.UpdatedAt,
 		&a.BranchCode,
 	)
 	if err != nil {

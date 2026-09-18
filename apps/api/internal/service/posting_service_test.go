@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -120,5 +121,41 @@ func TestPostTxEntryDateUsesCallerValue(t *testing.T) {
 	}
 	if repo.inserted == nil || !repo.inserted.EntryDate.Equal(explicit) {
 		t.Fatalf("entry_date tersimpan bukan nilai pemanggil: %+v", repo.inserted)
+	}
+}
+
+// Penjaga status harus sadar arah: aturan dormant di mesin posting pernah hilang
+// sehingga setoran ke rekening dormant ditolak padahal service pemanggil sudah
+// mengizinkannya. Test ini mengunci aturan itu di satu-satunya pintu perubahan saldo.
+func TestStatusGuardForDirection(t *testing.T) {
+	cases := []struct {
+		name      string
+		direction domain.EntryDirection
+		status    domain.AccountStatus
+		wantErr   error
+	}{
+		{"kredit ke aktif", domain.DirectionCredit, domain.AccountStatusActive, nil},
+		{"kredit ke dormant", domain.DirectionCredit, domain.AccountStatusDormant, nil},
+		{"kredit ke frozen", domain.DirectionCredit, domain.AccountStatusFrozen, domain.ErrAccountInactive},
+		{"kredit ke closed", domain.DirectionCredit, domain.AccountStatusClosed, domain.ErrAccountInactive},
+		{"debit dari aktif", domain.DirectionDebit, domain.AccountStatusActive, nil},
+		{"debit dari dormant", domain.DirectionDebit, domain.AccountStatusDormant, domain.ErrAccountDormant},
+		{"debit dari frozen", domain.DirectionDebit, domain.AccountStatusFrozen, domain.ErrAccountInactive},
+		{"debit dari closed", domain.DirectionDebit, domain.AccountStatusClosed, domain.ErrAccountInactive},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := statusGuardForDirection(tc.direction, tc.status)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("arah %s status %s: ingin lolos, dapat %v", tc.direction, tc.status, err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("arah %s status %s: ingin %v, dapat %v", tc.direction, tc.status, tc.wantErr, err)
+			}
+		})
 	}
 }

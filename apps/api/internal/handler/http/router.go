@@ -169,6 +169,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.AccountHandler.List)
 				r.With(middleware.RequirePermission(domain.PermAccountsRead)).
 					Get("/{accountNumber}", p.AccountHandler.GetByNumber)
+				// Kewenangan membekukan (PermAccountsFreeze) sudah mencakup kewenangan
+				// memulihkan; tidak perlu permission baru untuk reaktivasi.
+				r.With(middleware.RequirePermission(domain.PermAccountsFreeze)).
+					Post("/{accountNumber}/reactivate", p.AccountHandler.Reactivate)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/{accountNumber}/statements", p.LedgerHandler.GetStatement)
 			})

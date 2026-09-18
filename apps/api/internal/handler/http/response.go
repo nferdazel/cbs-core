@@ -83,6 +83,8 @@ var businessErrors = []error{
 	domain.ErrDuplicateEmail,
 	domain.ErrAccountNotFound,
 	domain.ErrAccountInactive,
+	domain.ErrAccountDormant,
+	domain.ErrAccountNotDormant,
 	domain.ErrInsufficientFunds,
 	domain.ErrInvalidAmount,
 	domain.ErrDuplicateIdempotencyKey,

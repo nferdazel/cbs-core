@@ -38,6 +38,24 @@ func TestFailShowsBusinessError(t *testing.T) {
 	}
 }
 
+// Sentinel dormant harus dikenali sebagai aturan bisnis sehingga menjadi 422 dengan
+// pesan yang jelas, bukan 500 generik.
+func TestFailShowsDormantBusinessErrors(t *testing.T) {
+	for _, sentinel := range []error{domain.ErrAccountDormant, domain.ErrAccountNotDormant} {
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/transactions/withdraw", nil)
+
+		httpHandler.Fail(rec, r, http.StatusUnprocessableEntity, sentinel)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("%v: status = %d, mau 422", sentinel, rec.Code)
+		}
+		if got := decodeError(t, rec); got != sentinel.Error() {
+			t.Fatalf("%v: pesan = %q, mau %q", sentinel, got, sentinel.Error())
+		}
+	}
+}
+
 func TestFailShowsCleanValidationMessage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/loans", nil)

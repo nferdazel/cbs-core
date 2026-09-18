@@ -157,8 +157,8 @@ func (s *postingService) buildLines(
 			if err != nil {
 				return nil, fmt.Errorf("akun %s tidak ditemukan: %w", pl.AccountNumber, err)
 			}
-			if locked.Status != domain.AccountStatusActive {
-				return nil, fmt.Errorf("%w: akun %s", domain.ErrAccountInactive, pl.AccountNumber)
+			if err := statusGuardForDirection(pl.Direction, locked.Status); err != nil {
+				return nil, fmt.Errorf("%w: akun %s", err, pl.AccountNumber)
 			}
 			running[pl.AccountNumber] = locked
 			acc = locked
@@ -195,6 +195,20 @@ func (s *postingService) buildLines(
 
 // applyDirection menambah atau mengurangi saldo sesuai normal balance akun.
 // Akun bersaldo normal DEBIT bertambah saat didebit; akun CREDIT bertambah saat dikredit.
+// statusGuardForDirection memastikan status akun boleh menerima baris jurnal sesuai
+// arahnya. Pemeriksaan ini wajib ada di mesin posting, bukan hanya di service
+// pemanggil: mesin posting adalah satu-satunya pintu yang mengubah saldo, sehingga
+// aturan yang hanya ditegakkan di pemanggil dapat dilewati jalur lain.
+//
+// Kredit boleh masuk ke rekening dormant agar dana pensiun/upah tidak tertahan;
+// debit tetap ditolak. FROZEN dan CLOSED ditolak untuk kedua arah.
+func statusGuardForDirection(direction domain.EntryDirection, status domain.AccountStatus) error {
+	if direction == domain.DirectionDebit {
+		return domain.AccountDebitAllowed(status)
+	}
+	return domain.AccountCreditAllowed(status)
+}
+
 func applyDirection(normal domain.BalanceType, balance decimal.Decimal, dir domain.EntryDirection, amount decimal.Decimal) (decimal.Decimal, error) {
 	if normal == domain.BalanceTypeDebit {
 		if dir == domain.DirectionDebit {

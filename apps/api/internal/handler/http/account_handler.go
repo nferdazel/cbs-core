@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -76,6 +78,40 @@ func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Success(w, http.StatusOK, "account retrieved", acc)
+}
+
+// Reactivate memulihkan rekening dormant ke ACTIVE. Body bersifat opsional dan hanya
+// membawa catatan operator; identitas pelaku selalu dari JWT.
+func (h *AccountHandler) Reactivate(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	accNum := chi.URLParam(r, "accountNumber")
+	if accNum == "" {
+		Error(w, http.StatusBadRequest, "account number is required")
+		return
+	}
+
+	var body struct {
+		Notes string `json:"notes"`
+	}
+	// Body kosong bukan alasan menolak: reaktivasi tanpa catatan tetap sah.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	acc, err := h.service.ReactivateAccount(r.Context(), accNum, body.Notes, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		// Fail memetakan lintas cabang ke 403 dan sentinel bisnis lain ke 422.
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+
+	Success(w, http.StatusOK, "account reactivated successfully", acc)
 }
 
 func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {

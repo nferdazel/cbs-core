@@ -33,6 +33,22 @@ type PPAPRunner interface {
 	RunDaily(ctx context.Context, asOf time.Time, actor Actor) (PPAPRunSummary, error)
 }
 
+// DormantRunSummary merangkum satu kali penandaan rekening dormant pada tutup hari.
+// Warning diisi bila konfigurasi ambang tidak valid sehingga fallback terpakai;
+// tanpa itu pekerjaan dapat tampak berjalan padahal memakai asumsi operator.
+type DormantRunSummary struct {
+	Marked  int    `json:"marked"`
+	Skipped int    `json:"skipped"`
+	Warning string `json:"warning,omitempty"`
+}
+
+// DormantRunner menandai rekening nasabah yang tidak ada aktivitas sebagai DORMANT.
+// Mengikuti pola ARORunner/PPAPRunner: interface sempit agar batch tidak bergantung
+// pada seluruh permukaan AccountService.
+type DormantRunner interface {
+	MarkDormant(ctx context.Context, asOf time.Time, actor Actor) (DormantRunSummary, error)
+}
+
 // SystemActor membangun identitas pelaku untuk pekerjaan batch yang tidak berasal
 // dari permintaan HTTP. Username diisi id pengguna yang menjalankan batch supaya
 // jurnal dan audit tetap dapat ditelusuri ke orang yang memicunya.
