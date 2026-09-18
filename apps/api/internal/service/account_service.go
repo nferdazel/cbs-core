@@ -227,10 +227,15 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(msg, "23505") || strings.Contains(msg, "duplicate key")
 }
 
-func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber string) (*domain.Account, error) {
+func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber string, actor domain.Actor) (*domain.Account, error) {
 	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return nil, err
+	}
+	// Rekening cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Rekening tanpa cabang (data pra-migrasi) tetap boleh dibaca.
+	if !actor.CanAccessBranch(account.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	s.fillCustomerNames(ctx, []domain.Account{*account}, func(acc *domain.Account, name string) {
 		account.CustomerName = name
@@ -238,7 +243,7 @@ func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber s
 	return account, nil
 }
 
-func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int) ([]domain.Account, int, error) {
+func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Account, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -247,7 +252,7 @@ func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int) (
 	}
 	offset := (page - 1) * pageSize
 
-	accounts, total, err := s.accountRepo.ListAll(ctx, pageSize, offset)
+	accounts, total, err := s.accountRepo.ListAll(ctx, pageSize, offset, actor)
 	if err != nil {
 		return nil, 0, err
 	}

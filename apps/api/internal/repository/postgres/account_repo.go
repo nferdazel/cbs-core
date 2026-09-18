@@ -96,18 +96,27 @@ func (r *AccountRepository) ListByCustomer(ctx context.Context, customerID uuid.
 	return r.queryAccounts(ctx, query, customerID)
 }
 
-func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int) ([]domain.Account, int, error) {
+func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Account, int, error) {
+	where, whereArgs := branchReadClause("a.branch_id", actor)
+
+	countQuery := "SELECT COUNT(*) FROM accounts a"
+	if where != "" {
+		countQuery += " WHERE " + where
+	}
 	var total int
-	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM accounts").Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	query := `SELECT ` + accountColumns + `
 		FROM accounts a
-		JOIN chart_of_accounts coa ON a.coa_id = coa.id
-		ORDER BY a.created_at DESC
-		LIMIT $1 OFFSET $2`
-	list, err := r.queryAccounts(ctx, query, limit, offset)
+		JOIN chart_of_accounts coa ON a.coa_id = coa.id`
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += fmt.Sprintf(" ORDER BY a.created_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	list, err := r.queryAccounts(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

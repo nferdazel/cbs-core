@@ -57,13 +57,19 @@ func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	accNum := chi.URLParam(r, "accountNumber")
 	if accNum == "" {
 		Error(w, http.StatusBadRequest, "account number is required")
 		return
 	}
 
-	acc, err := h.service.GetAccountByNumber(r.Context(), accNum)
+	acc, err := h.service.GetAccountByNumber(r.Context(), accNum, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Fail(w, r, http.StatusNotFound, err)
 		return
@@ -73,6 +79,12 @@ func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 
@@ -83,7 +95,7 @@ func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	accounts, total, err := h.service.ListAccounts(r.Context(), page, pageSize)
+	accounts, total, err := h.service.ListAccounts(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return

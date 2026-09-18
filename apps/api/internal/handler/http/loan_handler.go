@@ -44,6 +44,12 @@ func (h *LoanHandler) Apply(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/loans
 func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if page < 1 {
@@ -53,7 +59,7 @@ func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	loans, total, err := h.loanSvc.ListLoans(r.Context(), page, pageSize)
+	loans, total, err := h.loanSvc.ListLoans(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return
@@ -67,13 +73,19 @@ func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/v1/loans/{id}
 func (h *LoanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		Error(w, http.StatusBadRequest, "invalid loan id")
 		return
 	}
 
-	loan, err := h.loanSvc.GetLoan(r.Context(), id)
+	loan, err := h.loanSvc.GetLoan(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Fail(w, r, http.StatusNotFound, err)
 		return

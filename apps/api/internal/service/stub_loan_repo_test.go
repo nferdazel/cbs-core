@@ -35,7 +35,7 @@ func (s *stubLoanRepo) GetByNumber(ctx context.Context, loanNumber string) (*dom
 	return s.loan, nil
 }
 
-func (s *stubLoanRepo) List(ctx context.Context, limit, offset int) ([]domain.Loan, int, error) {
+func (s *stubLoanRepo) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Loan, int, error) {
 	if s.loan == nil {
 		return nil, 0, nil
 	}

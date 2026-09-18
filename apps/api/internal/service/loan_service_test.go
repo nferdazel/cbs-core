@@ -255,3 +255,43 @@ func TestRestructureLoan_MenolakKreditCabangLain(t *testing.T) {
 		}
 	})
 }
+
+// GetLoan menerapkan filter cabang pada jalur baca: kredit cabang lain ditolak
+// dengan ErrCrossBranchAccess, sedangkan kredit bercabang NULL tetap terlihat.
+func TestGetLoan_MenolakKreditCabangLain(t *testing.T) {
+	loanID := uuid.New()
+	branchID := uuid.New()
+	repo := &stubLoanRepo{loan: &domain.Loan{ID: loanID, BranchID: &branchID, BranchCode: "002"}}
+	svc := service.NewLoanService(nil, repo, nil, nil, nil, nil, nil)
+
+	t.Run("teller cabang berbeda ditolak", func(t *testing.T) {
+		_, err := svc.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
+		if !errors.Is(err, domain.ErrCrossBranchAccess) {
+			t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
+		}
+	})
+
+	t.Run("teller cabang sama boleh", func(t *testing.T) {
+		loan, err := svc.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleTeller, BranchCode: "002"})
+		if err != nil {
+			t.Fatalf("GetLoan: %v", err)
+		}
+		if loan.ID != loanID {
+			t.Fatalf("loan id %s, ingin %s", loan.ID, loanID)
+		}
+	})
+
+	t.Run("auditor lintas cabang boleh", func(t *testing.T) {
+		if _, err := svc.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleAuditor}); err != nil {
+			t.Fatalf("auditor seharusnya boleh membaca lintas cabang: %v", err)
+		}
+	})
+
+	t.Run("kredit bercabang NULL tetap terlihat", func(t *testing.T) {
+		repoNull := &stubLoanRepo{loan: &domain.Loan{ID: loanID}}
+		svcNull := service.NewLoanService(nil, repoNull, nil, nil, nil, nil, nil)
+		if _, err := svcNull.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"}); err != nil {
+			t.Fatalf("data pra-migrasi tanpa cabang tidak boleh ditolak: %v", err)
+		}
+	})
+}

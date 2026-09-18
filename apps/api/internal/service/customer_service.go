@@ -159,7 +159,33 @@ func (s *customerService) GetCustomer(ctx context.Context, id uuid.UUID, actor d
 	if err != nil {
 		return nil, err
 	}
+	allowed, err := s.canReadRecord(ctx, actor, record)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, domain.ErrCrossBranchAccess
+	}
 	return s.decryptRecord(ctx, record)
+}
+
+// canReadRecord menegakkan kepemilikan cabang untuk pembacaan satu nasabah.
+// CustomerRecord hanya menyimpan branch_id, bukan kode cabang, jadi id cabang
+// aktor dipetakan lewat resolveBranchID. Mengikuti semantik Actor.CanAccessBranch:
+// aktor lintas cabang selalu boleh, dan nasabah tanpa cabang (branch_id NULL, data
+// pra-migrasi) tetap boleh dibaca agar operasional atas data lama tidak terblokir.
+func (s *customerService) canReadRecord(ctx context.Context, actor domain.Actor, record *domain.CustomerRecord) (bool, error) {
+	if actor.IsCrossBranch() || record.BranchID == nil {
+		return true, nil
+	}
+	if actor.BranchCode == "" {
+		return false, nil
+	}
+	branchID, err := s.resolveBranchID(ctx, actor.BranchCode)
+	if err != nil {
+		return false, err
+	}
+	return branchID != nil && *branchID == *record.BranchID, nil
 }
 
 func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Customer, int, error) {
@@ -171,7 +197,7 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 	}
 	offset := (page - 1) * pageSize
 
-	records, total, err := s.repo.List(ctx, pageSize, offset)
+	records, total, err := s.repo.List(ctx, pageSize, offset, actor)
 	if err != nil {
 		return nil, 0, err
 	}

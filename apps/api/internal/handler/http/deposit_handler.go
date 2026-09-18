@@ -169,13 +169,19 @@ func (h *DepositHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DepositHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	depositID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		Error(w, http.StatusBadRequest, "id deposito tidak valid")
 		return
 	}
 
-	deposit, err := h.service.GetByID(r.Context(), depositID)
+	deposit, err := h.service.GetByID(r.Context(), depositID, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Fail(w, r, http.StatusNotFound, err)
 		return
@@ -184,6 +190,12 @@ func (h *DepositHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DepositHandler) List(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if page < 1 {
@@ -193,7 +205,7 @@ func (h *DepositHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	deposits, total, err := h.service.List(r.Context(), page, pageSize)
+	deposits, total, err := h.service.List(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return

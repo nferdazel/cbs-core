@@ -84,7 +84,9 @@ type CustomerRepository interface {
 	FindByIDCard(ctx context.Context, idCardIndex string) (*CustomerRecord, error)
 	// GetByIDs mengambil banyak nasabah sekaligus untuk menghindari N+1 pada daftar.
 	GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*CustomerRecord, error)
-	List(ctx context.Context, limit, offset int) ([]CustomerRecord, int, error)
+	// List mengembalikan daftar nasabah yang boleh dibaca aktor. Filter cabang
+	// diterapkan di query agar pagination dan total tetap benar.
+	List(ctx context.Context, limit, offset int, actor Actor) ([]CustomerRecord, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 

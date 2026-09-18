@@ -78,14 +78,25 @@ func (r *CustomerRepository) FindByIDCard(ctx context.Context, idCardIndex strin
 	return r.scanOne(ctx, query, idCardIndex)
 }
 
-func (r *CustomerRepository) List(ctx context.Context, limit, offset int) ([]domain.CustomerRecord, int, error) {
+func (r *CustomerRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.CustomerRecord, int, error) {
+	where, whereArgs := branchReadClause("branch_id", actor)
+
+	countQuery := "SELECT COUNT(*) FROM customers"
+	if where != "" {
+		countQuery += " WHERE " + where
+	}
 	var total int
-	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM customers").Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	query := `SELECT ` + customerColumns + ` FROM customers ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	query := `SELECT ` + customerColumns + ` FROM customers`
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

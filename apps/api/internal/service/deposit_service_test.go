@@ -27,7 +27,7 @@ func (s *stubDepositRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.De
 func (s *stubDepositRepo) GetByIDForUpdate(ctx context.Context, tx any, id uuid.UUID) (*domain.Deposit, error) {
 	return s.deposit, nil
 }
-func (s *stubDepositRepo) List(ctx context.Context, limit, offset int) ([]domain.Deposit, int, error) {
+func (s *stubDepositRepo) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Deposit, int, error) {
 	return nil, 0, nil
 }
 func (s *stubDepositRepo) ListMaturedARO(ctx context.Context, asOf time.Time) ([]domain.Deposit, error) {
@@ -463,4 +463,41 @@ func TestDepositPlaceMenolakNasabahCabangLain(t *testing.T) {
 	if !errors.Is(err, domain.ErrCrossBranchAccess) {
 		t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
 	}
+}
+
+// GetByID menerapkan filter cabang pada jalur baca deposito.
+func TestDepositGetByID_MenolakCabangLain(t *testing.T) {
+	depositID := uuid.New()
+	branchID := uuid.New()
+	svc := &depositService{depositRepo: &stubDepositRepo{deposit: &domain.Deposit{ID: depositID, BranchID: &branchID, BranchCode: "002"}}}
+
+	t.Run("teller cabang berbeda ditolak", func(t *testing.T) {
+		_, err := svc.GetByID(context.Background(), depositID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
+		if !errors.Is(err, domain.ErrCrossBranchAccess) {
+			t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
+		}
+	})
+
+	t.Run("teller cabang sama boleh", func(t *testing.T) {
+		dep, err := svc.GetByID(context.Background(), depositID, domain.Actor{Role: domain.RoleTeller, BranchCode: "002"})
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if dep.ID != depositID {
+			t.Fatalf("deposit id %s, ingin %s", dep.ID, depositID)
+		}
+	})
+
+	t.Run("system lintas cabang boleh", func(t *testing.T) {
+		if _, err := svc.GetByID(context.Background(), depositID, domain.SystemActor(uuid.New())); err != nil {
+			t.Fatalf("batch seharusnya boleh membaca lintas cabang: %v", err)
+		}
+	})
+
+	t.Run("deposito bercabang NULL tetap terlihat", func(t *testing.T) {
+		svcNull := &depositService{depositRepo: &stubDepositRepo{deposit: &domain.Deposit{ID: depositID}}}
+		if _, err := svcNull.GetByID(context.Background(), depositID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"}); err != nil {
+			t.Fatalf("data pra-migrasi tanpa cabang tidak boleh ditolak: %v", err)
+		}
+	})
 }

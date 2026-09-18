@@ -209,7 +209,9 @@ type LoanRepository interface {
 	Create(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Loan, error)
 	GetByNumber(ctx context.Context, loanNumber string) (*Loan, error)
-	List(ctx context.Context, limit, offset int) ([]Loan, int, error)
+	// List mengembalikan daftar kredit yang boleh dibaca aktor. Filter cabang
+	// diterapkan di query agar pagination dan total tetap benar.
+	List(ctx context.Context, limit, offset int, actor Actor) ([]Loan, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error
@@ -235,8 +237,9 @@ type LoanService interface {
 	ApproveLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
 	RejectLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
 	DisburseLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
-	GetLoan(ctx context.Context, id uuid.UUID) (*Loan, error)
-	ListLoans(ctx context.Context, page, pageSize int) ([]Loan, int, error)
+	// GetLoan menolak kredit cabang lain dengan ErrCrossBranchAccess.
+	GetLoan(ctx context.Context, id uuid.UUID, actor Actor) (*Loan, error)
+	ListLoans(ctx context.Context, page, pageSize int, actor Actor) ([]Loan, int, error)
 	PayInstallment(ctx context.Context, input PayInstallmentInput, actor Actor) (*LoanSchedule, error)
 	RestructureLoan(ctx context.Context, input RestructureLoanInput, actor Actor) (*Loan, error)
 	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, actor Actor) (*Loan, error)

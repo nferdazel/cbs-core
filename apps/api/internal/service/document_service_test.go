@@ -51,7 +51,7 @@ func (s *stubCustomerRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) (map[u
 	return result, nil
 }
 
-func (s *stubCustomerRepo) List(ctx context.Context, limit, offset int) ([]domain.CustomerRecord, int, error) {
+func (s *stubCustomerRepo) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.CustomerRecord, int, error) {
 	return nil, 0, nil
 }
 

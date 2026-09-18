@@ -102,14 +102,25 @@ func (r *DepositRepository) GetByIDForUpdate(ctx context.Context, tx any, id uui
 	return scanDeposit(row)
 }
 
-func (r *DepositRepository) List(ctx context.Context, limit, offset int) ([]domain.Deposit, int, error) {
+func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Deposit, int, error) {
+	where, whereArgs := branchReadClause("branch_id", actor)
+
+	countQuery := "SELECT COUNT(*) FROM deposits"
+	if where != "" {
+		countQuery += " WHERE " + where
+	}
 	var total int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deposits`).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := r.db.QueryContext(ctx, `SELECT `+depositColumns+`
-		FROM deposits ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	query := `SELECT ` + depositColumns + ` FROM deposits`
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

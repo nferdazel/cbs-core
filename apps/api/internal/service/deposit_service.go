@@ -756,18 +756,27 @@ func (s *depositService) postDepositPenalty(
 	return nil
 }
 
-func (s *depositService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Deposit, error) {
-	return s.depositRepo.GetByID(ctx, id)
+func (s *depositService) GetByID(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.Deposit, error) {
+	dep, err := s.depositRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Deposito cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Deposito tanpa cabang (data pra-migrasi) tetap boleh dibaca.
+	if !actor.CanAccessBranch(dep.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	return dep, nil
 }
 
-func (s *depositService) List(ctx context.Context, page, pageSize int) ([]domain.Deposit, int, error) {
+func (s *depositService) List(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Deposit, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.depositRepo.List(ctx, pageSize, (page-1)*pageSize)
+	return s.depositRepo.List(ctx, pageSize, (page-1)*pageSize, actor)
 }
 
 // dateOnly menormalkan waktu ke tanggal UTC tanpa jam, agar akrual dan jatuh

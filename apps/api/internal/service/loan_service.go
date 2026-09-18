@@ -349,18 +349,27 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	return loan, nil
 }
 
-func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID) (*domain.Loan, error) {
-	return s.loanRepo.GetByID(ctx, id)
+func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Kredit cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Kredit tanpa cabang (data pra-migrasi) tetap boleh dibaca.
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	return loan, nil
 }
 
-func (s *loanService) ListLoans(ctx context.Context, page, pageSize int) ([]domain.Loan, int, error) {
+func (s *loanService) ListLoans(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Loan, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.loanRepo.List(ctx, pageSize, (page-1)*pageSize)
+	return s.loanRepo.List(ctx, pageSize, (page-1)*pageSize, actor)
 }
 
 // PayInstallment mencatat pembayaran angsuran. Menolak bila kredit belum dicairkan.

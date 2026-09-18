@@ -73,12 +73,16 @@ type AccountRepository interface {
 	GetByNumber(ctx context.Context, accountNumber string) (*Account, error)
 	GetByNumberForUpdate(ctx context.Context, tx any, accountNumber string) (*Account, error)
 	ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]Account, error)
-	ListAll(ctx context.Context, limit, offset int) ([]Account, int, error)
+	// ListAll mengembalikan daftar rekening yang boleh dibaca aktor. Filter cabang
+	// diterapkan di query agar pagination dan total tetap benar.
+	ListAll(ctx context.Context, limit, offset int, actor Actor) ([]Account, int, error)
 	UpdateBalance(ctx context.Context, tx any, accountID uuid.UUID, balance, available decimal.Decimal, version int) error
 }
 
 type AccountService interface {
 	OpenAccount(ctx context.Context, input OpenAccountInput, actor Actor) (*Account, error)
-	GetAccountByNumber(ctx context.Context, accountNumber string) (*Account, error)
-	ListAccounts(ctx context.Context, page, pageSize int) ([]Account, int, error)
+	// GetAccountByNumber menolak rekening cabang lain dengan ErrCrossBranchAccess,
+	// bukan menyamarkannya sebagai tidak ditemukan.
+	GetAccountByNumber(ctx context.Context, accountNumber string, actor Actor) (*Account, error)
+	ListAccounts(ctx context.Context, page, pageSize int, actor Actor) ([]Account, int, error)
 }

@@ -115,7 +115,9 @@ type DepositRepository interface {
 	Create(ctx context.Context, tx any, d *Deposit) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Deposit, error)
 	GetByIDForUpdate(ctx context.Context, tx any, id uuid.UUID) (*Deposit, error)
-	List(ctx context.Context, limit, offset int) ([]Deposit, int, error)
+	// List mengembalikan daftar deposito yang boleh dibaca aktor. Filter cabang
+	// diterapkan di query agar pagination dan total tetap benar.
+	List(ctx context.Context, limit, offset int, actor Actor) ([]Deposit, int, error)
 	ListMaturedARO(ctx context.Context, asOf time.Time) ([]Deposit, error)
 	AddAccrual(ctx context.Context, tx any, id uuid.UUID, profit, tax decimal.Decimal, asOf time.Time) error
 	UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status DepositStatus, proceeds, paidProfit, paidTax, penalty decimal.Decimal) error
@@ -127,8 +129,9 @@ type DepositService interface {
 	Accrue(ctx context.Context, depositID uuid.UUID, asOf time.Time, actor Actor) (*Deposit, error)
 	MatureOrWithdraw(ctx context.Context, depositID uuid.UUID, actor Actor) (*Deposit, error)
 	RunARO(ctx context.Context, asOf time.Time, actor Actor) (int, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*Deposit, error)
-	List(ctx context.Context, page, pageSize int) ([]Deposit, int, error)
+	// GetByID menolak deposito cabang lain dengan ErrCrossBranchAccess.
+	GetByID(ctx context.Context, id uuid.UUID, actor Actor) (*Deposit, error)
+	List(ctx context.Context, page, pageSize int, actor Actor) ([]Deposit, int, error)
 }
 
 // depositDayBasis adalah basis hari per tahun untuk akrual harian proporsional.

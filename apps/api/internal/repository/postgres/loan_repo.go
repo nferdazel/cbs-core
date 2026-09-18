@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -151,13 +152,25 @@ func (r *LoanRepository) GetByNumber(ctx context.Context, loanNumber string) (*d
 	return l, err
 }
 
-func (r *LoanRepository) List(ctx context.Context, limit, offset int) ([]domain.Loan, int, error) {
+func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Loan, int, error) {
+	where, whereArgs := branchReadClause("branch_id", actor)
+
+	countQuery := "SELECT COUNT(*) FROM loans"
+	if where != "" {
+		countQuery += " WHERE " + where
+	}
 	var total int
-	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM loans").Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := r.db.QueryContext(ctx, `SELECT `+loanColumns+` FROM loans ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	query := `SELECT ` + loanColumns + ` FROM loans`
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}
