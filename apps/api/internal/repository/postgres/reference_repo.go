@@ -29,34 +29,41 @@ var refPrefix = map[domain.TransactionType]string{
 	domain.TxTypeAdjustment:       "ADJ",
 }
 
-// Next mengembalikan nomor referensi berformat PREFIX-YYYYMMDD-NNNNNN.
-func (g *ReferenceGenerator) Next(txType domain.TransactionType, at time.Time) string {
+// Next mengembalikan nomor referensi berformat PREFIX-YYYYMMDD-NNNNNN di luar
+// transaksi pemanggil. Error sequence diteruskan, tidak ada nomor cadangan.
+func (g *ReferenceGenerator) Next(txType domain.TransactionType, at time.Time) (string, error) {
+	return g.NextTx(context.Background(), nil, txType, at)
+}
+
+// NextTx mengambil nomor referensi memakai sequence database. Bila tx disediakan,
+// nextval dijalankan pada koneksi transaksi yang sama dengan posting sehingga
+// kegagalan membaca sequence membatalkan jurnal, bukan menulis tanpa nomor.
+func (g *ReferenceGenerator) NextTx(ctx context.Context, tx any, txType domain.TransactionType, at time.Time) (string, error) {
 	prefix, ok := refPrefix[txType]
 	if !ok {
 		prefix = "JRN"
 	}
 
-	seq := g.nextSeq()
-	return fmt.Sprintf("%s-%s-%06d", prefix, at.Format("20060102"), seq)
+	var seq int64
+	var err error
+	if sqlTx, ok := tx.(*sql.Tx); ok {
+		err = sqlTx.QueryRowContext(ctx, `SELECT nextval('journal_reference_seq')`).Scan(&seq)
+	} else {
+		err = g.db.QueryRowContext(ctx, `SELECT nextval('journal_reference_seq')`).Scan(&seq)
+	}
+	if err != nil {
+		return "", fmt.Errorf("membaca sequence referensi jurnal: %w", err)
+	}
+	return fmt.Sprintf("%s-%s-%06d", prefix, at.Format("20060102"), seq), nil
 }
 
 // NextCIF mengembalikan nomor CIF berurutan. CIF dipakai sebagai identitas nasabah
 // lintas cabang dan tidak boleh berulang, sehingga diambil dari sequence database.
-func (g *ReferenceGenerator) NextCIF() string {
+// Kegagalan sequence dikembalikan sebagai error, bukan nomor pengganti.
+func (g *ReferenceGenerator) NextCIF() (string, error) {
 	var seq int64
 	if err := g.db.QueryRowContext(context.Background(), `SELECT nextval('cif_number_seq')`).Scan(&seq); err != nil {
-		// CIF yang tidak unik jauh lebih berbahaya daripada kegagalan sesaat.
-		return fmt.Sprintf("CIF-ERR-%d", time.Now().UnixNano())
+		return "", fmt.Errorf("membaca sequence nomor CIF: %w", err)
 	}
-	return fmt.Sprintf("CIF%09d", seq)
-}
-
-// nextSeq mengambil nilai sequence. Bila sequence tidak tersedia (mis. DB belum
-// dimigrasi), dipakai waktu Unix nano sebagai cadangan agar posting tidak gagal.
-func (g *ReferenceGenerator) nextSeq() int64 {
-	var seq int64
-	if err := g.db.QueryRowContext(context.Background(), `SELECT nextval('journal_reference_seq')`).Scan(&seq); err != nil {
-		return time.Now().UnixNano() % 1000000000
-	}
-	return seq
+	return fmt.Sprintf("CIF%09d", seq), nil
 }

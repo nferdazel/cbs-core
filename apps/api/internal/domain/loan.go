@@ -66,22 +66,8 @@ const (
 	AccrualStatusCash    AccrualStatus = "CASH_BASIS_NPL"
 )
 
-// CalculateCollectibility mengikuti POJK No. 1 Tahun 2024 tentang Kualitas Aset BPR.
-// Mengembalikan kolektibilitas, tarif PPAP, dan status akrual.
-func CalculateCollectibility(dpd int) (OJKCollectibility, decimal.Decimal, AccrualStatus) {
-	switch {
-	case dpd <= 0:
-		return CollectibilityKol1, decimal.NewFromFloat(0.005), AccrualStatusAccrual
-	case dpd <= 90:
-		return CollectibilityKol2, decimal.NewFromFloat(0.010), AccrualStatusAccrual
-	case dpd <= 120:
-		return CollectibilityKol3, decimal.NewFromFloat(0.150), AccrualStatusCash
-	case dpd <= 180:
-		return CollectibilityKol4, decimal.NewFromFloat(0.500), AccrualStatusCash
-	default:
-		return CollectibilityKol5, decimal.NewFromFloat(1.000), AccrualStatusCash
-	}
-}
+// Aturan kolektibilitas hanya boleh ada satu: CollectibilityFromDPD di ppap.go
+// dengan ambang dari system_config. Jangan menambah fungsi kolektibilitas lain.
 
 type Loan struct {
 	ID           uuid.UUID  `json:"id"`

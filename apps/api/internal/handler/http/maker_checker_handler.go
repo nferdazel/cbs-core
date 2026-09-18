@@ -1,7 +1,6 @@
 package http
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,8 +8,6 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/observability"
-	"cbs-core/apps/core-api/internal/repository/postgres"
-	"cbs-core/apps/core-api/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -47,18 +44,11 @@ type MakerCheckerHandler struct {
 	svc domain.MakerCheckerService
 }
 
-// NewMakerCheckerHandler menyusun dependency maker-checker dari koneksi database.
-// Signature dipertahankan agar wiring cmd/server/main.go tidak berubah; pemeriksa
-// dan penulis audit tetap dijalankan service, bukan handler.
-func NewMakerCheckerHandler(db *sql.DB) *MakerCheckerHandler {
-	configRepo := postgres.NewSystemConfigRepository(db)
-	configSvc := service.NewSystemConfigService(configRepo)
-	mcRepo := postgres.NewMakerCheckerRepository(db)
-	auditRepo := postgres.NewAuditRepository(db)
-	return NewMakerCheckerHandlerWithService(service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc))
-}
-
-func NewMakerCheckerHandlerWithService(svc domain.MakerCheckerService) *MakerCheckerHandler {
+// NewMakerCheckerHandler menerima service yang sudah dirakit, bukan koneksi database.
+// Pemeriksa dan penulis audit dijalankan service; handler hanya menerjemahkan HTTP.
+// Eksekutor transaksi disuntikkan lewat service agar persetujuan benar-benar
+// memposting jurnalnya, bukan sekadar mengubah status.
+func NewMakerCheckerHandler(svc domain.MakerCheckerService) *MakerCheckerHandler {
 	return &MakerCheckerHandler{svc: svc}
 }
 

@@ -78,9 +78,21 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 	journalID := uuid.New()
 	now := time.Now().UTC()
 
+	// Tanggal akuntansi entri. Nol berarti hari ini (UTC), perilaku lama dipertahankan.
+	entryDate := req.EntryDate
+	if entryDate.IsZero() {
+		entryDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	}
+
 	refNumber := req.ReferenceNumber
 	if refNumber == "" {
-		refNumber = s.referenceGen.Next(req.TransactionType, now)
+		// Nomor diambil di dalam transaksi yang sama agar kegagalan sequence ikut
+		// membatalkan jurnal, bukan menulis jurnal tanpa nomor.
+		generated, err := s.referenceGen.NextTx(ctx, sqlTx, req.TransactionType, now)
+		if err != nil {
+			return nil, fmt.Errorf("membuat nomor referensi jurnal: %w", err)
+		}
+		refNumber = generated
 	}
 
 	var idemKeyPtr *string
@@ -106,6 +118,7 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 		Description:     req.Description,
 		Status:          domain.JournalStatusPosted,
 		PostedAt:        now,
+		EntryDate:       entryDate,
 		CreatedBy:       req.CreatedBy,
 		Lines:           lines,
 		CreatedAt:       now,

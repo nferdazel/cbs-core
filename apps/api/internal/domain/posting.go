@@ -25,7 +25,11 @@ type PostingRequest struct {
 	IdempotencyKey  string          `json:"idempotency_key,omitempty"`
 	CreatedBy       string          `json:"created_by"`
 	BranchCode      string          `json:"branch_code,omitempty"`
-	Lines           []PostingLine   `json:"lines"`
+	// EntryDate adalah tanggal akuntansi entri. Bila nol, posting engine memakai
+	// tanggal UTC hari ini. Pemanggil yang tanggalnya penting (tutup buku, akrual)
+	// wajib mengisinya, karena laporan periode membaca kolom ini.
+	EntryDate time.Time     `json:"entry_date,omitempty"`
+	Lines     []PostingLine `json:"lines"`
 }
 
 // PostingService mengeksekusi posting jurnal. Post membuka transaksinya sendiri.
@@ -56,7 +60,11 @@ type BusinessDateProvider interface {
 
 // ReferenceGenerator membangkitkan nomor referensi jurnal yang unik. Implementasi
 // konkret memakai sequence database, bukan timestamp, agar tidak bertabrakan saat
-// transaksi paralel.
+// transaksi paralel. Kegagalan membaca sequence harus dikembalikan sebagai error;
+// nomor referensi ganda di bank menyamarkan dua transaksi berbeda.
 type ReferenceGenerator interface {
-	Next(txType TransactionType, at time.Time) string
+	Next(txType TransactionType, at time.Time) (string, error)
+	// NextTx mengambil nomor di dalam transaksi pemanggil agar kegagalan membaca
+	// sequence ikut membatalkan jurnal, bukan meninggalkan jurnal tanpa nomor.
+	NextTx(ctx context.Context, tx any, txType TransactionType, at time.Time) (string, error)
 }

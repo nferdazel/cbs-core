@@ -19,6 +19,7 @@ type loanService struct {
 	accountRepo domain.AccountRepository
 	poster      *ProductPoster
 	references  domain.ReferenceGenerator
+	config      domain.SystemConfigService
 	auditRepo   domain.AuditRepository
 }
 
@@ -29,6 +30,7 @@ func NewLoanService(
 	accountRepo domain.AccountRepository,
 	poster *ProductPoster,
 	references domain.ReferenceGenerator,
+	config domain.SystemConfigService,
 	auditSinks ...domain.AuditRepository,
 ) domain.LoanService {
 	var auditRepo domain.AuditRepository
@@ -42,6 +44,7 @@ func NewLoanService(
 		accountRepo: accountRepo,
 		poster:      poster,
 		references:  references,
+		config:      config,
 		auditRepo:   auditRepo,
 	}
 }
@@ -94,30 +97,35 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	})
 
 	now := time.Now().UTC()
+	loanNumber, err := s.references.Next(domain.TxTypeTransferInternal, now)
+	if err != nil {
+		return nil, fmt.Errorf("membuat nomor kredit: %w", err)
+	}
 	loan := &domain.Loan{
 		ID:                    loanID,
-		LoanNumber:            s.references.Next(domain.TxTypeTransferInternal, now),
+		LoanNumber:            loanNumber,
 		CustomerID:            input.CustomerID,
 		ProductID:             &product.ID,
 		DisbursementAccountID: input.DisbursementAccountID,
 		Status:                domain.LoanStatusPendingApproval,
 		Collectibility:        domain.CollectibilityKol1,
 		AccrualStatus:         domain.AccrualStatusAccrual,
-		RequiredPPAP:          domain.RoundToRupiah(input.PrincipalAmount.Mul(decimal.NewFromFloat(0.005))),
-		PrincipalAmount:       input.PrincipalAmount,
-		AcquisitionCost:       input.PrincipalAmount,
-		DeferredMargin:        margin,
-		InterestRateAnnual:    product.RateAnnual,
-		MarginAmount:          margin,
-		ProfitSharingRatio:    product.ProfitSharingRatio,
-		TotalPayable:          totalPayable,
-		TermMonths:            input.TermMonths,
-		MonthlyInstallment:    monthly,
-		OutstandingPrincipal:  decimal.Zero,
-		Purpose:               input.Purpose,
-		AOID:                  &actor.UserID,
-		CreatedAt:             now,
-		UpdatedAt:             now,
+		// Kredit baru selalu Lancar; tarif diambil dari konfigurasi yang sama dengan PPAP harian.
+		RequiredPPAP:         domain.PPAPAmount(input.PrincipalAmount, domain.KolLancar, collectibilityRates(ctx, s.config)),
+		PrincipalAmount:      input.PrincipalAmount,
+		AcquisitionCost:      input.PrincipalAmount,
+		DeferredMargin:       margin,
+		InterestRateAnnual:   product.RateAnnual,
+		MarginAmount:         margin,
+		ProfitSharingRatio:   product.ProfitSharingRatio,
+		TotalPayable:         totalPayable,
+		TermMonths:           input.TermMonths,
+		MonthlyInstallment:   monthly,
+		OutstandingPrincipal: decimal.Zero,
+		Purpose:              input.Purpose,
+		AOID:                 &actor.UserID,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	if err := s.loanRepo.Create(ctx, loan, schedules); err != nil {
@@ -438,11 +446,12 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 		loan.DeferredMargin = input.NewMarginAmount
 	}
 
-	// POJK: setelah restrukturisasi, kolektibilitas awal turun ke Kol 2.
-	col, ppapRate, accrual := domain.CalculateCollectibility(45)
-	loan.Collectibility = col
+	// Kolektibilitas dan tarif PPAP mengikuti DPD kredit dari konfigurasi yang sama
+	// dengan proses PPAP harian, bukan aturan tersendiri.
+	col, accrual := CollectibilityForDPD(ctx, s.config, loan.DPD)
+	loan.Collectibility = col.OJKCode()
 	loan.AccrualStatus = accrual
-	loan.RequiredPPAP = domain.RoundToRupiah(loan.PrincipalAmount.Mul(ppapRate))
+	loan.RequiredPPAP = domain.PPAPAmount(loan.PrincipalAmount, col, collectibilityRates(ctx, s.config))
 
 	method, profitType, margin := scheduleTermsFor(product, loan.MarginAmount)
 	schedules, totalPayable, monthly := domain.BuildSchedule(loan.ID, domain.ScheduleParams{

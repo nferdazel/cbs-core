@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/shopspring/decimal"
@@ -109,15 +110,18 @@ func (p *ProductPoster) PostEventTx(
 		IdempotencyKey:  meta.IdempotencyKey,
 		CreatedBy:       meta.CreatedBy,
 		BranchCode:      meta.BranchCode,
+		EntryDate:       meta.EntryDate,
 		Lines:           lines,
 	})
 }
 
-// PostingMeta membawa konteks non-nominal untuk jurnal.
+// PostingMeta membawa konteks non-nominal untuk jurnal. EntryDate nol berarti
+// posting engine memakai tanggal UTC hari ini.
 type PostingMeta struct {
 	TransactionType domain.TransactionType
 	Description     string
 	IdempotencyKey  string
 	CreatedBy       string
 	BranchCode      string
+	EntryDate       time.Time
 }

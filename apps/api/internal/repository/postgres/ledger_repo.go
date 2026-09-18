@@ -97,11 +97,11 @@ func (r *LedgerRepository) InsertJournal(ctx context.Context, tx any, entry *dom
 	}
 
 	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, entry_date, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	if _, err := sqlTx.ExecContext(ctx, entryQuery,
-		entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt,
+		entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.EntryDate, entry.CreatedBy, entry.CreatedAt,
 	); err != nil {
 		return fmt.Errorf("insert journal entry: %w", err)
 	}

@@ -270,7 +270,10 @@ func (s *batchProcessService) closeBook(ctx context.Context, fiscalYear int, boo
 		Description:     fmt.Sprintf("Jurnal penutup tahun buku %d (%s)", fiscalYear, book),
 		IdempotencyKey:  fmt.Sprintf("EOY-CLOSE-%d-%s", fiscalYear, book),
 		CreatedBy:       createdBy,
-		Lines:           lines,
+		// Jurnal penutup harus masuk ke tahun fiskal yang ditutup, bukan tahun
+		// saat batch dijalankan (bisa sudah lewat 31 Desember).
+		EntryDate: time.Date(fiscalYear, 12, 31, 0, 0, 0, 0, time.UTC),
+		Lines:     lines,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("posting jurnal penutup: %w", err)

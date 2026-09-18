@@ -93,9 +93,11 @@ type JournalEntry struct {
 	Description     string          `json:"description"`
 	Status          JournalStatus   `json:"status"`
 	PostedAt        time.Time       `json:"posted_at"`
-	CreatedBy       string          `json:"created_by"`
-	Lines           []JournalLine   `json:"lines,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
+	// EntryDate adalah tanggal akuntansi entri yang dipakai laporan periode.
+	EntryDate time.Time     `json:"entry_date"`
+	CreatedBy string        `json:"created_by"`
+	Lines     []JournalLine `json:"lines,omitempty"`
+	CreatedAt time.Time     `json:"created_at"`
 }
 
 // ValidateDoubleEntry enforces fundamental accounting equation (Sum of Debits == Sum of Credits)
@@ -152,6 +154,8 @@ type DepositRequest struct {
 	Description    string          `json:"description"`
 	IdempotencyKey string          `json:"idempotency_key"`
 	CreatedBy      string          `json:"created_by"`
+	// Actor diisi dari JWT oleh handler, tidak pernah dari body (json:"-").
+	Actor Actor `json:"-"`
 }
 
 type WithdrawRequest struct {
@@ -161,6 +165,7 @@ type WithdrawRequest struct {
 	Description    string          `json:"description"`
 	IdempotencyKey string          `json:"idempotency_key"`
 	CreatedBy      string          `json:"created_by"`
+	Actor          Actor           `json:"-"`
 }
 
 type TransferRequest struct {
@@ -171,6 +176,7 @@ type TransferRequest struct {
 	Description              string          `json:"description"`
 	IdempotencyKey           string          `json:"idempotency_key"`
 	CreatedBy                string          `json:"created_by"`
+	Actor                    Actor           `json:"-"`
 }
 
 type CustomJournalLineInput struct {
@@ -202,6 +208,10 @@ type LedgerService interface {
 	Withdraw(ctx context.Context, req WithdrawRequest) (*JournalEntry, error)
 	TransferInternal(ctx context.Context, req TransferRequest) (*JournalEntry, error)
 	PostCompoundJournal(ctx context.Context, req CustomJournalRequest) (*JournalEntry, error)
+	// ExecuteApproved menjalankan transaksi rekening yang sudah disetujui maker-checker,
+	// di dalam transaksi milik pemanggil. Memenuhi kontrak MakerCheckerExecutor,
+	// sehingga ledger service menjadi eksekutor untuk jenis transaksinya sendiri.
+	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error
 	GetJournalByReference(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, page, pageSize int) ([]JournalEntry, int, error)
 	GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int) ([]JournalLine, int, error)

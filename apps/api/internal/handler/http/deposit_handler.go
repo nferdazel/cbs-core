@@ -25,6 +25,7 @@ func NewDepositHandler(service domain.DepositService) *DepositHandler {
 // domain/staff.go sesuai operasinya:
 //   - pembukaan deposito (membuka rekening + jurnal penempatan): PermAccountsOpen
 //   - akrual imbal hasil (menyentuh beban/pendapatan): PermTransactionsDeposit
+//   - perpanjangan ARO (mengubah jatuh tempo + kapitalisasi): PermTransactionsDeposit
 //   - pencairan (kas keluar): PermTransactionsWithdraw
 //   - baca kontrak: PermAccountsRead
 //
@@ -39,6 +40,8 @@ func (h *DepositHandler) RegisterRoutes(r chi.Router, perms ...func(http.Handler
 			Post("/place", h.Place)
 		r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
 			Post("/{id}/accrue", h.Accrue)
+		r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
+			Post("/run-aro", h.RunARO)
 		r.With(middleware.RequirePermission(domain.PermTransactionsWithdraw)).
 			Post("/{id}/withdraw", h.Withdraw)
 		r.With(middleware.RequirePermission(domain.PermAccountsRead)).
@@ -109,6 +112,33 @@ func (h *DepositHandler) Accrue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, http.StatusOK, "deposit accrued successfully", deposit)
+}
+
+// RunARO memperpanjang deposito ber-ARO yang sudah jatuh tempo. Dijalankan manual
+// (mis. oleh teller/supervisor) dan tidak diikat ke EOD agar alur batch inti tidak
+// berubah. Body opsional: {"as_of":"2026-01-31T00:00:00Z"}; kosong berarti sekarang.
+func (h *DepositHandler) RunARO(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var body struct {
+		AsOf time.Time `json:"as_of"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	asOf := body.AsOf
+	if asOf.IsZero() {
+		asOf = time.Now().UTC()
+	}
+
+	processed, err := h.service.RunARO(r.Context(), asOf, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	Success(w, http.StatusOK, "deposits rolled over (ARO)", map[string]any{"processed": processed})
 }
 
 func (h *DepositHandler) Withdraw(w http.ResponseWriter, r *http.Request) {

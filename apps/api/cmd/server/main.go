@@ -77,14 +77,26 @@ func main() {
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
+	// Registry memutus siklus ledger <-> maker-checker: ledger mengajukan persetujuan,
+	// maker-checker mengeksekusi lewat registry, bukan memegang ledger secara langsung.
+	executors := service.NewExecutorRegistry()
+	mcRepo := postgres.NewMakerCheckerRepository(db)
+	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors)
+	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo)
+
 	customerSvc := service.NewCustomerService(db, customerRepo, cipher, referenceGen, auditRepo)
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, auditRepo)
 	branchSvc := service.NewBranchService(branchRepo)
 	productSvc := service.NewProductService(productRepo)
-	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc)
+	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc)
+
+	// Ledger service adalah eksekutor untuk transaksi rekening yang disetujui.
+	executors.Register(service.ActionDeposit, ledgerSvc)
+	executors.Register(service.ActionWithdraw, ledgerSvc)
+	executors.Register(service.ActionTransfer, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo)
-	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen, auditRepo)
+	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen, configSvc, auditRepo)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
@@ -102,7 +114,7 @@ func main() {
 	authHandler := httpHandler.NewAuthHandler(authSvc)
 	staffHandler := httpHandler.NewStaffHandler(staffSvc)
 	loanHandler := httpHandler.NewLoanHandler(loanSvc)
-	mcHandler := httpHandler.NewMakerCheckerHandler(db)
+	mcHandler := httpHandler.NewMakerCheckerHandler(mcSvc)
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

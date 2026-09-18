@@ -21,6 +21,7 @@ type makerCheckerService struct {
 	repo      domain.MakerCheckerRepository
 	auditRepo domain.AuditRepository
 	config    domain.SystemConfigService
+	executors domain.MakerCheckerExecutor
 }
 
 func NewMakerCheckerService(
@@ -28,8 +29,9 @@ func NewMakerCheckerService(
 	repo domain.MakerCheckerRepository,
 	auditRepo domain.AuditRepository,
 	config domain.SystemConfigService,
+	executors domain.MakerCheckerExecutor,
 ) domain.MakerCheckerService {
-	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config}
+	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config, executors: executors}
 }
 
 // Threshold membaca ambang persetujuan untuk satu jenis aksi dari system_config.
@@ -115,8 +117,9 @@ func (s *makerCheckerService) Reject(ctx context.Context, id uuid.UUID, actor do
 	return s.process(ctx, req, actor, domain.MakerCheckerRejected, notes, "REJECT_MAKER_CHECKER")
 }
 
-// process mengubah status dan menulis audit dalam satu transaksi: status dan audit
-// harus commit bersama, tidak boleh ada keputusan tanpa jejak.
+// process mengeksekusi transaksi yang disetujui sekaligus mencatat keputusannya.
+// Status, posting jurnal, dan audit berada dalam SATU transaksi: keputusan tidak
+// pernah tercatat tanpa efeknya, dan efek tidak pernah terjadi tanpa jejak keputusan.
 func (s *makerCheckerService) process(ctx context.Context, req *domain.MakerCheckerRequest, actor domain.Actor, status domain.MakerCheckerStatus, notes, action string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -124,9 +127,21 @@ func (s *makerCheckerService) process(ctx context.Context, req *domain.MakerChec
 	}
 	defer tx.Rollback()
 
+	// Kunci permintaan agar dua pemeriksa tidak memproses bersamaan.
 	if err := s.repo.UpdateStatusTx(ctx, tx, req.ID, status, actor.UserID.String(), notes); err != nil {
 		return err
 	}
+
+	// Hanya persetujuan yang mengeksekusi transaksi; penolakan berhenti di status.
+	if status == domain.MakerCheckerApproved {
+		if s.executors == nil {
+			return domain.ErrNoExecutorForAction
+		}
+		if err := s.executors.ExecuteApproved(ctx, tx, req.ActionType, req.Payload, actor); err != nil {
+			return err
+		}
+	}
+
 	if err := writeAudit(ctx, s.auditRepo, tx, actor, action, "maker_checker", req.ID.String(), map[string]any{
 		"action_type": req.ActionType,
 		"status":      string(status),

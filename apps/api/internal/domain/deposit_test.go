@@ -107,3 +107,26 @@ func TestIsBagiHasilProfit(t *testing.T) {
 		t.Fatal("INTEREST bukan bagi hasil")
 	}
 }
+
+func TestDepositEarlyWithdrawalPenaltyPersenPokok(t *testing.T) {
+	// Asumsi satuan: persen dari pokok. 10.000.000 x 1% = 100.000.
+	penalty := DepositEarlyWithdrawalPenalty(decimal.NewFromInt(10_000_000), decimal.NewFromInt(1))
+	want := decimal.NewFromInt(100_000)
+	if !penalty.Equal(want) {
+		t.Fatalf("denda = %s, mau %s", penalty, want)
+	}
+}
+
+func TestDepositEarlyWithdrawalPenaltyTarifNol(t *testing.T) {
+	if p := DepositEarlyWithdrawalPenalty(decimal.NewFromInt(10_000_000), decimal.Zero); !p.IsZero() {
+		t.Fatalf("tarif nol harus tanpa denda, dapat %s", p)
+	}
+}
+
+func TestDepositEarlyWithdrawalPenaltyDibulatkanKeRupiah(t *testing.T) {
+	// 3.333.333 x 0,5% = 16.666,665 dibulatkan banker's ke 16.667 (RoundBank).
+	penalty := DepositEarlyWithdrawalPenalty(decimal.NewFromInt(3_333_333), decimal.NewFromFloat(0.5))
+	if penalty.LessThan(decimal.NewFromInt(16_666)) || penalty.GreaterThan(decimal.NewFromInt(16_667)) {
+		t.Fatalf("denda tidak bulat rupiah wajar: %s", penalty)
+	}
+}

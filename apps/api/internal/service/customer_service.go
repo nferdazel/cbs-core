@@ -40,11 +40,13 @@ func (s *customerService) cipherOrError() error {
 	return nil
 }
 
-func (s *customerService) nextCIF() string {
-	if s.cifSource != nil {
-		return s.cifSource.NextCIF()
+// nextCIF menerbitkan nomor CIF. Kegagalan sequence diteruskan sebagai error,
+// tidak ada nomor cadangan: CIF ganda menyatukan dua nasabah berbeda.
+func (s *customerService) nextCIF() (string, error) {
+	if s.cifSource == nil {
+		return "", errors.New("generator nomor CIF belum dikonfigurasi")
 	}
-	return fmt.Sprintf("CIF-TMP-%s", uuid.New().String()[:8])
+	return s.cifSource.NextCIF()
 }
 
 func (s *customerService) RegisterCustomer(ctx context.Context, input domain.CreateCustomerInput, actor domain.Actor) (*domain.Customer, error) {
@@ -62,8 +64,12 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 	if err != nil {
 		return nil, err
 	}
+	cifNumber, err := s.nextCIF()
+	if err != nil {
+		return nil, err
+	}
 	record.ID = uuid.New()
-	record.CIFNumber = s.nextCIF()
+	record.CIFNumber = cifNumber
 	record.Status = domain.CustomerStatusActive
 	record.Metadata = input.Metadata
 	record.CreatedAt = time.Now().UTC()

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -23,6 +24,13 @@ var defaultDepositTaxRate = decimal.NewFromInt(20)
 const (
 	depositTaxRateConfigKey  = "tax.deposit.rate"
 	mudharabahYieldConfigKey = "deposit.mudharabah.yield_annual"
+
+	// depositPenaltyCOAConfigKey menimpa akun pendapatan denda pencairan.
+	// Migrasi 000005 menyediakan 40500 "Pendapatan Denda" hanya untuk buku
+	// konvensional (buku syariah tidak punya akun denda baku), jadi fallback
+	// konvensional 40500 dan syariah wajib diisi lewat konfigurasi.
+	depositPenaltyCOAConfigKey   = "deposit.penalty.income.coa"
+	defaultDepositPenaltyCOAConv = "40500"
 )
 
 type depositService struct {
@@ -311,6 +319,54 @@ func depositPayoutAmounts(d *domain.Deposit) (netProfit, tax, proceeds decimal.D
 	return netProfit, tax, proceeds
 }
 
+// depositIsEarly melaporkan apakah asOf masih sebelum tanggal jatuh tempo.
+func depositIsEarly(asOf, maturity time.Time) bool {
+	return depositDateOnly(asOf).Before(depositDateOnly(maturity))
+}
+
+// depositWithdrawalAmounts menerapkan denda pada hak pencairan. Proceeds tidak
+// pernah negatif: bila denda melebihi pokok + imbal hasil bersih, kembalikan
+// ErrDepositPenaltyExceedsProceeds. appliedPenalty di-nol-kan saat tidak valid.
+func depositWithdrawalAmounts(d *domain.Deposit, penalty decimal.Decimal) (netProfit, tax, appliedPenalty, proceeds decimal.Decimal, err error) {
+	netProfit, tax, proceeds = depositPayoutAmounts(d)
+	appliedPenalty = penalty
+	if appliedPenalty.IsNegative() {
+		appliedPenalty = decimal.Zero
+	}
+	if appliedPenalty.GreaterThan(proceeds) {
+		return netProfit, tax, decimal.Zero, decimal.Zero, domain.ErrDepositPenaltyExceedsProceeds
+	}
+	proceeds = proceeds.Sub(appliedPenalty)
+	return netProfit, tax, appliedPenalty, proceeds, nil
+}
+
+// depositPenaltySplit membagi denda: sebesar mungkin diserap porsi imbal hasil
+// bersih lebih dulu, sisanya mengurangi pokok. Ini menjaga setiap jurnal tetap
+// seimbang tanpa nilai kas negatif.
+func depositPenaltySplit(netProfit, penalty decimal.Decimal) (fromProfit, fromPrincipal decimal.Decimal) {
+	if penalty.LessThanOrEqual(decimal.Zero) {
+		return decimal.Zero, decimal.Zero
+	}
+	if penalty.LessThanOrEqual(netProfit) {
+		return penalty, decimal.Zero
+	}
+	return netProfit, penalty.Sub(netProfit)
+}
+
+// depositRolloverTerms menghitung syarat kontrak ARO berikutnya tanpa menyentuh
+// database: pokok, awal baru (tanggal jatuh tempo lama), jatuh tempo berikutnya,
+// dan apakah imbal hasil dikapitalisasi ke pokok.
+func depositRolloverTerms(d *domain.Deposit, netProfit decimal.Decimal) (newPrincipal decimal.Decimal, newStart, newMaturity time.Time, capitalise bool) {
+	newStart = depositDateOnly(d.MaturityDate)
+	newMaturity = domain.DepositMaturityDate(newStart, d.TermMonths)
+	newPrincipal = d.PlacementAmount
+	if d.AROInstruction == domain.AROInstructionPrincipalAndProfit && netProfit.IsPositive() {
+		newPrincipal = d.PlacementAmount.Add(netProfit)
+		capitalise = true
+	}
+	return newPrincipal, newStart, newMaturity, capitalise
+}
+
 func (s *depositService) Accrue(ctx context.Context, depositID uuid.UUID, asOf time.Time, actor domain.Actor) (*domain.Deposit, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
@@ -390,12 +446,23 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 		return nil, err
 	}
 
-	netProfit, tax, proceeds := depositPayoutAmounts(dep)
-	// Sebelum jatuh tempo kontrak dianggap dicairkan lebih awal (BROKEN). Denda
-	// pencairan awal belum diterapkan; pokok dan akrual tetap dibayarkan.
-	status := domain.DepositStatusClosed
 	now := time.Now().UTC()
-	if depositDateOnly(now).Before(depositDateOnly(dep.MaturityDate)) {
+	// Sebelum jatuh tempo kontrak dicairkan lebih awal (BROKEN) dan dikenai denda
+	// sesuai tarif produk. Denda hanya memotong hasil pencairan, tidak mengubah
+	// akrual imbal hasil yang sudah diakui.
+	early := depositIsEarly(now, dep.MaturityDate)
+	penalty := decimal.Zero
+	if early {
+		penalty = domain.DepositEarlyWithdrawalPenalty(dep.PlacementAmount, product.EarlyWithdrawalPenaltyRate)
+	}
+	netProfit, tax, penalty, proceeds, err := depositWithdrawalAmounts(dep, penalty)
+	if err != nil {
+		return nil, err
+	}
+	fromProfit, fromPrincipal := depositPenaltySplit(netProfit, penalty)
+
+	status := domain.DepositStatusClosed
+	if early {
 		status = domain.DepositStatusBroken
 	}
 
@@ -414,10 +481,18 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 		}
 	}
 
-	// 2. Bayar imbal hasil bersih.
-	if netProfit.IsPositive() {
+	// 2. Akui pendapatan denda: kurangi kewajiban imbal hasil/pokok sebesar denda
+	// yang tidak dibayarkan ke nasabah.
+	if penalty.IsPositive() {
+		if err := s.postDepositPenalty(ctx, tx, product, dep, actor, fromProfit, fromPrincipal, penalty); err != nil {
+			return nil, err
+		}
+	}
+
+	// 3. Bayar imbal hasil bersih setelah denda porsi bunga.
+	if interestPaid := netProfit.Sub(fromProfit); interestPaid.IsPositive() {
 		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventInterestPayment, Amounts{
-			Profit: netProfit, Total: netProfit,
+			Profit: interestPaid, Total: interestPaid,
 		}, PostingMeta{
 			TransactionType: domain.TxTypeWithdrawal,
 			Description:     fmt.Sprintf("Pembayaran imbal hasil deposito %s", dep.AccountNumber),
@@ -429,26 +504,29 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 		}
 	}
 
-	// 3. Bayar pokok: kurangi kewajiban deposito, kredit kas.
-	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventWithdrawal, Amounts{
-		Principal: dep.PlacementAmount, Total: dep.PlacementAmount,
-	}, PostingMeta{
-		TransactionType: domain.TxTypeWithdrawal,
-		Description:     fmt.Sprintf("Pencairan pokok deposito %s", dep.AccountNumber),
-		IdempotencyKey:  "DEP-MAT-" + dep.ID.String() + "-PRIN",
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
-	}); err != nil {
-		return nil, fmt.Errorf("jurnal pencairan pokok deposito: %w", err)
+	// 4. Bayar pokok setelah denda porsi pokok (bila denda melebihi bunga bersih).
+	if principalPaid := dep.PlacementAmount.Sub(fromPrincipal); principalPaid.IsPositive() {
+		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventWithdrawal, Amounts{
+			Principal: principalPaid, Total: principalPaid,
+		}, PostingMeta{
+			TransactionType: domain.TxTypeWithdrawal,
+			Description:     fmt.Sprintf("Pencairan pokok deposito %s", dep.AccountNumber),
+			IdempotencyKey:  "DEP-MAT-" + dep.ID.String() + "-PRIN",
+			CreatedBy:       actor.DisplayName(),
+			BranchCode:      actor.BranchCode,
+		}); err != nil {
+			return nil, fmt.Errorf("jurnal pencairan pokok deposito: %w", err)
+		}
 	}
 
-	if err := s.depositRepo.UpdateStatus(ctx, tx, dep.ID, status, proceeds, netProfit, tax); err != nil {
+	if err := s.depositRepo.UpdateStatus(ctx, tx, dep.ID, status, proceeds, netProfit, tax, penalty); err != nil {
 		return nil, err
 	}
 	if err := writeAudit(ctx, s.auditRepo, tx, actor, "WITHDRAW_DEPOSIT", "deposit", dep.ID.String(), map[string]any{
 		"status":   status,
 		"proceeds": proceeds.String(),
 		"tax":      tax.String(),
+		"penalty":  penalty.String(),
 	}); err != nil {
 		return nil, err
 	}
@@ -461,6 +539,7 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 	dep.MaturityProceeds = proceeds
 	dep.PaidProfit = netProfit
 	dep.PaidTax = tax
+	dep.EarlyWithdrawalPenalty = penalty
 	dep.ClosedAt = &now
 	return dep, nil
 }
@@ -504,11 +583,10 @@ func (s *depositService) rolloverOne(ctx context.Context, depositID uuid.UUID, a
 	}
 
 	netProfit, tax, _ := depositPayoutAmounts(dep)
-	newPrincipal := dep.PlacementAmount
+	newPrincipal, start, maturity, capitalise := depositRolloverTerms(dep, netProfit)
 	var paidProfit, paidTax decimal.Decimal
-	resetAccrual := false
 
-	if dep.AROInstruction == domain.AROInstructionPrincipalAndProfit && netProfit.IsPositive() {
+	if capitalise {
 		if tax.IsPositive() {
 			if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventTaxWithholding, Amounts{
 				Tax: tax, Total: tax,
@@ -545,21 +623,17 @@ func (s *depositService) rolloverOne(ctx context.Context, depositID uuid.UUID, a
 			return fmt.Errorf("jurnal kapitalisasi ARO deposito: %w", err)
 		}
 
-		newPrincipal = dep.PlacementAmount.Add(netProfit)
 		paidProfit = netProfit
 		paidTax = tax
-		resetAccrual = true
 	}
 
-	start := depositDateOnly(dep.MaturityDate)
-	maturity := domain.DepositMaturityDate(start, dep.TermMonths)
-	if err := s.depositRepo.Rollover(ctx, tx, dep.ID, newPrincipal, paidProfit, paidTax, start, maturity, resetAccrual); err != nil {
+	if err := s.depositRepo.Rollover(ctx, tx, dep.ID, newPrincipal, paidProfit, paidTax, start, maturity, capitalise); err != nil {
 		return err
 	}
 	if err := writeAudit(ctx, s.auditRepo, tx, actor, "ROLLOVER_DEPOSIT", "deposit", dep.ID.String(), map[string]any{
 		"new_principal": newPrincipal.String(),
 		"new_maturity":  maturity.Format("2006-01-02"),
-		"capitalised":   resetAccrual,
+		"capitalised":   capitalise,
 	}); err != nil {
 		return err
 	}
@@ -579,6 +653,85 @@ func (s *depositService) mappingAccount(ctx context.Context, tx any, productID u
 		}
 	}
 	return "", fmt.Errorf("produk tidak punya pemetaan %s arah %s", event, dir)
+}
+
+// depositPenaltyCOA menentukan kode COA pendapatan denda. Urutan: override
+// system_config deposit.penalty.income.coa, lalu fallback 40500 "Pendapatan
+// Denda" (buku konvensional, migrasi 000005). Buku syariah tidak punya akun
+// denda baku, sehingga mengembalikan string kosong bila tidak dikonfigurasi.
+func (s *depositService) depositPenaltyCOA(ctx context.Context, product *domain.BankingProduct) string {
+	fallback := ""
+	if product.Book == domain.BookConventional {
+		fallback = defaultDepositPenaltyCOAConv
+	}
+	if s.configSvc == nil {
+		return fallback
+	}
+	code := strings.TrimSpace(s.configSvc.GetString(ctx, depositPenaltyCOAConfigKey, fallback))
+	if code == "" {
+		code = fallback
+	}
+	return code
+}
+
+// postDepositPenalty menulis jurnal pendapatan denda. Debit mengikuti dari sisi
+// mana denda diserap (kewajiban imbal hasil dan/atau pokok), kredit ke akun
+// pendapatan denda. Idempotency key tetap per kontrak agar pencairan ganda tidak
+// memposting denda dua kali.
+func (s *depositService) postDepositPenalty(
+	ctx context.Context,
+	tx any,
+	product *domain.BankingProduct,
+	dep *domain.Deposit,
+	actor domain.Actor,
+	fromProfit, fromPrincipal, penalty decimal.Decimal,
+) error {
+	coa := s.depositPenaltyCOA(ctx, product)
+	if coa == "" {
+		return fmt.Errorf("%w: atur %s untuk buku %s", domain.ErrDepositPenaltyCOAUnavailable, depositPenaltyCOAConfigKey, product.Book)
+	}
+	penaltyAccount, err := s.resolver.ResolveGLAccount(ctx, tx, coa)
+	if err != nil {
+		return fmt.Errorf("akun pendapatan denda %s: %w", coa, err)
+	}
+
+	lines := make([]domain.PostingLine, 0, 3)
+	if fromProfit.IsPositive() {
+		account, err := s.mappingAccount(ctx, tx, product.ID, domain.EventInterestPayment, domain.DirectionDebit)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: account, Direction: domain.DirectionDebit, Amount: fromProfit,
+			Description: "Denda pencairan deposito - imbal hasil",
+		})
+	}
+	if fromPrincipal.IsPositive() {
+		account, err := s.mappingAccount(ctx, tx, product.ID, domain.EventWithdrawal, domain.DirectionDebit)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: account, Direction: domain.DirectionDebit, Amount: fromPrincipal,
+			Description: "Denda pencairan deposito - pokok",
+		})
+	}
+	lines = append(lines, domain.PostingLine{
+		AccountNumber: penaltyAccount, Direction: domain.DirectionCredit, Amount: penalty,
+		Description: "Pendapatan denda pencairan deposito",
+	})
+
+	if _, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: domain.TxTypeWithdrawal,
+		Description:     fmt.Sprintf("Denda pencairan lebih awal deposito %s", dep.AccountNumber),
+		IdempotencyKey:  "DEP-MAT-" + dep.ID.String() + "-PEN",
+		CreatedBy:       actor.DisplayName(),
+		BranchCode:      actor.BranchCode,
+		Lines:           lines,
+	}); err != nil {
+		return fmt.Errorf("jurnal denda pencairan deposito: %w", err)
+	}
+	return nil
 }
 
 func (s *depositService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Deposit, error) {

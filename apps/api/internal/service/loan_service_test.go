@@ -1,10 +1,12 @@
 package service_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/service"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -146,29 +148,60 @@ func TestBuildSchedule_BagiHasil(t *testing.T) {
 	}
 }
 
-func TestCalculateCollectibility_POJK1Tahun2024(t *testing.T) {
-	cases := []struct {
-		dpd     int
-		wantKol domain.OJKCollectibility
-		wantRate string
-		accrual domain.AccrualStatus
-	}{
-		{0, domain.CollectibilityKol1, "0.005", domain.AccrualStatusAccrual},
-		{90, domain.CollectibilityKol2, "0.01", domain.AccrualStatusAccrual},
-		{120, domain.CollectibilityKol3, "0.15", domain.AccrualStatusCash},
-		{180, domain.CollectibilityKol4, "0.5", domain.AccrualStatusCash},
-		{181, domain.CollectibilityKol5, "1", domain.AccrualStatusCash},
+// stubLoanProductRepo adalah ProductRepository minimal untuk test restrukturisasi.
+type stubLoanProductRepo struct {
+	domain.ProductRepository
+	product *domain.BankingProduct
+}
+
+func (s *stubLoanProductRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.BankingProduct, error) {
+	return s.product, nil
+}
+
+var _ domain.ProductRepository = (*stubLoanProductRepo)(nil)
+
+// Restrukturisasi memakai ambang DPD dan tarif dari konfigurasi yang sama dengan
+// PPAP harian. DPD 45 masuk rentang 31-90 (Kurang Lancar), bukan lagi DPK seperti
+// aturan lama yang memakai DPK 1-90.
+func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
+	loanID := uuid.New()
+	productID := uuid.New()
+	repo := &stubLoanRepo{loan: &domain.Loan{
+		ID:                   loanID,
+		Status:               domain.LoanStatusDisbursed,
+		ProductID:            &productID,
+		DPD:                  45,
+		PrincipalAmount:      decimal.NewFromInt(10_000_000),
+		OutstandingPrincipal: decimal.NewFromInt(10_000_000),
+		TermMonths:           12,
+		InterestRateAnnual:   decimal.NewFromInt(12),
+	}}
+	products := &stubLoanProductRepo{product: &domain.BankingProduct{
+		ID:             productID,
+		Code:           "KRD-FLAT",
+		ProfitScheme:   domain.SchemeInterest,
+		ScheduleMethod: domain.ScheduleFlat,
+		RateAnnual:     decimal.NewFromInt(12),
+	}}
+	// Konfigurasi kosong memakai fallback POJK: DPK 30, Kurang Lancar 90, Diragukan 180.
+	config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
+	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, config)
+
+	loan, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:        loanID,
+		NewTermMonths: 12,
+	}, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
 	}
-	for _, c := range cases {
-		kol, ppap, accrual := domain.CalculateCollectibility(c.dpd)
-		if kol != c.wantKol {
-			t.Fatalf("DPD %d: kolektibilitas %s, ingin %s", c.dpd, kol, c.wantKol)
-		}
-		if ppap.String() != c.wantRate {
-			t.Fatalf("DPD %d: PPAP %s, ingin %s", c.dpd, ppap.String(), c.wantRate)
-		}
-		if accrual != c.accrual {
-			t.Fatalf("DPD %d: akrual %s, ingin %s", c.dpd, accrual, c.accrual)
-		}
+	if loan.Collectibility != domain.CollectibilityKol3 {
+		t.Fatalf("DPD 45 harus Kurang Lancar, dapat %s", loan.Collectibility)
+	}
+	if loan.AccrualStatus != domain.AccrualStatusCash {
+		t.Fatalf("NPL harus cash basis, dapat %s", loan.AccrualStatus)
+	}
+	// Tarif Kurang Lancar 15% dari pokok terutang.
+	if !loan.RequiredPPAP.Equal(decimal.NewFromInt(1_500_000)) {
+		t.Fatalf("required_ppap %s, ingin 1.500.000", loan.RequiredPPAP)
 	}
 }

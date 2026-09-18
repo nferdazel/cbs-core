@@ -36,7 +36,7 @@ func (s *stubDepositRepo) ListMaturedARO(ctx context.Context, asOf time.Time) ([
 func (s *stubDepositRepo) AddAccrual(ctx context.Context, tx any, id uuid.UUID, profit, tax decimal.Decimal, asOf time.Time) error {
 	return nil
 }
-func (s *stubDepositRepo) UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status domain.DepositStatus, proceeds, paidProfit, paidTax decimal.Decimal) error {
+func (s *stubDepositRepo) UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status domain.DepositStatus, proceeds, paidProfit, paidTax, penalty decimal.Decimal) error {
 	return nil
 }
 func (s *stubDepositRepo) Rollover(ctx context.Context, tx any, id uuid.UUID, newPrincipal, paidProfit, paidTax decimal.Decimal, newStart, newMaturity time.Time, resetAccrual bool) error {
@@ -250,5 +250,151 @@ func TestDepositTermsSyariahTanpaPajakDanNisbah(t *testing.T) {
 	}
 	if !tax.IsZero() {
 		t.Fatalf("syariah bebas pajak, dapat %s", tax)
+	}
+}
+
+// ── Denda pencairan lebih awal ───────────────────────────────────────────────
+
+func TestDepositWithdrawalAmountsDendaSebelumJatuhTempo(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(10_000_000),
+		AccruedProfit:   decimal.NewFromInt(1_200_000),
+		AccruedTax:      decimal.NewFromInt(240_000),
+	}
+	net, tax, penalty, proceeds, err := depositWithdrawalAmounts(dep, decimal.NewFromInt(100_000))
+	if err != nil {
+		t.Fatalf("tidak mau error: %v", err)
+	}
+	if !net.Equal(decimal.NewFromInt(960_000)) {
+		t.Fatalf("laba bersih = %s, mau 960000", net)
+	}
+	if !tax.Equal(decimal.NewFromInt(240_000)) {
+		t.Fatalf("pajak = %s, mau 240000", tax)
+	}
+	if !penalty.Equal(decimal.NewFromInt(100_000)) {
+		t.Fatalf("denda = %s, mau 100000", penalty)
+	}
+	if !proceeds.Equal(decimal.NewFromInt(10_860_000)) {
+		t.Fatalf("hasil pencairan = %s, mau 10860000", proceeds)
+	}
+}
+
+func TestDepositWithdrawalAmountsTanpaDendaSaatJatuhTempo(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(10_000_000),
+		AccruedProfit:   decimal.NewFromInt(1_200_000),
+		AccruedTax:      decimal.NewFromInt(240_000),
+	}
+	_, _, penalty, proceeds, err := depositWithdrawalAmounts(dep, decimal.Zero)
+	if err != nil {
+		t.Fatalf("tidak mau error: %v", err)
+	}
+	if !penalty.IsZero() {
+		t.Fatalf("denda harus nol, dapat %s", penalty)
+	}
+	if !proceeds.Equal(decimal.NewFromInt(10_960_000)) {
+		t.Fatalf("hasil pencairan = %s, mau 10960000", proceeds)
+	}
+}
+
+func TestDepositWithdrawalAmountsDendaMelebihiHakNasabah(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(1_000_000),
+		AccruedProfit:   decimal.NewFromInt(100_000),
+		AccruedTax:      decimal.Zero,
+	}
+	// Denda 1,2 juta > pokok 1 juta + imbal hasil 100 ribu.
+	_, _, _, proceeds, err := depositWithdrawalAmounts(dep, decimal.NewFromInt(1_200_000))
+	if !errors.Is(err, domain.ErrDepositPenaltyExceedsProceeds) {
+		t.Fatalf("mau ErrDepositPenaltyExceedsProceeds, dapat %v", err)
+	}
+	if !proceeds.IsZero() {
+		t.Fatalf("proceeds saat error harus nol, dapat %s", proceeds)
+	}
+}
+
+func TestDepositWithdrawalAmountsHasilTidakNegatif(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(1_000_000),
+		AccruedProfit:   decimal.NewFromInt(100_000),
+		AccruedTax:      decimal.Zero,
+	}
+	// Denda tepat sama dengan pokok + imbal hasil: hasil 0, bukan negatif.
+	_, _, _, proceeds, err := depositWithdrawalAmounts(dep, decimal.NewFromInt(1_100_000))
+	if err != nil {
+		t.Fatalf("denda = hak nasabah harus boleh, dapat error %v", err)
+	}
+	if proceeds.IsNegative() {
+		t.Fatalf("hasil pencairan tidak boleh negatif, dapat %s", proceeds)
+	}
+	if !proceeds.IsZero() {
+		t.Fatalf("hasil pencairan = %s, mau 0", proceeds)
+	}
+}
+
+func TestDepositPenaltySplitMenyerapBungaLaluPokok(t *testing.T) {
+	fromProfit, fromPrincipal := depositPenaltySplit(decimal.NewFromInt(100_000), decimal.NewFromInt(60_000))
+	if !fromProfit.Equal(decimal.NewFromInt(60_000)) || !fromPrincipal.IsZero() {
+		t.Fatalf("denda <= bunga harus dari bunga: profit=%s pokok=%s", fromProfit, fromPrincipal)
+	}
+	fromProfit, fromPrincipal = depositPenaltySplit(decimal.NewFromInt(100_000), decimal.NewFromInt(150_000))
+	if !fromProfit.Equal(decimal.NewFromInt(100_000)) || !fromPrincipal.Equal(decimal.NewFromInt(50_000)) {
+		t.Fatalf("sisanya harus dari pokok: profit=%s pokok=%s", fromProfit, fromPrincipal)
+	}
+}
+
+// ── Batas jatuh tempo & perpanjangan ARO ────────────────────────────────────
+
+func TestDepositIsEarlySebelumDanSesudahJatuhTempo(t *testing.T) {
+	maturity := time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC)
+	if !depositIsEarly(time.Date(2026, time.March, 14, 0, 0, 0, 0, time.UTC), maturity) {
+		t.Fatal("sehari sebelum jatuh tempo harus dianggap lebih awal")
+	}
+	if depositIsEarly(maturity, maturity) {
+		t.Fatal("tepat jatuh tempo bukan pencairan lebih awal")
+	}
+	if depositIsEarly(time.Date(2026, time.March, 16, 0, 0, 0, 0, time.UTC), maturity) {
+		t.Fatal("setelah jatuh tempo bukan pencairan lebih awal")
+	}
+}
+
+func TestDepositRolloverTermsPokokDanProfit(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(10_000_000),
+		TermMonths:      3,
+		MaturityDate:    time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC),
+		AROInstruction:  domain.AROInstructionPrincipalAndProfit,
+	}
+	newPrincipal, start, maturity, capitalise := depositRolloverTerms(dep, decimal.NewFromInt(120_000))
+	if !newPrincipal.Equal(decimal.NewFromInt(10_120_000)) {
+		t.Fatalf("pokok ARO = %s, mau 10120000", newPrincipal)
+	}
+	if !start.Equal(time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("awal ARO = %s, mau 2026-03-15", start.Format("2006-01-02"))
+	}
+	if !maturity.Equal(time.Date(2026, time.June, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("jatuh tempo ARO = %s, mau 2026-06-15", maturity.Format("2006-01-02"))
+	}
+	if !capitalise {
+		t.Fatal("PRINCIPAL_AND_PROFIT harus mengapitalisasi imbal hasil")
+	}
+}
+
+func TestDepositRolloverTermsPokokSaja(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(10_000_000),
+		TermMonths:      6,
+		MaturityDate:    time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC),
+		AROInstruction:  domain.AROInstructionPrincipal,
+	}
+	newPrincipal, _, maturity, capitalise := depositRolloverTerms(dep, decimal.NewFromInt(120_000))
+	if !newPrincipal.Equal(decimal.NewFromInt(10_000_000)) {
+		t.Fatalf("pokok ARO principal = %s, mau 10000000", newPrincipal)
+	}
+	if !maturity.Equal(time.Date(2026, time.September, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("jatuh tempo ARO = %s, mau 2026-09-15", maturity.Format("2006-01-02"))
+	}
+	if capitalise {
+		t.Fatal("PRINCIPAL tidak boleh mengapitalisasi imbal hasil")
 	}
 }

@@ -27,7 +27,7 @@ const depositColumns = `id, account_number, customer_id, product_id, branch_id,
 	placement_amount, currency, term_months, start_date, maturity_date,
 	profit_rate, yield_rate, profit_type, tax_rate, aro, aro_instruction,
 	status::text, accrued_profit, accrued_tax, paid_profit, paid_tax,
-	maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at`
+	early_withdrawal_penalty, maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at`
 
 func scanDeposit(row interface{ Scan(...any) error }) (*domain.Deposit, error) {
 	var d domain.Deposit
@@ -37,7 +37,7 @@ func scanDeposit(row interface{ Scan(...any) error }) (*domain.Deposit, error) {
 		&d.PlacementAmount, &d.Currency, &d.TermMonths, &d.StartDate, &d.MaturityDate,
 		&d.ProfitRate, &d.YieldRate, &d.ProfitType, &d.TaxRate, &d.ARO, &d.AROInstruction,
 		&d.Status, &d.AccruedProfit, &d.AccruedTax, &d.PaidProfit, &d.PaidTax,
-		&d.MaturityProceeds, &lastAccrual, &closedAt, &d.CreatedAt, &d.UpdatedAt,
+		&d.EarlyWithdrawalPenalty, &d.MaturityProceeds, &lastAccrual, &closedAt, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -68,17 +68,17 @@ func (r *DepositRepository) Create(ctx context.Context, tx any, d *domain.Deposi
 			placement_amount, currency, term_months, start_date, maturity_date,
 			profit_rate, yield_rate, profit_type, tax_rate, aro, aro_instruction,
 			status, accrued_profit, accrued_tax, paid_profit, paid_tax,
-			maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at
+			early_withdrawal_penalty, maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-			$17::deposit_status, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+			$17::deposit_status, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 	`
 	_, err := sqlTx.ExecContext(ctx, query,
 		d.ID, d.AccountNumber, d.CustomerID, d.ProductID, d.BranchID,
 		d.PlacementAmount, d.Currency, d.TermMonths, d.StartDate, d.MaturityDate,
 		d.ProfitRate, d.YieldRate, d.ProfitType, d.TaxRate, d.ARO, d.AROInstruction,
 		d.Status, d.AccruedProfit, d.AccruedTax, d.PaidProfit, d.PaidTax,
-		d.MaturityProceeds, d.LastAccrualDate, d.ClosedAt, d.CreatedAt, d.UpdatedAt,
+		d.EarlyWithdrawalPenalty, d.MaturityProceeds, d.LastAccrualDate, d.ClosedAt, d.CreatedAt, d.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("insert deposit: %w", err)
@@ -165,7 +165,7 @@ func (r *DepositRepository) AddAccrual(ctx context.Context, tx any, id uuid.UUID
 	return nil
 }
 
-func (r *DepositRepository) UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status domain.DepositStatus, proceeds, paidProfit, paidTax decimal.Decimal) error {
+func (r *DepositRepository) UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status domain.DepositStatus, proceeds, paidProfit, paidTax, penalty decimal.Decimal) error {
 	sqlTx, ok := tx.(*sql.Tx)
 	if !ok {
 		return errors.New("update status deposit: transaksi tidak valid")
@@ -176,9 +176,10 @@ func (r *DepositRepository) UpdateStatus(ctx context.Context, tx any, id uuid.UU
 		    maturity_proceeds = $3,
 		    paid_profit = $4,
 		    paid_tax = $5,
+		    early_withdrawal_penalty = $6,
 		    closed_at = NOW(),
 		    updated_at = NOW()
-		WHERE id = $1`, id, status, proceeds, paidProfit, paidTax)
+		WHERE id = $1`, id, status, proceeds, paidProfit, paidTax, penalty)
 	if err != nil {
 		return fmt.Errorf("update status deposit: %w", err)
 	}

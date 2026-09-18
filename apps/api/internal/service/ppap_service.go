@@ -11,15 +11,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Kunci konfigurasi PPAP. Semua tarif dan ambang DPD dibaca dari system_config;
-// fallback di kode dipakai bila key belum di-provision agar batch tetap berjalan.
+// Kunci konfigurasi COA PPAP. Tarif dan ambang DPD dibaca lewat helper bersama di
+// collectibility_rules.go agar aturannya identik dengan jalur restrukturisasi kredit.
 const (
-	cfgPPAPExpenseCOA       = "ppap.coa.expense"
-	cfgPPAPReserveCOA       = "ppap.coa.reserve"
-	cfgPPAPDPKDays          = "ppap.dpd.dpk"
-	cfgPPAPKurangLancarDays = "ppap.dpd.kurang_lancar"
-	cfgPPAPDiragukanDays    = "ppap.dpd.diragukan"
-	cfgPPAPRatePrefix       = "ppap.rate." // ppap.rate.1 .. ppap.rate.5
+	cfgPPAPExpenseCOA = "ppap.coa.expense"
+	cfgPPAPReserveCOA = "ppap.coa.reserve"
 )
 
 // Fallback kode COA. Kode ini ADA di seed migrasi 000005:
@@ -106,8 +102,8 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		return domain.PPAPRunSummary{}, fmt.Errorf("mengambil daftar kredit PPAP: %w", err)
 	}
 
-	thresholds := s.thresholds(ctx)
-	rates := s.rates(ctx)
+	thresholds := collectibilityThresholds(ctx, s.config)
+	rates := collectibilityRates(ctx, s.config)
 
 	summary := domain.PPAPRunSummary{
 		AsOf:          asOf,
@@ -318,27 +314,6 @@ func (s *ppapService) postAdjustmentFallback(
 	return err
 }
 
-// thresholds membaca ambang DPD dari konfigurasi, fallback ke default POJK.
-func (s *ppapService) thresholds(ctx context.Context) domain.CollectibilityThresholds {
-	def := domain.DefaultCollectibilityThresholds()
-	return domain.CollectibilityThresholds{
-		DPK:          s.configInt(ctx, cfgPPAPDPKDays, def.DPK),
-		KurangLancar: s.configInt(ctx, cfgPPAPKurangLancarDays, def.KurangLancar),
-		Diragukan:    s.configInt(ctx, cfgPPAPDiragukanDays, def.Diragukan),
-	}
-}
-
-// rates membaca tarif PPAP per kolektibilitas dari konfigurasi.
-func (s *ppapService) rates(ctx context.Context) domain.PPAPRates {
-	def := domain.DefaultPPAPRates()
-	out := make(domain.PPAPRates, len(def))
-	for c, r := range def {
-		key := fmt.Sprintf("%s%d", cfgPPAPRatePrefix, int(c))
-		out[c] = domain.PPAPRate(s.configDecimal(ctx, key, decimal.Decimal(r)))
-	}
-	return out
-}
-
 func (s *ppapService) totalReserve(ctx context.Context) decimal.Decimal {
 	total := decimal.Zero
 	for _, book := range []domain.COABook{domain.BookConventional, domain.BookSyariah} {
@@ -358,7 +333,7 @@ func (s *ppapService) expenseCOA(ctx context.Context, book domain.COABook) strin
 	if book == domain.BookSyariah {
 		fallback = fallbackPPAPExpenseSyariah
 	}
-	return s.coaFromConfig(ctx, cfgPPAPExpenseCOA, fallback)
+	return configStringOr(ctx, s.config, cfgPPAPExpenseCOA, fallback)
 }
 
 func (s *ppapService) reserveCOA(ctx context.Context, book domain.COABook) string {
@@ -366,32 +341,7 @@ func (s *ppapService) reserveCOA(ctx context.Context, book domain.COABook) strin
 	if book == domain.BookSyariah {
 		fallback = fallbackPPAPReserveSyariah
 	}
-	return s.coaFromConfig(ctx, cfgPPAPReserveCOA, fallback)
-}
-
-// coaFromConfig membaca kode COA dari konfigurasi; nilai kosong berarti fallback.
-func (s *ppapService) coaFromConfig(ctx context.Context, key, fallback string) string {
-	if s.config == nil {
-		return fallback
-	}
-	if code := s.config.GetString(ctx, key, fallback); code != "" {
-		return code
-	}
-	return fallback
-}
-
-func (s *ppapService) configInt(ctx context.Context, key string, fallback int) int {
-	if s.config == nil {
-		return fallback
-	}
-	return s.config.GetInt(ctx, key, fallback)
-}
-
-func (s *ppapService) configDecimal(ctx context.Context, key string, fallback decimal.Decimal) decimal.Decimal {
-	if s.config == nil {
-		return fallback
-	}
-	return s.config.GetDecimal(ctx, key, fallback)
+	return configStringOr(ctx, s.config, cfgPPAPReserveCOA, fallback)
 }
 
 // daysPastDue menghitung selisih hari kalender (bukan jam) antara asOf dan jatuh tempo.

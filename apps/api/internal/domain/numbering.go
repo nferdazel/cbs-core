@@ -13,6 +13,8 @@ type AccountNumberGenerator interface {
 }
 
 // CIFGenerator menerbitkan nomor CIF berurutan. Dipakai service nasabah.
+// Kegagalan membaca sequence dikembalikan sebagai error, bukan nomor cadangan:
+// CIF ganda membuat dua nasabah tampak sebagai satu orang.
 type CIFGenerator interface {
-	NextCIF() string
+	NextCIF() (string, error)
 }

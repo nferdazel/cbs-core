@@ -17,6 +17,13 @@ var (
 	ErrInvalidDepositAmount  = errors.New("nominal deposito harus positif")
 	ErrInvalidDepositTerm    = errors.New("jangka waktu deposito tidak valid")
 	ErrDepositProductInvalid = errors.New("produk bukan deposito berjangka yang aktif")
+
+	// ErrDepositPenaltyExceedsProceeds: denda lebih besar dari pokok + imbal hasil
+	// bersih, sehingga pencairan akan bernilai negatif.
+	ErrDepositPenaltyExceedsProceeds = errors.New("denda pencairan melebihi pokok dan imbal hasil deposito")
+	// ErrDepositPenaltyCOAUnavailable: akun pendapatan denda belum tersedia untuk
+	// buku produk (mis. syariah tanpa akun denda baku di bagan akun).
+	ErrDepositPenaltyCOAUnavailable = errors.New("akun pendapatan denda deposito belum tersedia")
 )
 
 type DepositStatus string
@@ -42,32 +49,35 @@ const (
 // Deposit adalah kontrak deposito berjangka. Nilai profit memakai ProfitType yang
 // sama dengan jadwal kredit (INTEREST/MARGIN/BAGI_HASIL) agar laporan konsisten.
 type Deposit struct {
-	ID               uuid.UUID       `json:"id"`
-	AccountNumber    string          `json:"account_number"`
-	CustomerID       uuid.UUID       `json:"customer_id"`
-	ProductID        uuid.UUID       `json:"product_id"`
-	BranchID         *uuid.UUID      `json:"branch_id,omitempty"`
-	PlacementAmount  decimal.Decimal `json:"placement_amount"`
-	Currency         string          `json:"currency"`
-	TermMonths       int             `json:"term_months"`
-	StartDate        time.Time       `json:"start_date"`
-	MaturityDate     time.Time       `json:"maturity_date"`
-	ProfitRate       decimal.Decimal `json:"profit_rate"` // bunga tahunan (%) atau nisbah (0-1)
-	YieldRate        decimal.Decimal `json:"yield_rate"`  // proyeksi imbal hasil tahunan (%) bagi hasil syariah
-	ProfitType       ProfitType      `json:"profit_type"`
-	TaxRate          decimal.Decimal `json:"tax_rate"` // PPh final (%) ; 0 = bebas pajak
-	ARO              bool            `json:"aro"`
-	AROInstruction   AROInstruction  `json:"aro_instruction"`
-	Status           DepositStatus   `json:"status"`
-	AccruedProfit    decimal.Decimal `json:"accrued_profit"`
-	AccruedTax       decimal.Decimal `json:"accrued_tax"`
-	PaidProfit       decimal.Decimal `json:"paid_profit"`
-	PaidTax          decimal.Decimal `json:"paid_tax"`
-	MaturityProceeds decimal.Decimal `json:"maturity_proceeds"`
-	LastAccrualDate  *time.Time      `json:"last_accrual_date,omitempty"`
-	ClosedAt         *time.Time      `json:"closed_at,omitempty"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	ID              uuid.UUID       `json:"id"`
+	AccountNumber   string          `json:"account_number"`
+	CustomerID      uuid.UUID       `json:"customer_id"`
+	ProductID       uuid.UUID       `json:"product_id"`
+	BranchID        *uuid.UUID      `json:"branch_id,omitempty"`
+	PlacementAmount decimal.Decimal `json:"placement_amount"`
+	Currency        string          `json:"currency"`
+	TermMonths      int             `json:"term_months"`
+	StartDate       time.Time       `json:"start_date"`
+	MaturityDate    time.Time       `json:"maturity_date"`
+	ProfitRate      decimal.Decimal `json:"profit_rate"` // bunga tahunan (%) atau nisbah (0-1)
+	YieldRate       decimal.Decimal `json:"yield_rate"`  // proyeksi imbal hasil tahunan (%) bagi hasil syariah
+	ProfitType      ProfitType      `json:"profit_type"`
+	TaxRate         decimal.Decimal `json:"tax_rate"` // PPh final (%) ; 0 = bebas pajak
+	ARO             bool            `json:"aro"`
+	AROInstruction  AROInstruction  `json:"aro_instruction"`
+	Status          DepositStatus   `json:"status"`
+	AccruedProfit   decimal.Decimal `json:"accrued_profit"`
+	AccruedTax      decimal.Decimal `json:"accrued_tax"`
+	PaidProfit      decimal.Decimal `json:"paid_profit"`
+	PaidTax         decimal.Decimal `json:"paid_tax"`
+	// EarlyWithdrawalPenalty mencatat denda pencairan lebih awal yang dipotong
+	// dari hasil pencairan. 0 untuk pencairan saat/setelah jatuh tempo.
+	EarlyWithdrawalPenalty decimal.Decimal `json:"early_withdrawal_penalty"`
+	MaturityProceeds       decimal.Decimal `json:"maturity_proceeds"`
+	LastAccrualDate        *time.Time      `json:"last_accrual_date,omitempty"`
+	ClosedAt               *time.Time      `json:"closed_at,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
 type PlaceDepositInput struct {
@@ -107,7 +117,7 @@ type DepositRepository interface {
 	List(ctx context.Context, limit, offset int) ([]Deposit, int, error)
 	ListMaturedARO(ctx context.Context, asOf time.Time) ([]Deposit, error)
 	AddAccrual(ctx context.Context, tx any, id uuid.UUID, profit, tax decimal.Decimal, asOf time.Time) error
-	UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status DepositStatus, proceeds, paidProfit, paidTax decimal.Decimal) error
+	UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status DepositStatus, proceeds, paidProfit, paidTax, penalty decimal.Decimal) error
 	Rollover(ctx context.Context, tx any, id uuid.UUID, newPrincipal, paidProfit, paidTax decimal.Decimal, newStart, newMaturity time.Time, resetAccrual bool) error
 }
 
@@ -165,6 +175,20 @@ func DepositMaturityProceeds(principal, accruedProfit, accruedTax decimal.Decima
 		netProfit = decimal.Zero
 	}
 	return RoundToRupiah(principal.Add(netProfit))
+}
+
+// DepositEarlyWithdrawalPenalty menghitung denda pencairan sebelum jatuh tempo.
+//
+// ASUMSI SATUAN: product.early_withdrawal_penalty_rate dan migration 000005 tidak
+// memberi komentar satuan apa pun (tidak seperti rate_annual/tax_rate yang jelas
+// persen). Karena itu tarif diperlakukan sebagai PERSEN DARI POKOK, bukan persen
+// per tahun — interpretasi yang lazim untuk denda pencairan deposito BPR. Bila
+// kelak satuan disepakati berbeda, ubah hanya di fungsi ini.
+func DepositEarlyWithdrawalPenalty(principal, rate decimal.Decimal) decimal.Decimal {
+	if !principal.IsPositive() || !rate.IsPositive() {
+		return decimal.Zero
+	}
+	return RoundToRupiah(principal.Mul(rate).Div(decimal.NewFromInt(100)))
 }
 
 // DepositMaturityDate menghitung tanggal jatuh tempo dari awal kontrak.

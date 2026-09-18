@@ -94,6 +94,15 @@ var businessErrors = []error{
 	domain.ErrInvalidBusinessDate,
 	domain.ErrEODAlreadyRunForDate,
 	domain.ErrCipherNotConfigured,
+	// Batas transaksi dan maker-checker adalah aturan bisnis: pesannya harus terlihat
+	// pengguna agar mereka tahu mengapa transaksi ditolak atau dialihkan.
+	domain.ErrLimitPerTransaction,
+	domain.ErrLimitDaily,
+	domain.ErrRequiresApproval,
+	domain.ErrMakerCheckerNotFound,
+	domain.ErrMakerCheckerNotPending,
+	domain.ErrCannotSelfApprove,
+	domain.ErrNoExecutorForAction,
 }
 
 // isBusinessError melaporkan apakah error termasuk yang aman ditampilkan ke pengguna.

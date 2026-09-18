@@ -265,6 +265,13 @@ func (s *savingsInterestService) accrue(
 		periodStr = daily[0].Date.Format("2006-01")
 	}
 
+	// Akrual milik akhir bulan periode yang diakrual, bukan tanggal batch dijalankan.
+	entryDate := time.Time{}
+	if len(daily) > 0 {
+		first := daily[0].Date
+		entryDate = time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC)
+	}
+
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return res, err
@@ -296,6 +303,7 @@ func (s *savingsInterestService) accrue(
 		Description:     fmt.Sprintf("Akrual %s tabungan %s", interestLabel(info.ProfitScheme), info.AccountNumber),
 		IdempotencyKey:  fmt.Sprintf("SAV-INT-%s-%s", info.AccountNumber, periodStr),
 		CreatedBy:       createdBy,
+		EntryDate:       entryDate,
 	}
 
 	var entry *domain.JournalEntry
@@ -348,6 +356,7 @@ func (s *savingsInterestService) postInterestFallback(
 		Description:     meta.Description,
 		IdempotencyKey:  meta.IdempotencyKey,
 		CreatedBy:       meta.CreatedBy,
+		EntryDate:       meta.EntryDate,
 		Lines: []domain.PostingLine{
 			{AccountNumber: expenseAcc, Direction: domain.DirectionDebit, Amount: amount, Description: "Beban imbal hasil tabungan"},
 			{AccountNumber: payableAcc, Direction: domain.DirectionCredit, Amount: amount, Description: "Kewajiban imbal hasil tabungan"},
@@ -430,6 +439,12 @@ func (s *savingsInterestService) chargeAdminFee(
 ) domain.AdminFeeResult {
 	res := domain.AdminFeeResult{AccountNumber: info.AccountNumber, Amount: fee, Status: domain.BatchItemFailed}
 
+	// Biaya administrasi milik akhir bulan periode, bukan tanggal batch dijalankan.
+	entryDate := time.Time{}
+	if period, perr := time.Parse("2006-01", periodStr); perr == nil {
+		entryDate = time.Date(period.Year(), period.Month()+1, 0, 0, 0, 0, 0, time.UTC)
+	}
+
 	product, err := s.productRepo.GetByID(ctx, info.ProductID)
 	if err != nil {
 		res.Message = fmt.Sprintf("membaca produk: %v", err)
@@ -482,6 +497,7 @@ func (s *savingsInterestService) chargeAdminFee(
 		Description:     fmt.Sprintf("Biaya administrasi %s periode %s", info.AccountNumber, periodStr),
 		IdempotencyKey:  fmt.Sprintf("EOM-ADM-%s-%s", info.AccountNumber, periodStr),
 		CreatedBy:       createdBy,
+		EntryDate:       entryDate,
 		Lines: []domain.PostingLine{
 			{AccountNumber: info.AccountNumber, Direction: domain.DirectionDebit, Amount: fee, Description: "Biaya administrasi bulanan"},
 			{AccountNumber: revenueAcc, Direction: domain.DirectionCredit, Amount: fee, Description: "Pendapatan administrasi"},

@@ -4,65 +4,35 @@ import (
 	"testing"
 
 	"cbs-core/apps/core-api/internal/domain"
-	"github.com/shopspring/decimal"
 )
 
-func TestCalculateCollectibility_POJK1Tahun2024(t *testing.T) {
+// Satu-satunya aturan kolektibilitas adalah CollectibilityFromDPD. Aturan lama
+// (CalculateCollectibility) memakai DPK 1-90 hari dan Kurang Lancar 91-120 hari;
+// aturan POJK yang berlaku: 0 lancar; 1-30 DPK; 31-90 kurang lancar;
+// 91-180 diragukan; >180 macet.
+func TestCollectibilityFromDPD_POJKThresholds(t *testing.T) {
+	thresholds := domain.DefaultCollectibilityThresholds()
+
 	tests := []struct {
-		name                 string
-		dpd                  int
-		expectedCol          domain.OJKCollectibility
-		expectedPPAPPercent  decimal.Decimal
-		expectedAccrualState domain.AccrualStatus
+		name string
+		dpd  int
+		want domain.Collectibility
 	}{
-		{
-			name:                 "Kol 1 Lancar (DPD 0 - Tepat Waktu)",
-			dpd:                  0,
-			expectedCol:          domain.CollectibilityKol1,
-			expectedPPAPPercent:  decimal.NewFromFloat(0.005),
-			expectedAccrualState: domain.AccrualStatusAccrual,
-		},
-		{
-			name:                 "Kol 2 Dalam Perhatian Khusus DPK (DPD 45 - Range 1 s/d 90 hari)",
-			dpd:                  45,
-			expectedCol:          domain.CollectibilityKol2,
-			expectedPPAPPercent:  decimal.NewFromFloat(0.010),
-			expectedAccrualState: domain.AccrualStatusAccrual,
-		},
-		{
-			name:                 "Kol 3 Kurang Lancar NPL (DPD 100 - Range 91 s/d 120 hari)",
-			dpd:                  100,
-			expectedCol:          domain.CollectibilityKol3,
-			expectedPPAPPercent:  decimal.NewFromFloat(0.150),
-			expectedAccrualState: domain.AccrualStatusCash, // Stop Accrual -> Cash Basis
-		},
-		{
-			name:                 "Kol 4 Diragukan NPL (DPD 150 - Range 121 s/d 180 hari)",
-			dpd:                  150,
-			expectedCol:          domain.CollectibilityKol4,
-			expectedPPAPPercent:  decimal.NewFromFloat(0.500),
-			expectedAccrualState: domain.AccrualStatusCash,
-		},
-		{
-			name:                 "Kol 5 Macet NPL (DPD 200 - Range > 180 hari)",
-			dpd:                  200,
-			expectedCol:          domain.CollectibilityKol5,
-			expectedPPAPPercent:  decimal.NewFromFloat(1.000),
-			expectedAccrualState: domain.AccrualStatusCash,
-		},
+		{"tepat waktu", 0, domain.KolLancar},
+		{"DPK batas atas 30", 30, domain.KolDPK},
+		{"kurang lancar batas bawah 31", 31, domain.KolKurangLancar},
+		{"kurang lancar batas atas 90", 90, domain.KolKurangLancar},
+		{"diragukan batas bawah 91", 91, domain.KolDiragukan},
+		{"DPD 100 dulu Kurang Lancar, kini Diragukan", 100, domain.KolDiragukan},
+		{"DPD 120 dulu Kurang Lancar, kini Diragukan", 120, domain.KolDiragukan},
+		{"diragukan batas atas 180", 180, domain.KolDiragukan},
+		{"macet di atas 180", 181, domain.KolMacet},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			col, ppapRate, accrualSt := domain.CalculateCollectibility(tt.dpd)
-			if col != tt.expectedCol {
-				t.Errorf("expected collectibility %s, got %s", tt.expectedCol, col)
-			}
-			if !ppapRate.Equal(tt.expectedPPAPPercent) {
-				t.Errorf("expected PPAP percent %s, got %s", tt.expectedPPAPPercent.String(), ppapRate.String())
-			}
-			if accrualSt != tt.expectedAccrualState {
-				t.Errorf("expected accrual status %s, got %s", tt.expectedAccrualState, accrualSt)
+			if got := domain.CollectibilityFromDPD(tt.dpd, thresholds); got != tt.want {
+				t.Fatalf("DPD %d: got %s, want %s", tt.dpd, got.Label(), tt.want.Label())
 			}
 		})
 	}

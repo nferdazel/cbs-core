@@ -2,10 +2,12 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -17,7 +19,39 @@ func NewLedgerHandler(service domain.LedgerService) *LedgerHandler {
 	return &LedgerHandler{service: service}
 }
 
+// requireActor mengambil identitas pelaku dari JWT. Jalur transaksi tidak pernah
+// menerima identitas dari body request.
+func requireActor(w http.ResponseWriter, r *http.Request) (domain.Actor, bool) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return domain.Actor{}, false
+	}
+	return claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())), true
+}
+
+// writeTransactionError menerjemahkan error transaksi ke respons HTTP. Transaksi yang
+// melewati ambang persetujuan bukan kegagalan: ia diterima untuk direview, jadi
+// dibalas 202 beserta id permintaannya.
+func writeTransactionError(w http.ResponseWriter, r *http.Request, err error) {
+	var pending *domain.PendingApprovalError
+	if errors.As(err, &pending) {
+		Success(w, http.StatusAccepted, "transaksi menunggu persetujuan pejabat berwenang", map[string]any{
+			"request_id":  pending.RequestID,
+			"action_type": pending.ActionType,
+			"status":      "PENDING_APPROVAL",
+		})
+		return
+	}
+	Fail(w, r, http.StatusUnprocessableEntity, err)
+}
+
 func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	var req domain.DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -32,20 +66,17 @@ func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 		req.Currency = "IDR"
 	}
 	if req.Description == "" {
-		req.Description = "Cash Deposit"
+		req.Description = "Setoran tunai"
 	}
-	if req.CreatedBy == "" {
-		req.CreatedBy = "TELLER"
-	}
+	req.Actor = actor
 
-	// Read idempotency key from header if available
 	if idem := r.Header.Get("Idempotency-Key"); idem != "" && req.IdempotencyKey == "" {
 		req.IdempotencyKey = idem
 	}
 
 	entry, err := h.service.Deposit(r.Context(), req)
 	if err != nil {
-		InternalError(w, r, err)
+		writeTransactionError(w, r, err)
 		return
 	}
 
@@ -53,6 +84,11 @@ func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	var req domain.WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -67,11 +103,9 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		req.Currency = "IDR"
 	}
 	if req.Description == "" {
-		req.Description = "Cash Withdrawal"
+		req.Description = "Penarikan tunai"
 	}
-	if req.CreatedBy == "" {
-		req.CreatedBy = "TELLER"
-	}
+	req.Actor = actor
 
 	if idem := r.Header.Get("Idempotency-Key"); idem != "" && req.IdempotencyKey == "" {
 		req.IdempotencyKey = idem
@@ -79,11 +113,7 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := h.service.Withdraw(r.Context(), req)
 	if err != nil {
-		if err == domain.ErrInsufficientFunds {
-			Fail(w, r, http.StatusUnprocessableEntity, err)
-			return
-		}
-		InternalError(w, r, err)
+		writeTransactionError(w, r, err)
 		return
 	}
 
@@ -91,6 +121,11 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	var req domain.TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -105,11 +140,9 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 		req.Currency = "IDR"
 	}
 	if req.Description == "" {
-		req.Description = "Internal Transfer"
+		req.Description = "Transfer antar rekening"
 	}
-	if req.CreatedBy == "" {
-		req.CreatedBy = "CUSTOMER"
-	}
+	req.Actor = actor
 
 	if idem := r.Header.Get("Idempotency-Key"); idem != "" && req.IdempotencyKey == "" {
 		req.IdempotencyKey = idem
@@ -117,11 +150,7 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	entry, err := h.service.TransferInternal(r.Context(), req)
 	if err != nil {
-		if err == domain.ErrInsufficientFunds {
-			Fail(w, r, http.StatusUnprocessableEntity, err)
-			return
-		}
-		InternalError(w, r, err)
+		writeTransactionError(w, r, err)
 		return
 	}
 
