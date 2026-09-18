@@ -195,6 +195,7 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 		Description:     defaultDescription(req.Description, "Setoran tunai "+acc.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
+		BranchCode:      acc.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: cashAccount, Direction: domain.DirectionDebit, Amount: req.Amount, Description: "Kas masuk"},
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionCredit, Amount: req.Amount, Description: req.Description},
@@ -240,6 +241,7 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 		Description:     defaultDescription(req.Description, "Penarikan tunai "+acc.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
+		BranchCode:      acc.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionDebit, Amount: req.Amount, Description: req.Description},
 			{AccountNumber: cashAccount, Direction: domain.DirectionCredit, Amount: req.Amount, Description: "Kas keluar"},
@@ -290,6 +292,10 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 		Description:     defaultDescription(req.Description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
+		// Transfer menyentuh dua rekening; jurnal diatribusikan ke cabang rekening
+		// asal secara deterministik. Transfer lintas cabang hanya mungkin dilakukan
+		// aktor lintas cabang, dan sumber dana menandai cabang transaksi.
+		BranchCode: src.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: src.AccountNumber, Direction: domain.DirectionDebit, Amount: req.Amount, Description: "Transfer keluar"},
 			{AccountNumber: dest.AccountNumber, Direction: domain.DirectionCredit, Amount: req.Amount, Description: "Transfer masuk"},
@@ -317,6 +323,7 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 		Description:     defaultDescription(description, "Setoran tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
+		BranchCode:      acc.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: cashAccount, Direction: domain.DirectionDebit, Amount: amount, Description: "Kas masuk"},
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionCredit, Amount: amount, Description: description},
@@ -346,6 +353,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 		Description:     defaultDescription(description, "Penarikan tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
+		BranchCode:      acc.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionDebit, Amount: amount, Description: description},
 			{AccountNumber: cashAccount, Direction: domain.DirectionCredit, Amount: amount, Description: "Kas keluar"},
@@ -378,6 +386,7 @@ func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, dest
 		Description:     defaultDescription(description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
+		BranchCode:      src.BranchCode,
 		Lines: []domain.PostingLine{
 			{AccountNumber: src.AccountNumber, Direction: domain.DirectionDebit, Amount: amount, Description: "Transfer keluar"},
 			{AccountNumber: dest.AccountNumber, Direction: domain.DirectionCredit, Amount: amount, Description: "Transfer masuk"},
@@ -478,7 +487,7 @@ func (s *ledgerService) GetJournalByReference(ctx context.Context, ref string) (
 	return s.ledgerRepo.GetJournalByRef(ctx, ref)
 }
 
-func (s *ledgerService) ListJournals(ctx context.Context, page, pageSize int) ([]domain.JournalEntry, int, error) {
+func (s *ledgerService) ListJournals(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.JournalEntry, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -486,15 +495,22 @@ func (s *ledgerService) ListJournals(ctx context.Context, page, pageSize int) ([
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
-	return s.ledgerRepo.ListJournals(ctx, pageSize, offset)
+	return s.ledgerRepo.ListJournals(ctx, pageSize, offset, actor)
 }
 
-func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int) ([]domain.JournalLine, int, error) {
+func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int, actor domain.Actor) ([]domain.JournalLine, int, error) {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return nil, 0, err
 	}
 
+	// Konsisten dengan detail rekening: rekening cabang lain ditolak 403, bukan
+	// diam-diam mengembalikan daftar kosong yang menyamarkan penolakan sebagai
+	// "tidak ada mutasi".
+	if !actor.CanAccessBranch(acc.BranchCode) {
+		return nil, 0, domain.ErrCrossBranchAccess
+	}
+
 	if page < 1 {
 		page = 1
 	}
@@ -502,7 +518,7 @@ func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber s
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
-	return s.ledgerRepo.ListAccountStatements(ctx, acc.ID, pageSize, offset)
+	return s.ledgerRepo.ListAccountStatements(ctx, acc.ID, pageSize, offset, actor)
 }
 
 func (s *ledgerService) GetChartOfAccounts(ctx context.Context) ([]domain.ChartOfAccount, error) {

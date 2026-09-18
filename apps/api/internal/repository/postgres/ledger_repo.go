@@ -96,12 +96,15 @@ func (r *LedgerRepository) InsertJournal(ctx context.Context, tx any, entry *dom
 		return errors.New("insert journal: transaksi tidak valid")
 	}
 
+	// Cabang diisi lewat subquery di INSERT yang sama agar tidak menambah
+	// round-trip di jalur terpanas. Bila BranchCode kosong, subquery menghasilkan
+	// NULL — jurnal sistem/batch yang bank-wide memang boleh tanpa cabang.
 	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, entry_date, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, entry_date, created_by, created_at, branch_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, (SELECT id FROM branches WHERE code = $11))
 	`
 	if _, err := sqlTx.ExecContext(ctx, entryQuery,
-		entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.EntryDate, entry.CreatedBy, entry.CreatedAt,
+		entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.EntryDate, entry.CreatedBy, entry.CreatedAt, entry.BranchCode,
 	); err != nil {
 		return fmt.Errorf("insert journal entry: %w", err)
 	}
@@ -173,13 +176,19 @@ func (r *LedgerRepository) loadLines(ctx context.Context, journalID uuid.UUID) (
 }
 
 func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*domain.JournalEntry, error) {
+	// branch_id diambil lewat join: pemeriksaan cabang di handler bergantung padanya,
+	// dan tanpa kolom ini nilai BranchCode kosong membuat pemeriksaan lolos diam-diam.
 	entryQuery := `
-		SELECT id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at
-		FROM journal_entries WHERE reference_number = $1
+		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.created_by, je.created_at,
+		       COALESCE(b.code, '')
+		FROM journal_entries je
+		LEFT JOIN branches b ON b.id = je.branch_id
+		WHERE je.reference_number = $1
 	`
 	var entry domain.JournalEntry
 	err := r.db.QueryRowContext(ctx, entryQuery, ref).Scan(
 		&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.CreatedBy, &entry.CreatedAt,
+		&entry.BranchCode,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -215,20 +224,38 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	return &entry, nil
 }
 
-func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int) ([]domain.JournalEntry, int, error) {
+// buildJournalListQuery menyusun query daftar jurnal beserta klausa filter cabang
+// dan argumennya. Klausa yang sama dipakai untuk COUNT(*) dan SELECT agar
+// total_items cocok dengan halaman yang dikembalikan. Dipisah sebagai fungsi
+// murni supaya penentuan scope cabang dapat diuji tanpa database; SQL akhirnya
+// sendiri tetap hanya terverifikasi saat runtime.
+func buildJournalListQuery(actor domain.Actor) (countQuery, listQuery string, whereArgs []any) {
+	where, whereArgs := branchReadClause("branch_id", actor)
+
+	countQuery = "SELECT COUNT(*) FROM journal_entries"
+	listQuery = `
+		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.created_by, je.created_at,
+		       COALESCE(b.code, '')
+		FROM journal_entries je
+		LEFT JOIN branches b ON b.id = je.branch_id`
+	if where != "" {
+		countQuery += " WHERE " + where
+		listQuery += " WHERE " + where
+	}
+	listQuery += fmt.Sprintf(" ORDER BY posted_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	return countQuery, listQuery, whereArgs
+}
+
+func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.JournalEntry, int, error) {
+	countQuery, listQuery, whereArgs := buildJournalListQuery(actor)
+
 	var total int
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM journal_entries").Scan(&total)
-	if err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	query := `
-		SELECT id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at
-		FROM journal_entries
-		ORDER BY posted_at DESC
-		LIMIT $1 OFFSET $2
-	`
-	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, listQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -239,6 +266,7 @@ func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int) 
 		var entry domain.JournalEntry
 		if err := rows.Scan(
 			&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.CreatedBy, &entry.CreatedAt,
+			&entry.BranchCode,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -247,22 +275,41 @@ func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int) 
 	return list, total, nil
 }
 
-func (r *LedgerRepository) ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]domain.JournalLine, int, error) {
-	var total int
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM journal_lines WHERE account_id = $1", accountID).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
+// buildAccountStatementQuery menyusun query mutasi rekening beserta filter cabang
+// pada cabang rekeningnya. accountID diletakkan setelah argumen cabang agar
+// klausa bersama branchReadClause (yang memakai $1) tetap dapat dipakai apa
+// adanya. Posisi placeholder dihitung dari jumlah argumen filter, bukan ditulis
+// tetap, supaya pagination benar untuk aktor lintas cabang maupun cabang.
+func buildAccountStatementQuery(actor domain.Actor, accountID uuid.UUID) (countQuery, listQuery string, whereArgs []any) {
+	where, whereArgs := branchReadClause("a.branch_id", actor)
 
-	query := `
+	accountArg := len(whereArgs) + 1
+	countQuery = fmt.Sprintf("SELECT COUNT(*) FROM journal_lines jl JOIN accounts a ON a.id = jl.account_id WHERE jl.account_id = $%d", accountArg)
+	listQuery = fmt.Sprintf(`
 		SELECT jl.id, jl.journal_entry_id, jl.account_id, a.account_number, jl.direction, jl.amount, jl.currency, jl.balance_after, jl.sequence, jl.description, jl.created_at
 		FROM journal_lines jl
 		JOIN accounts a ON jl.account_id = a.id
-		WHERE jl.account_id = $1
-		ORDER BY jl.created_at DESC
-		LIMIT $2 OFFSET $3
-	`
-	rows, err := r.db.QueryContext(ctx, query, accountID, limit, offset)
+		WHERE jl.account_id = $%d`, accountArg)
+	if where != "" {
+		countQuery += " AND " + where
+		listQuery += " AND " + where
+	}
+	listQuery += fmt.Sprintf(" ORDER BY jl.created_at DESC LIMIT $%d OFFSET $%d", accountArg+1, accountArg+2)
+
+	whereArgs = append(whereArgs, accountID)
+	return countQuery, listQuery, whereArgs
+}
+
+func (r *LedgerRepository) ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int, actor domain.Actor) ([]domain.JournalLine, int, error) {
+	countQuery, listQuery, whereArgs := buildAccountStatementQuery(actor, accountID)
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args := append(append([]any{}, whereArgs...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, listQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -94,10 +94,14 @@ type JournalEntry struct {
 	Status          JournalStatus   `json:"status"`
 	PostedAt        time.Time       `json:"posted_at"`
 	// EntryDate adalah tanggal akuntansi entri yang dipakai laporan periode.
-	EntryDate time.Time     `json:"entry_date"`
-	CreatedBy string        `json:"created_by"`
-	Lines     []JournalLine `json:"lines,omitempty"`
-	CreatedAt time.Time     `json:"created_at"`
+	EntryDate time.Time `json:"entry_date"`
+	CreatedBy string    `json:"created_by"`
+	// BranchCode adalah cabang tempat jurnal dibukukan. Kosong berarti jurnal
+	// sistem/batch yang memang bank-wide dan disimpan sebagai branch_id NULL.
+	// Nilai ini hanya dipakai saat insert; pembacaan mengandalkan filter SQL.
+	BranchCode string        `json:"branch_code,omitempty"`
+	Lines      []JournalLine `json:"lines,omitempty"`
+	CreatedAt  time.Time     `json:"created_at"`
 }
 
 // ValidateDoubleEntry enforces fundamental accounting equation (Sum of Debits == Sum of Credits)
@@ -198,8 +202,8 @@ type LedgerRepository interface {
 	GetCOAList(ctx context.Context) ([]ChartOfAccount, error)
 	GetCOAByCode(ctx context.Context, code string) (*ChartOfAccount, error)
 	GetJournalByRef(ctx context.Context, ref string) (*JournalEntry, error)
-	ListJournals(ctx context.Context, limit, offset int) ([]JournalEntry, int, error)
-	ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]JournalLine, int, error)
+	ListJournals(ctx context.Context, limit, offset int, actor Actor) ([]JournalEntry, int, error)
+	ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int, actor Actor) ([]JournalLine, int, error)
 	SumDebitByCreatedByAndDate(ctx context.Context, createdBy string, date time.Time) (decimal.Decimal, error)
 }
 
@@ -213,7 +217,7 @@ type LedgerService interface {
 	// sehingga ledger service menjadi eksekutor untuk jenis transaksinya sendiri.
 	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error
 	GetJournalByReference(ctx context.Context, ref string) (*JournalEntry, error)
-	ListJournals(ctx context.Context, page, pageSize int) ([]JournalEntry, int, error)
-	GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int) ([]JournalLine, int, error)
+	ListJournals(ctx context.Context, page, pageSize int, actor Actor) ([]JournalEntry, int, error)
+	GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int, actor Actor) ([]JournalLine, int, error)
 	GetChartOfAccounts(ctx context.Context) ([]ChartOfAccount, error)
 }

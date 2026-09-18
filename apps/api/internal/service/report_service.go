@@ -8,6 +8,14 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// reportService menyusun laporan keuangan agregat.
+//
+// Laporan di sini (neraca saldo, neraca, laba/rugi, arus kas) SENGAJA tidak
+// difilter per cabang meskipun journal_entries kini punya branch_id. Ini adalah
+// laporan bank-wide sesuai regulasi: neraca dan laba/rugi harus mencerminkan
+// posisi dan kinerja seluruh bank secara utuh. Membatasinya pada cabang pengguna
+// akan menyembunyikan posisi bank dari pengguna yang berhak melihatnya. Filter
+// cabang hanya berlaku untuk bacaan operasional, bukan laporan agregat.
 type reportService struct {
 	reportRepo domain.ReportRepository
 }

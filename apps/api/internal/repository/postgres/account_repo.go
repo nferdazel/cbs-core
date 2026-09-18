@@ -97,7 +97,14 @@ func (r *AccountRepository) ListByCustomer(ctx context.Context, customerID uuid.
 }
 
 func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Account, int, error) {
-	where, whereArgs := branchReadClause("a.branch_id", actor)
+	// Hanya rekening nasabah. Daftar positif disengaja: akun GL internal adalah
+	// akuntansi bank, bukan rekening yang dilayani teller, dan tipe baru yang tidak
+	// dikenal tidak boleh otomatis ikut tampil.
+	where := "a.account_type IN ('SAVINGS', 'CHECKING', 'LOAN')"
+	clause, whereArgs := branchReadClause("a.branch_id", actor)
+	if clause != "" {
+		where += " AND " + clause
+	}
 
 	countQuery := "SELECT COUNT(*) FROM accounts a"
 	if where != "" {

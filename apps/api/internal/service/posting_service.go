@@ -120,6 +120,7 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 		PostedAt:        now,
 		EntryDate:       entryDate,
 		CreatedBy:       req.CreatedBy,
+		BranchCode:      req.BranchCode,
 		Lines:           lines,
 		CreatedAt:       now,
 	}

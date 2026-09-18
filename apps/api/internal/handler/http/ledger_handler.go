@@ -158,6 +158,11 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	ref := chi.URLParam(r, "reference")
 	if ref == "" {
 		Error(w, http.StatusBadRequest, "reference is required")
@@ -170,10 +175,23 @@ func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Pemeriksaan cabang di sini, bukan di service: referensi jurnal juga dipakai
+	// document_service yang tidak punya actor. Tanpa ini, pegawai yang mengetahui
+	// nomor referensi dapat membaca jurnal cabang lain.
+	if !actor.CanAccessBranch(entry.BranchCode) {
+		Fail(w, r, http.StatusForbidden, domain.ErrCrossBranchAccess)
+		return
+	}
+
 	Success(w, http.StatusOK, "journal entry retrieved", entry)
 }
 
 func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 
@@ -184,7 +202,7 @@ func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	journals, total, err := h.service.ListJournals(r.Context(), page, pageSize)
+	journals, total, err := h.service.ListJournals(r.Context(), page, pageSize, actor)
 	if err != nil {
 		InternalError(w, r, err)
 		return
@@ -201,6 +219,11 @@ func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
 	accNum := chi.URLParam(r, "accountNumber")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
@@ -212,9 +235,10 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 		pageSize = 50
 	}
 
-	lines, total, err := h.service.GetAccountStatement(r.Context(), accNum, page, pageSize)
+	lines, total, err := h.service.GetAccountStatement(r.Context(), accNum, page, pageSize, actor)
 	if err != nil {
-		InternalError(w, r, err)
+		// Fail, bukan InternalError: penolakan lintas cabang harus menjadi 403.
+		Fail(w, r, http.StatusInternalServerError, err)
 		return
 	}
 
