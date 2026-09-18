@@ -55,6 +55,9 @@ type RouterParams struct {
 	Cookies middleware.CookieConfig
 	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
 	Logger *slog.Logger
+	// LoginRateLimiter membatasi percobaan login per akun dan per IP. Bila nil,
+	// rute login dibiarkan tanpa pembatasan (mis. pada test).
+	LoginRateLimiter *middleware.LoginRateLimiter
 }
 
 func NewRouter(p RouterParams) *chi.Mux {
@@ -92,8 +95,13 @@ func NewRouter(p RouterParams) *chi.Mux {
 		// ── Public: Auth endpoints (no JWT required) ──
 		r.Route("/auth", func(r chi.Router) {
 			// Login & refresh tidak memakai CSRF: keduanya pintu masuk sesi,
-			// belum ada sesi terautentikasi yang bisa disalahgunakan.
-			r.Post("/login", p.AuthHandler.Login)
+			// belum ada sesi terautentikasi yang bisa disalahgunakan. Login tetap
+			// dibatasi percobaannya untuk menahan brute force.
+			if p.LoginRateLimiter != nil {
+				r.With(p.LoginRateLimiter.Middleware).Post("/login", p.AuthHandler.Login)
+			} else {
+				r.Post("/login", p.AuthHandler.Login)
+			}
 			r.Post("/refresh", p.AuthHandler.Refresh)
 
 			// Logout di luar AuthMiddleware agar cookie tetap terhapus walau

@@ -21,6 +21,9 @@ type loanService struct {
 	references  domain.ReferenceGenerator
 	config      domain.SystemConfigService
 	auditRepo   domain.AuditRepository
+	// txRunner membuka transaksi per kredit untuk akrual denda. Dipakai agar proses
+	// batch bisa diuji tanpa database, sama seperti ppapService.
+	txRunner ppapTxRunner
 }
 
 func NewLoanService(
@@ -46,6 +49,7 @@ func NewLoanService(
 		references:  references,
 		config:      config,
 		auditRepo:   auditRepo,
+		txRunner:    sqlPPAPTxRunner{db: db},
 	}
 }
 

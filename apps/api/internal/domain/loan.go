@@ -218,6 +218,15 @@ type LoanRepository interface {
 	UpdateRestructure(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
 	UpdateCollectibility(ctx context.Context, id uuid.UUID, col OJKCollectibility, dpd int, accrual AccrualStatus, ppap decimal.Decimal) error
 	UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error
+	// ListPenaltyCandidates mengambil kredit aktif beserta pokok angsuran yang lewat
+	// jatuh tempo pada asOf dan jatuh tempo angsuran tertua.
+	ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]LoanPenaltyCandidate, error)
+	// AddPenaltyAccruedTx menambah penalty_accrued dan memajukan
+	// penalty_last_accrued_on ke accruedOn di dalam transaksi pemanggil. Penambahan
+	// hanya terjadi bila jurnal denda dengan idempotencyKey tersebut belum ada,
+	// sehingga akrual tanggal yang sama tidak pernah dihitung dua kali. Nilai kembali
+	// false berarti denda tanggal itu sudah pernah diakru (replay idempoten).
+	AddPenaltyAccruedTx(ctx context.Context, tx any, loanID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedOn time.Time) (bool, error)
 }
 
 type LoanService interface {
@@ -231,4 +240,5 @@ type LoanService interface {
 	RestructureLoan(ctx context.Context, input RestructureLoanInput, actor Actor) (*Loan, error)
 	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, actor Actor) (*Loan, error)
 	RecoverWrittenOffLoan(ctx context.Context, input RecoverWrittenOffLoanInput, actor Actor) (*Loan, error)
+	AccruePenalties(ctx context.Context, asOf time.Time, actor Actor) (LoanPenaltySummary, error)
 }

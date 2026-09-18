@@ -3,7 +3,9 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -33,6 +35,14 @@ type Config struct {
 	EncryptionKeyID       string
 	EncryptionMasterKey   string
 	EncryptionPreviousKey map[string]string
+
+	// Pembatasan percobaan login (anti brute force). Penghitung disimpan
+	// in-memory per proses; pada deployment multi instance nilainya tidak
+	// dibagi. Nilai default: 5/15 menit per akun, 20/15 menit per IP.
+	LoginRateLimitAccountMax    int
+	LoginRateLimitAccountWindow time.Duration
+	LoginRateLimitIPMax         int
+	LoginRateLimitIPWindow      time.Duration
 }
 
 func Load() *Config {
@@ -60,6 +70,11 @@ func Load() *Config {
 		EncryptionKeyID:       getEnv("ENCRYPTION_KEY_ID", "k1"),
 		EncryptionMasterKey:   os.Getenv("ENCRYPTION_MASTER_KEY"),
 		EncryptionPreviousKey: parsePreviousKeys(os.Getenv("ENCRYPTION_PREVIOUS_KEYS")),
+
+		LoginRateLimitAccountMax:    getEnvInt("LOGIN_RATE_LIMIT_ACCOUNT_MAX", 5),
+		LoginRateLimitAccountWindow: getEnvDuration("LOGIN_RATE_LIMIT_ACCOUNT_WINDOW", 15*time.Minute),
+		LoginRateLimitIPMax:         getEnvInt("LOGIN_RATE_LIMIT_IP_MAX", 20),
+		LoginRateLimitIPWindow:      getEnvDuration("LOGIN_RATE_LIMIT_IP_WINDOW", 15*time.Minute),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -105,4 +120,35 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+// getEnvInt membaca bilangan bulat positif dari env. Nilai kosong, bukan angka,
+// atau <= 0 dianggap tidak valid dan diganti default agar salah ketik tidak
+// membuat pembatasan login hilang.
+func getEnvInt(key string, defaultVal int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		log.Printf("PERINGATAN: %s=%q tidak valid, memakai default %d", key, raw, defaultVal)
+		return defaultVal
+	}
+	return n
+}
+
+// getEnvDuration membaca durasi (mis. "15m") dari env dengan aturan validasi
+// yang sama seperti getEnvInt.
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return defaultVal
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		log.Printf("PERINGATAN: %s=%q tidak valid, memakai default %s", key, raw, defaultVal)
+		return defaultVal
+	}
+	return d
 }

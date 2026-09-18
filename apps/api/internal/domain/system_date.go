@@ -35,8 +35,16 @@ type EODSummaryResult struct {
 	TotalPostedJournalsToday   int             `json:"total_posted_journals_today"`
 	TotalDepositAmountToday    decimal.Decimal `json:"total_deposit_amount_today"`
 	TotalWithdrawalAmountToday decimal.Decimal `json:"total_withdrawal_amount_today"`
-	ExecutedBy                 uuid.UUID       `json:"executed_by"`
-	CompletedAt                time.Time       `json:"completed_at"`
+	// Pekerjaan harian berikut bersifat best-effort: kegagalannya tidak
+	// menggagalkan tutup hari, tetapi selalu tampil di Warnings agar tidak
+	// terlihat sukses padahal tidak berjalan.
+	DepositsRolledOver   int             `json:"deposits_rolled_over"`
+	PPAPProcessed        int             `json:"ppap_processed"`
+	LoanPenaltiesAccrued int             `json:"loan_penalties_accrued"`
+	LoanPenaltyAmount    decimal.Decimal `json:"loan_penalty_amount"`
+	Warnings             []string        `json:"warnings,omitempty"`
+	ExecutedBy           uuid.UUID       `json:"executed_by"`
+	CompletedAt          time.Time       `json:"completed_at"`
 }
 
 type EOMSummaryResult struct {

@@ -101,9 +101,11 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
-	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db)
 	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
 	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc)
+	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
+	// ARO deposito, PPAP harian, dan akrual denda kredit.
+	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
 
 	// 5. HTTP Handlers
@@ -115,6 +117,15 @@ func main() {
 		Domain:      cfg.CookieDomain,
 		Secure:      cfg.Environment == "production",
 	}
+
+	// Pembatasan percobaan login: brute force per akun dan credential spraying per IP.
+	loginLimiter := middleware.NewLoginRateLimiter(middleware.LoginRateLimitConfig{
+		AccountMax:    cfg.LoginRateLimitAccountMax,
+		AccountWindow: cfg.LoginRateLimitAccountWindow,
+		IPMax:         cfg.LoginRateLimitIPMax,
+		IPWindow:      cfg.LoginRateLimitIPWindow,
+	})
+	defer loginLimiter.Close()
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
 	accHandler := httpHandler.NewAccountHandler(accountSvc)
 	branchHandler := httpHandler.NewBranchHandler(branchSvc)
@@ -153,6 +164,7 @@ func main() {
 		AuthService:         authSvc,
 		Cookies:             cookies,
 		Logger:              logger,
+		LoginRateLimiter:    loginLimiter,
 	})
 
 	server := &http.Server{

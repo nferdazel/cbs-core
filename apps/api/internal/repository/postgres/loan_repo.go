@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -305,6 +306,100 @@ func (r *LoanRepository) UpdateOutstanding(ctx context.Context, id uuid.UUID, ou
 	q := `UPDATE loans SET outstanding_principal=$1, penalty_accrued=$2, updated_at=NOW() WHERE id=$3`
 	_, err := r.db.ExecContext(ctx, q, outstanding, penalty, id)
 	return err
+}
+
+// listPenaltyCandidatesQuery mengambil kredit aktif beserta pokok angsuran yang lewat
+// jatuh tempo. Dasar denda adalah pokok angsuran yang belum dibayar, bukan seluruh
+// sisa pokok: GREATEST(principal_amount - paid_principal, 0) tetap benar untuk
+// angsuran sebagian. Cast ::text wajib untuk kolom enum status.
+const listPenaltyCandidatesQuery = `
+	SELECT
+		l.id,
+		l.loan_number,
+		l.product_id,
+		l.disbursement_account_id,
+		l.status::text,
+		COALESCE(SUM(GREATEST(s.principal_amount - s.paid_principal, 0)), 0) AS overdue_principal,
+		MIN(s.due_date) AS oldest_due_date,
+		l.penalty_last_accrued_on
+	FROM loans l
+	JOIN loan_schedules s
+		ON s.loan_id = l.id
+		AND s.status <> 'PAID'
+		AND s.due_date <= $1
+	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
+		AND l.outstanding_principal > 0
+	GROUP BY l.id
+	ORDER BY l.loan_number`
+
+func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanPenaltyCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, listPenaltyCandidatesQuery, asOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.LoanPenaltyCandidate
+	for rows.Next() {
+		var c domain.LoanPenaltyCandidate
+		var productID sql.NullString
+		var status string
+		var oldestDue, lastAccrued sql.NullTime
+
+		if err := rows.Scan(
+			&c.LoanID, &c.LoanNumber, &productID, &c.DisbursementAccountID, &status,
+			&c.OverduePrincipal, &oldestDue, &lastAccrued,
+		); err != nil {
+			return nil, err
+		}
+		if productID.Valid {
+			id, err := uuid.Parse(productID.String)
+			if err != nil {
+				return nil, err
+			}
+			c.ProductID = &id
+		}
+		c.Status = domain.LoanStatus(status)
+		if oldestDue.Valid {
+			t := oldestDue.Time
+			c.OldestDueDate = &t
+		}
+		if lastAccrued.Valid {
+			t := lastAccrued.Time
+			c.LastAccruedOn = &t
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+// AddPenaltyAccruedTx menambah penalty_accrued dan memajukan
+// penalty_last_accrued_on, tetapi hanya bila jurnal dengan idempotency_key tersebut
+// belum ada. Tanggal terakhir dikunci dengan GREATEST agar tidak pernah mundur bila
+// ada eksekusi yang datang tidak berurutan. Penambahan dan jurnalnya berada pada
+// transaksi yang sama, sehingga angka di loans dan jurnal tidak pernah terpisah.
+// Baris loans terkunci oleh UPDATE, yang menyerialkan dua batch paralel untuk kredit
+// yang sama: yang kedua akan melihat jurnal sudah ada dan tidak menambah lagi.
+func (r *LoanRepository) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedOn time.Time) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("loan: transaksi tidak valid")
+	}
+	q := `UPDATE loans
+		SET penalty_accrued = penalty_accrued + $1,
+		    penalty_last_accrued_on = GREATEST(COALESCE(penalty_last_accrued_on, $2), $2),
+		    updated_at = NOW()
+		WHERE id = $3
+		  AND NOT EXISTS (SELECT 1 FROM journal_entries WHERE idempotency_key = $4)`
+	res, err := sqlTx.ExecContext(ctx, q, amount, accruedOn, loanID, idempotencyKey)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 var _ domain.LoanRepository = (*LoanRepository)(nil)

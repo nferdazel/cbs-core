@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -11,8 +12,10 @@ import (
 // stubLoanRepo adalah implementasi minimal domain.LoanRepository untuk test yang
 // hanya membutuhkan kehadiran tipe, bukan perilaku database.
 type stubLoanRepo struct {
-	loan      *domain.Loan
-	schedules []domain.LoanSchedule
+	loan              *domain.Loan
+	schedules         []domain.LoanSchedule
+	penaltyCandidates []domain.LoanPenaltyCandidate
+	penaltyKeys       map[string]bool
 }
 
 func (s *stubLoanRepo) Create(ctx context.Context, loan *domain.Loan, schedules []domain.LoanSchedule) error {
@@ -82,6 +85,25 @@ func (s *stubLoanRepo) UpdateCollectibility(ctx context.Context, id uuid.UUID, c
 
 func (s *stubLoanRepo) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
 	return nil
+}
+
+func (s *stubLoanRepo) ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanPenaltyCandidate, error) {
+	return s.penaltyCandidates, nil
+}
+
+// AddPenaltyAccruedTx meniru idempotensi berbasis idempotency_key jurnal.
+func (s *stubLoanRepo) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedOn time.Time) (bool, error) {
+	if s.penaltyKeys == nil {
+		s.penaltyKeys = map[string]bool{}
+	}
+	if s.penaltyKeys[idempotencyKey] {
+		return false, nil
+	}
+	s.penaltyKeys[idempotencyKey] = true
+	if s.loan != nil && s.loan.ID == loanID {
+		s.loan.PenaltyAccrued = s.loan.PenaltyAccrued.Add(amount)
+	}
+	return true, nil
 }
 
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

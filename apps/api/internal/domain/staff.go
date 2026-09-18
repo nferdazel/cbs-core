@@ -32,6 +32,10 @@ const (
 	RoleCS         StaffRole = "CS"
 	RoleAO         StaffRole = "AO"
 	RoleAuditor    StaffRole = "AUDITOR"
+	// RoleSystem menandai pelaku non-manusia, yaitu pekerjaan batch terjadwal yang
+	// tidak berasal dari permintaan HTTP. Nilainya tidak pernah disimpan ke kolom
+	// peran pegawai; hanya dipakai pada Actor di dalam proses.
+	RoleSystem StaffRole = "SYSTEM"
 )
 
 type Permission string

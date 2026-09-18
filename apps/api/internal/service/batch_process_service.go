@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -32,6 +33,11 @@ type batchProcessService struct {
 	resolver    domain.AccountResolver
 	configSvc   domain.SystemConfigService
 	db          *sql.DB
+	// Pekerjaan harian EOD. Boleh nil pada lingkungan yang belum menyediakannya,
+	// dan kegagalannya tidak menggagalkan tutup hari (lihat runDailyJob).
+	aroSvc     domain.ARORunner
+	ppapSvc    domain.PPAPRunner
+	penaltySvc domain.LoanPenaltyService
 }
 
 func NewBatchProcessService(
@@ -43,6 +49,9 @@ func NewBatchProcessService(
 	resolver domain.AccountResolver,
 	configSvc domain.SystemConfigService,
 	db *sql.DB,
+	aro domain.ARORunner,
+	ppap domain.PPAPRunner,
+	penalty domain.LoanPenaltyService,
 ) domain.BatchProcessService {
 	return &batchProcessService{
 		dateRepo:    dateRepo,
@@ -53,6 +62,9 @@ func NewBatchProcessService(
 		resolver:    resolver,
 		configSvc:   configSvc,
 		db:          db,
+		aroSvc:      aro,
+		ppapSvc:     ppap,
+		penaltySvc:  penalty,
 	}
 }
 
@@ -75,10 +87,15 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 		return nil, fmt.Errorf("failed to lock system for EOD: %w", err)
 	}
 
-	// 2. Calculate next business date (+1 day)
+	// 2. Pekerjaan harian dijalankan untuk tanggal bisnis yang sedang ditutup,
+	// sebelum tanggal dimajukan, agar jurnalnya masuk ke tanggal yang benar.
+	summary := &domain.EODSummaryResult{ExecutedDate: curDate.CurrentDate}
+	s.runDailyJobs(ctx, curDate.CurrentDate, domain.SystemActor(executedBy), summary)
+
+	// 3. Calculate next business date (+1 day)
 	nextDate := curDate.CurrentDate.AddDate(0, 0, 1)
 
-	// 3. Advance system business date and reopen system
+	// 4. Advance system business date and reopen system
 	if err := s.dateRepo.AdvanceDate(ctx, nextDate, executedBy); err != nil {
 		return nil, fmt.Errorf("failed to advance business date: %w", err)
 	}
@@ -92,15 +109,56 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 		}
 	}
 
-	return &domain.EODSummaryResult{
-		ExecutedDate:               curDate.CurrentDate,
-		NextBusinessDate:           nextDate,
-		TotalPostedJournalsToday:   activity.PostedJournals,
-		TotalDepositAmountToday:    activity.TotalDepositAmount,
-		TotalWithdrawalAmountToday: activity.TotalWithdrawalAmount,
-		ExecutedBy:                 executedBy,
-		CompletedAt:                time.Now().UTC(),
-	}, nil
+	summary.NextBusinessDate = nextDate
+	summary.TotalPostedJournalsToday = activity.PostedJournals
+	summary.TotalDepositAmountToday = activity.TotalDepositAmount
+	summary.TotalWithdrawalAmountToday = activity.TotalWithdrawalAmount
+	summary.ExecutedBy = executedBy
+	summary.CompletedAt = time.Now().UTC()
+	return summary, nil
+}
+
+// runDailyJobs menjalankan pekerjaan harian yang menyertai tutup hari: perpanjangan
+// otomatis deposito, perhitungan PPAP, dan akrual denda kredit. Setiap pekerjaan
+// terisolasi — kegagalannya hanya menghasilkan peringatan dan tidak menghentikan
+// pekerjaan berikutnya maupun tutup hari, karena tutup hari yang gagal akan
+// menghentikan seluruh operasional bank. Layanan yang belum dikonfigurasi (nil)
+// dilewati tanpa peringatan.
+func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
+	logger := observability.FromContext(ctx)
+
+	if s.aroSvc != nil {
+		rolled, err := s.aroSvc.RunARO(ctx, businessDate, actor)
+		summary.DepositsRolledOver = rolled
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perpanjangan otomatis deposito gagal: %v", err))
+			logger.ErrorContext(ctx, "perpanjangan otomatis deposito gagal saat EOD", "error", err)
+		}
+	}
+
+	if s.ppapSvc != nil {
+		ppap, err := s.ppapSvc.RunDaily(ctx, businessDate, actor)
+		summary.PPAPProcessed = ppap.Processed
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perhitungan PPAP harian gagal: %v", err))
+			logger.ErrorContext(ctx, "perhitungan PPAP harian gagal saat EOD", "error", err)
+		}
+	}
+
+	if s.penaltySvc != nil {
+		penalty, err := s.penaltySvc.AccruePenalties(ctx, businessDate, actor)
+		summary.LoanPenaltiesAccrued = penalty.Accrued
+		summary.LoanPenaltyAmount = penalty.TotalPenalty
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual denda kredit gagal: %v", err))
+			logger.ErrorContext(ctx, "akrual denda kredit gagal saat EOD", "error", err)
+		}
+		// Tarif yang belum diisi operator bukan kegagalan teknis, tetapi tetap harus
+		// terlihat: tanpa peringatan, batch tampak sukses padahal tidak menagih apa pun.
+		if penalty.Warning != "" {
+			summary.Warnings = append(summary.Warnings, penalty.Warning)
+		}
+	}
 }
 
 // RunEOM menjalankan akrual bunga/bagi hasil tabungan periode berjalan dan memotong

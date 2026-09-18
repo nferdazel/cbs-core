@@ -38,8 +38,9 @@ func TestBatchProcessService_RunEOD(t *testing.T) {
 	initDate := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
 	dateRepo := &stubBusinessDateRepo{currentDate: initDate, status: domain.BusinessDateStatusOpen}
 	// Dependensi lain nil: RunEOD hanya butuh dateRepo; ringkasan tanpa batchRepo
-	// dikembalikan sebagai nol (di produksi batchRepo selalu terisi).
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil)
+	// dikembalikan sebagai nol (di produksi batchRepo selalu terisi). Pekerjaan
+	// harian (ARO, PPAP, denda) juga nil sehingga dilewati tanpa peringatan.
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	executor := uuid.New()
 	res, err := svc.RunEOD(context.Background(), executor)
