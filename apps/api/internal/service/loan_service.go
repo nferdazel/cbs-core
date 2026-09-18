@@ -107,6 +107,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		CustomerID:            input.CustomerID,
 		ProductID:             &product.ID,
 		DisbursementAccountID: input.DisbursementAccountID,
+		LoanType:              domain.LoanTypeFor(product),
 		Status:                domain.LoanStatusPendingApproval,
 		Collectibility:        domain.CollectibilityKol1,
 		AccrualStatus:         domain.AccrualStatusAccrual,
@@ -133,6 +134,17 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	}
 	loan.Schedules = schedules
 	return loan, nil
+}
+
+// customerAccountOverrides mengarahkan baris jurnal yang pada pemetaan produk
+// menunjuk akun kontrol (mis. 20100 Tabungan) ke rekening nasabah yang sebenarnya.
+// Tanpa ini dana tercatat di akun kontrol dan saldo rekening nasabah tidak pernah
+// bergerak: pencairan tidak bisa dipakai dan angsuran tidak terpotong.
+func customerAccountOverrides(acc *domain.Account) (map[string]string, error) {
+	if acc == nil || acc.COACode == "" {
+		return nil, errors.New("rekening nasabah tidak punya kode COA; jurnal tidak dapat dipetakan")
+	}
+	return map[string]string{acc.COACode: acc.AccountNumber}, nil
 }
 
 // scheduleTermsFor menentukan metode jadwal dan jenis imbal hasil dari produk.
@@ -240,6 +252,10 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	if err != nil {
 		return nil, errors.New("rekening pencairan tidak ditemukan")
 	}
+	overrides, err := customerAccountOverrides(acc)
+	if err != nil {
+		return nil, err
+	}
 
 	// Pencairan dan update status loan berada dalam satu transaksi: bila jurnal gagal,
 	// status loan tidak boleh berubah.
@@ -254,11 +270,12 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 		Principal: loan.PrincipalAmount,
 		Total:     loan.PrincipalAmount,
 	}, PostingMeta{
-		TransactionType: domain.TxTypeTransferInternal,
-		Description:     desc,
-		IdempotencyKey:  "DISB-" + loan.LoanNumber,
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		TransactionType:  domain.TxTypeTransferInternal,
+		Description:      desc,
+		IdempotencyKey:   "DISB-" + loan.LoanNumber,
+		CreatedBy:        actor.DisplayName(),
+		BranchCode:       actor.BranchCode,
+		AccountOverrides: overrides,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jurnal pencairan: %w", err)
@@ -323,6 +340,14 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	if err != nil {
 		return nil, err
 	}
+	payAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
+	if err != nil {
+		return nil, errors.New("rekening pembayaran angsuran tidak ditemukan")
+	}
+	overrides, err := customerAccountOverrides(payAccount)
+	if err != nil {
+		return nil, err
+	}
 	var target *domain.LoanSchedule
 	for i := range schedules {
 		if schedules[i].InstallmentNo == input.InstallmentNo {
@@ -346,21 +371,26 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	}
 	defer tx.Rollback()
 
+	// Pokok dan imbal hasil dijurnal terpisah karena akun pendapatannya berbeda.
+	// Kunci idempotency wajib berbeda per jurnal: kolomnya unik, sehingga memakai
+	// kunci yang sama untuk keduanya membuat jurnal kedua ditolak.
+	baseKey := fmt.Sprintf("INST-%s-%d", loan.LoanNumber, input.InstallmentNo)
 	meta := PostingMeta{
-		TransactionType: domain.TxTypeTransferInternal,
-		Description:     fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
-		IdempotencyKey:  fmt.Sprintf("INST-%s-%d", loan.LoanNumber, input.InstallmentNo),
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		TransactionType:  domain.TxTypeTransferInternal,
+		Description:      fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
+		IdempotencyKey:   baseKey + "-PRIN",
+		CreatedBy:        actor.DisplayName(),
+		BranchCode:       actor.BranchCode,
+		AccountOverrides: overrides,
 	}
 
-	// Pokok dan imbal hasil dijurnal terpisah karena akun pendapatannya berbeda.
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanPrincipalPay, Amounts{
 		Principal: outstandingPrincipal, Total: outstandingPrincipal,
 	}, meta); err != nil {
 		return nil, fmt.Errorf("jurnal angsuran pokok: %w", err)
 	}
 	if outstandingProfit.IsPositive() {
+		meta.IdempotencyKey = baseKey + "-PROF"
 		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanProfitPay, Amounts{
 			Profit: outstandingProfit, Total: outstandingProfit,
 		}, meta); err != nil {
@@ -544,6 +574,14 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 	if err != nil {
 		return nil, err
 	}
+	recoveryAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
+	if err != nil {
+		return nil, errors.New("rekening recovery tidak ditemukan")
+	}
+	overrides, err := customerAccountOverrides(recoveryAccount)
+	if err != nil {
+		return nil, err
+	}
 
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
@@ -554,11 +592,12 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanRecovery, Amounts{
 		Principal: input.RecoveryAmount, Total: input.RecoveryAmount,
 	}, PostingMeta{
-		TransactionType: domain.TxTypeAdjustment,
-		Description:     fmt.Sprintf("Recovery kredit hapus buku %s", loan.LoanNumber),
-		IdempotencyKey:  fmt.Sprintf("RECOV-%s-%d", loan.LoanNumber, time.Now().Unix()),
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		TransactionType:  domain.TxTypeAdjustment,
+		Description:      fmt.Sprintf("Recovery kredit hapus buku %s", loan.LoanNumber),
+		IdempotencyKey:   fmt.Sprintf("RECOV-%s-%d", loan.LoanNumber, time.Now().Unix()),
+		CreatedBy:        actor.DisplayName(),
+		BranchCode:       actor.BranchCode,
+		AccountOverrides: overrides,
 	}); err != nil {
 		return nil, fmt.Errorf("jurnal recovery: %w", err)
 	}

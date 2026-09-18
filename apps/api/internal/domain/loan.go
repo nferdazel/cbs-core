@@ -30,6 +30,33 @@ const (
 	LoanStatusWrittenOff      LoanStatus = "WRITTEN_OFF"
 )
 
+// LoanType mengikuti enum loan_type di database dan tidak punya nilai default,
+// sehingga wajib diisi setiap kali kredit dibuat.
+type LoanType string
+
+const (
+	LoanTypeConventionalFlat    LoanType = "CONVENTIONAL_FLAT"
+	LoanTypeConventionalAnnuity LoanType = "CONVENTIONAL_ANNUITY"
+	LoanTypeSyariahMurabahah    LoanType = "SYARIAH_MURABAHAH"
+	LoanTypeSyariahMudharabah   LoanType = "SYARIAH_MUDHARABAH"
+)
+
+// LoanTypeFor memetakan produk ke jenis kredit. Enum database belum punya nilai
+// untuk musyarakah, ijarah, dan skema syariah lain, jadi semuanya masuk ke
+// SYARIAH_MUDHARABAH (sama-sama bagi hasil) sampai enum diperluas lewat migrasi.
+func LoanTypeFor(product *BankingProduct) LoanType {
+	switch product.ProfitScheme {
+	case SchemeMurabahah:
+		return LoanTypeSyariahMurabahah
+	case SchemeMudharabah, SchemeMusyarakah, SchemeIjarah:
+		return LoanTypeSyariahMudharabah
+	}
+	if product.ScheduleMethod == ScheduleAnnuity {
+		return LoanTypeConventionalAnnuity
+	}
+	return LoanTypeConventionalFlat
+}
+
 type InstallmentStatus string
 
 const (
@@ -76,6 +103,7 @@ type Loan struct {
 	ProductID    *uuid.UUID `json:"product_id,omitempty"`
 	BranchID     *uuid.UUID `json:"branch_id,omitempty"`
 	DisbursementAccountID uuid.UUID `json:"disbursement_account_id"`
+	LoanType     LoanType   `json:"loan_type"`
 	Status       LoanStatus `json:"status"`
 
 	Collectibility OJKCollectibility `json:"collectibility"`

@@ -88,9 +88,14 @@ func (p *ProductPoster) PostEventTx(
 			return nil, fmt.Errorf("nominal negatif pada pemetaan %s/%s", product.Code, event)
 		}
 
-		accountNumber, err := p.resolver.ResolveGLAccount(ctx, tx, rule.COACode)
-		if err != nil {
-			return nil, err
+		var accountNumber string
+		if override, ok := meta.AccountOverrides[rule.COACode]; ok && override != "" {
+			accountNumber = override
+		} else {
+			accountNumber, err = p.resolver.ResolveGLAccount(ctx, tx, rule.COACode)
+			if err != nil {
+				return nil, err
+			}
 		}
 		lines = append(lines, domain.PostingLine{
 			AccountNumber: accountNumber,
@@ -117,11 +122,17 @@ func (p *ProductPoster) PostEventTx(
 
 // PostingMeta membawa konteks non-nominal untuk jurnal. EntryDate nol berarti
 // posting engine memakai tanggal UTC hari ini.
+//
+// AccountOverrides mengganti tujuan satu kode COA dengan nomor rekening konkret.
+// Pemetaan produk memakai akun kontrol (mis. 20100 Tabungan), padahal untuk
+// transaksi yang menyentuh rekening nasabah yang benar adalah rekening nasabah itu
+// sendiri agar saldonya ikut bergerak. Kuncinya kode COA, nilainya nomor rekening.
 type PostingMeta struct {
-	TransactionType domain.TransactionType
-	Description     string
-	IdempotencyKey  string
-	CreatedBy       string
-	BranchCode      string
-	EntryDate       time.Time
+	TransactionType  domain.TransactionType
+	Description      string
+	IdempotencyKey   string
+	CreatedBy        string
+	BranchCode       string
+	EntryDate        time.Time
+	AccountOverrides map[string]string
 }

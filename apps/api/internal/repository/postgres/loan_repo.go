@@ -18,7 +18,9 @@ func NewLoanRepository(db *sql.DB) *LoanRepository {
 	return &LoanRepository{db: db}
 }
 
-const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, status,
+// loanColumns memakai cast ::text untuk kolom bertipe enum kustom (loan_type,
+// status). Tanpa cast, nilainya tidak dapat dipindai ke string Go.
+const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, loan_type::text, status::text,
 	principal_amount, acquisition_cost, deferred_margin, interest_rate_annual, margin_amount, profit_sharing_ratio,
 	total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
 	collectibility, dpd, accrual_status, required_ppap,
@@ -34,7 +36,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var restructuringReason, akadNumber, purpose sql.NullString
 
 	err := row.Scan(
-		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.Status,
+		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
 		&l.PrincipalAmount, &l.AcquisitionCost, &l.DeferredMargin, &l.InterestRateAnnual, &l.MarginAmount, &l.ProfitSharingRatio,
 		&l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment, &l.OutstandingPrincipal, &l.PenaltyAccrued,
 		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
@@ -86,15 +88,15 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 	defer tx.Rollback()
 
 	q := `INSERT INTO loans
-		(id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, status,
+		(id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, loan_type, status,
 		 principal_amount, acquisition_cost, deferred_margin, interest_rate_annual, margin_amount, profit_sharing_ratio,
 		 total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
 		 collectibility, dpd, accrual_status, required_ppap,
 		 akad_number, akad_date, purpose, ao_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`
 
 	_, err = tx.ExecContext(ctx, q,
-		l.ID, l.LoanNumber, l.CustomerID, l.ProductID, l.BranchID, l.DisbursementAccountID, l.Status,
+		l.ID, l.LoanNumber, l.CustomerID, l.ProductID, l.BranchID, l.DisbursementAccountID, l.LoanType, l.Status,
 		l.PrincipalAmount, l.AcquisitionCost, l.DeferredMargin, l.InterestRateAnnual, l.MarginAmount, l.ProfitSharingRatio,
 		l.TotalPayable, l.TermMonths, l.MonthlyInstallment, l.OutstandingPrincipal, l.PenaltyAccrued,
 		l.Collectibility, l.DPD, l.AccrualStatus, l.RequiredPPAP,
@@ -210,7 +212,7 @@ func markLoanDisbursed(ctx context.Context, exec execer, id uuid.UUID, outstandi
 
 func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
 	q := `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
-		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status, paid_at, created_at
+		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at
 		FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
 
 	rows, err := r.db.QueryContext(ctx, q, loanID)
