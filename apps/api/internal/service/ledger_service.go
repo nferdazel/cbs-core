@@ -4,30 +4,48 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
+// Kas default per buku. Teller konvensional memakai kas teller; transaksi syariah
+// memakai kas syariah supaya arus kas kedua buku tidak tercampur di laporan.
+const (
+	defaultCashCOAConventional = "10101"
+	defaultCashCOASYariah      = "11100"
+)
+
+// ledgerService mengorkestrasi transaksi rekening. Penulisan jurnal dan perhitungan
+// saldo diserahkan sepenuhnya ke posting engine; service ini hanya menentukan akun
+// lawan dan aturan bisnisnya.
 type ledgerService struct {
+	db          *sql.DB
 	ledgerRepo  domain.LedgerRepository
 	accountRepo domain.AccountRepository
-	db          *sql.DB
+	productRepo domain.ProductRepository
+	resolver    domain.AccountResolver
+	posting     domain.PostingService
+	configSvc   domain.SystemConfigService
 }
 
 func NewLedgerService(
+	db *sql.DB,
 	ledgerRepo domain.LedgerRepository,
 	accountRepo domain.AccountRepository,
-	db *sql.DB,
+	productRepo domain.ProductRepository,
+	resolver domain.AccountResolver,
+	posting domain.PostingService,
+	configSvc domain.SystemConfigService,
 ) domain.LedgerService {
 	return &ledgerService{
+		db:          db,
 		ledgerRepo:  ledgerRepo,
 		accountRepo: accountRepo,
-		db:          db,
+		productRepo: productRepo,
+		resolver:    resolver,
+		posting:     posting,
+		configSvc:   configSvc,
 	}
 }
 
@@ -35,294 +53,71 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 	if req.Amount.LessThanOrEqual(decimal.Zero) {
 		return nil, domain.ErrInvalidAmount
 	}
-
-	// 1. Check idempotency if key is provided
-	if req.IdempotencyKey != "" {
-		existing, err := s.ledgerRepo.GetJournalByRef(ctx, req.IdempotencyKey)
-		if err == nil && existing != nil {
-			return existing, nil
-		}
+	if req.Currency == "" {
+		req.Currency = "IDR"
 	}
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	acc, err := s.accountRepo.GetByNumber(ctx, req.AccountNumber)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
-
-	// 2. Lock and retrieve accounts in lexicographical order to prevent deadlocks
-	var firstAcc, secondAcc *domain.Account
-	vaultFirst := strings.Compare("GL-VAULT-001", req.AccountNumber) < 0
-
-	if vaultFirst {
-		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve vault account: %w", err)
-		}
-		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-		if err != nil {
-			return nil, fmt.Errorf("target customer account not found: %w", err)
-		}
-	} else {
-		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-		if err != nil {
-			return nil, fmt.Errorf("target customer account not found: %w", err)
-		}
-		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve vault account: %w", err)
-		}
-	}
-
-	var vaultAcc, custAcc *domain.Account
-	if vaultFirst {
-		vaultAcc, custAcc = firstAcc, secondAcc
-	} else {
-		custAcc, vaultAcc = firstAcc, secondAcc
-	}
-
-	if custAcc.Status != domain.AccountStatusActive {
+	if acc.Status != domain.AccountStatusActive {
 		return nil, domain.ErrAccountInactive
 	}
 
-	// 3. Calculate new balances
-	newVaultBal := vaultAcc.Balance.Add(req.Amount)
-	newCustBal := custAcc.Balance.Add(req.Amount)
-	newCustAvail := custAcc.AvailableBalance.Add(req.Amount)
-
-	// 4. Update balances in DB with version check
-	if err := s.accountRepo.UpdateBalance(ctx, tx, vaultAcc.ID, newVaultBal, newVaultBal, vaultAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update vault balance: %w", err)
-	}
-	if err := s.accountRepo.UpdateBalance(ctx, tx, custAcc.ID, newCustBal, newCustAvail, custAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update customer balance: %w", err)
-	}
-
-	// 5. Construct Double-Entry Journal
-	journalID := uuid.New()
-	refNumber := fmt.Sprintf("DEP-%s-%s", time.Now().Format("20060102150405"), uuid.New().String()[:8])
-	now := time.Now().UTC()
-
-	var idemKeyPtr *string
-	if req.IdempotencyKey != "" {
-		idemKeyPtr = &req.IdempotencyKey
-	}
-
-	lines := []domain.JournalLine{
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      vaultAcc.ID,
-			AccountNumber:  vaultAcc.AccountNumber,
-			Direction:      domain.DirectionDebit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newVaultBal,
-			Sequence:       1,
-			Description:    fmt.Sprintf("Cash Vault Inflow from Deposit to %s", custAcc.AccountNumber),
-			CreatedAt:      now,
-		},
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      custAcc.ID,
-			AccountNumber:  custAcc.AccountNumber,
-			Direction:      domain.DirectionCredit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newCustBal,
-			Sequence:       2,
-			Description:    req.Description,
-			CreatedAt:      now,
-		},
-	}
-
-	if err := domain.ValidateDoubleEntry(lines); err != nil {
+	cashAccount, err := s.resolveCashAccount(ctx, acc)
+	if err != nil {
 		return nil, err
 	}
 
-	entry := &domain.JournalEntry{
-		ID:              journalID,
-		ReferenceNumber: refNumber,
-		IdempotencyKey:  idemKeyPtr,
+	// Setoran menambah kewajiban bank kepada nasabah: debit kas, kredit rekening.
+	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeDeposit,
-		Description:     req.Description,
-		Status:          domain.JournalStatusPosted,
-		PostedAt:        now,
+		Description:     defaultDescription(req.Description, "Setoran tunai "+acc.AccountNumber),
+		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       req.CreatedBy,
-		Lines:           lines,
-		CreatedAt:       now,
-	}
-
-	// 6. Insert Journal Entry & Lines in same SQL transaction
-	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`
-	if _, err := tx.ExecContext(ctx, entryQuery, entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt); err != nil {
-		return nil, fmt.Errorf("failed to insert journal entry: %w", err)
-	}
-
-	lineQuery := `
-		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
-	for _, l := range lines {
-		if _, err := tx.ExecContext(ctx, lineQuery, l.ID, l.JournalEntryID, l.AccountID, l.Direction, l.Amount, l.Currency, l.BalanceAfter, l.Sequence, l.Description, l.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to insert journal line: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return entry, nil
+		Lines: []domain.PostingLine{
+			{AccountNumber: cashAccount, Direction: domain.DirectionDebit, Amount: req.Amount, Description: "Kas masuk"},
+			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionCredit, Amount: req.Amount, Description: req.Description},
+		},
+	})
 }
 
 func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest) (*domain.JournalEntry, error) {
 	if req.Amount.LessThanOrEqual(decimal.Zero) {
 		return nil, domain.ErrInvalidAmount
 	}
+	if req.Currency == "" {
+		req.Currency = "IDR"
+	}
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	acc, err := s.accountRepo.GetByNumber(ctx, req.AccountNumber)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
-
-	// 1. Lock and retrieve accounts in lexicographical order to prevent deadlocks
-	var firstAcc, secondAcc *domain.Account
-	vaultFirst := strings.Compare("GL-VAULT-001", req.AccountNumber) < 0
-
-	if vaultFirst {
-		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-		if err != nil {
-			return nil, fmt.Errorf("vault account not found: %w", err)
-		}
-		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-		if err != nil {
-			return nil, fmt.Errorf("customer account not found: %w", err)
-		}
-	} else {
-		firstAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, req.AccountNumber)
-		if err != nil {
-			return nil, fmt.Errorf("customer account not found: %w", err)
-		}
-		secondAcc, err = s.accountRepo.GetByNumberForUpdate(ctx, tx, "GL-VAULT-001")
-		if err != nil {
-			return nil, fmt.Errorf("vault account not found: %w", err)
-		}
-	}
-
-	var vaultAcc, custAcc *domain.Account
-	if vaultFirst {
-		vaultAcc, custAcc = firstAcc, secondAcc
-	} else {
-		custAcc, vaultAcc = firstAcc, secondAcc
-	}
-
-	if custAcc.Status != domain.AccountStatusActive {
+	if acc.Status != domain.AccountStatusActive {
 		return nil, domain.ErrAccountInactive
 	}
-
-	if custAcc.AvailableBalance.LessThan(req.Amount) {
+	if acc.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
 	}
 
-	// 3. Balances after withdrawal
-	newCustBal := custAcc.Balance.Sub(req.Amount)
-	newCustAvail := custAcc.AvailableBalance.Sub(req.Amount)
-	newVaultBal := vaultAcc.Balance.Sub(req.Amount)
-
-	// 4. Update balances
-	if err := s.accountRepo.UpdateBalance(ctx, tx, custAcc.ID, newCustBal, newCustAvail, custAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update customer balance: %w", err)
-	}
-	if err := s.accountRepo.UpdateBalance(ctx, tx, vaultAcc.ID, newVaultBal, newVaultBal, vaultAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update vault balance: %w", err)
-	}
-
-	// 5. Construct Double-Entry Journal
-	journalID := uuid.New()
-	refNumber := fmt.Sprintf("WDL-%s-%s", time.Now().Format("20060102150405"), uuid.New().String()[:8])
-	now := time.Now().UTC()
-
-	var idemKeyPtr *string
-	if req.IdempotencyKey != "" {
-		idemKeyPtr = &req.IdempotencyKey
-	}
-
-	lines := []domain.JournalLine{
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      custAcc.ID,
-			AccountNumber:  custAcc.AccountNumber,
-			Direction:      domain.DirectionDebit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newCustBal,
-			Sequence:       1,
-			Description:    req.Description,
-			CreatedAt:      now,
-		},
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      vaultAcc.ID,
-			AccountNumber:  vaultAcc.AccountNumber,
-			Direction:      domain.DirectionCredit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newVaultBal,
-			Sequence:       2,
-			Description:    fmt.Sprintf("Cash Vault Outflow to %s", custAcc.AccountNumber),
-			CreatedAt:      now,
-		},
-	}
-
-	if err := domain.ValidateDoubleEntry(lines); err != nil {
+	cashAccount, err := s.resolveCashAccount(ctx, acc)
+	if err != nil {
 		return nil, err
 	}
 
-	entry := &domain.JournalEntry{
-		ID:              journalID,
-		ReferenceNumber: refNumber,
-		IdempotencyKey:  idemKeyPtr,
+	// Penarikan mengurangi kewajiban: debit rekening, kredit kas.
+	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeWithdrawal,
-		Description:     req.Description,
-		Status:          domain.JournalStatusPosted,
-		PostedAt:        now,
+		Description:     defaultDescription(req.Description, "Penarikan tunai "+acc.AccountNumber),
+		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       req.CreatedBy,
-		Lines:           lines,
-		CreatedAt:       now,
-	}
-
-	// 6. Persist Header & Lines
-	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`
-	if _, err := tx.ExecContext(ctx, entryQuery, entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt); err != nil {
-		return nil, fmt.Errorf("failed to insert journal entry: %w", err)
-	}
-
-	lineQuery := `
-		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
-	for _, l := range lines {
-		if _, err := tx.ExecContext(ctx, lineQuery, l.ID, l.JournalEntryID, l.AccountID, l.Direction, l.Amount, l.Currency, l.BalanceAfter, l.Sequence, l.Description, l.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to insert journal line: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return entry, nil
+		Lines: []domain.PostingLine{
+			{AccountNumber: acc.AccountNumber, Direction: domain.DirectionDebit, Amount: req.Amount, Description: req.Description},
+			{AccountNumber: cashAccount, Direction: domain.DirectionCredit, Amount: req.Amount, Description: "Kas keluar"},
+		},
+	})
 }
 
 func (s *ledgerService) TransferInternal(ctx context.Context, req domain.TransferRequest) (*domain.JournalEntry, error) {
@@ -330,140 +125,97 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 		return nil, domain.ErrInvalidAmount
 	}
 	if req.SourceAccountNumber == req.DestinationAccountNumber {
-		return nil, fmt.Errorf("source and destination account cannot be identical")
+		return nil, fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
+	}
+	if req.Currency == "" {
+		req.Currency = "IDR"
 	}
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	src, err := s.accountRepo.GetByNumber(ctx, req.SourceAccountNumber)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
-
-	// Prevent deadlocks by always locking accounts in lexicographical order of account_number
-	firstAccNum, secondAccNum := req.SourceAccountNumber, req.DestinationAccountNumber
-	if strings.Compare(firstAccNum, secondAccNum) > 0 {
-		firstAccNum, secondAccNum = secondAccNum, firstAccNum
-	}
-
-	firstAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, firstAccNum)
+	dest, err := s.accountRepo.GetByNumber(ctx, req.DestinationAccountNumber)
 	if err != nil {
-		return nil, fmt.Errorf("account %s not found: %w", firstAccNum, err)
+		return nil, err
 	}
-	secondAcc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, secondAccNum)
-	if err != nil {
-		return nil, fmt.Errorf("account %s not found: %w", secondAccNum, err)
-	}
-
-	var srcAcc, destAcc *domain.Account
-	if firstAcc.AccountNumber == req.SourceAccountNumber {
-		srcAcc = firstAcc
-		destAcc = secondAcc
-	} else {
-		srcAcc = secondAcc
-		destAcc = firstAcc
-	}
-
-	if srcAcc.Status != domain.AccountStatusActive || destAcc.Status != domain.AccountStatusActive {
+	if src.Status != domain.AccountStatusActive || dest.Status != domain.AccountStatusActive {
 		return nil, domain.ErrAccountInactive
 	}
-
-	if srcAcc.AvailableBalance.LessThan(req.Amount) {
+	if src.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
 	}
 
-	// Balance calculations
-	newSrcBal := srcAcc.Balance.Sub(req.Amount)
-	newSrcAvail := srcAcc.AvailableBalance.Sub(req.Amount)
-	newDestBal := destAcc.Balance.Add(req.Amount)
-	newDestAvail := destAcc.AvailableBalance.Add(req.Amount)
-
-	// Update balances
-	if err := s.accountRepo.UpdateBalance(ctx, tx, srcAcc.ID, newSrcBal, newSrcAvail, srcAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update source balance: %w", err)
-	}
-	if err := s.accountRepo.UpdateBalance(ctx, tx, destAcc.ID, newDestBal, newDestAvail, destAcc.Version); err != nil {
-		return nil, fmt.Errorf("failed to update destination balance: %w", err)
-	}
-
-	// Construct Double-Entry Journal
-	journalID := uuid.New()
-	refNumber := fmt.Sprintf("TRF-%s-%s", time.Now().Format("20060102150405"), uuid.New().String()[:8])
-	now := time.Now().UTC()
-
-	var idemKeyPtr *string
-	if req.IdempotencyKey != "" {
-		idemKeyPtr = &req.IdempotencyKey
-	}
-
-	lines := []domain.JournalLine{
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      srcAcc.ID,
-			AccountNumber:  srcAcc.AccountNumber,
-			Direction:      domain.DirectionDebit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newSrcBal,
-			Sequence:       1,
-			Description:    fmt.Sprintf("Transfer to %s: %s", destAcc.AccountNumber, req.Description),
-			CreatedAt:      now,
-		},
-		{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      destAcc.ID,
-			AccountNumber:  destAcc.AccountNumber,
-			Direction:      domain.DirectionCredit,
-			Amount:         req.Amount,
-			Currency:       req.Currency,
-			BalanceAfter:   newDestBal,
-			Sequence:       2,
-			Description:    fmt.Sprintf("Transfer received from %s: %s", srcAcc.AccountNumber, req.Description),
-			CreatedAt:      now,
-		},
-	}
-
-	if err := domain.ValidateDoubleEntry(lines); err != nil {
-		return nil, err
-	}
-
-	entry := &domain.JournalEntry{
-		ID:              journalID,
-		ReferenceNumber: refNumber,
-		IdempotencyKey:  idemKeyPtr,
+	// Transfer antar rekening nasabah: debit rekening asal, kredit rekening tujuan.
+	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeTransferInternal,
+		Description:     defaultDescription(req.Description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
+		IdempotencyKey:  req.IdempotencyKey,
+		CreatedBy:       req.CreatedBy,
+		Lines: []domain.PostingLine{
+			{AccountNumber: src.AccountNumber, Direction: domain.DirectionDebit, Amount: req.Amount, Description: "Transfer keluar"},
+			{AccountNumber: dest.AccountNumber, Direction: domain.DirectionCredit, Amount: req.Amount, Description: "Transfer masuk"},
+		},
+	})
+}
+
+// PostCompoundJournal memposting jurnal majemuk yang disusun operator. Posting engine
+// yang menghitung saldo; service ini tidak lagi menebak sifat saldo dari nomor akun.
+func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.CustomJournalRequest) (*domain.JournalEntry, error) {
+	if len(req.Lines) < 2 {
+		return nil, fmt.Errorf("jurnal majemuk memerlukan minimal dua baris")
+	}
+
+	lines := make([]domain.PostingLine, 0, len(req.Lines))
+	for _, l := range req.Lines {
+		if l.Amount.LessThanOrEqual(decimal.Zero) {
+			return nil, domain.ErrInvalidAmount
+		}
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: l.AccountNumber,
+			Direction:     l.Direction,
+			Amount:        l.Amount,
+			Description:   l.Description,
+		})
+	}
+
+	return s.posting.Post(ctx, domain.PostingRequest{
+		TransactionType: req.TransactionType,
 		Description:     req.Description,
-		Status:          domain.JournalStatusPosted,
-		PostedAt:        now,
+		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       req.CreatedBy,
 		Lines:           lines,
-		CreatedAt:       now,
-	}
+	})
+}
 
-	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`
-	if _, err := tx.ExecContext(ctx, entryQuery, entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt); err != nil {
-		return nil, fmt.Errorf("failed to insert journal entry: %w", err)
+// resolveCashAccount menentukan akun kas lawan berdasarkan buku produk rekening.
+// Syariah memakai kas syariah agar laporan arus kas kedua buku tetap terpisah.
+func (s *ledgerService) resolveCashAccount(ctx context.Context, acc *domain.Account) (string, error) {
+	coaCode := defaultCashCOAConventional
+	if s.isSyariahAccount(ctx, acc) {
+		coaCode = defaultCashCOASYariah
 	}
-
-	lineQuery := `
-		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
-	for _, l := range lines {
-		if _, err := tx.ExecContext(ctx, lineQuery, l.ID, l.JournalEntryID, l.AccountID, l.Direction, l.Amount, l.Currency, l.BalanceAfter, l.Sequence, l.Description, l.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to insert journal line: %w", err)
+	if s.configSvc != nil {
+		key := "cash.coa.conventional"
+		if coaCode == defaultCashCOASYariah {
+			key = "cash.coa.syariah"
 		}
+		coaCode = s.configSvc.GetString(ctx, key, coaCode)
 	}
+	return s.resolver.ResolveGLAccount(ctx, nil, coaCode)
+}
 
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+// isSyariahAccount menentukan buku rekening dari produknya. Tanpa produk (data lama),
+// rekening dianggap konvensional.
+func (s *ledgerService) isSyariahAccount(ctx context.Context, acc *domain.Account) bool {
+	if acc.ProductID == nil || s.productRepo == nil {
+		return false
 	}
-
-	return entry, nil
+	product, err := s.productRepo.GetByID(ctx, *acc.ProductID)
+	if err != nil {
+		return false
+	}
+	return product.Book == domain.BookSyariah
 }
 
 func (s *ledgerService) GetJournalByReference(ctx context.Context, ref string) (*domain.JournalEntry, error) {
@@ -501,139 +253,9 @@ func (s *ledgerService) GetChartOfAccounts(ctx context.Context) ([]domain.ChartO
 	return s.ledgerRepo.GetCOAList(ctx)
 }
 
-func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.CustomJournalRequest) (*domain.JournalEntry, error) {
-	if len(req.Lines) < 2 {
-		return nil, fmt.Errorf("compound journal requires at least 2 lines")
+func defaultDescription(desc, fallback string) string {
+	if desc != "" {
+		return desc
 	}
-
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	journalID := uuid.New()
-	now := time.Now().UTC()
-
-	// 1. Sort account numbers lexicographically to prevent deadlocks
-	accountMap := make(map[string]domain.CustomJournalLineInput)
-	var accNumbers []string
-	for _, l := range req.Lines {
-		if l.Amount.LessThanOrEqual(decimal.Zero) {
-			return nil, domain.ErrInvalidAmount
-		}
-		if _, exists := accountMap[l.AccountNumber]; !exists {
-			accNumbers = append(accNumbers, l.AccountNumber)
-		}
-		accountMap[l.AccountNumber] = l
-	}
-	sort.Strings(accNumbers)
-
-	// Fetch & lock accounts in lexicographical order
-	lockedAccounts := make(map[string]*domain.Account)
-	for _, accNum := range accNumbers {
-		acc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, accNum)
-		if err != nil {
-			return nil, fmt.Errorf("account %s not found: %w", accNum, err)
-		}
-		lockedAccounts[accNum] = acc
-	}
-
-	// 2. Compute normal balance updates & construct journal lines
-	var lines []domain.JournalLine
-	for idx, l := range req.Lines {
-		acc, ok := lockedAccounts[l.AccountNumber]
-		if !ok {
-			return nil, fmt.Errorf("account %s missing from lock map", l.AccountNumber)
-		}
-
-		var newBal decimal.Decimal
-		// Normal Balance Rules:
-		// Asset (1) and Expense (5): Debit = (+), Credit = (-)
-		// Liability (2), Equity (3), Revenue (4): Debit = (-), Credit = (+)
-		isDebitNormal := true
-		if len(acc.AccountNumber) > 0 && (acc.AccountNumber[0] == '2' || acc.AccountNumber[0] == '3' || acc.AccountNumber[0] == '4') {
-			isDebitNormal = false
-		}
-
-		if isDebitNormal {
-			if l.Direction == domain.DirectionDebit {
-				newBal = acc.Balance.Add(l.Amount)
-			} else {
-				newBal = acc.Balance.Sub(l.Amount)
-			}
-		} else {
-			if l.Direction == domain.DirectionDebit {
-				newBal = acc.Balance.Sub(l.Amount)
-			} else {
-				newBal = acc.Balance.Add(l.Amount)
-			}
-		}
-
-		acc.Balance = newBal // Update in-memory for subsequent lines if same account appears
-		if err := s.accountRepo.UpdateBalance(ctx, tx, acc.ID, newBal, newBal, acc.Version); err != nil {
-			return nil, fmt.Errorf("failed to update balance for %s: %w", acc.AccountNumber, err)
-		}
-
-		lines = append(lines, domain.JournalLine{
-			ID:             uuid.New(),
-			JournalEntryID: journalID,
-			AccountID:      acc.ID,
-			AccountNumber:  acc.AccountNumber,
-			Direction:      l.Direction,
-			Amount:         l.Amount,
-			Currency:       "IDR",
-			BalanceAfter:   newBal,
-			Sequence:       idx + 1,
-			Description:    l.Description,
-			CreatedAt:      now,
-		})
-	}
-
-	if err := domain.ValidateDoubleEntry(lines); err != nil {
-		return nil, err
-	}
-
-	var idemKeyPtr *string
-	if req.IdempotencyKey != "" {
-		idemKeyPtr = &req.IdempotencyKey
-	}
-
-	refNumber := fmt.Sprintf("CMP-%s-%s", now.Format("20060102150405"), uuid.New().String()[:8])
-	entry := &domain.JournalEntry{
-		ID:              journalID,
-		ReferenceNumber: refNumber,
-		IdempotencyKey:  idemKeyPtr,
-		TransactionType: req.TransactionType,
-		Description:     req.Description,
-		Status:          domain.JournalStatusPosted,
-		PostedAt:        now,
-		CreatedBy:       req.CreatedBy,
-		Lines:           lines,
-		CreatedAt:       now,
-	}
-
-	entryQuery := `
-		INSERT INTO journal_entries (id, reference_number, idempotency_key, transaction_type, description, status, posted_at, created_by, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`
-	if _, err := tx.ExecContext(ctx, entryQuery, entry.ID, entry.ReferenceNumber, entry.IdempotencyKey, entry.TransactionType, entry.Description, entry.Status, entry.PostedAt, entry.CreatedBy, entry.CreatedAt); err != nil {
-		return nil, fmt.Errorf("failed to insert journal entry: %w", err)
-	}
-
-	lineQuery := `
-		INSERT INTO journal_lines (id, journal_entry_id, account_id, direction, amount, currency, balance_after, sequence, description, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
-	for _, l := range lines {
-		if _, err := tx.ExecContext(ctx, lineQuery, l.ID, l.JournalEntryID, l.AccountID, l.Direction, l.Amount, l.Currency, l.BalanceAfter, l.Sequence, l.Description, l.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to insert journal line: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return entry, nil
+	return fallback
 }

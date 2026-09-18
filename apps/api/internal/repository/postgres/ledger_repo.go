@@ -57,17 +57,28 @@ func (r *LedgerRepository) GetCOAByCode(ctx context.Context, code string) (*doma
 // ResolveGLAccount menerjemahkan kode COA menjadi nomor akun kontrol GL yang bisa
 // diposting. Konvensinya: akun internal dengan account_number sama dengan kode COA.
 // Akun kontrol inilah yang menampung agregat saldo seluruh rekening anak.
+// ResolveGLAccount menerjemahkan kode COA menjadi nomor akun GL internal yang bisa
+// diposting. Pencarian lewat relasi coa_id, bukan dengan menyamakan nomor akun dan
+// kode COA: sebagian akun GL memakai nomor yang berbeda dari kode COA-nya
+// (mis. GL-VAULT-001 untuk COA 10100). Operasi ini hanya membaca, jadi tidak
+// memerlukan transaksi; tx dipertahankan pada signature agar pemanggil di dalam
+// transaksi tetap mendapat snapshot yang sama.
 func (r *LedgerRepository) ResolveGLAccount(ctx context.Context, tx any, coaCode string) (string, error) {
-	sqlTx, ok := tx.(*sql.Tx)
-	if !ok {
-		return "", errors.New("resolve gl account: transaksi tidak valid")
-	}
+	query := `
+		SELECT a.account_number
+		FROM accounts a
+		JOIN chart_of_accounts coa ON a.coa_id = coa.id
+		WHERE coa.code = $1 AND a.account_type = 'INTERNAL_GL'
+		ORDER BY a.account_number
+		LIMIT 1`
 
 	var accountNumber string
-	err := sqlTx.QueryRowContext(ctx, `
-		SELECT account_number FROM accounts
-		WHERE account_number = $1 AND account_type = 'INTERNAL_GL'
-		LIMIT 1`, coaCode).Scan(&accountNumber)
+	var err error
+	if sqlTx, ok := tx.(*sql.Tx); ok {
+		err = sqlTx.QueryRowContext(ctx, query, coaCode).Scan(&accountNumber)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, coaCode).Scan(&accountNumber)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("akun kontrol GL untuk COA %s belum ada", coaCode)

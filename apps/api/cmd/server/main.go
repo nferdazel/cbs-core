@@ -68,6 +68,7 @@ func main() {
 	dukcapilGateway := service.NewMockDukcapilGateway()
 
 	// 4. Core services
+	configSvc := service.NewSystemConfigService(configRepo)
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
@@ -75,7 +76,7 @@ func main() {
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, auditRepo)
 	branchSvc := service.NewBranchService(branchRepo)
 	productSvc := service.NewProductService(productRepo)
-	ledgerSvc := service.NewLedgerService(ledgerRepo, accountRepo, db)
+	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen, auditRepo)

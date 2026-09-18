@@ -193,7 +193,7 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 // pembukaan rekening agar konsisten dengan insert.
 func (s *accountService) resolveCOAID(ctx context.Context, tx *sql.Tx, code string) (uuid.UUID, error) {
 	var id uuid.UUID
-	err := tx.QueryRowContext(ctx, `SELECT id FROM chart_of_accounts WHERE account_code = $1`, code).Scan(&id)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM chart_of_accounts WHERE code = $1`, code).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return uuid.Nil, fmt.Errorf("akun COA %s tidak ditemukan", code)
