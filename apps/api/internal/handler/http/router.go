@@ -46,6 +46,8 @@ type RouterParams struct {
 	IntegrationHandler  *IntegrationHandler
 	BatchProcessHandler *BatchProcessHandler
 	DocumentHandler     *DocumentHandler
+	DepositHandler      *DepositHandler
+	PPAPHandler         *PPAPHandler
 	AuthService         domain.AuthService
 	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
 	Logger *slog.Logger
@@ -247,6 +249,16 @@ func NewRouter(p RouterParams) *chi.Mux {
 				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
 					Get("/thermal-receipt/{receiptNo}", p.DocumentHandler.ThermalReceipt)
 			})
+
+			// ── Deposito berjangka (penempatan, akrual, pencairan) ──
+			if p.DepositHandler != nil {
+				p.DepositHandler.RegisterRoutes(r)
+			}
+
+			// ── PPAP & kolektibilitas harian ──
+			if p.PPAPHandler != nil {
+				p.PPAPHandler.RegisterRoutes(r)
+			}
 
 			// ── Chart of Accounts (Admin & above) ──
 			r.With(middleware.RequirePermission(domain.PermCOAManage)).

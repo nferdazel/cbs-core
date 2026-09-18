@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
-	"github.com/shopspring/decimal"
 )
 
 type BatchProcessHandler struct {
@@ -44,6 +43,8 @@ func (h *BatchProcessHandler) RunEOD(w http.ResponseWriter, r *http.Request) {
 }
 
 // RunEOM handles POST /api/v1/batch/eom (Admin)
+// Tarif bunga dan biaya admin tidak lagi diterima dari body: keduanya dibaca dari
+// produk dan system_config agar batch tidak bisa dijalankan dengan tarif sembarang.
 func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
@@ -51,13 +52,7 @@ func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body struct {
-		AdminFeeMonthly   decimal.Decimal `json:"admin_fee_monthly"`
-		InterestRateMonth decimal.Decimal `json:"interest_rate_month"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	result, err := h.batchSvc.RunEOM(r.Context(), body.AdminFeeMonthly, body.InterestRateMonth, claims.UserID)
+	result, err := h.batchSvc.RunEOM(r.Context(), claims.UserID)
 	if err != nil {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
@@ -67,6 +62,7 @@ func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 }
 
 // RunEOY handles POST /api/v1/batch/eoy (Superadmin / Admin)
+// Body opsional: {"book":"CONVENTIONAL"|"SYARIAH"}; kosong berarti kedua buku.
 func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
@@ -75,13 +71,11 @@ func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		RetainedEarningsCOACode string `json:"retained_earnings_coa_code"`
+		Book string `json:"book"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RetainedEarningsCOACode == "" {
-		body.RetainedEarningsCOACode = "30201" // Default Laba Ditahan COA
-	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	result, err := h.batchSvc.RunEOY(r.Context(), body.RetainedEarningsCOACode, claims.UserID)
+	result, err := h.batchSvc.RunEOY(r.Context(), body.Book, claims.UserID)
 	if err != nil {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return

@@ -40,20 +40,22 @@ type EODSummaryResult struct {
 }
 
 type EOMSummaryResult struct {
-	ExecutedMonth        string          `json:"executed_month"` // YYYY-MM
+	ExecutedMonth          string          `json:"executed_month"` // YYYY-MM
 	TotalAdminFeesDeducted decimal.Decimal `json:"total_admin_fees_deducted"`
-	TotalInterestPaid    decimal.Decimal `json:"total_interest_paid"`
-	ProcessedAccounts    int             `json:"processed_accounts"`
-	CompletedAt          time.Time       `json:"completed_at"`
+	TotalInterestPaid      decimal.Decimal `json:"total_interest_paid"`
+	ProcessedAccounts      int             `json:"processed_accounts"`
+	FailedAccounts         int             `json:"failed_accounts"`
+	CompletedAt            time.Time       `json:"completed_at"`
 }
 
 type EOYSummaryResult struct {
-	FiscalYear           int             `json:"fiscal_year"`
-	TotalRevenueClosed   decimal.Decimal `json:"total_revenue_closed"`
-	TotalExpenseClosed   decimal.Decimal `json:"total_expense_closed"`
-	NetRetainedEarnings  decimal.Decimal `json:"net_retained_earnings"`
-	ClosingJournalRef    string          `json:"closing_journal_ref"`
-	CompletedAt          time.Time       `json:"completed_at"`
+	FiscalYear          int             `json:"fiscal_year"`
+	TotalRevenueClosed  decimal.Decimal `json:"total_revenue_closed"`
+	TotalExpenseClosed  decimal.Decimal `json:"total_expense_closed"`
+	NetRetainedEarnings decimal.Decimal `json:"net_retained_earnings"`
+	ClosingJournalRef   string          `json:"closing_journal_ref"`
+	Books               []EOYBookResult `json:"books"`
+	CompletedAt         time.Time       `json:"completed_at"`
 }
 
 // --- Interfaces ---
@@ -67,6 +69,6 @@ type BusinessDateRepository interface {
 type BatchProcessService interface {
 	GetCurrentBusinessDate(ctx context.Context) (*SystemBusinessDate, error)
 	RunEOD(ctx context.Context, executedBy uuid.UUID) (*EODSummaryResult, error)
-	RunEOM(ctx context.Context, adminFeePerAccount decimal.Decimal, monthlyInterestRateDecimal decimal.Decimal, executedBy uuid.UUID) (*EOMSummaryResult, error)
-	RunEOY(ctx context.Context, retainedEarningsCOACode string, executedBy uuid.UUID) (*EOYSummaryResult, error)
+	RunEOM(ctx context.Context, executedBy uuid.UUID) (*EOMSummaryResult, error)
+	RunEOY(ctx context.Context, book string, executedBy uuid.UUID) (*EOYSummaryResult, error)
 }

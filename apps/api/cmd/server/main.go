@@ -63,6 +63,11 @@ func main() {
 	reportRepo := postgres.NewReportRepository(db)
 	dateRepo := postgres.NewBusinessDateRepository(db)
 	referenceGen := postgres.NewReferenceGenerator(db)
+	depositRepo := postgres.NewDepositRepository(db)
+	ppapRepo := postgres.NewPPAPRepository(db)
+	batchRepo := postgres.NewBatchActivityRepository(db)
+	savingsRepo := postgres.NewSavingsInterestRepository(db)
+	yearEndRepo := postgres.NewYearEndRepository(db)
 
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
@@ -82,7 +87,10 @@ func main() {
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen, auditRepo)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
-	batchSvc := service.NewBatchProcessService(dateRepo, ledgerRepo, accountRepo, reportSvc)
+	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
+	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db)
+	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
+	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
 
 	// 5. HTTP Handlers
@@ -100,6 +108,8 @@ func main() {
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
+	depositHandler := httpHandler.NewDepositHandler(depositSvc)
+	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
@@ -117,6 +127,8 @@ func main() {
 		IntegrationHandler:  integrationHandler,
 		BatchProcessHandler: batchHandler,
 		DocumentHandler:     docHandler,
+		DepositHandler:      depositHandler,
+		PPAPHandler:         ppapHandler,
 		AuthService:         authSvc,
 		Logger:              logger,
 	})

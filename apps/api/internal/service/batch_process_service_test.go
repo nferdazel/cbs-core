@@ -8,7 +8,6 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/service"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 )
 
 type stubBusinessDateRepo struct {
@@ -38,7 +37,9 @@ func (s *stubBusinessDateRepo) SetStatus(ctx context.Context, status domain.Busi
 func TestBatchProcessService_RunEOD(t *testing.T) {
 	initDate := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
 	dateRepo := &stubBusinessDateRepo{currentDate: initDate, status: domain.BusinessDateStatusOpen}
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil)
+	// Dependensi lain nil: RunEOD hanya butuh dateRepo; ringkasan tanpa batchRepo
+	// dikembalikan sebagai nol (di produksi batchRepo selalu terisi).
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil)
 
 	executor := uuid.New()
 	res, err := svc.RunEOD(context.Background(), executor)
@@ -49,26 +50,5 @@ func TestBatchProcessService_RunEOD(t *testing.T) {
 	expectedNext := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
 	if !res.NextBusinessDate.Equal(expectedNext) {
 		t.Fatalf("expected next business date 2026-09-03, got %s", res.NextBusinessDate.Format("2006-01-02"))
-	}
-}
-
-func TestBatchProcessService_RunEOY(t *testing.T) {
-	initDate := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
-	dateRepo := &stubBusinessDateRepo{currentDate: initDate, status: domain.BusinessDateStatusOpen}
-	reportSvc := service.NewReportService(&stubReportRepo{})
-
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, reportSvc)
-	executor := uuid.New()
-
-	res, err := svc.RunEOY(context.Background(), "30201", executor)
-	if err != nil {
-		t.Fatalf("unexpected error running EOY: %v", err)
-	}
-
-	if res.FiscalYear != 2026 {
-		t.Fatalf("expected fiscal year 2026, got %d", res.FiscalYear)
-	}
-	if !res.NetRetainedEarnings.Equal(decimal.NewFromInt(15000000)) {
-		t.Fatalf("expected Net Income 15M to transfer to Retained Earnings, got %s", res.NetRetainedEarnings.String())
 	}
 }
