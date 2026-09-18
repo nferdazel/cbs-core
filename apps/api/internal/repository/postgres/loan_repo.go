@@ -30,6 +30,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
 	var aoID, approvedBy sql.NullString
 	var approvedAt, disbursedAt, restructuredAt sql.NullTime
+	var restructuringReason sql.NullString
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.DisbursementAccountID,
@@ -37,7 +38,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.MarginAmount, &l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment,
 		&aoID, &approvedBy, &approvedAt, &disbursedAt,
 		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
-		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &l.RestructuringReason,
+		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &restructuringReason,
 		&l.CreatedAt, &l.UpdatedAt,
 	)
 	if err != nil {
@@ -59,6 +60,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	}
 	if restructuredAt.Valid {
 		l.RestructuredAt = &restructuredAt.Time
+	}
+	if restructuringReason.Valid {
+		l.RestructuringReason = restructuringReason.String
 	}
 	return &l, nil
 }
