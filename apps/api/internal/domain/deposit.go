@@ -54,6 +54,7 @@ type Deposit struct {
 	CustomerID      uuid.UUID       `json:"customer_id"`
 	ProductID       uuid.UUID       `json:"product_id"`
 	BranchID        *uuid.UUID      `json:"branch_id,omitempty"`
+	BranchCode      string          `json:"branch_code,omitempty"` // kode cabang deposito; kosong = data lama
 	PlacementAmount decimal.Decimal `json:"placement_amount"`
 	Currency        string          `json:"currency"`
 	TermMonths      int             `json:"term_months"`

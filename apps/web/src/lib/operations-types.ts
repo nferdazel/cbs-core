@@ -181,48 +181,44 @@ export interface Deposit {
  */
 export type PPAPCollectibility = 1 | 2 | 3 | 4 | 5;
 
-/**
- * domain.PPAPRunItem (ppap.go). Struct Go ini tidak punya json tag, sehingga
- * encoding/json memakai nama field apa adanya (PascalCase). Jangan pakai
- * snake_case di sini.
- */
+/** domain.PPAPRunItem (ppap.go). */
 export interface PPAPRunItem {
-  LoanID: string;
-  LoanNumber: string;
-  DPD: number;
-  Collectibility: PPAPCollectibility;
-  Outstanding: string;
-  Target: string;
-  Existing: string;
-  Adjustment: string;
-  CollectibilityChanged: boolean;
-  StopAccrual: boolean;
-  Posted: boolean;
+  loan_id: string;
+  loan_number: string;
+  dpd: number;
+  collectibility: PPAPCollectibility;
+  outstanding: string;
+  target: string;
+  existing: string;
+  adjustment: string;
+  collectibility_changed: boolean;
+  stop_accrual: boolean;
+  posted: boolean;
 }
 
-/** domain.PPAPRunFailure (ppap.go). Tanpa json tag: key PascalCase. */
+/** domain.PPAPRunFailure (ppap.go). */
 export interface PPAPRunFailure {
-  LoanID: string;
-  LoanNumber: string;
-  Error: string;
+  loan_id: string;
+  loan_number: string;
+  error: string;
 }
 
 /**
- * domain.PPAPRunSummary (ppap.go). Tanpa json tag: key PascalCase. Saat preview,
- * ReserveAfter dibiarkan nol dan Posted selalu false karena tidak ada jurnal.
+ * domain.PPAPRunSummary (ppap.go). Saat preview, reserve_after dibiarkan nol dan
+ * posted selalu false karena tidak ada jurnal.
  */
 export interface PPAPRunSummary {
-  AsOf: string;
-  Total: number;
-  Processed: number;
-  Failed: number;
-  Skipped: number;
-  TotalAdjustment: string;
-  Items: PPAPRunItem[] | null;
-  Failures: PPAPRunFailure[] | null;
-  ReserveBefore: string;
-  ReserveAfter: string;
-  Preview: boolean;
+  as_of: string;
+  total: number;
+  processed: number;
+  failed: number;
+  skipped: number;
+  total_adjustment: string;
+  items: PPAPRunItem[] | null;
+  failures: PPAPRunFailure[] | null;
+  reserve_before: string;
+  reserve_after: string;
+  preview: boolean;
 }
 
 /** domain.Branch (branch.go). address & phone omitempty: bisa tidak dikirim. */

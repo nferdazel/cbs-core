@@ -28,7 +28,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	is_restructured, restructured_count, restructured_at, restructuring_reason,
 	akad_number, akad_date, purpose,
 	ao_id, approved_by, approved_at, disbursed_at,
-	created_at, updated_at`
+	created_at, updated_at,
+	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), '')`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -45,6 +46,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&akadNumber, &akadDate, &purpose,
 		&aoID, &approvedBy, &approvedAt, &disbursedAt,
 		&l.CreatedAt, &l.UpdatedAt,
+		&l.BranchCode,
 	)
 	if err != nil {
 		return nil, err

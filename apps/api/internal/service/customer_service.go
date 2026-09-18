@@ -49,6 +49,26 @@ func (s *customerService) nextCIF() (string, error) {
 	return s.cifSource.NextCIF()
 }
 
+// resolveBranchID memetakan kode cabang aktor ke id cabang. Kode kosong atau
+// database yang tidak tersedia (mis. unit test tanpa DB) menghasilkan nil:
+// kolom branch_id nullable dan migrasi backfill yang mengisi data lama. Kode
+// cabang yang tidak dikenal ditolak agar nasabah tidak tersimpan tanpa cabang
+// yang sah.
+func (s *customerService) resolveBranchID(ctx context.Context, branchCode string) (*uuid.UUID, error) {
+	if branchCode == "" || s.db == nil {
+		return nil, nil
+	}
+	var id uuid.UUID
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM branches WHERE code = $1`, branchCode).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrBranchNotFound
+		}
+		return nil, err
+	}
+	return &id, nil
+}
+
 func (s *customerService) RegisterCustomer(ctx context.Context, input domain.CreateCustomerInput, actor domain.Actor) (*domain.Customer, error) {
 	if err := s.cipherOrError(); err != nil {
 		return nil, err
@@ -64,12 +84,20 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 	if err != nil {
 		return nil, err
 	}
+	// Cabang nasabah HANYA dari JWT; branch_code pada body diabaikan. Service ini
+	// tidak memegang BranchRepository (konstruktornya dipakai main.go yang tidak
+	// boleh diubah), jadi pemetaan kode->id dibaca langsung dari tabel branches.
+	branchID, err := s.resolveBranchID(ctx, actor.BranchCode)
+	if err != nil {
+		return nil, err
+	}
 	cifNumber, err := s.nextCIF()
 	if err != nil {
 		return nil, err
 	}
 	record.ID = uuid.New()
 	record.CIFNumber = cifNumber
+	record.BranchID = branchID
 	record.Status = domain.CustomerStatusActive
 	record.Metadata = input.Metadata
 	record.CreatedAt = time.Now().UTC()

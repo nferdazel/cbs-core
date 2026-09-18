@@ -222,39 +222,39 @@ type PPAPLoanUpdate struct {
 
 // PPAPRunItem adalah hasil pemrosesan satu kredit.
 type PPAPRunItem struct {
-	LoanID                uuid.UUID
-	LoanNumber            string
-	DPD                   int
-	Collectibility        Collectibility
-	Outstanding           decimal.Decimal
-	Target                decimal.Decimal
-	Existing              decimal.Decimal
-	Adjustment            decimal.Decimal
-	CollectibilityChanged bool
-	StopAccrual           bool
-	Posted                bool
+	LoanID                uuid.UUID       `json:"loan_id"`
+	LoanNumber            string          `json:"loan_number"`
+	DPD                   int             `json:"dpd"`
+	Collectibility        Collectibility  `json:"collectibility"`
+	Outstanding           decimal.Decimal `json:"outstanding"`
+	Target                decimal.Decimal `json:"target"`
+	Existing              decimal.Decimal `json:"existing"`
+	Adjustment            decimal.Decimal `json:"adjustment"`
+	CollectibilityChanged bool            `json:"collectibility_changed"`
+	StopAccrual           bool            `json:"stop_accrual"`
+	Posted                bool            `json:"posted"`
 }
 
 // PPAPRunFailure mencatat kredit yang gagal diproses tanpa menggagalkan batch.
 type PPAPRunFailure struct {
-	LoanID     uuid.UUID
-	LoanNumber string
-	Error      string
+	LoanID     uuid.UUID `json:"loan_id"`
+	LoanNumber string    `json:"loan_number"`
+	Error      string    `json:"error"`
 }
 
 // PPAPRunSummary adalah ringkasan satu kali proses PPAP.
 type PPAPRunSummary struct {
-	AsOf            time.Time
-	Total           int
-	Processed       int
-	Failed          int
-	Skipped         int // tidak berubah, tidak ada posting
-	TotalAdjustment decimal.Decimal
-	Items           []PPAPRunItem
-	Failures        []PPAPRunFailure
-	ReserveBefore   decimal.Decimal // saldo GL cadangan sebelum proses (rekonsiliasi)
-	ReserveAfter    decimal.Decimal // saldo GL cadangan setelah proses (rekonsiliasi)
-	Preview         bool            // true bila hanya simulasi, tanpa posting
+	AsOf            time.Time        `json:"as_of"`
+	Total           int              `json:"total"`
+	Processed       int              `json:"processed"`
+	Failed          int              `json:"failed"`
+	Skipped         int              `json:"skipped"` // tidak berubah, tidak ada posting
+	TotalAdjustment decimal.Decimal  `json:"total_adjustment"`
+	Items           []PPAPRunItem    `json:"items"`
+	Failures        []PPAPRunFailure `json:"failures"`
+	ReserveBefore   decimal.Decimal  `json:"reserve_before"` // saldo GL cadangan sebelum proses (rekonsiliasi)
+	ReserveAfter    decimal.Decimal  `json:"reserve_after"`  // saldo GL cadangan setelah proses (rekonsiliasi)
+	Preview         bool             `json:"preview"`        // true bila hanya simulasi, tanpa posting
 }
 
 // PPAPRepository adalah akses data proses PPAP. Seluruh SQL jurnal tetap lewat

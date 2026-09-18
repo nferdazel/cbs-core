@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -206,4 +207,51 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	if !loan.RequiredPPAP.IsZero() {
 		t.Fatalf("required_ppap %s, ingin tetap 0 sampai batch PPAP berjalan", loan.RequiredPPAP)
 	}
+}
+
+// Restrukturisasi kredit cabang lain harus ditolak bagi peran operasional, tetapi
+// tetap boleh dijalankan oleh pelaku lintas cabang (pengawas/batch).
+func TestRestructureLoan_MenolakKreditCabangLain(t *testing.T) {
+	loanID := uuid.New()
+	productID := uuid.New()
+	loanBranchID := uuid.New()
+
+	newService := func(loanBranch string) domain.LoanService {
+		repo := &stubLoanRepo{loan: &domain.Loan{
+			ID:                   loanID,
+			Status:               domain.LoanStatusDisbursed,
+			ProductID:            &productID,
+			BranchID:             &loanBranchID,
+			BranchCode:           loanBranch,
+			PrincipalAmount:      decimal.NewFromInt(10_000_000),
+			OutstandingPrincipal: decimal.NewFromInt(10_000_000),
+			TermMonths:           12,
+			InterestRateAnnual:   decimal.NewFromInt(12),
+		}}
+		products := &stubLoanProductRepo{product: &domain.BankingProduct{
+			ID:             productID,
+			Code:           "KRD-FLAT",
+			ProfitScheme:   domain.SchemeInterest,
+			ScheduleMethod: domain.ScheduleFlat,
+			RateAnnual:     decimal.NewFromInt(12),
+		}}
+		config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
+		return service.NewLoanService(nil, repo, products, nil, nil, nil, config)
+	}
+	input := domain.RestructureLoanInput{LoanID: loanID, NewTermMonths: 12}
+
+	t.Run("teller cabang berbeda ditolak", func(t *testing.T) {
+		_, err := newService("002").RestructureLoan(context.Background(), input,
+			domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
+		if !errors.Is(err, domain.ErrCrossBranchAccess) {
+			t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
+		}
+	})
+
+	t.Run("system lintas cabang boleh", func(t *testing.T) {
+		if _, err := newService("002").RestructureLoan(context.Background(), input,
+			domain.SystemActor(uuid.New())); err != nil {
+			t.Fatalf("batch seharusnya boleh merestrukturisasi lintas cabang: %v", err)
+		}
+	})
 }

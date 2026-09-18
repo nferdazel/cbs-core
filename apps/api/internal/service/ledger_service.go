@@ -169,6 +169,11 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 	if err != nil {
 		return nil, err
 	}
+	// Penegakan kepemilikan cabang; rekening tanpa cabang (data pra-migrasi)
+	// dibiarkan agar operasional tidak terblokir.
+	if !req.Actor.CanAccessBranch(acc.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 	cashAccount, err := s.resolveCashAccount(ctx, acc)
 	if err != nil {
 		return nil, err
@@ -205,6 +210,11 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 	acc, err := s.loadActiveAccount(ctx, req.AccountNumber)
 	if err != nil {
 		return nil, err
+	}
+	// Penegakan kepemilikan cabang; rekening tanpa cabang (data pra-migrasi)
+	// dibiarkan agar pencairan data lama tidak terblokir.
+	if !req.Actor.CanAccessBranch(acc.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if acc.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
@@ -252,6 +262,11 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 	dest, err := s.loadActiveAccount(ctx, req.DestinationAccountNumber)
 	if err != nil {
 		return nil, err
+	}
+	// Transfer menyentuh dua rekening: keduanya harus berada di cabang aktor.
+	// Rekening tanpa cabang (data pra-migrasi) dibiarkan agar tidak memblokir.
+	if !req.Actor.CanAccessBranch(src.BranchCode) || !req.Actor.CanAccessBranch(dest.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if src.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds

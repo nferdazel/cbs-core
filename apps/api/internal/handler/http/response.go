@@ -103,6 +103,9 @@ var businessErrors = []error{
 	domain.ErrMakerCheckerNotPending,
 	domain.ErrCannotSelfApprove,
 	domain.ErrNoExecutorForAction,
+	// Penolakan lintas cabang adalah aturan otorisasi: pesannya harus terlihat
+	// pengguna agar mereka tahu mengapa operasi ditolak.
+	domain.ErrCrossBranchAccess,
 }
 
 // isBusinessError melaporkan apakah error termasuk yang aman ditampilkan ke pengguna.
@@ -142,6 +145,12 @@ func looksLikeInternalError(msg string) bool {
 func Fail(w http.ResponseWriter, r *http.Request, status int, err error) {
 	if err == nil {
 		InternalError(w, r, errors.New("Fail dipanggil tanpa error"))
+		return
+	}
+	// Penolakan lintas cabang selalu 403, apa pun status default pemanggil.
+	// Dipusatkan di sini agar seluruh handler konsisten tanpa memetakan sendiri.
+	if errors.Is(err, domain.ErrCrossBranchAccess) {
+		Error(w, http.StatusForbidden, err.Error())
 		return
 	}
 	if isBusinessError(err) {

@@ -27,7 +27,8 @@ const depositColumns = `id, account_number, customer_id, product_id, branch_id,
 	placement_amount, currency, term_months, start_date, maturity_date,
 	profit_rate, yield_rate, profit_type, tax_rate, aro, aro_instruction,
 	status::text, accrued_profit, accrued_tax, paid_profit, paid_tax,
-	early_withdrawal_penalty, maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at`
+	early_withdrawal_penalty, maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at,
+	COALESCE((SELECT b.code FROM branches b WHERE b.id = deposits.branch_id), '')`
 
 func scanDeposit(row interface{ Scan(...any) error }) (*domain.Deposit, error) {
 	var d domain.Deposit
@@ -38,6 +39,7 @@ func scanDeposit(row interface{ Scan(...any) error }) (*domain.Deposit, error) {
 		&d.ProfitRate, &d.YieldRate, &d.ProfitType, &d.TaxRate, &d.ARO, &d.AROInstruction,
 		&d.Status, &d.AccruedProfit, &d.AccruedTax, &d.PaidProfit, &d.PaidTax,
 		&d.EarlyWithdrawalPenalty, &d.MaturityProceeds, &lastAccrual, &closedAt, &d.CreatedAt, &d.UpdatedAt,
+		&d.BranchCode,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

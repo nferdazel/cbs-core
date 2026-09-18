@@ -85,6 +85,11 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	if acc.CustomerID == nil || *acc.CustomerID != input.CustomerID {
 		return nil, errors.New("rekening pencairan bukan milik nasabah yang mengajukan")
 	}
+	// Penegakan kepemilikan cabang: pencairan ke rekening cabang lain ditolak.
+	// Rekening tanpa cabang (data pra-migrasi) dibiarkan lewat.
+	if !actor.CanAccessBranch(acc.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 
 	loanID := uuid.New()
 	start := time.Now().UTC()
@@ -110,6 +115,12 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		LoanNumber:            loanNumber,
 		CustomerID:            input.CustomerID,
 		ProductID:             &product.ID,
+		// Cabang kredit mengikuti cabang rekening pencairan. Untuk aktor
+		// non-lintas-cabang, penegakan di atas sudah memastikan cabang rekening
+		// sama dengan cabang aktor; untuk aktor lintas cabang, cabang rekening
+		// pencairan yang menjadi dasar. Bila rekening belum punya cabang (data
+		// lama), dibiarkan NULL sampai migrasi backfill mengisinya.
+		BranchID:              acc.BranchID,
 		DisbursementAccountID: input.DisbursementAccountID,
 		LoanType:              domain.LoanTypeFor(product),
 		Status:                domain.LoanStatusPendingApproval,
@@ -180,10 +191,20 @@ func scheduleTermsFor(product *domain.BankingProduct, requestedMargin decimal.De
 	}
 }
 
+// canAccessLoan menegakkan kepemilikan cabang kredit. Kredit dengan branch_id
+// NULL adalah data pra-migrasi yang cabangnya belum diketahui; baris seperti itu
+// sengaja TIDAK ditolak agar operasional atas data lama tidak terblokir.
+func canAccessLoan(actor domain.Actor, loan *domain.Loan) bool {
+	return actor.CanAccessBranch(loan.BranchCode)
+}
+
 func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, actor domain.Actor) (*domain.Loan, error) {
 	loan, err := s.loanRepo.GetByID(ctx, loanID)
 	if err != nil {
 		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
@@ -220,6 +241,9 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, actor do
 	if err != nil {
 		return nil, err
 	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
 	}
@@ -251,6 +275,9 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	loan, err := s.loanRepo.GetByID(ctx, loanID)
 	if err != nil {
 		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if loan.Status == domain.LoanStatusDisbursed {
 		return nil, domain.ErrLoanAlreadyDisbursed
@@ -342,6 +369,9 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
 	if err != nil {
 		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, errors.New("kredit tidak dalam status aktif")
@@ -465,6 +495,9 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	if err != nil {
 		return nil, err
 	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, errors.New("hanya kredit aktif yang dapat direstrukturisasi")
 	}
@@ -527,6 +560,9 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	if err != nil {
 		return nil, err
 	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, errors.New("hanya kredit aktif yang dapat dihapus buku")
 	}
@@ -579,6 +615,9 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
 	if err != nil {
 		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	if loan.Status != domain.LoanStatusWrittenOff {
 		return nil, errors.New("kredit tidak berstatus hapus buku")

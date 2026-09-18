@@ -37,6 +37,7 @@ type Account struct {
 	CustomerName     string          `json:"customer_name,omitempty"`
 	ProductID        *uuid.UUID      `json:"product_id,omitempty"`
 	BranchID         *uuid.UUID      `json:"branch_id,omitempty"`
+	BranchCode       string          `json:"branch_code,omitempty"` // kode cabang rekening; kosong = data lama
 	COAID            uuid.UUID       `json:"coa_id"`
 	COACode          string          `json:"coa_code,omitempty"`
 	// COABook adalah buku COA rekening (konvensional/syariah). Dipakai untuk

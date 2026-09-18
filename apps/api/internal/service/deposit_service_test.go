@@ -398,3 +398,69 @@ func TestDepositRolloverTermsPokokSaja(t *testing.T) {
 		t.Fatal("PRINCIPAL tidak boleh mengapitalisasi imbal hasil")
 	}
 }
+
+// ── Penegakan cabang pada Place ─────────────────────────────────────────────
+
+// stubPlaceCustomerRepo hanya melayani GetByID untuk test penegakan cabang;
+// method lain dibiarkan dari interface agar tidak dipakai.
+type stubPlaceCustomerRepo struct {
+	domain.CustomerRepository
+	customer *domain.CustomerRecord
+}
+
+func (s *stubPlaceCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.CustomerRecord, error) {
+	if s.customer == nil {
+		return nil, domain.ErrCustomerNotFound
+	}
+	return s.customer, nil
+}
+
+type stubPlaceBranchRepo struct {
+	domain.BranchRepository
+	branch *domain.Branch
+}
+
+func (s *stubPlaceBranchRepo) GetByCode(ctx context.Context, code string) (*domain.Branch, error) {
+	return s.branch, nil
+}
+
+func (s *stubPlaceBranchRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
+	return s.branch, nil
+}
+
+func TestDepositPlaceMenolakNasabahCabangLain(t *testing.T) {
+	productID := uuid.New()
+	customerID := uuid.New()
+	customerBranchID := uuid.New()
+	actorBranchID := uuid.New()
+
+	svc := &depositService{
+		productRepo: &stubDepositProductRepo{product: &domain.BankingProduct{
+			ID:        productID,
+			Code:      "DEP-CONV",
+			Family:    domain.FamilyTimeDeposit,
+			IsActive:  true,
+			MinAmount: decimal.NewFromInt(1_000_000),
+		}},
+		customerRepo: &stubPlaceCustomerRepo{customer: &domain.CustomerRecord{
+			ID:       customerID,
+			Status:   domain.CustomerStatusActive,
+			BranchID: &customerBranchID,
+		}},
+		branchRepo: &stubPlaceBranchRepo{branch: &domain.Branch{
+			ID:       actorBranchID,
+			Code:     "001",
+			IsActive: true,
+		}},
+	}
+
+	_, err := svc.Place(context.Background(), domain.PlaceDepositInput{
+		CustomerID:      customerID,
+		ProductID:       productID,
+		PlacementAmount: decimal.NewFromInt(1_000_000),
+		TermMonths:      1,
+	}, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
+	if !errors.Is(err, domain.ErrCrossBranchAccess) {
+		t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
+	}
+}

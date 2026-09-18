@@ -24,7 +24,8 @@ func NewAccountRepository(db *sql.DB) *AccountRepository {
 const accountColumns = `a.id, a.account_number, a.customer_id, NULL,
 	a.product_id, a.branch_id, a.coa_id, coa.code, coa.book::text, coa.normal_balance,
 	a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance,
-	a.status, a.version, a.opened_at, a.created_at, a.updated_at`
+	a.status, a.version, a.opened_at, a.created_at, a.updated_at,
+	COALESCE((SELECT b.code FROM branches b WHERE b.id = a.branch_id), '')`
 
 func (r *AccountRepository) Create(ctx context.Context, a *domain.Account) error {
 	return r.executeCreate(ctx, r.db, a)
@@ -164,6 +165,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		&a.ProductID, &a.BranchID, &a.COAID, &a.COACode, &a.COABook, &a.NormalBalance,
 		&a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance,
 		&a.Status, &a.Version, &a.OpenedAt, &a.CreatedAt, &a.UpdatedAt,
+		&a.BranchCode,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

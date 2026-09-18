@@ -26,7 +26,7 @@ function collectibilityLabel(value: number): string {
 }
 
 function summaryItems(summary: PPAPRunSummary): PPAPRunItem[] {
-  return summary.Items ?? [];
+  return summary.items ?? [];
 }
 
 export default function PPAPPage() {
@@ -85,35 +85,35 @@ export default function PPAPPage() {
   const itemColumns: Column<PPAPRunItem>[] = [
     {
       header: "Nomor Kredit",
-      cell: (row) => <span className="font-mono">{row.LoanNumber}</span>,
+      cell: (row) => <span className="font-mono">{row.loan_number}</span>,
     },
     {
       header: "Kolektibilitas",
-      cell: (row) => collectibilityLabel(row.Collectibility),
+      cell: (row) => collectibilityLabel(row.collectibility),
     },
     {
       header: "DPD",
       align: "right",
       isMono: true,
-      cell: (row) => `${row.DPD} hari`,
+      cell: (row) => `${row.dpd} hari`,
     },
     {
       header: "Pokok",
       type: "money",
-      cell: (row) => <MoneyText value={row.Outstanding} />,
+      cell: (row) => <MoneyText value={row.outstanding} />,
     },
     {
       header: "Cadangan Dibutuhkan",
       type: "money",
-      cell: (row) => <MoneyText value={row.Target} />,
+      cell: (row) => <MoneyText value={row.target} />,
     },
     {
       header: "Penyesuaian",
       type: "money",
       cell: (row) => (
         <MoneyText
-          value={row.Adjustment}
-          tone={Number(row.Adjustment) < 0 ? "credit" : "default"}
+          value={row.adjustment}
+          tone={Number(row.adjustment) < 0 ? "credit" : "default"}
         />
       ),
     },
@@ -162,7 +162,7 @@ export default function PPAPPage() {
           <CardHeader>
             <CardTitle>
               Hasil Perhitungan{" "}
-              <span className="font-mono">{formatDate(runSummary.AsOf)}</span>
+              <span className="font-mono">{formatDate(runSummary.as_of)}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -171,34 +171,34 @@ export default function PPAPPage() {
             </p>
             <DefinitionList
               items={[
-                { label: "Total Kredit", value: runSummary.Total, isMono: true },
-                { label: "Berhasil", value: runSummary.Processed, isMono: true },
-                { label: "Gagal", value: runSummary.Failed, isMono: true },
-                { label: "Tanpa Perubahan", value: runSummary.Skipped, isMono: true },
+                { label: "Total Kredit", value: runSummary.total, isMono: true },
+                { label: "Berhasil", value: runSummary.processed, isMono: true },
+                { label: "Gagal", value: runSummary.failed, isMono: true },
+                { label: "Tanpa Perubahan", value: runSummary.skipped, isMono: true },
                 {
                   label: "Total Penyesuaian",
-                  value: <MoneyText value={runSummary.TotalAdjustment} />,
+                  value: <MoneyText value={runSummary.total_adjustment} />,
                 },
                 {
                   label: "Cadangan Sebelum",
-                  value: <MoneyText value={runSummary.ReserveBefore} />,
+                  value: <MoneyText value={runSummary.reserve_before} />,
                 },
                 {
                   label: "Cadangan Sesudah",
-                  value: <MoneyText value={runSummary.ReserveAfter} />,
+                  value: <MoneyText value={runSummary.reserve_after} />,
                 },
               ]}
             />
-            {runSummary.Failures && runSummary.Failures.length > 0 && (
+            {runSummary.failures && runSummary.failures.length > 0 && (
               <div className="rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3">
                 <p className="text-title font-medium text-debit-700">
                   Kredit gagal diproses
                 </p>
                 <ul className="mt-2 space-y-1">
-                  {runSummary.Failures.map((failure) => (
-                    <li key={failure.LoanID} className="text-body text-ink-900">
-                      <span className="font-mono">{failure.LoanNumber}</span>:{" "}
-                      {failure.Error}
+                  {runSummary.failures.map((failure) => (
+                    <li key={failure.loan_id} className="text-body text-ink-900">
+                      <span className="font-mono">{failure.loan_number}</span>:{" "}
+                      {failure.error}
                     </li>
                   ))}
                 </ul>
@@ -215,7 +215,7 @@ export default function PPAPPage() {
             {preview && (
               <span className="font-normal text-ink-600">
                 {" "}
-                — {formatDate(preview.AsOf)}
+                — {formatDate(preview.as_of)}
               </span>
             )}
           </CardTitle>
@@ -244,18 +244,18 @@ export default function PPAPPage() {
                   items={[
                     {
                       label: "Kredit Diproses",
-                      value: `${preview.Processed} dari ${preview.Total}`,
+                      value: `${preview.processed} dari ${preview.total}`,
                       isMono: true,
                     },
-                    { label: "Gagal", value: preview.Failed, isMono: true },
-                    { label: "Tanpa Perubahan", value: preview.Skipped, isMono: true },
+                    { label: "Gagal", value: preview.failed, isMono: true },
+                    { label: "Tanpa Perubahan", value: preview.skipped, isMono: true },
                     {
                       label: "Total Penyesuaian",
-                      value: <MoneyText value={preview.TotalAdjustment} />,
+                      value: <MoneyText value={preview.total_adjustment} />,
                     },
                     {
                       label: "Cadangan Saat Ini (GL)",
-                      value: <MoneyText value={preview.ReserveBefore} />,
+                      value: <MoneyText value={preview.reserve_before} />,
                     },
                   ]}
                 />
@@ -263,7 +263,7 @@ export default function PPAPPage() {
               <DataTable
                 columns={itemColumns}
                 data={summaryItems(preview)}
-                keyExtractor={(row) => row.LoanID}
+                keyExtractor={(row) => row.loan_id}
                 emptyMessage="Tidak ada kredit aktif yang dihitung pada tanggal ini."
                 zebra
               />
@@ -302,18 +302,18 @@ export default function PPAPPage() {
               <dl className="space-y-1">
                 <div className="flex justify-between">
                   <dt className="text-ink-600">Tanggal acuan</dt>
-                  <dd className="font-mono">{formatDate(preview.AsOf)}</dd>
+                  <dd className="font-mono">{formatDate(preview.as_of)}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ink-600">Kredit diproses</dt>
                   <dd className="font-mono">
-                    {preview.Processed} dari {preview.Total}
+                    {preview.processed} dari {preview.total}
                   </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ink-600">Total penyesuaian</dt>
                   <dd>
-                    <MoneyText value={preview.TotalAdjustment} />
+                    <MoneyText value={preview.total_adjustment} />
                   </dd>
                 </div>
               </dl>

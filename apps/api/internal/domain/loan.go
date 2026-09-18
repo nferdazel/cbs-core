@@ -102,6 +102,7 @@ type Loan struct {
 	CustomerID   uuid.UUID  `json:"customer_id"`
 	ProductID    *uuid.UUID `json:"product_id,omitempty"`
 	BranchID     *uuid.UUID `json:"branch_id,omitempty"`
+	BranchCode   string     `json:"branch_code,omitempty"` // kode cabang kredit; kosong = data lama
 	DisbursementAccountID uuid.UUID `json:"disbursement_account_id"`
 	LoanType     LoanType   `json:"loan_type"`
 	Status       LoanStatus `json:"status"`

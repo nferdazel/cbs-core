@@ -121,19 +121,31 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 		return nil, domain.ErrAccountInactive
 	}
 
-	branchCode := input.BranchCode
+	branchCode := actor.BranchCode
 	if branchCode == "" {
-		branchCode = actor.BranchCode
+		return nil, errors.New("kode cabang aktor wajib diisi")
 	}
-	if branchCode == "" {
-		return nil, errors.New("kode cabang wajib diisi")
-	}
-	branch, err := s.branchRepo.GetByCode(ctx, branchCode)
+	actorBranch, err := s.branchRepo.GetByCode(ctx, branchCode)
 	if err != nil {
 		return nil, fmt.Errorf("cabang tidak valid: %w", err)
 	}
+	// Penegakan kepemilikan cabang: nasabah di cabang lain ditolak. Nasabah tanpa
+	// cabang (data pra-migrasi) dibiarkan agar operasional tidak terblokir.
+	if !actor.IsCrossBranch() && customer.BranchID != nil && *customer.BranchID != actorBranch.ID {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	// Deposito mengikuti cabang nasabah. Aktor lintas cabang yang melayani nasabah
+	// cabang lain memakai cabang nasabah itu, bukan cabang aktornya.
+	branch := actorBranch
+	if customer.BranchID != nil && *customer.BranchID != actorBranch.ID {
+		customerBranch, err := s.branchRepo.GetByID(ctx, *customer.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("cabang nasabah tidak valid: %w", err)
+		}
+		branch = customerBranch
+	}
 	if !branch.IsActive {
-		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branchCode)
+		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branch.Code)
 	}
 
 	coaCode, err := liabilityCOAForProduct(product)
@@ -381,6 +393,11 @@ func (s *depositService) Accrue(ctx context.Context, depositID uuid.UUID, asOf t
 	if dep.Status != domain.DepositStatusPlaced && dep.Status != domain.DepositStatusMatured {
 		return nil, domain.ErrDepositNotActive
 	}
+	// Penegakan kepemilikan cabang. Deposito tanpa cabang (data pra-migrasi)
+	// dibiarkan lewat; batch memakai RoleSystem yang lintas cabang.
+	if !actor.CanAccessBranch(dep.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
 
 	accrualDate := depositDateOnly(asOf)
 	// Idempotent per hari: hari yang sudah diakrual tidak diposting ulang.
@@ -439,6 +456,11 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 	}
 	if dep.Status == domain.DepositStatusClosed || dep.Status == domain.DepositStatusBroken {
 		return nil, domain.ErrDepositAlreadyClosed
+	}
+	// Penegakan kepemilikan cabang. Deposito tanpa cabang (data pra-migrasi)
+	// dibiarkan lewat agar pencairan data lama tidak terblokir.
+	if !actor.CanAccessBranch(dep.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 
 	product, err := s.productRepo.GetByID(ctx, dep.ProductID)
