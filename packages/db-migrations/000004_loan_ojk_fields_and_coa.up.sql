@@ -29,3 +29,13 @@ INSERT INTO chart_of_accounts (id, code, name, type, normal_balance) VALUES
     ('a0000000-0000-0000-0000-000000000007', '10900', 'Allowance for Impairment (PPAP)',    'ASSET',   'DEBIT'),
     ('a0000000-0000-0000-0000-000000000008', '40900', 'Recovery Income on Written-Off Loan','REVENUE', 'CREDIT')
 ON CONFLICT (code) DO NOTHING;
+
+-- 4. Seed akun GL internal (tabel accounts) untuk posting jurnal modul kredit.
+--    PostCompoundJournal mengunci akun berdasarkan account_number, sehingga akun
+--    kontrol GL ini memakai nomor yang sama dengan kode COA-nya (praktik umum CBS).
+INSERT INTO accounts (id, account_number, customer_id, coa_id, account_type, currency, balance, available_balance, status) VALUES
+    ('b0000000-0000-0000-0000-000000000003', '10300', NULL, 'a0000000-0000-0000-0000-000000000006', 'INTERNAL_GL', 'IDR', 0.0000, 0.0000, 'ACTIVE'),
+    ('b0000000-0000-0000-0000-000000000004', '10900', NULL, 'a0000000-0000-0000-0000-000000000007', 'INTERNAL_GL', 'IDR', 0.0000, 0.0000, 'ACTIVE'),
+    ('b0000000-0000-0000-0000-000000000005', '40900', NULL, 'a0000000-0000-0000-0000-000000000008', 'INTERNAL_GL', 'IDR', 0.0000, 0.0000, 'ACTIVE'),
+    ('b0000000-0000-0000-0000-000000000006', '40100', NULL, 'a0000000-0000-0000-0000-000000000004', 'INTERNAL_GL', 'IDR', 0.0000, 0.0000, 'ACTIVE')
+ON CONFLICT (account_number) DO NOTHING;
