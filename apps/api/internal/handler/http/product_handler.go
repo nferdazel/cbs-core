@@ -19,7 +19,7 @@ func NewProductHandler(service domain.ProductService) *ProductHandler {
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	products, err := h.service.ListProducts(r.Context())
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "gagal memuat daftar produk")
+		InternalError(w, r, err)
 		return
 	}
 	Success(w, http.StatusOK, "daftar produk", products)

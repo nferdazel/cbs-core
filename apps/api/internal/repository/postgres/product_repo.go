@@ -17,9 +17,12 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
-const productColumns = `id, code, name, family, book, profit_scheme, schedule_method,
-	rate_annual, profit_sharing_ratio, min_amount, max_amount, min_term_months, max_term_months,
-	allow_partial_payment, early_withdrawal_penalty_rate, admin_fee, tax_rate, is_active`
+// productColumns memakai cast ::text untuk kolom bertipe enum kustom. Tanpa cast,
+// driver tidak bisa memindai enum PostgreSQL ke string Go dan query gagal saat runtime.
+const productColumns = `id, code, name, family::text, book::text, profit_scheme::text,
+	schedule_method::text, rate_annual, profit_sharing_ratio, min_amount, max_amount,
+	min_term_months, max_term_months, allow_partial_payment, early_withdrawal_penalty_rate,
+	admin_fee, tax_rate, is_active`
 
 func scanProduct(row interface{ Scan(...any) error }) (*domain.BankingProduct, error) {
 	var p domain.BankingProduct
@@ -72,7 +75,7 @@ func (r *ProductRepository) GetByCode(ctx context.Context, code string) (*domain
 
 func (r *ProductRepository) GetMapping(ctx context.Context, productID uuid.UUID, event domain.PostingEvent) ([]domain.JournalMappingRule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT event, direction, coa_code, amount_source
+		SELECT event::text, direction::text, coa_code, amount_source::text
 		FROM product_journal_mapping
 		WHERE product_id = $1 AND event = $2
 		ORDER BY direction`, productID, event)

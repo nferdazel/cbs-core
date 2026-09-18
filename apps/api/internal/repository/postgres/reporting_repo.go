@@ -86,7 +86,7 @@ func (r *ReportingRepository) TrialBalance(ctx context.Context, from, to time.Ti
 	return list, rows.Err()
 }
 
-// IncomeStatement mengagregasi pendapatan dan beban periode dari account_type COA.
+// IncomeStatement mengagregasi pendapatan dan beban periode dari kolom type COA.
 // Nominal akun disajikan menurut sifat alaminya agar pendapatan positif.
 func (r *ReportingRepository) IncomeStatement(ctx context.Context, from, to time.Time, book string) (domain.IncomeStatement, error) {
 	args := []any{from, to}
@@ -97,7 +97,7 @@ func (r *ReportingRepository) IncomeStatement(ctx context.Context, from, to time
 	}
 
 	q := fmt.Sprintf(`
-		SELECT c.code, c.name, c.book, c.account_type,
+		SELECT c.code, c.name, c.book, c.type,
 			COALESCE(SUM(CASE WHEN jl.direction = 'DEBIT'  THEN jl.amount ELSE 0 END), 0) AS total_debit,
 			COALESCE(SUM(CASE WHEN jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0) AS total_credit
 		FROM chart_of_accounts c
@@ -105,9 +105,9 @@ func (r *ReportingRepository) IncomeStatement(ctx context.Context, from, to time
 		JOIN journal_lines jl ON jl.account_id = a.id
 		JOIN journal_entries je ON jl.journal_entry_id = je.id
 		WHERE c.is_header = FALSE
-			AND c.account_type IN ('REVENUE', 'EXPENSE')
+			AND c.type IN ('REVENUE', 'EXPENSE')
 			AND je.entry_date >= $1::date AND je.entry_date <= $2::date%s
-		GROUP BY c.code, c.name, c.book, c.account_type
+		GROUP BY c.code, c.name, c.book, c.type
 		ORDER BY c.code ASC`, bookFilter)
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
@@ -166,7 +166,7 @@ func (r *ReportingRepository) BalanceSheet(ctx context.Context, asOf time.Time, 
 	// LEFT JOIN: semua akun daun tetap muncul; mutasi dibatasi entry_date <= asOf
 	// lewat CASE agar akun tanpa mutasi tidak menghilangkan akun lain.
 	q := fmt.Sprintf(`
-		SELECT c.code, c.name, c.book, c.account_type,
+		SELECT c.code, c.name, c.book, c.type,
 			COALESCE(SUM(CASE WHEN je.entry_date <= $1::date AND jl.direction = 'DEBIT'  THEN jl.amount ELSE 0 END), 0) AS total_debit,
 			COALESCE(SUM(CASE WHEN je.entry_date <= $1::date AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0) AS total_credit
 		FROM chart_of_accounts c
@@ -174,7 +174,7 @@ func (r *ReportingRepository) BalanceSheet(ctx context.Context, asOf time.Time, 
 		LEFT JOIN journal_lines jl ON jl.account_id = a.id
 		LEFT JOIN journal_entries je ON jl.journal_entry_id = je.id
 		WHERE c.is_header = FALSE%s
-		GROUP BY c.code, c.name, c.book, c.account_type
+		GROUP BY c.code, c.name, c.book, c.type
 		ORDER BY c.code ASC`, bookFilter)
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
@@ -275,11 +275,11 @@ func (r *ReportingRepository) CashFlow(ctx context.Context, from, to time.Time, 
 			JOIN accounts ca ON ca.id = cl.account_id
 			JOIN chart_of_accounts cc ON cc.id = ca.coa_id
 			WHERE cc.is_header = FALSE
-				AND cc.account_type = 'ASSET'
+				AND cc.type = 'ASSET'
 				AND cc.code IN %s
 				AND je.entry_date >= $1::date AND je.entry_date <= $2::date%s
 		)
-		SELECT cp_coa.code, cp_coa.name, cp_coa.book, cp_coa.account_type, cp.direction,
+		SELECT cp_coa.code, cp_coa.name, cp_coa.book, cp_coa.type, cp.direction,
 			COALESCE(SUM(cp.amount), 0) AS amount
 		FROM journal_lines cp
 		JOIN accounts cpa ON cpa.id = cp.account_id
@@ -287,7 +287,7 @@ func (r *ReportingRepository) CashFlow(ctx context.Context, from, to time.Time, 
 		WHERE cp_coa.is_header = FALSE
 			AND cp_coa.code NOT IN %s
 			AND cp.journal_entry_id IN (SELECT entry_id FROM cash_entries)
-		GROUP BY cp_coa.code, cp_coa.name, cp_coa.book, cp_coa.account_type, cp.direction
+		GROUP BY cp_coa.code, cp_coa.name, cp_coa.book, cp_coa.type, cp.direction
 		ORDER BY cp_coa.code ASC`, cashIn, bookFilter, cashNotIn)
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
