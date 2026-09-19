@@ -4,6 +4,7 @@ import {
   BookOpenCheck,
   Briefcase,
   Building2,
+  CalendarCheck,
   CheckSquare,
   CreditCard,
   HandCoins,
@@ -22,6 +23,11 @@ export interface NavItem {
   href: string;
   labelKey: keyof Dictionary["nav"];
   icon: LucideIcon;
+  /**
+   * Bila diisi, item hanya tampil bagi peran ini. Tutup hari memerlukan permission
+   * `system:config` yang menurut domain.RolePermissions hanya dimiliki SUPERADMIN.
+   */
+  requiredRole?: string;
 }
 
 export interface NavGroup {
@@ -39,6 +45,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/transaksi", labelKey: "transaksi", icon: CreditCard },
       { href: "/deposito", labelKey: "deposito", icon: PiggyBank },
       { href: "/ppap", labelKey: "ppap", icon: ShieldCheck },
+      {
+        href: "/tutup-hari",
+        labelKey: "tutupHari",
+        icon: CalendarCheck,
+        requiredRole: "SUPERADMIN",
+      },
     ],
   },
   {

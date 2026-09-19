@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "./Button";
 
 export interface ConfirmDialogProps {
@@ -12,6 +12,11 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   destructive?: boolean;
   loading?: boolean;
+  /**
+   * Bila diisi, pengguna harus mengetik teks ini persis sebelum tombol konfirmasi
+   * aktif. Untuk aksi yang tidak dapat dibatalkan (mis. tutup buku tahunan).
+   */
+  requireKeyword?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -29,9 +34,16 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelLabel = "Batal",
   destructive = false,
   loading = false,
+  requireKeyword,
   onConfirm,
   onCancel,
 }) => {
+  const [keyword, setKeyword] = useState("");
+
+  useEffect(() => {
+    setKeyword("");
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -42,6 +54,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   }, [open, loading, onCancel]);
 
   if (!open) return null;
+
+  const keywordSatisfied = !requireKeyword || keyword === requireKeyword;
 
   return (
     <div
@@ -60,9 +74,30 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="border-b border-border px-4 py-3">
           <h2 className="text-title font-semibold text-ink-900">{title}</h2>
         </div>
-        {description && (
+        {(description || requireKeyword) && (
           <div className="space-y-2 px-4 py-4 text-body text-ink-600">
             {description}
+            {requireKeyword && (
+              <div>
+                <label
+                  htmlFor="confirm-keyword"
+                  className="text-meta font-medium text-ink-900"
+                >
+                  Ketik <span className="font-mono">{requireKeyword}</span> untuk
+                  mengonfirmasi
+                </label>
+                <input
+                  id="confirm-keyword"
+                  type="text"
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                  disabled={loading}
+                  className="mt-1 h-9 w-full rounded-md border border-border-strong bg-surface px-2 font-mono text-body text-ink-900 focus:border-navy-600 disabled:opacity-50"
+                />
+              </div>
+            )}
           </div>
         )}
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
@@ -70,10 +105,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             {cancelLabel}
           </Button>
           <Button
-            autoFocus
+            autoFocus={!requireKeyword}
             variant={destructive ? "danger" : "primary"}
             onClick={onConfirm}
             loading={loading}
+            disabled={!keywordSatisfied}
           >
             {confirmLabel}
           </Button>

@@ -17,7 +17,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     <div className="min-h-screen min-w-[1024px] bg-canvas">
       <AppHeader user={user} onLogout={logout} />
       <div className="flex">
-        <AppSidebar />
+        <AppSidebar role={user?.role} />
         <main className="min-w-0 flex-1">
           <div className="mx-auto max-w-[1440px] p-6">
             {!ready ? (

@@ -38,6 +38,7 @@ export const dictionaryEN: Dictionary = {
     pembiayaan: "Financing",
     deposito: "Time Deposits",
     ppap: "PPAP",
+    tutupHari: "Day Close",
     nasabah: "Customers",
     produk: "Products",
     cabang: "Branches",

@@ -59,3 +59,6 @@ BACKLOG.md
 
 # Go workspace lock (lokal, bukan artifact build)
 go.work.sum
+
+# TypeScript incremental build info (artifact lokal)
+*.tsbuildinfo

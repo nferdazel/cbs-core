@@ -101,6 +101,56 @@ export type ReportKind =
   | "income-statement"
   | "cash-flow";
 
+/** domain.EODSummaryResult (system_date.go) */
+export interface EODSummaryResult {
+  executed_date: string;
+  next_business_date: string;
+  total_posted_journals_today: number;
+  total_deposit_amount_today: string;
+  total_withdrawal_amount_today: string;
+  deposits_rolled_over: number;
+  ppap_processed: number;
+  loan_penalties_accrued: number;
+  loan_penalty_amount: string;
+  accounts_marked_dormant: number;
+  /** Pekerjaan harian best-effort yang gagal/tidak lengkap; teks dari server. */
+  warnings?: string[];
+  executed_by: string;
+  completed_at: string;
+}
+
+/** domain.EOMSummaryResult (system_date.go) */
+export interface EOMSummaryResult {
+  executed_month: string;
+  total_admin_fees_deducted: string;
+  total_interest_paid: string;
+  processed_accounts: number;
+  failed_accounts: number;
+  completed_at: string;
+}
+
+/** domain.EOYBookResult (year_end.go) */
+export interface EOYBookResult {
+  book: "CONVENTIONAL" | "SYARIAH";
+  total_revenue_closed: string;
+  total_expense_closed: string;
+  net_retained_earnings: string;
+  retained_earnings_coa_code: string;
+  closing_journal_ref: string;
+  already_closed: boolean;
+}
+
+/** domain.EOYSummaryResult (system_date.go) */
+export interface EOYSummaryResult {
+  fiscal_year: number;
+  total_revenue_closed: string;
+  total_expense_closed: string;
+  net_retained_earnings: string;
+  closing_journal_ref: string;
+  books?: EOYBookResult[];
+  completed_at: string;
+}
+
 /**
  * Shim kompatibilitas: sebagian modul operasional mengimpor tipe ini dari
  * "@/lib/types", padahal definisinya ada di "@/lib/operations-types".

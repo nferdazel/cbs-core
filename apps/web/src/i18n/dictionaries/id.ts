@@ -36,6 +36,7 @@ export const dictionaryID = {
     pembiayaan: "Pembiayaan",
     deposito: "Deposito",
     ppap: "PPAP",
+    tutupHari: "Tutup Hari",
     nasabah: "Nasabah",
     produk: "Produk",
     cabang: "Cabang",
