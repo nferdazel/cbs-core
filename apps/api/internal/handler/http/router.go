@@ -155,9 +155,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.BranchHandler.List)
 			})
 			r.Route("/products", func(r chi.Router) {
-				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+				// Data referensi produk dipakai layar rekening, deposito, dan kredit.
+				// Sebelumnya dijaga loans:read sehingga TELLER tidak dapat memuat daftar
+				// produk, padahal ia berwenang membuka rekening.
+				r.With(middleware.RequirePermission(domain.PermProductsRead)).
 					Get("/", p.ProductHandler.List)
-				r.With(middleware.RequirePermission(domain.PermLoansRead)).
+				r.With(middleware.RequirePermission(domain.PermProductsRead)).
 					Get("/{id}", p.ProductHandler.GetByID)
 			})
 

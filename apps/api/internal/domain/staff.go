@@ -58,6 +58,10 @@ const (
 	PermAccountsFreeze Permission = "accounts:freeze"
 	PermAccountsClose  Permission = "accounts:close"
 
+	// Products — data referensi produk (suku bunga, margin, biaya) yang dipakai
+	// layar rekening, deposito, dan kredit.
+	PermProductsRead Permission = "products:read"
+
 	// Transactions
 	PermTransactionsDeposit  Permission = "transactions:deposit"
 	PermTransactionsWithdraw Permission = "transactions:withdraw"
@@ -93,6 +97,7 @@ const (
 // RolePermissions is the canonical permission map — configurable via DB overrides.
 var RolePermissions = map[StaffRole][]Permission{
 	RoleSuperAdmin: {
+		PermProductsRead,
 		PermUsersCreate, PermUsersRead, PermUsersUpdate, PermUsersDelete,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
@@ -104,6 +109,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermSystemConfig,
 	},
 	RoleAdmin: {
+		PermProductsRead,
 		PermUsersCreate, PermUsersRead, PermUsersUpdate,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
@@ -114,6 +120,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAuditLogsRead, PermReportsExport,
 	},
 	RoleSupervisor: {
+		PermProductsRead,
 		PermUsersRead,
 		PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead, PermAccountsFreeze,
@@ -124,6 +131,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAuditLogsRead, PermReportsExport,
 	},
 	RoleTeller: {
+		PermProductsRead,
 		PermCustomersCreate, PermCustomersRead,
 		PermAccountsOpen, PermAccountsRead,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
@@ -131,17 +139,20 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermLedgerRead,
 	},
 	RoleCS: {
+		PermProductsRead,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead,
 		PermLedgerRead,
 	},
 	RoleAO: {
+		PermProductsRead,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead,
 		PermLoansApply, PermLoansRead,
 		PermCollectionsInput,
 	},
 	RoleAuditor: {
+		PermProductsRead,
 		PermUsersRead,
 		PermCustomersRead,
 		PermAccountsRead,
