@@ -39,6 +39,7 @@ type batchProcessService struct {
 	ppapSvc    domain.PPAPRunner
 	penaltySvc domain.LoanPenaltyService
 	dormantSvc domain.DormantRunner
+	accrualSvc domain.LoanInterestAccrualRunner
 }
 
 func NewBatchProcessService(
@@ -54,6 +55,7 @@ func NewBatchProcessService(
 	ppap domain.PPAPRunner,
 	penalty domain.LoanPenaltyService,
 	dormant domain.DormantRunner,
+	accrual domain.LoanInterestAccrualRunner,
 ) domain.BatchProcessService {
 	return &batchProcessService{
 		dateRepo:    dateRepo,
@@ -68,6 +70,7 @@ func NewBatchProcessService(
 		ppapSvc:     ppap,
 		penaltySvc:  penalty,
 		dormantSvc:  dormant,
+		accrualSvc:  accrual,
 	}
 }
 
@@ -122,11 +125,11 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 }
 
 // runDailyJobs menjalankan pekerjaan harian yang menyertai tutup hari: perpanjangan
-// otomatis deposito, perhitungan PPAP, akrual denda kredit, dan penandaan rekening
-// dormant. Setiap pekerjaan terisolasi — kegagalannya hanya menghasilkan peringatan
-// dan tidak menghentikan pekerjaan berikutnya maupun tutup hari, karena tutup hari
-// yang gagal akan menghentikan seluruh operasional bank. Layanan yang belum
-// dikonfigurasi (nil) dilewati tanpa peringatan.
+// otomatis deposito, perhitungan PPAP, akrual denda kredit, akrual bunga kredit, dan
+// penandaan rekening dormant. Setiap pekerjaan terisolasi — kegagalannya hanya
+// menghasilkan peringatan dan tidak menghentikan pekerjaan berikutnya maupun tutup
+// hari, karena tutup hari yang gagal akan menghentikan seluruh operasional bank.
+// Layanan yang belum dikonfigurasi (nil) dilewati tanpa peringatan.
 func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
 	logger := observability.FromContext(ctx)
 
@@ -161,6 +164,19 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		if penalty.Warning != "" {
 			summary.Warnings = append(summary.Warnings, penalty.Warning)
 		}
+	}
+
+	if s.accrualSvc != nil {
+		accrual, err := s.accrualSvc.AccrueInterest(ctx, businessDate, actor)
+		summary.LoanInterestAccrued = accrual.Accrued
+		summary.LoanInterestAccruedAmount = accrual.TotalAccrued
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual bunga kredit gagal: %v", err))
+			logger.ErrorContext(ctx, "akrual bunga kredit gagal saat EOD", "error", err)
+		}
+		// Produk tanpa pemetaan INTEREST_ACCRUAL bukan kegagalan teknis, tetapi harus
+		// terlihat: tanpa peringatan, batch tampak mengakru padahal tidak.
+		summary.Warnings = append(summary.Warnings, accrual.Warnings...)
 	}
 
 	if s.dormantSvc != nil {

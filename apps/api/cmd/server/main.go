@@ -97,15 +97,16 @@ func main() {
 	executors.Register(service.ActionTransfer, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo)
-	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, poster, referenceGen, configSvc, auditRepo)
+	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, auditRepo)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
 	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
 	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc)
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
-	// ARO deposito, PPAP harian, akrual denda kredit, dan penandaan rekening dormant.
-	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc)
+	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
+	// penandaan rekening dormant.
+	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
 
 	// 5. HTTP Handlers

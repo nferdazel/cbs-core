@@ -69,7 +69,7 @@ func (s *stubLoanRepo) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]do
 	return s.schedules, nil
 }
 
-func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit decimal.Decimal, status domain.InstallmentStatus) error {
+func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
 	return nil
 }
 
@@ -104,6 +104,14 @@ func (s *stubLoanRepo) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID u
 		s.loan.PenaltyAccrued = s.loan.PenaltyAccrued.Add(amount)
 	}
 	return true, nil
+}
+
+func (s *stubLoanRepo) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
+	return nil, nil
+}
+
+func (s *stubLoanRepo) AddScheduleProfitAccruedTx(ctx context.Context, tx any, scheduleID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedAt time.Time) (bool, error) {
+	return false, nil
 }
 
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

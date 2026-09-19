@@ -49,6 +49,13 @@ type DormantRunner interface {
 	MarkDormant(ctx context.Context, asOf time.Time, actor Actor) (DormantRunSummary, error)
 }
 
+// LoanInterestAccrualRunner mengakru pendapatan bunga kredit konvensional berbasis
+// jadwal angsuran. Mengikuti pola ARORunner/PPAPRunner/DormantRunner: interface sempit
+// agar batch tidak bergantung pada seluruh permukaan LoanService.
+type LoanInterestAccrualRunner interface {
+	AccrueInterest(ctx context.Context, asOf time.Time, actor Actor) (LoanInterestAccrualSummary, error)
+}
+
 // SystemActor membangun identitas pelaku untuk pekerjaan batch yang tidak berasal
 // dari permintaan HTTP. Username diisi id pengguna yang menjalankan batch supaya
 // jurnal dan audit tetap dapat ditelusuri ke orang yang memicunya.

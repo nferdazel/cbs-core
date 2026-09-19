@@ -42,6 +42,9 @@ type EODSummaryResult struct {
 	PPAPProcessed         int             `json:"ppap_processed"`
 	LoanPenaltiesAccrued  int             `json:"loan_penalties_accrued"`
 	LoanPenaltyAmount     decimal.Decimal `json:"loan_penalty_amount"`
+	// Akrual pendapatan bunga kredit berbasis jadwal angsuran (peristiwa EOD kelima).
+	LoanInterestAccrued       int             `json:"loan_interest_accrued"`
+	LoanInterestAccruedAmount decimal.Decimal `json:"loan_interest_accrued_amount"`
 	AccountsMarkedDormant int             `json:"accounts_marked_dormant"`
 	Warnings              []string        `json:"warnings,omitempty"`
 	ExecutedBy            uuid.UUID       `json:"executed_by"`

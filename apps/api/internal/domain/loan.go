@@ -158,6 +158,13 @@ type LoanSchedule struct {
 	Status          InstallmentStatus `json:"status"`
 	PaidAt          *time.Time        `json:"paid_at,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
+
+	// ProfitAccruedAt menandai angsuran ini sudah diakru bunganya (basis akrual).
+	// ProfitAccruedAmount adalah SISA akruan yang belum diselesaikan pembayaran;
+	// nilainya berkurang saat angsuran dibayar agar piutang bunga (10400) tidak
+	// pernah negatif dan pendapatan diakui maksimal sebesar porsi bunga jadwal.
+	ProfitAccruedAt     *time.Time      `json:"profit_accrued_at,omitempty"`
+	ProfitAccruedAmount decimal.Decimal `json:"profit_accrued_amount"`
 }
 
 type ApplyLoanInput struct {
@@ -217,7 +224,11 @@ type LoanRepository interface {
 	MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error
 	MarkDisbursedTx(ctx context.Context, tx any, id uuid.UUID, outstanding decimal.Decimal) error
 	GetSchedules(ctx context.Context, loanID uuid.UUID) ([]LoanSchedule, error)
-	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit decimal.Decimal, status InstallmentStatus) error
+	// UpdateSchedulePayment mencatat pembayaran angsuran. settleAccrued adalah porsi
+	// bunga yang diselesaikan dari akruan yang sudah terbentuk; kolom
+	// profit_accrued_amount dikurangi sebesar itu (tidak pernah negatif) sehingga
+	// piutang bunga 10400 nol setelah seluruh angsuran dibayar.
+	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status InstallmentStatus) error
 	UpdateRestructure(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
 	UpdateCollectibility(ctx context.Context, id uuid.UUID, col OJKCollectibility, dpd int, accrual AccrualStatus, ppap decimal.Decimal) error
 	UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error
@@ -230,6 +241,15 @@ type LoanRepository interface {
 	// sehingga akrual tanggal yang sama tidak pernah dihitung dua kali. Nilai kembali
 	// false berarti denda tanggal itu sudah pernah diakru (replay idempoten).
 	AddPenaltyAccruedTx(ctx context.Context, tx any, loanID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedOn time.Time) (bool, error)
+	// ListInterestAccrualCandidates mengambil angsuran konvensional yang sudah jatuh
+	// tempo, belum dibayar, dan belum diakru bunganya pada asOf.
+	ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]LoanInterestAccrualCandidate, error)
+	// AddScheduleProfitAccruedTx menambah profit_accrued_amount dan mengisi
+	// profit_accrued_at satu angsuran di dalam transaksi pemanggil. Penambahan hanya
+	// terjadi bila jurnal akrual dengan idempotencyKey tersebut belum ada, sehingga
+	// satu angsuran tidak pernah diakru dua kali. Nilai kembali false berarti angsuran
+	// itu sudah pernah diakru (replay idempoten).
+	AddScheduleProfitAccruedTx(ctx context.Context, tx any, scheduleID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedAt time.Time) (bool, error)
 }
 
 type LoanService interface {
@@ -245,4 +265,7 @@ type LoanService interface {
 	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, actor Actor) (*Loan, error)
 	RecoverWrittenOffLoan(ctx context.Context, input RecoverWrittenOffLoanInput, actor Actor) (*Loan, error)
 	AccruePenalties(ctx context.Context, asOf time.Time, actor Actor) (LoanPenaltySummary, error)
+	// AccrueInterest mengakru pendapatan bunga kredit konvensional berbasis jadwal
+	// angsuran; kredit tidak lancar dan produk syariah dilewati.
+	AccrueInterest(ctx context.Context, asOf time.Time, actor Actor) (LoanInterestAccrualSummary, error)
 }

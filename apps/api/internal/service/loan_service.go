@@ -17,12 +17,14 @@ type loanService struct {
 	loanRepo    domain.LoanRepository
 	productRepo domain.ProductRepository
 	accountRepo domain.AccountRepository
+	resolver    domain.AccountResolver
 	poster      *ProductPoster
+	posting     domain.PostingService
 	references  domain.ReferenceGenerator
 	config      domain.SystemConfigService
 	auditRepo   domain.AuditRepository
-	// txRunner membuka transaksi per kredit untuk akrual denda. Dipakai agar proses
-	// batch bisa diuji tanpa database, sama seperti ppapService.
+	// txRunner membuka transaksi per kredit untuk akrual denda/bunga. Dipakai agar
+	// proses batch dan pembayaran bisa diuji tanpa database, sama seperti ppapService.
 	txRunner ppapTxRunner
 }
 
@@ -31,7 +33,9 @@ func NewLoanService(
 	loanRepo domain.LoanRepository,
 	productRepo domain.ProductRepository,
 	accountRepo domain.AccountRepository,
+	resolver domain.AccountResolver,
 	poster *ProductPoster,
+	posting domain.PostingService,
 	references domain.ReferenceGenerator,
 	config domain.SystemConfigService,
 	auditSinks ...domain.AuditRepository,
@@ -45,7 +49,9 @@ func NewLoanService(
 		loanRepo:    loanRepo,
 		productRepo: productRepo,
 		accountRepo: accountRepo,
+		resolver:    resolver,
 		poster:      poster,
+		posting:     posting,
 		references:  references,
 		config:      config,
 		auditRepo:   auditRepo,
@@ -422,11 +428,16 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	outstandingPrincipal := target.PrincipalAmount.Sub(target.PaidPrincipal)
 	outstandingProfit := target.ProfitAmount.Sub(target.PaidProfit)
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
+	// settle adalah porsi bunga yang diselesaikan dari akruan yang sudah terbentuk.
+	// min(P, profit_accrued_amount) memastikan piutang bunga 10400 tidak pernah
+	// negatif dan total pendapatan satu angsuran tidak melebihi porsi bunga jadwal.
+	settle := outstandingProfit
+	if settle.GreaterThan(target.ProfitAccruedAmount) {
+		settle = target.ProfitAccruedAmount
 	}
-	defer tx.Rollback()
+	if settle.IsNegative() {
+		settle = decimal.Zero
+	}
 
 	// Pokok dan imbal hasil dijurnal terpisah karena akun pendapatannya berbeda.
 	// Kunci idempotency wajib berbeda per jurnal: kolomnya unik, sehingga memakai
@@ -441,38 +452,49 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		AccountOverrides: overrides,
 	}
 
-	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanPrincipalPay, Amounts{
-		Principal: outstandingPrincipal, Total: outstandingPrincipal,
-	}, meta); err != nil {
-		return nil, fmt.Errorf("jurnal angsuran pokok: %w", err)
-	}
-	if outstandingProfit.IsPositive() {
-		meta.IdempotencyKey = baseKey + "-PROF"
-		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanProfitPay, Amounts{
-			Profit: outstandingProfit, Total: outstandingProfit,
+	err = s.txRunner.Run(ctx, func(tx any) error {
+		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanPrincipalPay, Amounts{
+			Principal: outstandingPrincipal, Total: outstandingPrincipal,
 		}, meta); err != nil {
-			return nil, fmt.Errorf("jurnal angsuran imbal hasil: %w", err)
+			return fmt.Errorf("jurnal angsuran pokok: %w", err)
 		}
-	}
+		if outstandingProfit.IsPositive() {
+			// Kunci idempotensi porsi bunga tetap berakhiran -PROF agar semantik
+			// percobaan ulang tidak berubah dari perilaku lama.
+			meta.IdempotencyKey = baseKey + "-PROF"
+			if settle.IsPositive() {
+				// Sebagian/seluruh bunga sudah diakru: pendapatan tidak lagi diakui
+				// penuh di sini, melainkan memindahkan piutang bunga 10400.
+				if err := s.postProfitSettlement(ctx, tx, product, meta, outstandingProfit, settle); err != nil {
+					return fmt.Errorf("jurnal angsuran imbal hasil: %w", err)
+				}
+			} else if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanProfitPay, Amounts{
+				Profit: outstandingProfit, Total: outstandingProfit,
+			}, meta); err != nil {
+				return fmt.Errorf("jurnal angsuran imbal hasil: %w", err)
+			}
+		}
 
-	if err := s.loanRepo.UpdateSchedulePayment(ctx, target.ID, outstandingPrincipal, outstandingProfit, domain.InstallmentStatusPaid); err != nil {
-		return nil, fmt.Errorf("mencatat pembayaran angsuran: %w", err)
-	}
+		if err := s.loanRepo.UpdateSchedulePayment(ctx, target.ID, outstandingPrincipal, outstandingProfit, settle, domain.InstallmentStatusPaid); err != nil {
+			return fmt.Errorf("mencatat pembayaran angsuran: %w", err)
+		}
 
-	newOutstanding := loan.OutstandingPrincipal.Sub(outstandingPrincipal)
-	if newOutstanding.IsNegative() {
-		newOutstanding = decimal.Zero
-	}
-	if err := s.loanRepo.UpdateOutstanding(ctx, loan.ID, newOutstanding, loan.PenaltyAccrued); err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
+		newOutstanding := loan.OutstandingPrincipal.Sub(outstandingPrincipal)
+		if newOutstanding.IsNegative() {
+			newOutstanding = decimal.Zero
+		}
+		return s.loanRepo.UpdateOutstanding(ctx, loan.ID, newOutstanding, loan.PenaltyAccrued)
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	target.PaidPrincipal = target.PrincipalAmount
 	target.PaidProfit = target.ProfitAmount
+	target.ProfitAccruedAmount = target.ProfitAccruedAmount.Sub(settle)
+	if target.ProfitAccruedAmount.IsNegative() {
+		target.ProfitAccruedAmount = decimal.Zero
+	}
 	target.Status = domain.InstallmentStatusPaid
 	now := time.Now().UTC()
 	target.PaidAt = &now
@@ -484,6 +506,107 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	}
 
 	return target, nil
+}
+
+// postProfitSettlement memposting pembayaran porsi bunga angsuran saat sebagian atau
+// seluruhnya sudah diakru. Jurnalnya satu entri:
+//
+//	DEBIT  rekening nasabah            sebesar P (total porsi bunga)
+//	CREDIT akun piutang bunga 10400    sebesar settle
+//	CREDIT akun pendapatan bunga 40100 sebesar P - settle
+//
+// Akun piutang diambil dari kaki DEBIT pemetaan INTEREST_ACCRUAL produk (bukan
+// hardcode), sedangkan akun pendapatan dari kaki CREDIT pemetaan LOAN_PROFIT_PAYMENT.
+// Bila settle == P baris pendapatan nol dan tidak ditulis, sehingga jumlah debit dan
+// kredit tetap seimbang.
+func (s *loanService) postProfitSettlement(
+	ctx context.Context,
+	tx any,
+	product *domain.BankingProduct,
+	meta PostingMeta,
+	totalProfit, settled decimal.Decimal,
+) error {
+	profitRules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanProfitPay)
+	if err != nil {
+		return fmt.Errorf("membaca pemetaan %s: %w", domain.EventLoanProfitPay, err)
+	}
+	accrualRules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventInterestAccrual)
+	if err != nil {
+		return fmt.Errorf("membaca pemetaan %s: %w", domain.EventInterestAccrual, err)
+	}
+
+	var debitCOA, revenueCOA, receivableCOA string
+	for _, r := range profitRules {
+		switch r.Direction {
+		case domain.DirectionDebit:
+			if debitCOA == "" {
+				debitCOA = r.COACode
+			}
+		case domain.DirectionCredit:
+			if revenueCOA == "" {
+				revenueCOA = r.COACode
+			}
+		}
+	}
+	for _, r := range accrualRules {
+		if r.Direction == domain.DirectionDebit {
+			receivableCOA = r.COACode
+			break
+		}
+	}
+	if debitCOA == "" || revenueCOA == "" || receivableCOA == "" {
+		return fmt.Errorf("pemetaan produk %s tidak lengkap untuk penyelesaian akruan bunga", product.Code)
+	}
+
+	// Rekening nasabah diambil dari override pemetaan debit (mis. 20100 -> nomor
+	// rekening), bukan dari akun kontrol GL. Override yang tidak dipakai berarti
+	// pemetaan tidak memuat akun rekening nasabah; tolak agar dana tidak diam-diam
+	// jatuh ke akun kontrol.
+	debitAcc := meta.AccountOverrides[debitCOA]
+	for coa := range meta.AccountOverrides {
+		if coa != debitCOA {
+			return fmt.Errorf(
+				"pemetaan %s/%s tidak memuat akun rekening nasabah (COA %s); periksa kesesuaian buku produk dan buku rekening",
+				product.Code, domain.EventLoanProfitPay, coa)
+		}
+	}
+	if debitAcc == "" {
+		debitAcc, err = s.resolver.ResolveGLAccount(ctx, tx, debitCOA)
+		if err != nil {
+			return err
+		}
+	}
+	revenueAcc, err := s.resolver.ResolveGLAccount(ctx, tx, revenueCOA)
+	if err != nil {
+		return err
+	}
+	receivableAcc, err := s.resolver.ResolveGLAccount(ctx, tx, receivableCOA)
+	if err != nil {
+		return err
+	}
+
+	lines := []domain.PostingLine{
+		{AccountNumber: debitAcc, Direction: domain.DirectionDebit, Amount: totalProfit, Description: meta.Description},
+		{AccountNumber: receivableAcc, Direction: domain.DirectionCredit, Amount: settled, Description: "Pelunasan bunga kredit yang masih akan diterima"},
+	}
+	if remaining := totalProfit.Sub(settled); remaining.IsPositive() {
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: revenueAcc,
+			Direction:     domain.DirectionCredit,
+			Amount:        remaining,
+			Description:   "Pendapatan bunga kredit",
+		})
+	}
+
+	_, err = s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: meta.TransactionType,
+		Description:     meta.Description,
+		IdempotencyKey:  meta.IdempotencyKey,
+		CreatedBy:       meta.CreatedBy,
+		BranchCode:      meta.BranchCode,
+		Lines:           lines,
+	})
+	return err
 }
 
 func (s *loanService) allSchedulesPaid(ctx context.Context, loanID uuid.UUID) bool {

@@ -1,0 +1,428 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+// interestLoanRepo adalah LoanRepository minimal untuk akrual dan pembayaran bunga:
+// kandidat akrual dikembalikan apa adanya, penambahan akruan idempoten per kunci
+// jurnal, dan pembayaran angsuran dicatat untuk diperiksa test.
+type interestLoanRepo struct {
+	domain.LoanRepository
+
+	candidates []domain.LoanInterestAccrualCandidate
+	added      map[string]decimal.Decimal
+
+	loan      *domain.Loan
+	schedules []domain.LoanSchedule
+
+	paidPrincipal decimal.Decimal
+	paidProfit    decimal.Decimal
+	settled       decimal.Decimal
+}
+
+func (r *interestLoanRepo) ListInterestAccrualCandidates(context.Context, time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
+	return r.candidates, nil
+}
+
+func (r *interestLoanRepo) AddScheduleProfitAccruedTx(_ context.Context, _ any, _ uuid.UUID, amount decimal.Decimal, idempotencyKey string, _ time.Time) (bool, error) {
+	if r.added == nil {
+		r.added = map[string]decimal.Decimal{}
+	}
+	if _, exists := r.added[idempotencyKey]; exists {
+		return false, nil
+	}
+	r.added[idempotencyKey] = amount
+	return true, nil
+}
+
+func (r *interestLoanRepo) GetByID(context.Context, uuid.UUID) (*domain.Loan, error) {
+	return r.loan, nil
+}
+
+func (r *interestLoanRepo) GetSchedules(context.Context, uuid.UUID) ([]domain.LoanSchedule, error) {
+	return r.schedules, nil
+}
+
+func (r *interestLoanRepo) UpdateSchedulePayment(_ context.Context, _ uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, _ domain.InstallmentStatus) error {
+	r.paidPrincipal = paidPrincipal
+	r.paidProfit = paidProfit
+	r.settled = settleAccrued
+	return nil
+}
+
+func (r *interestLoanRepo) UpdateOutstanding(context.Context, uuid.UUID, decimal.Decimal, decimal.Decimal) error {
+	return nil
+}
+
+func (r *interestLoanRepo) UpdateStatus(context.Context, uuid.UUID, domain.LoanStatus, *uuid.UUID) error {
+	return nil
+}
+
+var _ domain.LoanRepository = (*interestLoanRepo)(nil)
+
+// interestFixture merangkai satu kredit konvensional dengan pemetaan jurnal lengkap.
+type interestFixture struct {
+	loanID    uuid.UUID
+	productID uuid.UUID
+	accountID uuid.UUID
+	products  *penaltyProductRepo
+	accounts  *penaltyAccountRepo
+	repo      *interestLoanRepo
+	posting   *stubPosting
+}
+
+func newInterestFixture() interestFixture {
+	loanID := uuid.New()
+	productID := uuid.New()
+	accountID := uuid.New()
+
+	product := &domain.BankingProduct{ID: productID, Code: "KRD-FLAT", Book: domain.BookConventional}
+	products := &penaltyProductRepo{
+		products: map[uuid.UUID]*domain.BankingProduct{productID: product},
+		rules: map[domain.PostingEvent][]domain.JournalMappingRule{
+			domain.EventLoanPrincipalPay: {
+				{Direction: domain.DirectionDebit, COACode: "20100", AmountSource: domain.AmountPrincipal},
+				{Direction: domain.DirectionCredit, COACode: "10301", AmountSource: domain.AmountPrincipal},
+			},
+			domain.EventLoanProfitPay: {
+				{Direction: domain.DirectionDebit, COACode: "20100", AmountSource: domain.AmountProfit},
+				{Direction: domain.DirectionCredit, COACode: "40100", AmountSource: domain.AmountProfit},
+			},
+			domain.EventInterestAccrual: {
+				{Direction: domain.DirectionDebit, COACode: "10400", AmountSource: domain.AmountProfit},
+				{Direction: domain.DirectionCredit, COACode: "40100", AmountSource: domain.AmountProfit},
+			},
+		},
+	}
+	accounts := &penaltyAccountRepo{
+		accounts: map[uuid.UUID]*domain.Account{
+			accountID: {ID: accountID, AccountNumber: "1110001234", COACode: "20100"},
+		},
+	}
+	return interestFixture{
+		loanID:    loanID,
+		productID: productID,
+		accountID: accountID,
+		products:  products,
+		accounts:  accounts,
+		repo:      &interestLoanRepo{},
+		posting:   &stubPosting{},
+	}
+}
+
+func newInterestTestService(f interestFixture) *loanService {
+	return &loanService{
+		loanRepo:    f.repo,
+		productRepo: f.products,
+		accountRepo: f.accounts,
+		resolver:    stubResolver{},
+		poster:      NewProductPoster(f.products, stubResolver{}, f.posting),
+		posting:     f.posting,
+		config:      penaltyConfig{},
+		txRunner:    stubTxRunner{},
+	}
+}
+
+func accrualCandidate(f interestFixture, due time.Time, profit int64) domain.LoanInterestAccrualCandidate {
+	return domain.LoanInterestAccrualCandidate{
+		LoanID:            f.loanID,
+		LoanNumber:        "KRD-2026-0001",
+		ProductID:         &f.productID,
+		LoanType:          domain.LoanTypeConventionalFlat,
+		LoanStatus:        domain.LoanStatusDisbursed,
+		ScheduleID:        uuid.New(),
+		InstallmentNo:     1,
+		DueDate:           due,
+		OutstandingProfit: decimal.NewFromInt(profit),
+		OldestDueDate:     &due,
+	}
+}
+
+func sumDirection(lines []domain.PostingLine, dir domain.EntryDirection) decimal.Decimal {
+	total := decimal.Zero
+	for _, l := range lines {
+		if l.Direction == dir {
+			total = total.Add(l.Amount)
+		}
+	}
+	return total
+}
+
+// Angsuran jatuh tempo diakru sekali: jurnal 10400/40100 dan sisa akruan bertambah.
+func TestAccrueInterest_AccruesDueInstallment(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{
+		accrualCandidate(f, asOf.AddDate(0, 0, -10), 250_000),
+	}
+	svc := newInterestTestService(f)
+
+	summary, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{Username: "tester"})
+	if err != nil {
+		t.Fatalf("AccrueInterest: %v", err)
+	}
+	if summary.Accrued != 1 || summary.Skipped != 0 || summary.Failed != 0 {
+		t.Fatalf("ringkasan: accrued=%d skipped=%d failed=%d", summary.Accrued, summary.Skipped, summary.Failed)
+	}
+	if !summary.TotalAccrued.Equal(decimal.NewFromInt(250_000)) {
+		t.Fatalf("total akruan %s, ingin 250.000", summary.TotalAccrued)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal diposting %d kali, ingin 1", len(f.posting.requests))
+	}
+	lines := f.posting.requests[0].Lines
+	if len(lines) != 2 {
+		t.Fatalf("jurnal akrual %d baris, ingin 2", len(lines))
+	}
+	if lines[0].AccountNumber != "10400" || lines[0].Direction != domain.DirectionDebit {
+		t.Fatalf("kaki debit piutang bunga salah: %+v", lines[0])
+	}
+	if lines[1].AccountNumber != "40100" || lines[1].Direction != domain.DirectionCredit {
+		t.Fatalf("kaki kredit pendapatan bunga salah: %+v", lines[1])
+	}
+	if got := f.repo.added["ACCR-KRD-2026-0001-1"]; !got.Equal(decimal.NewFromInt(250_000)) {
+		t.Fatalf("sisa akruan bertambah %s, ingin 250.000", got)
+	}
+}
+
+// Dijalankan ulang tidak mengakru lagi (idempoten).
+func TestAccrueInterest_Idempotent(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{
+		accrualCandidate(f, asOf.AddDate(0, 0, -10), 250_000),
+	}
+	svc := newInterestTestService(f)
+
+	first, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("run pertama: %v", err)
+	}
+	second, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("run kedua: %v", err)
+	}
+	if first.Accrued != 1 || second.Accrued != 0 || second.Skipped != 1 {
+		t.Fatalf("run kedua harus melewati: accrued=%d skipped=%d", second.Accrued, second.Skipped)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal diposting %d kali, ingin 1", len(f.posting.requests))
+	}
+}
+
+// Angsuran yang belum jatuh tempo dilewati dan tidak dijurnal.
+func TestAccrueInterest_SkipsNotYetDue(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{
+		accrualCandidate(f, asOf.AddDate(0, 0, 5), 250_000),
+	}
+	svc := newInterestTestService(f)
+
+	summary, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccrueInterest: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 {
+		t.Fatalf("angsuran belum jatuh tempo harus dilewati: accrued=%d skipped=%d", summary.Accrued, summary.Skipped)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatal("angsuran belum jatuh tempo tidak boleh dijurnal")
+	}
+}
+
+// Kredit tidak lancar (kolektibilitas 3-5) menghentikan akrual tanpa membalik
+// akruan yang sudah terbentuk.
+func TestAccrueInterest_SkipsNPL(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	// DPD 100 dengan ambang default POJK masuk Diragukan (NPL).
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{
+		accrualCandidate(f, asOf.AddDate(0, 0, -100), 250_000),
+	}
+	svc := newInterestTestService(f)
+
+	summary, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccrueInterest: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 || summary.Failed != 0 {
+		t.Fatalf("NPL harus dilewati: accrued=%d skipped=%d failed=%d", summary.Accrued, summary.Skipped, summary.Failed)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatal("NPL tidak boleh diakru")
+	}
+	if f.repo.added != nil {
+		t.Fatal("NPL tidak boleh menambah sisa akruan")
+	}
+}
+
+// Produk tanpa pemetaan INTEREST_ACCRUAL dilewati dengan Warning, bukan gagal diam.
+func TestAccrueInterest_SkipsProductWithoutMapping(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	delete(f.products.rules, domain.EventInterestAccrual)
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{
+		accrualCandidate(f, asOf.AddDate(0, 0, -10), 250_000),
+	}
+	svc := newInterestTestService(f)
+
+	summary, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccrueInterest: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 || summary.Failed != 0 {
+		t.Fatalf("tanpa pemetaan harus dilewati: accrued=%d skipped=%d failed=%d", summary.Accrued, summary.Skipped, summary.Failed)
+	}
+	if len(summary.Warnings) != 1 {
+		t.Fatalf("harus ada 1 Warning, dapat %v", summary.Warnings)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatal("tanpa pemetaan tidak boleh diakru")
+	}
+}
+
+// Produk syariah tidak diakru meskipun muncul sebagai kandidat.
+func TestAccrueInterest_SkipsSyariah(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := newInterestFixture()
+	c := accrualCandidate(f, asOf.AddDate(0, 0, -10), 250_000)
+	c.LoanType = domain.LoanTypeSyariahMurabahah
+	f.repo.candidates = []domain.LoanInterestAccrualCandidate{c}
+	svc := newInterestTestService(f)
+
+	summary, err := svc.AccrueInterest(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccrueInterest: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 {
+		t.Fatalf("syariah harus dilewati: accrued=%d skipped=%d", summary.Accrued, summary.Skipped)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatal("produk syariah tidak boleh diakru")
+	}
+}
+
+// paymentFixture menyiapkan satu kredit dengan satu angsuran yang bunganya sudah
+// diakru sebagian, untuk menguji jalur pembayaran.
+func paymentFixture(profitAccrued int64, profit int64) interestFixture {
+	f := newInterestFixture()
+	f.repo.loan = &domain.Loan{
+		ID:                    f.loanID,
+		LoanNumber:            "KRD-2026-0001",
+		Status:                domain.LoanStatusDisbursed,
+		ProductID:             &f.productID,
+		DisbursementAccountID: f.accountID,
+		OutstandingPrincipal:  decimal.NewFromInt(1_000),
+	}
+	f.repo.schedules = []domain.LoanSchedule{{
+		ID:                  uuid.New(),
+		LoanID:              f.loanID,
+		InstallmentNo:       1,
+		PrincipalAmount:     decimal.NewFromInt(1_000),
+		ProfitAmount:        decimal.NewFromInt(profit),
+		Status:              domain.InstallmentStatusPending,
+		ProfitAccruedAmount: decimal.NewFromInt(profitAccrued),
+	}}
+	return f
+}
+
+// Angsuran yang sudah diakru sebagian: jurnal bunga tiga baris seimbang, sisa akruan
+// diselesaikan sebesar settle.
+func TestPayInstallment_SettlesAccruedProfitWithThreeBalancedLines(t *testing.T) {
+	f := paymentFixture(60, 100)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1,
+	}, domain.Actor{Username: "tester"}); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+
+	if len(f.posting.requests) != 2 {
+		t.Fatalf("jurnal %d, ingin 2 (pokok + bunga)", len(f.posting.requests))
+	}
+	profitReq := f.posting.requests[1]
+	if len(profitReq.Lines) != 3 {
+		t.Fatalf("jurnal penyelesaian %d baris, ingin 3: %+v", len(profitReq.Lines), profitReq.Lines)
+	}
+	debit := sumDirection(profitReq.Lines, domain.DirectionDebit)
+	credit := sumDirection(profitReq.Lines, domain.DirectionCredit)
+	if !debit.Equal(credit) {
+		t.Fatalf("jurnal tidak seimbang: debit %s != kredit %s", debit, credit)
+	}
+	if !debit.Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("debit rekening nasabah %s, ingin 100", debit)
+	}
+	if !f.repo.settled.Equal(decimal.NewFromInt(60)) {
+		t.Fatalf("settle %s, ingin 60", f.repo.settled)
+	}
+	if !f.repo.paidProfit.Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("paid_profit %s, ingin 100", f.repo.paidProfit)
+	}
+	// Piutang bunga dikredit 60 dan pendapatan 40.
+	if !profitReq.Lines[1].Amount.Equal(decimal.NewFromInt(60)) || profitReq.Lines[1].AccountNumber != "10400" {
+		t.Fatalf("baris kredit piutang salah: %+v", profitReq.Lines[1])
+	}
+	if !profitReq.Lines[2].Amount.Equal(decimal.NewFromInt(40)) || profitReq.Lines[2].AccountNumber != "40100" {
+		t.Fatalf("baris kredit pendapatan salah: %+v", profitReq.Lines[2])
+	}
+}
+
+// Angsuran yang belum pernah diakru mempertahankan perilaku lama: dua baris, kredit
+// pendapatan penuh, dan settle nol.
+func TestPayInstallment_NotAccruedKeepsTwoLineBehavior(t *testing.T) {
+	f := paymentFixture(0, 100)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1,
+	}, domain.Actor{Username: "tester"}); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+
+	if len(f.posting.requests) != 2 {
+		t.Fatalf("jurnal %d, ingin 2", len(f.posting.requests))
+	}
+	profitReq := f.posting.requests[1]
+	if len(profitReq.Lines) != 2 {
+		t.Fatalf("jurnal bunga %d baris, ingin 2: %+v", len(profitReq.Lines), profitReq.Lines)
+	}
+	if !profitReq.Lines[1].Amount.Equal(decimal.NewFromInt(100)) || profitReq.Lines[1].AccountNumber != "40100" {
+		t.Fatalf("kredit pendapatan penuh salah: %+v", profitReq.Lines[1])
+	}
+	if !f.repo.settled.IsZero() {
+		t.Fatalf("settle %s, ingin 0", f.repo.settled)
+	}
+}
+
+// settle tidak pernah melebihi akruan yang tersedia, sehingga piutang bunga 10400
+// tidak berubah negatif.
+func TestPayInstallment_SettlementNeverExceedsAccrued(t *testing.T) {
+	f := paymentFixture(150, 100)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1,
+	}, domain.Actor{Username: "tester"}); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+	if !f.repo.settled.Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("settle %s, ingin dibatasi ke porsi bunga 100", f.repo.settled)
+	}
+	profitReq := f.posting.requests[1]
+	if len(profitReq.Lines) != 2 {
+		t.Fatalf("bunga terakru penuh: %d baris, ingin 2 (tanpa baris pendapatan nol)", len(profitReq.Lines))
+	}
+	credit := sumDirection(profitReq.Lines, domain.DirectionCredit)
+	if !credit.Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("kredit %s, ingin 100", credit)
+	}
+}

@@ -228,7 +228,8 @@ func markLoanDisbursed(ctx context.Context, exec execer, id uuid.UUID, outstandi
 
 func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
 	q := `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
-		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at
+		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at,
+		profit_accrued_at, profit_accrued_amount
 		FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
 
 	rows, err := r.db.QueryContext(ctx, q, loanID)
@@ -240,28 +241,36 @@ func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]
 	var list []domain.LoanSchedule
 	for rows.Next() {
 		var s domain.LoanSchedule
-		var paidAt sql.NullTime
+		var paidAt, profitAccruedAt sql.NullTime
 		if err := rows.Scan(
 			&s.ID, &s.LoanID, &s.InstallmentNo, &s.DueDate, &s.PrincipalAmount,
 			&s.ProfitAmount, &s.TotalInstallment, &s.PaidPrincipal, &s.PaidProfit,
 			&s.ProfitType, &s.OutstandingPrincipal, &s.Status, &paidAt, &s.CreatedAt,
+			&profitAccruedAt, &s.ProfitAccruedAmount,
 		); err != nil {
 			return nil, err
 		}
 		if paidAt.Valid {
 			s.PaidAt = &paidAt.Time
 		}
+		if profitAccruedAt.Valid {
+			s.ProfitAccruedAt = &profitAccruedAt.Time
+		}
 		list = append(list, s)
 	}
 	return list, nil
 }
 
-func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit decimal.Decimal, status domain.InstallmentStatus) error {
+// UpdateSchedulePayment mencatat pembayaran angsuran dan mengurangi sisa akruan bunga
+// yang diselesaikan. GREATEST(..., 0) menjaga piutang bunga (10400) tidak pernah
+// negatif bila ada pembayaran yang mencoba menyelesaikan lebih dari yang diakru.
+func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
 	q := `UPDATE loan_schedules
 		SET paid_principal = paid_principal + $1, paid_profit = paid_profit + $2,
-		    status = $3, paid_at = NOW()
-		WHERE id = $4`
-	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidProfit, status, scheduleID)
+		    profit_accrued_amount = GREATEST(profit_accrued_amount - $3, 0),
+		    status = $4, paid_at = NOW()
+		WHERE id = $5`
+	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidProfit, settleAccrued, status, scheduleID)
 	return err
 }
 
@@ -407,6 +416,100 @@ func (r *LoanRepository) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID
 		WHERE id = $3
 		  AND NOT EXISTS (SELECT 1 FROM journal_entries WHERE idempotency_key = $4)`
 	res, err := sqlTx.ExecContext(ctx, q, amount, accruedOn, loanID, idempotencyKey)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
+// listInterestAccrualCandidatesQuery mengambil angsuran yang layak diakru:
+// sudah jatuh tempo pada asOf, belum dibayar, porsi bunganya belum habis, dan belum
+// pernah diakru. Hanya kredit konvensional (loan_type) yang disertakan; produk
+// syariah tidak punya pemetaan INTEREST_ACCRUAL dan tidak boleh diakru. Jatuh tempo
+// angsuran tertua yang belum dibayar ikut diambil untuk menghitung DPD/kolektibilitas.
+const listInterestAccrualCandidatesQuery = `
+	SELECT
+		l.id,
+		l.loan_number,
+		l.product_id,
+		l.loan_type::text,
+		l.status::text,
+		s.id,
+		s.installment_no,
+		s.due_date,
+		GREATEST(s.profit_amount - s.paid_profit, 0) AS outstanding_profit,
+		(SELECT MIN(s2.due_date) FROM loan_schedules s2
+			WHERE s2.loan_id = l.id AND s2.status <> 'PAID') AS oldest_due_date
+	FROM loans l
+	JOIN loan_schedules s
+		ON s.loan_id = l.id
+		AND s.status <> 'PAID'
+		AND s.due_date <= $1
+		AND s.profit_accrued_at IS NULL
+		AND s.profit_amount - s.paid_profit > 0
+	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
+		AND l.loan_type::text IN ('CONVENTIONAL_FLAT', 'CONVENTIONAL_ANNUITY')
+	ORDER BY l.loan_number, s.installment_no`
+
+func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, listInterestAccrualCandidatesQuery, asOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.LoanInterestAccrualCandidate
+	for rows.Next() {
+		var c domain.LoanInterestAccrualCandidate
+		var productID sql.NullString
+		var loanType, status string
+		var oldestDue sql.NullTime
+
+		if err := rows.Scan(
+			&c.LoanID, &c.LoanNumber, &productID, &loanType, &status,
+			&c.ScheduleID, &c.InstallmentNo, &c.DueDate, &c.OutstandingProfit, &oldestDue,
+		); err != nil {
+			return nil, err
+		}
+		if productID.Valid {
+			id, err := uuid.Parse(productID.String)
+			if err != nil {
+				return nil, err
+			}
+			c.ProductID = &id
+		}
+		c.LoanType = domain.LoanType(loanType)
+		c.LoanStatus = domain.LoanStatus(status)
+		if oldestDue.Valid {
+			t := oldestDue.Time
+			c.OldestDueDate = &t
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+// AddScheduleProfitAccruedTx menambah profit_accrued_amount dan mengisi
+// profit_accrued_at satu angsuran, tetapi hanya bila jurnal dengan idempotency_key
+// tersebut belum ada. UPDATE mengunci baris loan_schedules sehingga dua batch paralel
+// untuk angsuran yang sama terserialisasi: yang kedua melihat jurnal sudah ada dan
+// tidak menambah lagi. Penambahan dan jurnalnya berada pada transaksi yang sama,
+// sehingga angka sisa akruan dan jurnal tidak pernah terpisah.
+func (r *LoanRepository) AddScheduleProfitAccruedTx(ctx context.Context, tx any, scheduleID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedAt time.Time) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("loan: transaksi tidak valid")
+	}
+	q := `UPDATE loan_schedules
+		SET profit_accrued_amount = profit_accrued_amount + $1,
+		    profit_accrued_at = $2
+		WHERE id = $3
+		  AND NOT EXISTS (SELECT 1 FROM journal_entries WHERE idempotency_key = $4)`
+	res, err := sqlTx.ExecContext(ctx, q, amount, accruedAt, scheduleID, idempotencyKey)
 	if err != nil {
 		return false, err
 	}
