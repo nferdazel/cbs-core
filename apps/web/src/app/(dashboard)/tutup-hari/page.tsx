@@ -368,6 +368,15 @@ export default function TutupHariPage() {
                       value: <MoneyText value={eod.loan_penalty_amount} />,
                     },
                     {
+                      label: "Bunga Kredit Diakru",
+                      value: eod.loan_interest_accrued,
+                      isMono: true,
+                    },
+                    {
+                      label: "Nominal Bunga Diakru",
+                      value: <MoneyText value={eod.loan_interest_accrued_amount} />,
+                    },
+                    {
                       label: "Rekening Ditandai Dormant",
                       value: eod.accounts_marked_dormant,
                       isMono: true,

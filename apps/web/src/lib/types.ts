@@ -112,6 +112,9 @@ export interface EODSummaryResult {
   ppap_processed: number;
   loan_penalties_accrued: number;
   loan_penalty_amount: string;
+  /** Angsuran jatuh tempo yang bunganya diakru pada tutup hari (kredit konvensional). */
+  loan_interest_accrued: number;
+  loan_interest_accrued_amount: string;
   accounts_marked_dormant: number;
   /** Pekerjaan harian best-effort yang gagal/tidak lengkap; teks dari server. */
   warnings?: string[];
