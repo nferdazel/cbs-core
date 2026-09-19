@@ -106,6 +106,22 @@ func AccountCreditAllowed(status AccountStatus) error {
 	}
 }
 
+// AccountBalanceFloorBreached melaporkan apakah saldo baru sebuah rekening nasabah
+// akan turun di bawah nol. Rekening GL internal dikecualikan karena akun kontra
+// seperti cadangan PPAP (10900) memang bersaldo negatif menurut normal balance-nya,
+// dan saldo GL agregat bukan dana nasabah.
+//
+// Aturan ini ditegakkan di mesin posting, bukan hanya di service pemanggil.
+// Pemeriksaan di pemanggil membaca saldo di luar transaksi, sehingga dua penarikan
+// paralel dapat sama-sama lolos dan mengeksekusi rekening menjadi negatif; hanya
+// pemeriksaan setelah baris rekening dikunci yang benar-benar mengikat.
+func AccountBalanceFloorBreached(accountType AccountType, newBalance decimal.Decimal) bool {
+	if accountType == AccountTypeInternalGL {
+		return false
+	}
+	return newBalance.IsNegative()
+}
+
 // DormantCutoff menghitung batas waktu penandaan dormant: rekening yang aktivitas
 // terakhirnya sebelum cutoff dianggap sudah pasif. afterMonths dijamin > 0 oleh
 // pemanggil (lihat dormantAfterMonths).

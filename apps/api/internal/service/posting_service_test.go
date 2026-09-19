@@ -61,8 +61,8 @@ func newPostingServiceForTest(repo *stubPostingRepo) *postingService {
 	return &postingService{
 		postingRepo: repo,
 		accountRepo: &stubPostingAccountRepo{accounts: map[string]*domain.Account{
-			"10101": {ID: uuid.New(), AccountNumber: "10101", Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
-			"20100": {ID: uuid.New(), AccountNumber: "20100", Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
+			"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
+			"20100": {ID: uuid.New(), AccountNumber: "20100", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
 		}},
 		referenceGen: stubReferenceGen{},
 	}
@@ -121,6 +121,98 @@ func TestPostTxEntryDateUsesCallerValue(t *testing.T) {
 	}
 	if repo.inserted == nil || !repo.inserted.EntryDate.Equal(explicit) {
 		t.Fatalf("entry_date tersimpan bukan nilai pemanggil: %+v", repo.inserted)
+	}
+}
+
+// Penarikan yang melebihi saldo rekening nasabah wajib ditolak di mesin posting,
+// bukan hanya di service pemanggil: pemeriksaan di pemanggil memakai saldo di luar
+// transaksi sehingga dua penarikan paralel dapat sama-sama lolos.
+func TestPostTxRejectsNegativeCustomerBalance(t *testing.T) {
+	const customer = "2010010001"
+	repo := &stubPostingRepo{}
+	svc := newPostingServiceForTest(repo)
+	svc.accountRepo = &stubPostingAccountRepo{accounts: map[string]*domain.Account{
+		"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
+		customer: {
+			ID: uuid.New(), AccountNumber: customer,
+			AccountType: domain.AccountTypeSavings, Status: domain.AccountStatusActive,
+			NormalBalance: domain.BalanceTypeCredit, Balance: decimal.NewFromInt(50),
+		},
+	}}
+
+	req := domain.PostingRequest{
+		TransactionType: domain.TxTypeWithdrawal,
+		Description:     "uji batas saldo rekening nasabah",
+		CreatedBy:       "tester",
+		Lines: []domain.PostingLine{
+			{AccountNumber: customer, Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(100)},
+			{AccountNumber: "10101", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(100)},
+		},
+	}
+
+	_, err := svc.PostTx(context.Background(), (*sql.Tx)(nil), req)
+	if !errors.Is(err, domain.ErrInsufficientFunds) {
+		t.Fatalf("penarikan melebihi saldo harus ditolak ErrInsufficientFunds, dapat %v", err)
+	}
+	if repo.inserted != nil {
+		t.Fatal("jurnal tidak boleh tersimpan saat saldo rekening nasabah tidak mencukupi")
+	}
+}
+
+// Saldo tepat nol masih sah; yang dilarang hanya saldo negatif.
+func TestPostTxAllowsExactZeroCustomerBalance(t *testing.T) {
+	const customer = "2010010002"
+	repo := &stubPostingRepo{}
+	svc := newPostingServiceForTest(repo)
+	svc.accountRepo = &stubPostingAccountRepo{accounts: map[string]*domain.Account{
+		"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
+		customer: {
+			ID: uuid.New(), AccountNumber: customer,
+			AccountType: domain.AccountTypeSavings, Status: domain.AccountStatusActive,
+			NormalBalance: domain.BalanceTypeCredit, Balance: decimal.NewFromInt(100),
+		},
+	}}
+
+	req := domain.PostingRequest{
+		TransactionType: domain.TxTypeWithdrawal,
+		Description:     "uji saldo nol",
+		CreatedBy:       "tester",
+		Lines: []domain.PostingLine{
+			{AccountNumber: customer, Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(100)},
+			{AccountNumber: "10101", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(100)},
+		},
+	}
+
+	if _, err := svc.PostTx(context.Background(), (*sql.Tx)(nil), req); err != nil {
+		t.Fatalf("penarikan sebesar saldo harus lolos, dapat %v", err)
+	}
+	if repo.inserted == nil {
+		t.Fatal("jurnal seharusnya tersimpan")
+	}
+}
+
+// Akun GL internal dikecualikan: akun kontra seperti cadangan PPAP (10900) memang
+// bersaldo negatif menurut normal balance-nya, dan saldo GL agregat bukan dana nasabah.
+func TestPostTxAllowsNegativeInternalGL(t *testing.T) {
+	repo := &stubPostingRepo{}
+	svc := newPostingServiceForTest(repo)
+	svc.accountRepo = &stubPostingAccountRepo{accounts: map[string]*domain.Account{
+		"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
+		"10900": {ID: uuid.New(), AccountNumber: "10900", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
+	}}
+
+	req := domain.PostingRequest{
+		TransactionType: domain.TxTypeAdjustment,
+		Description:     "uji akun kontra GL",
+		CreatedBy:       "tester",
+		Lines: []domain.PostingLine{
+			{AccountNumber: "10900", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(500)},
+			{AccountNumber: "10101", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(500)},
+		},
+	}
+
+	if _, err := svc.PostTx(context.Background(), (*sql.Tx)(nil), req); err != nil {
+		t.Fatalf("akun GL internal harus boleh bersaldo negatif, dapat %v", err)
 	}
 }
 

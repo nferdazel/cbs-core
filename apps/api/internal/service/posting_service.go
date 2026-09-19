@@ -169,6 +169,12 @@ func (s *postingService) buildLines(
 			return nil, err
 		}
 
+		// Batas bawah saldo diperiksa SETELAH baris rekening dikunci, sehingga
+		// transaksi paralel tidak dapat sama-sama lolos (lihat komentar domain).
+		if domain.AccountBalanceFloorBreached(acc.AccountType, newBalance) {
+			return nil, fmt.Errorf("%w: rekening %s tidak mencukupi", domain.ErrInsufficientFunds, pl.AccountNumber)
+		}
+
 		newAvailable := newBalance
 		if err := s.accountRepo.UpdateBalance(ctx, tx, acc.ID, newBalance, newAvailable, acc.Version); err != nil {
 			return nil, fmt.Errorf("update saldo akun %s: %w", pl.AccountNumber, err)
