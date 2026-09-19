@@ -142,13 +142,21 @@ type PPAPRate decimal.Decimal
 // PPAPRates memetakan kolektibilitas ke tarif minimumnya.
 type PPAPRates map[Collectibility]PPAPRate
 
-// DefaultPPAPRates mengikuti ketentuan PPAP minimum BPR atas pokok terutang:
-// Lancar 0,5%; Dalam Perhatian Khusus 10%; Kurang Lancar 15%; Diragukan 50%; Macet 100%.
+// DefaultPPAPRates mengikuti PPAP minimum BPR menurut POJK 33/POJK.03/2018
+// Pasal 16: PPAP umum atas aset produktif lancar 0,5% (ayat 2), dan PPAP khusus
+// atas pokok terutang 3% (Dalam Perhatian Khusus), 10% (Kurang Lancar),
+// 50% (Diragukan), 100% (Macet) — Pasal 16 ayat (3).
+//
+// PENTING: ketentuan menghitung PPAP khusus SETELAH dikurangi nilai agunan
+// pengurang (Pasal 17). Sistem ini belum punya modul agunan, sehingga tarif di
+// bawah dikenakan atas pokok penuh dan hasilnya cenderung LEBIH BESAR daripada
+// kewajiban untuk kredit beragunan. Angka ini belum boleh dipakai sebagai laporan
+// kepatuhan final sampai pengurang agunan tersedia.
 func DefaultPPAPRates() PPAPRates {
 	return PPAPRates{
 		KolLancar:       PPAPRate(decimal.NewFromFloat(0.005)),
-		KolDPK:          PPAPRate(decimal.NewFromFloat(0.10)),
-		KolKurangLancar: PPAPRate(decimal.NewFromFloat(0.15)),
+		KolDPK:          PPAPRate(decimal.NewFromFloat(0.03)),
+		KolKurangLancar: PPAPRate(decimal.NewFromFloat(0.10)),
 		KolDiragukan:    PPAPRate(decimal.NewFromFloat(0.50)),
 		KolMacet:        PPAPRate(decimal.NewFromFloat(1.00)),
 	}

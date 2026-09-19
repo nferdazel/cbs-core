@@ -144,8 +144,9 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	if summary.Processed != 1 || summary.Failed != 0 {
 		t.Fatalf("ringkasan: processed=%d failed=%d", summary.Processed, summary.Failed)
 	}
-	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(1_450_000)) {
-		t.Fatalf("total penyesuaian %s, ingin 1.450.000", summary.TotalAdjustment)
+	// Tunggakan 40 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
+	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
+		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
 	}
 
 	if len(posting.requests) != 1 {
@@ -156,7 +157,7 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 		t.Fatalf("jurnal punya %d baris, ingin 2", len(lines))
 	}
 	if lines[0].AccountNumber != "50200" || lines[0].Direction != domain.DirectionDebit ||
-		!lines[0].Amount.Equal(decimal.NewFromInt(1_450_000)) {
+		!lines[0].Amount.Equal(decimal.NewFromInt(950_000)) {
 		t.Fatalf("baris debit salah: %+v", lines[0])
 	}
 	if lines[1].AccountNumber != "10900" || lines[1].Direction != domain.DirectionCredit {
@@ -170,8 +171,9 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	if upd.Collectibility != domain.KolKurangLancar {
 		t.Errorf("kolektibilitas %s, ingin Kurang Lancar", upd.Collectibility.Label())
 	}
-	if !upd.RequiredPPAP.Equal(decimal.NewFromInt(1_500_000)) {
-		t.Errorf("required_ppap %s, ingin 1.500.000", upd.RequiredPPAP)
+	// Kurang Lancar 10% x 10.000.000 = 1.000.000 (POJK 33/2018 Pasal 16).
+	if !upd.RequiredPPAP.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Errorf("required_ppap %s, ingin 1.000.000", upd.RequiredPPAP)
 	}
 	if !upd.StopAccrual || upd.AccrualStatus != domain.AccrualStatusCash {
 		t.Errorf("Macet/NPL harus stop accrual: %+v", upd)
@@ -328,8 +330,9 @@ func TestPPAPPreview_DoesNotPostOrUpdate(t *testing.T) {
 	if len(posting.requests) != 0 || len(repo.updated) != 0 {
 		t.Fatalf("preview tidak boleh memposting/mengubah: jurnal=%d update=%d", len(posting.requests), len(repo.updated))
 	}
-	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(1_450_000)) {
-		t.Fatalf("total penyesuaian %s, ingin 1.450.000", summary.TotalAdjustment)
+	// Tunggakan 40 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
+	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
+		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
 	}
 }
 

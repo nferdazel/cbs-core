@@ -44,7 +44,8 @@ func TestCollectibilityFromDPD_InvalidThresholdsFallBack(t *testing.T) {
 	}
 }
 
-// Tarif PPAP minimum BPR atas pokok terutang.
+// Tarif PPAP minimum BPR (POJK 33/POJK.03/2018 Pasal 16): PPAP umum 0,5% untuk
+// Lancar, dan PPAP khusus 3% / 10% / 50% / 100% atas pokok terutang.
 func TestPPAPAmount_DefaultRates(t *testing.T) {
 	rates := domain.DefaultPPAPRates()
 	outstanding := decimal.NewFromInt(1_000_000)
@@ -53,9 +54,9 @@ func TestPPAPAmount_DefaultRates(t *testing.T) {
 		col  domain.Collectibility
 		want decimal.Decimal
 	}{
-		{domain.KolLancar, decimal.NewFromInt(5_000)},     // 0,5%
-		{domain.KolDPK, decimal.NewFromInt(100_000)},      // 10%
-		{domain.KolKurangLancar, decimal.NewFromInt(150_000)}, // 15%
+		{domain.KolLancar, decimal.NewFromInt(5_000)},         // PPAP umum 0,5%
+		{domain.KolDPK, decimal.NewFromInt(30_000)},           // 3%
+		{domain.KolKurangLancar, decimal.NewFromInt(100_000)}, // 10%
 		{domain.KolDiragukan, decimal.NewFromInt(500_000)},    // 50%
 		{domain.KolMacet, decimal.NewFromInt(1_000_000)},      // 100%
 	}
