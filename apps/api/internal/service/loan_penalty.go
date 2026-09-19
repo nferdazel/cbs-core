@@ -138,14 +138,6 @@ func (s *loanService) accruePenaltyForLoan(
 	if err != nil {
 		return failPenalty(item, "produk kredit tidak ditemukan: "+err.Error())
 	}
-	acc, err := s.accountRepo.GetByID(ctx, c.DisbursementAccountID)
-	if err != nil {
-		return failPenalty(item, "rekening nasabah tidak ditemukan: "+err.Error())
-	}
-	overrides, err := customerAccountOverrides(product, acc)
-	if err != nil {
-		return failPenalty(item, err.Error())
-	}
 
 	// Kunci idempotensi per kredit per tanggal. Kolom idempotency_key jurnal unik,
 	// sehingga batch kedua pada tanggal yang sama tidak menggandakan denda.
@@ -176,9 +168,9 @@ func (s *loanService) accruePenaltyForLoan(
 			BranchCode:      actor.BranchCode,
 			// Jurnal masuk ke tanggal bisnis yang diproses, bukan jam eksekusi.
 			EntryDate: day,
-			// Pemetaan produk menunjuk akun kontrol tabungan/piutang; denda harus
-			// menyentuh rekening nasabah yang sebenarnya.
-			AccountOverrides: overrides,
+			// Tanpa AccountOverrides: denda adalah TAGIHAN, sehingga kaki debit jatuh
+			// ke akun piutang denda menurut pemetaan produk (migrasi 000024), bukan ke
+			// rekening nasabah. Dana nasabah baru berkurang saat denda dibayar.
 		})
 		if err != nil {
 			// Jurnal gagal: penambahan penalty_accrued ikut dibatalkan oleh rollback.

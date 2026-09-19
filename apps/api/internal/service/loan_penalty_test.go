@@ -126,7 +126,9 @@ type penaltyFixture struct {
 }
 
 // penaltyFixtureFor membentuk satu kredit menunggak 10 hari dengan pokok tunggakan
-// 1.000.000 dan pemetaan LOAN_PENALTY standar (debit 20100, kredit 40500).
+// 1.000.000 dan pemetaan LOAN_PENALTY standar (debit 10305 piutang denda, kredit
+// 40500 pendapatan denda). Rekening nasabah tetap disiapkan untuk membuktikan
+// akrual denda TIDAK menyentuhnya.
 func penaltyFixtureFor(asOf time.Time) penaltyFixture {
 	loanID := uuid.New()
 	productID := uuid.New()
@@ -138,7 +140,7 @@ func penaltyFixtureFor(asOf time.Time) penaltyFixture {
 		products: map[uuid.UUID]*domain.BankingProduct{productID: product},
 		rules: map[domain.PostingEvent][]domain.JournalMappingRule{
 			domain.EventLoanPenalty: {
-				{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "20100", AmountSource: domain.AmountPenalty},
+				{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "10305", AmountSource: domain.AmountPenalty},
 				{Event: domain.EventLoanPenalty, Direction: domain.DirectionCredit, COACode: "40500", AmountSource: domain.AmountPenalty},
 			},
 		},
@@ -170,9 +172,10 @@ func penaltyFixtureFor(asOf time.Time) penaltyFixture {
 	}
 }
 
-// Akrual dasar: denda 1.000.000 x 1‰ x 10 hari = 10.000 dan kaki debit diarahkan ke
-// rekening nasabah, bukan akun kontrol 20100.
-func TestAccruePenalties_AccruesAndOverridesCustomerAccount(t *testing.T) {
+// Akrual dasar: denda 1.000.000 x 1‰ x 10 hari = 10.000, dan kaki debit jatuh ke
+// piutang denda (10305) menurut pemetaan produk — BUKAN ke rekening nasabah.
+// Denda adalah tagihan: dana nasabah tidak boleh berkurang saat denda diakru.
+func TestAccruePenalties_AccruesToPenaltyReceivable(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	f := penaltyFixtureFor(asOf)
 	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
@@ -200,11 +203,17 @@ func TestAccruePenalties_AccruesAndOverridesCustomerAccount(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jurnal %d baris, ingin 2", len(lines))
 	}
-	if lines[0].AccountNumber != "1110001234" || lines[0].Direction != domain.DirectionDebit {
-		t.Fatalf("kaki debit tidak diarahkan ke rekening nasabah: %+v", lines[0])
+	if lines[0].AccountNumber != "10305" || lines[0].Direction != domain.DirectionDebit {
+		t.Fatalf("kaki debit harus ke piutang denda 10305: %+v", lines[0])
 	}
 	if lines[1].AccountNumber != "40500" || lines[1].Direction != domain.DirectionCredit {
 		t.Fatalf("kaki kredit pendapatan denda salah: %+v", lines[1])
+	}
+	// Regresi inti: rekening nasabah tidak boleh tersentuh akrual denda.
+	for _, line := range lines {
+		if line.AccountNumber == f.accounts.accounts[f.accountID].AccountNumber {
+			t.Fatalf("akrual denda menyentuh rekening nasabah: %+v", line)
+		}
 	}
 	if got := f.repo.added[f.loanID]; !got.Equal(decimal.NewFromInt(10_000)) {
 		t.Fatalf("penalty_accrued ditambah %s, ingin 10.000", got)
