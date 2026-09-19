@@ -131,7 +131,10 @@ func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	accounts, total, err := h.service.ListAccounts(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	// q mencari nomor rekening (awalan) agar teller tidak perlu menghafal nomor penuh.
+	search := r.URL.Query().Get("q")
+
+	accounts, total, err := h.service.ListAccounts(r.Context(), page, pageSize, search, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return

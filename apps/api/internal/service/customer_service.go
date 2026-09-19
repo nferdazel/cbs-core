@@ -188,7 +188,7 @@ func (s *customerService) canReadRecord(ctx context.Context, actor domain.Actor,
 	return branchID != nil && *branchID == *record.BranchID, nil
 }
 
-func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Customer, int, error) {
+func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int, search string, actor domain.Actor) ([]domain.Customer, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -197,7 +197,7 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 	}
 	offset := (page - 1) * pageSize
 
-	records, total, err := s.repo.List(ctx, pageSize, offset, actor)
+	records, total, err := s.repo.List(ctx, pageSize, offset, s.searchQuery(search), actor)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -213,6 +213,35 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 		customers = append(customers, *c)
 	}
 	return customers, total, nil
+}
+
+// searchQuery menerjemahkan satu kata kunci menjadi filter repo. Nomor CIF
+// dicocokkan sebagai awalan. NIK tidak dapat dicari sebagai teks karena kolomnya
+// terenkripsi, sehingga hanya dihitung blind index-nya bila kata kunci memang
+// berbentuk NIK; bentuk lain berarti filter NIK tidak dipakai, bukan gagal.
+func (s *customerService) searchQuery(term string) domain.CustomerQuery {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return domain.CustomerQuery{}
+	}
+	q := domain.CustomerQuery{CIF: term}
+	if isNIK(term) && s.cipher != nil {
+		q.IDCardIndex = s.cipher.BlindIndex(term)
+	}
+	return q
+}
+
+// isNIK melaporkan apakah kata kunci berbentuk NIK: tepat 16 digit angka.
+func isNIK(term string) bool {
+	if len(term) != 16 {
+		return false
+	}
+	for i := 0; i < len(term); i++ {
+		if term[i] < '0' || term[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // NamesByIDs mengembalikan nama nasabah yang sudah didekripsi. Hanya field nama yang

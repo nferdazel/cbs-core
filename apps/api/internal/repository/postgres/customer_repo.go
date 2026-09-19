@@ -78,8 +78,19 @@ func (r *CustomerRepository) FindByIDCard(ctx context.Context, idCardIndex strin
 	return r.scanOne(ctx, query, idCardIndex)
 }
 
-func (r *CustomerRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.CustomerRecord, int, error) {
+func (r *CustomerRepository) List(ctx context.Context, limit, offset int, q domain.CustomerQuery, actor domain.Actor) ([]domain.CustomerRecord, int, error) {
 	where, whereArgs := branchReadClause("branch_id", actor)
+
+	// Pencarian digabung dengan filter cabang, dan COUNT memakai klausa yang sama
+	// sehingga total pagination tetap benar saat pencarian aktif.
+	if pattern := likePrefixPattern(q.CIF); pattern != "" {
+		whereArgs = append(whereArgs, pattern)
+		where = andCondition(where, fmt.Sprintf("cif_number ILIKE $%d ESCAPE '\\'", len(whereArgs)))
+	}
+	if q.IDCardIndex != "" {
+		whereArgs = append(whereArgs, q.IDCardIndex)
+		where = andCondition(where, fmt.Sprintf("id_card_index = $%d", len(whereArgs)))
+	}
 
 	countQuery := "SELECT COUNT(*) FROM customers"
 	if where != "" {

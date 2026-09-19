@@ -98,7 +98,7 @@ func (r *AccountRepository) ListByCustomer(ctx context.Context, customerID uuid.
 	return r.queryAccounts(ctx, query, customerID)
 }
 
-func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Account, int, error) {
+func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, search string, actor domain.Actor) ([]domain.Account, int, error) {
 	// Hanya rekening nasabah. Daftar positif disengaja: akun GL internal adalah
 	// akuntansi bank, bukan rekening yang dilayani teller, dan tipe baru yang tidak
 	// dikenal tidak boleh otomatis ikut tampil.
@@ -106,6 +106,10 @@ func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, acto
 	clause, whereArgs := branchReadClause("a.branch_id", actor)
 	if clause != "" {
 		where += " AND " + clause
+	}
+	if pattern := likePrefixPattern(search); pattern != "" {
+		whereArgs = append(whereArgs, pattern)
+		where = andCondition(where, fmt.Sprintf("a.account_number ILIKE $%d ESCAPE '\\'", len(whereArgs)))
 	}
 
 	countQuery := "SELECT COUNT(*) FROM accounts a"

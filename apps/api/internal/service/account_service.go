@@ -246,7 +246,7 @@ func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber s
 	return account, nil
 }
 
-func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Account, int, error) {
+func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int, search string, actor domain.Actor) ([]domain.Account, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -255,7 +255,7 @@ func (s *accountService) ListAccounts(ctx context.Context, page, pageSize int, a
 	}
 	offset := (page - 1) * pageSize
 
-	accounts, total, err := s.accountRepo.ListAll(ctx, pageSize, offset, actor)
+	accounts, total, err := s.accountRepo.ListAll(ctx, pageSize, offset, search, actor)
 	if err != nil {
 		return nil, 0, err
 	}

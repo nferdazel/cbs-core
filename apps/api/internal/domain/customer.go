@@ -73,6 +73,17 @@ type CreateCustomerInput struct {
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
+// CustomerQuery membatasi daftar nasabah. Field kosong berarti tidak menyaring.
+//
+// NIK tidak dapat dicari sebagai teks karena kolomnya terenkripsi; pencocokannya
+// memakai blind index (HMAC deterministik) yang dihitung service dari kata kunci.
+type CustomerQuery struct {
+	// CIF mencocokkan awalan nomor CIF.
+	CIF string
+	// IDCardIndex adalah blind index NIK hasil pencocokan persis.
+	IDCardIndex string
+}
+
 type CustomerRepository interface {
 	Create(ctx context.Context, record *CustomerRecord) error
 	// CreateTx menyimpan nasabah di dalam transaksi pemanggil agar pendaftaran dan
@@ -86,14 +97,14 @@ type CustomerRepository interface {
 	GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*CustomerRecord, error)
 	// List mengembalikan daftar nasabah yang boleh dibaca aktor. Filter cabang
 	// diterapkan di query agar pagination dan total tetap benar.
-	List(ctx context.Context, limit, offset int, actor Actor) ([]CustomerRecord, int, error)
+	List(ctx context.Context, limit, offset int, q CustomerQuery, actor Actor) ([]CustomerRecord, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 
 type CustomerService interface {
 	RegisterCustomer(ctx context.Context, input CreateCustomerInput, actor Actor) (*Customer, error)
 	GetCustomer(ctx context.Context, id uuid.UUID, actor Actor) (*Customer, error)
-	ListCustomers(ctx context.Context, page, pageSize int, actor Actor) ([]Customer, int, error)
+	ListCustomers(ctx context.Context, page, pageSize int, search string, actor Actor) ([]Customer, int, error)
 	// NamesByIDs mengembalikan nama nasabah yang sudah didekripsi untuk pelengkapan tampilan.
 	NamesByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }

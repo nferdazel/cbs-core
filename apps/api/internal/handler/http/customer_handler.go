@@ -91,7 +91,10 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	// q mencari nomor CIF (awalan) atau NIK (persis, lewat blind index).
+	search := r.URL.Query().Get("q")
+
+	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, search, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return

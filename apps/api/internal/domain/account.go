@@ -171,7 +171,7 @@ type AccountRepository interface {
 	ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]Account, error)
 	// ListAll mengembalikan daftar rekening yang boleh dibaca aktor. Filter cabang
 	// diterapkan di query agar pagination dan total tetap benar.
-	ListAll(ctx context.Context, limit, offset int, actor Actor) ([]Account, int, error)
+	ListAll(ctx context.Context, limit, offset int, search string, actor Actor) ([]Account, int, error)
 	UpdateBalance(ctx context.Context, tx any, accountID uuid.UUID, balance, available decimal.Decimal, version int) error
 	// ListDormantCandidates mengembalikan rekening nasabah (SAVINGS/CHECKING) yang
 	// masih ACTIVE untuk dinilai dormannya secara bank-wide saat EOD.
@@ -189,7 +189,7 @@ type AccountService interface {
 	// GetAccountByNumber menolak rekening cabang lain dengan ErrCrossBranchAccess,
 	// bukan menyamarkannya sebagai tidak ditemukan.
 	GetAccountByNumber(ctx context.Context, accountNumber string, actor Actor) (*Account, error)
-	ListAccounts(ctx context.Context, page, pageSize int, actor Actor) ([]Account, int, error)
+	ListAccounts(ctx context.Context, page, pageSize int, search string, actor Actor) ([]Account, int, error)
 	// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Rekening yang bukan
 	// DORMANT ditolak ErrAccountNotDormant; cabang lain ditolak ErrCrossBranchAccess.
 	ReactivateAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
