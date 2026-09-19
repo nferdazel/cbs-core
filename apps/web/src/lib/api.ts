@@ -3,23 +3,36 @@ import { clearSession, getCsrfToken, setStoredUser } from "./auth";
 import type { LoginResponse } from "./types";
 
 /**
- * Base URL API. Satu tempat menentukan alamat backend.
+ * Base URL API.
  *
- * `NEXT_PUBLIC_API_URL` boleh ditulis dengan atau tanpa suffix `/api/v1`:
- *   - "https://api.qouver.com/cbs"          -> ditambah "/api/v1"
- *   - "https://api.qouver.com/cbs/api/v1"   -> dipakai apa adanya
+ * Browser memakai jalur same-origin (`/api/v1`) yang diteruskan ke container API
+ * oleh rewrite di `next.config.mjs`. Ini bukan sekadar preferensi: cookie sesi
+ * bersifat httpOnly dan token CSRF dibaca dari `document.cookie`, sehingga keduanya
+ * hanya bekerja bila permintaan datang dari origin yang sama dengan halaman. Memakai
+ * subdomain API terpisah membuat cookie tidak terkirim dan token CSRF tidak terbaca,
+ * dan API tidak mengizinkan lintas origin.
  *
- * Ini mencegah path menjadi "/api/v1/api/v1/..." ketika operator sudah menulis
- * versi lengkap di environment variable.
+ * Saat render di server tidak ada origin, jadi dipakai alamat internal jaringan
+ * container. `NEXT_PUBLIC_API_URL` di-inline ketika BUILD, bukan dibaca saat runtime,
+ * dan hanya perlu diisi bila API memang berada di host lain.
  */
-const FALLBACK_BASE_URL = "https://api.qouver.com/cbs";
+const SERVER_BASE_URL = process.env.INTERNAL_API_URL || "http://cbs-api:8080";
+
+function defaultBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL;
+  if (configured && configured.trim()) {
+    return configured.trim();
+  }
+  return typeof window === "undefined" ? SERVER_BASE_URL : "";
+}
 
 export function normalizeBaseUrl(raw?: string): string {
-  const base = (raw && raw.trim()) || FALLBACK_BASE_URL;
+  const base = raw === undefined ? defaultBaseUrl() : raw.trim();
   const withoutTrailingSlash = base.replace(/\/+$/, "");
   if (/\/api\/v1$/i.test(withoutTrailingSlash)) {
     return withoutTrailingSlash;
   }
+  // base kosong menghasilkan jalur relatif "/api/v1", yaitu same-origin.
   return `${withoutTrailingSlash}/api/v1`;
 }
 

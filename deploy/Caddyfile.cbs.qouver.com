@@ -1,41 +1,35 @@
-# Caddy site configuration for cbs.qouver.com & api.qouver.com/cbs
-# Append to /etc/caddy/Caddyfile on VPS and reload Caddy: systemctl reload caddy
+# Caddy site configuration untuk cbs.qouver.com & api.qouver.com
+# Berkas ini mendokumentasikan konfigurasi yang berjalan di VPS. Sisipkan ke
+# /etc/caddy/Caddyfile lalu reload: systemctl reload caddy
+#
+# Catatan penting soal origin:
+#   Halaman web dan API sengaja TIDAK dipisah origin. Cookie sesi bersifat httpOnly
+#   dan token CSRF dibaca dari document.cookie, sehingga keduanya hanya bekerja bila
+#   permintaan berasal dari origin yang sama dengan halaman. Browser memanggil
+#   /api/v1/* pada cbs.qouver.com, lalu Next.js meneruskannya ke container API lewat
+#   rewrite di apps/web/next.config.mjs. Karena itu cbs.qouver.com cukup mem-proxy
+#   seluruh path ke Next.js dan TIDAK perlu handler API terpisah.
+#   api.qouver.com/cbs/* tetap ada untuk konsumen API non-browser (mis. integrasi).
 
-# 1. API Gateway Handler on api.qouver.com
+# 1. API gateway untuk konsumen non-browser
 api.qouver.com {
-	handle /cbs/v1/* {
-		uri strip_prefix /cbs
-		reverse_proxy 127.0.0.1:8082
-	}
 	handle /cbs/* {
 		uri strip_prefix /cbs
-		reverse_proxy 127.0.0.1:8082
+		reverse_proxy 127.0.0.1:8095
 	}
 }
 
-# 2. Backoffice Web Frontend Domain (cbs.qouver.com)
+# 2. Aplikasi backoffice
 cbs.qouver.com {
-	# Proxy API requests directly if called on cbs.qouver.com/api/*
-	handle /api/* {
-		reverse_proxy 127.0.0.1:8082
-	}
-
-	handle /documents/* {
-		reverse_proxy 127.0.0.1:8082
-	}
-
-	# Serve static web frontend build or proxy to Next.js
-	handle {
-		root * /srv/qouver/apps/cbs/web
-		file_server
-		try_files {path} {path}/ /index.html
-	}
+	# Seluruh path, termasuk /api/v1/*, dilayani Next.js yang meneruskan /api/*
+	# ke container API di jaringan internal.
+	reverse_proxy 127.0.0.1:3005
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
-		X-XSS-Protection "1; mode=block"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
 	encode gzip zstd
