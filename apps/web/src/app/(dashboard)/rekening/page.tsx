@@ -6,9 +6,12 @@ import { ApiError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { AccountRecord } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { DataTable, Column } from "@/components/ui/DataTable";
+import { Input } from "@/components/ui/Input";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
@@ -17,8 +20,13 @@ import {
   AccountReactivation,
   canReactivateAccount,
 } from "@/components/account/AccountReactivation";
+import {
+  AccountOpening,
+  canOpenAccount,
+} from "@/components/account/AccountOpening";
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 type StatusFilter = AccountStatus | "ALL";
 
@@ -38,22 +46,39 @@ interface Meta {
 }
 
 export default function RekeningPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
-  const load = useCallback(async (targetPage: number) => {
+  // Debounce: kata kunci baru dikirim setelah pengguna berhenti mengetik.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQuery(search.trim());
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const load = useCallback(async (targetPage: number, term: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await request<AccountRecord[]>(
-        `/accounts?page=${targetPage}&page_size=${PAGE_SIZE}`
-      );
+      const params = new URLSearchParams({
+        page: String(targetPage),
+        page_size: String(PAGE_SIZE),
+      });
+      if (term) params.set("q", term);
+      const response = await request<AccountRecord[]>(`/accounts?${params.toString()}`);
       setAccounts(response.data ?? []);
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
@@ -64,8 +89,8 @@ export default function RekeningPage() {
   }, []);
 
   useEffect(() => {
-    load(page);
-  }, [page, load]);
+    load(page, query);
+  }, [page, query, reloadKey, load]);
 
   // API /accounts belum menerima parameter status, jadi penyaringan dilakukan di
   // sisi klien dan hanya mencakup halaman yang sedang dimuat.
@@ -78,6 +103,7 @@ export default function RekeningPage() {
   );
 
   const authorized = canReactivateAccount(user?.role);
+  const canOpen = canOpenAccount(user?.role);
 
   const handleReactivated = (updated: AccountRecord) => {
     // Perbarui baris di tempat, lalu muat ulang halaman agar sinkron dengan server.
@@ -87,8 +113,15 @@ export default function RekeningPage() {
     setSuccessMessage(
       `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`
     );
-    load(page);
+    load(page, query);
   };
+
+  const handleOpened = () => {
+    setPage(1);
+    setReloadKey((key) => key + 1);
+  };
+
+  const resetSearch = () => setSearch("");
 
   const columns: Column<AccountRecord>[] = [
     { header: "Nomor Rekening", accessorKey: "account_number", isMono: true },
@@ -124,6 +157,13 @@ export default function RekeningPage() {
       <PageHeader
         title="Rekening"
         description="Direktori rekening nasabah: tabungan, giro, dan kredit. Akun buku besar internal tidak ditampilkan di sini."
+        actions={
+          canOpen ? (
+            <Button onClick={() => setFormOpen((open) => !open)}>
+              {t.accountOpening.openButton}
+            </Button>
+          ) : undefined
+        }
       />
 
       {successMessage && (
@@ -135,8 +175,29 @@ export default function RekeningPage() {
         </div>
       )}
 
+      {formOpen && (
+        <AccountOpening
+          onClose={() => setFormOpen(false)}
+          onOpened={handleOpened}
+        />
+      )}
+
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-end gap-4">
+          <div className="w-80">
+            <Input
+              label={t.accountList.searchLabel}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t.accountList.searchPlaceholder}
+              aria-describedby="rekening-search-hint"
+            />
+          </div>
+          {search && (
+            <Button variant="secondary" onClick={resetSearch}>
+              {t.accountList.clearButton}
+            </Button>
+          )}
           <div className="w-56">
             <Select
               label="Filter Status"
@@ -153,6 +214,12 @@ export default function RekeningPage() {
             hanya berlaku per halaman.
           </p>
         </CardContent>
+        <p
+          id="rekening-search-hint"
+          className="border-t border-border px-4 py-2 text-meta text-ink-600"
+        >
+          {t.accountList.searchHint}
+        </p>
       </Card>
 
       {error && !loading ? (
@@ -166,9 +233,11 @@ export default function RekeningPage() {
               keyExtractor={(row) => row.id}
               loading={loading}
               emptyMessage={
-                statusFilter === "ALL"
-                  ? "Belum ada rekening."
-                  : "Tidak ada rekening dengan status ini pada halaman ini."
+                query
+                  ? t.accountList.emptyFiltered
+                  : statusFilter === "ALL"
+                    ? t.accountList.empty
+                    : "Tidak ada rekening dengan status ini pada halaman ini."
               }
               zebra
             />
