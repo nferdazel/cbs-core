@@ -107,7 +107,7 @@ Executed Migrations (`packages/db-migrations/`):
 
 ## 6. Live Production Infrastructure & Deployment Details
 
-- **Production Server:** Rocky Linux 9.8 VPS at `192.0.2.10` (User: `sachiel`)
+- **Production Server:** Rocky Linux 9.8 VPS at `<VPS_HOST>` (User: `sachiel`)
 - **Live Domains & Gateways:**
   - **Backoffice Web UI:** **`https://cbs.qouver.com`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-web` on port `3005`)
   - **API Gateway:** **`https://api.qouver.com/cbs/v1/*`** (HTTP/2 200 OK ✅, proxied to Podman container `cbs-api` on port `8095`)
@@ -127,4 +127,4 @@ Executed Migrations (`packages/db-migrations/`):
 - Document & PDF Printable Generator Engine (`/api/v1/documents/*`) for Slip Setoran/Penarikan Teller, Surat Perjanjian Kredit / Akad Pembiayaan, and 58mm/80mm ESC/POS Thermal Receipts.
 - Accounting Normal Balance Rules (Asset/Expense DEBIT +, Liability/Equity/Revenue CREDIT +) & Lexicographical Row Locking in `PostCompoundJournal` (100% Deadlock Elimination).
 - Kolektibilitas OJK POJK No. 1 Tahun 2024 (Kol 1-5 matrix, Accrual vs Cash Basis, PPAP Rates, Credit Restructuring Engine).
-- Live Production Deployment on VPS `192.0.2.10` under `https://cbs.qouver.com` with Caddy SSL and Podman Quadlet containers.
+- Live Production Deployment on VPS `<VPS_HOST>` under `https://cbs.qouver.com` with Caddy SSL and Podman Quadlet containers.

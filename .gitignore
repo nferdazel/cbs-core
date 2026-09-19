@@ -62,3 +62,6 @@ go.work.sum
 
 # TypeScript incremental build info (artifact lokal)
 *.tsbuildinfo
+
+# Host SSH VPS (lokal, tidak untuk repo publik)
+scripts/.ssh-host

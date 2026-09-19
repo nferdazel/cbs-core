@@ -17,9 +17,13 @@
 #   CBS_DB_NAME       nama database   (default cbs)
 #   CBS_DB_OWNER      role pemilik    (default qouver)
 #   CBS_MIGRATIONS    direktori migrasi (default packages/db-migrations)
-#   CBS_SSH_HOST      host SSH untuk --remote (default 192.0.2.10)
+#   CBS_SSH_HOST      host SSH untuk --remote (wajib; lihat catatan di bawah)
 #   CBS_SSH_USER      user SSH untuk --remote (default sachiel)
 #   CBS_SSH_KEY       private key untuk --remote (default ~/.ssh/id_ed25519)
+#
+# Host SSH sengaja TIDAK punya nilai default di repo ini karena repo bersifat publik.
+# Isi lewat variabel lingkungan CBS_SSH_HOST, atau simpan sekali di scripts/.ssh-host
+# (berkas lokal, diabaikan git).
 
 set -euo pipefail
 
@@ -27,7 +31,13 @@ CONTAINER="${CBS_DB_CONTAINER:-qouver-postgres}"
 DB_NAME="${CBS_DB_NAME:-cbs}"
 DB_OWNER="${CBS_DB_OWNER:-qouver}"
 MIGRATIONS_DIR="${CBS_MIGRATIONS:-packages/db-migrations}"
-SSH_HOST="${CBS_SSH_HOST:-192.0.2.10}"
+if [[ -z "${CBS_SSH_HOST:-}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/.ssh-host" ]]; then
+    CBS_SSH_HOST="$(tr -d '[:space:]' < "$SCRIPT_DIR/.ssh-host")"
+  fi
+fi
+SSH_HOST="${CBS_SSH_HOST:?isi CBS_SSH_HOST atau scripts/.ssh-host dengan host SSH VPS}"
 SSH_USER="${CBS_SSH_USER:-sachiel}"
 SSH_KEY="${CBS_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 DRY_RUN=false
