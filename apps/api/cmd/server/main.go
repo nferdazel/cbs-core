@@ -69,6 +69,7 @@ func main() {
 	batchRepo := postgres.NewBatchActivityRepository(db)
 	savingsRepo := postgres.NewSavingsInterestRepository(db)
 	yearEndRepo := postgres.NewYearEndRepository(db)
+	bankProfileRepo := postgres.NewBankProfileRepository(db)
 
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
@@ -107,7 +108,7 @@ func main() {
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
 	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc)
-	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, cipher)
+	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, bankProfileRepo, cipher)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
