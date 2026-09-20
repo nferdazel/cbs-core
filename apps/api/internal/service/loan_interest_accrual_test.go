@@ -57,6 +57,14 @@ func (r *interestLoanRepo) UpdateSchedulePayment(_ context.Context, _ uuid.UUID,
 	return nil
 }
 
+func (r *interestLoanRepo) UpdateSchedulePaymentTx(ctx context.Context, _ any, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
+	return r.UpdateSchedulePayment(ctx, scheduleID, paidPrincipal, paidProfit, settleAccrued, status)
+}
+
+func (r *interestLoanRepo) UpdateOutstandingTx(ctx context.Context, _ any, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	return r.UpdateOutstanding(ctx, id, outstanding, penalty)
+}
+
 func (r *interestLoanRepo) UpdateOutstanding(context.Context, uuid.UUID, decimal.Decimal, decimal.Decimal) error {
 	return nil
 }
@@ -98,6 +106,10 @@ func newInterestFixture() interestFixture {
 			domain.EventInterestAccrual: {
 				{Direction: domain.DirectionDebit, COACode: "10400", AmountSource: domain.AmountProfit},
 				{Direction: domain.DirectionCredit, COACode: "40100", AmountSource: domain.AmountProfit},
+			},
+			domain.EventLoanPenalty: {
+				{Direction: domain.DirectionDebit, COACode: "10305", AmountSource: domain.AmountPenalty},
+				{Direction: domain.DirectionCredit, COACode: "40500", AmountSource: domain.AmountPenalty},
 			},
 		},
 	}
@@ -424,5 +436,92 @@ func TestPayInstallment_SettlementNeverExceedsAccrued(t *testing.T) {
 	credit := sumDirection(profitReq.Lines, domain.DirectionCredit)
 	if !credit.Equal(decimal.NewFromInt(100)) {
 		t.Fatalf("kredit %s, ingin 100", credit)
+	}
+}
+
+// Waterfall: denda ditagih lebih dulu, lalu bunga, terakhir pokok. Sebelum ini denda
+// tidak punya jalur pelunasan sama sekali sehingga piutangnya menumpuk.
+func TestPayInstallment_MelunasiDendaLaluBungaLaluPokok(t *testing.T) {
+	f := paymentFixture(0, 100)
+	f.repo.loan.PenaltyAccrued = decimal.NewFromInt(25)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1, Amount: decimal.NewFromInt(200),
+	}, domain.Actor{Username: "tester"}); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+
+	// 200 dibagi 25 denda + 100 bunga + 75 pokok.
+	if len(f.posting.requests) != 3 {
+		t.Fatalf("jurnal %d, ingin 3 (denda + pokok + bunga)", len(f.posting.requests))
+	}
+	penaltyReq := f.posting.requests[0]
+	if len(penaltyReq.Lines) != 2 {
+		t.Fatalf("jurnal denda %d baris, ingin 2", len(penaltyReq.Lines))
+	}
+	if penaltyReq.Lines[0].AccountNumber != "1110001234" ||
+		penaltyReq.Lines[0].Direction != domain.DirectionDebit ||
+		!penaltyReq.Lines[0].Amount.Equal(decimal.NewFromInt(25)) {
+		t.Fatalf("debit rekening nasabah untuk denda salah: %+v", penaltyReq.Lines[0])
+	}
+	if penaltyReq.Lines[1].AccountNumber != "10305" ||
+		penaltyReq.Lines[1].Direction != domain.DirectionCredit ||
+		!penaltyReq.Lines[1].Amount.Equal(decimal.NewFromInt(25)) {
+		t.Fatalf("kredit piutang denda salah: %+v", penaltyReq.Lines[1])
+	}
+
+	principalReq := f.posting.requests[1]
+	if !sumDirection(principalReq.Lines, domain.DirectionDebit).Equal(decimal.NewFromInt(75)) {
+		t.Fatalf("pokok dibayar %s, ingin 75", sumDirection(principalReq.Lines, domain.DirectionDebit))
+	}
+	profitReq := f.posting.requests[2]
+	if !sumDirection(profitReq.Lines, domain.DirectionDebit).Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("bunga dibayar %s, ingin 100", sumDirection(profitReq.Lines, domain.DirectionDebit))
+	}
+
+	if !f.repo.paidPrincipal.Equal(decimal.NewFromInt(75)) {
+		t.Fatalf("paid_principal %s, ingin 75", f.repo.paidPrincipal)
+	}
+	if !f.repo.paidProfit.Equal(decimal.NewFromInt(100)) {
+		t.Fatalf("paid_profit %s, ingin 100", f.repo.paidProfit)
+	}
+}
+
+// Angsuran sebagian kini mungkin: nominal kecil hanya menutup sebagian bunga, pokok
+// belum tersentuh, dan angsurannya tidak ditandai lunas.
+func TestPayInstallment_AngsuranSebagian(t *testing.T) {
+	f := paymentFixture(0, 100)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1, Amount: decimal.NewFromInt(50),
+	}, domain.Actor{Username: "tester"}); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1 (hanya bunga)", len(f.posting.requests))
+	}
+	if !f.repo.paidPrincipal.IsZero() {
+		t.Fatalf("pokok seharusnya belum dibayar, dapat %s", f.repo.paidPrincipal)
+	}
+	if !f.repo.paidProfit.Equal(decimal.NewFromInt(50)) {
+		t.Fatalf("paid_profit %s, ingin 50", f.repo.paidProfit)
+	}
+}
+
+// Kelebihan pembayaran ditolak dengan jelas, bukan disimpan diam-diam.
+func TestPayInstallment_KelebihanPembayaranDitolak(t *testing.T) {
+	f := paymentFixture(0, 100)
+	svc := newInterestTestService(f)
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1, Amount: decimal.NewFromInt(2_000),
+	}, domain.Actor{Username: "tester"}); err == nil {
+		t.Fatal("pembayaran melebihi kewajiban harus ditolak")
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("tidak boleh ada jurnal saat pembayaran ditolak, dapat %d", len(f.posting.requests))
 	}
 }

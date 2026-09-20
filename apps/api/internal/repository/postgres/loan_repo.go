@@ -277,12 +277,29 @@ func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]
 // yang diselesaikan. GREATEST(..., 0) menjaga piutang bunga (10400) tidak pernah
 // negatif bila ada pembayaran yang mencoba menyelesaikan lebih dari yang diakru.
 func (r *LoanRepository) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
+	return updateSchedulePayment(ctx, r.db, scheduleID, paidPrincipal, paidProfit, settleAccrued, status)
+}
+
+// UpdateSchedulePaymentTx mencatat pembayaran angsuran di dalam transaksi pemanggil,
+// agar jurnal dan perubahan jadwal tidak pernah terpisah.
+func (r *LoanRepository) UpdateSchedulePaymentTx(ctx context.Context, tx any, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return updateSchedulePayment(ctx, sqlTx, scheduleID, paidPrincipal, paidProfit, settleAccrued, status)
+}
+
+func updateSchedulePayment(ctx context.Context, exec execer, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
+	// paid_at hanya diisi saat angsuran benar-benar lunas; angsuran sebagian tetap
+	// menyimpan tanggal pembayaran pertamanya di kolom lain bila diperlukan kelak.
 	q := `UPDATE loan_schedules
 		SET paid_principal = paid_principal + $1, paid_profit = paid_profit + $2,
 		    profit_accrued_amount = GREATEST(profit_accrued_amount - $3, 0),
-		    status = $4, paid_at = NOW()
+		    status = $4,
+		    paid_at = CASE WHEN $4::installment_status = 'PAID' THEN NOW() ELSE paid_at END
 		WHERE id = $5`
-	_, err := r.db.ExecContext(ctx, q, paidPrincipal, paidProfit, settleAccrued, status, scheduleID)
+	_, err := exec.ExecContext(ctx, q, paidPrincipal, paidProfit, settleAccrued, status, scheduleID)
 	return err
 }
 
@@ -341,8 +358,21 @@ func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID,
 }
 
 func (r *LoanRepository) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	return updateOutstanding(ctx, r.db, id, outstanding, penalty)
+}
+
+// UpdateOutstandingTx menyimpan sisa pokok dan denda di dalam transaksi pemanggil.
+func (r *LoanRepository) UpdateOutstandingTx(ctx context.Context, tx any, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return updateOutstanding(ctx, sqlTx, id, outstanding, penalty)
+}
+
+func updateOutstanding(ctx context.Context, exec execer, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
 	q := `UPDATE loans SET outstanding_principal=$1, penalty_accrued=$2, updated_at=NOW() WHERE id=$3`
-	_, err := r.db.ExecContext(ctx, q, outstanding, penalty, id)
+	_, err := exec.ExecContext(ctx, q, outstanding, penalty, id)
 	return err
 }
 

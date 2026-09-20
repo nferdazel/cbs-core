@@ -427,11 +427,40 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 
 	outstandingPrincipal := target.PrincipalAmount.Sub(target.PaidPrincipal)
 	outstandingProfit := target.ProfitAmount.Sub(target.PaidProfit)
+	if outstandingPrincipal.IsNegative() {
+		outstandingPrincipal = decimal.Zero
+	}
+	if outstandingProfit.IsNegative() {
+		outstandingProfit = decimal.Zero
+	}
+
+	// Denda adalah kewajiban tingkat kredit, bukan tingkat angsuran, sehingga seluruh
+	// denda yang sudah diakru ditagih lebih dulu. Sebelum ini denda tidak punya jalur
+	// pelunasan sama sekali: piutangnya menumpuk di 10305/11700 sementara kredit bisa
+	// dinyatakan lunas dengan denda masih menggantung.
+	penaltyDue := loan.PenaltyAccrued
+	if penaltyDue.IsNegative() {
+		penaltyDue = decimal.Zero
+	}
+
+	// Tanpa nominal, pemanggil meminta pelunasan penuh angsuran ini beserta dendanya.
+	amount := input.Amount
+	if !amount.IsPositive() {
+		amount = penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal)
+	}
+	allocation := domain.AllocateLoanPayment(amount, penaltyDue, outstandingProfit, outstandingPrincipal)
+	if allocation.Unapplied.IsPositive() {
+		return nil, fmt.Errorf(
+			"pembayaran %s melebihi kewajiban angsuran ke-%d kredit %s (%s); kelebihan belum dapat diterima",
+			amount.StringFixed(2), input.InstallmentNo, loan.LoanNumber,
+			penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal).StringFixed(2))
+	}
 
 	// settle adalah porsi bunga yang diselesaikan dari akruan yang sudah terbentuk.
-	// min(P, profit_accrued_amount) memastikan piutang bunga 10400 tidak pernah
-	// negatif dan total pendapatan satu angsuran tidak melebihi porsi bunga jadwal.
-	settle := outstandingProfit
+	// min(porsi bunga yang dibayar, profit_accrued_amount) memastikan piutang bunga
+	// 10400 tidak pernah negatif dan pendapatan satu angsuran tidak melebihi porsi
+	// bunga jadwal.
+	settle := allocation.Profit
 	if settle.GreaterThan(target.ProfitAccruedAmount) {
 		settle = target.ProfitAccruedAmount
 	}
@@ -439,73 +468,168 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		settle = decimal.Zero
 	}
 
-	// Pokok dan imbal hasil dijurnal terpisah karena akun pendapatannya berbeda.
-	// Kunci idempotency wajib berbeda per jurnal: kolomnya unik, sehingga memakai
-	// kunci yang sama untuk keduanya membuat jurnal kedua ditolak.
-	baseKey := fmt.Sprintf("INST-%s-%d", loan.LoanNumber, input.InstallmentNo)
+	touchesSchedule := allocation.Profit.IsPositive() || allocation.Principal.IsPositive()
+	installmentStatus := domain.InstallmentStatusPartial
+	if allocation.Profit.Equal(outstandingProfit) && allocation.Principal.Equal(outstandingPrincipal) {
+		installmentStatus = domain.InstallmentStatusPaid
+	}
+
+	newOutstanding := loan.OutstandingPrincipal.Sub(allocation.Principal)
+	if newOutstanding.IsNegative() {
+		newOutstanding = decimal.Zero
+	}
+	newPenalty := penaltyDue.Sub(allocation.Penalty)
+	if newPenalty.IsNegative() {
+		newPenalty = decimal.Zero
+	}
+
+	// Kunci idempotensi memuat total bayar kumulatif setelah pembayaran ini: percobaan
+	// ulang atas pembayaran yang sama menghasilkan kunci yang sama (ditolak sebagai
+	// duplikat), sedangkan angsuran sebagian berikutnya menghasilkan kunci berbeda
+	// karena totalnya sudah berubah. Kunci lama (-PRIN/-PROF) tidak memuat itu sehingga
+	// angsuran sebagian kedua akan tertolak sebagai duplikat.
+	baseKey := fmt.Sprintf("INST-%s-%d-%s-%s", loan.LoanNumber, input.InstallmentNo,
+		target.PaidPrincipal.Add(allocation.Principal).StringFixed(2),
+		target.PaidProfit.Add(allocation.Profit).StringFixed(2))
 	meta := PostingMeta{
 		TransactionType:  domain.TxTypeTransferInternal,
 		Description:      fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
-		IdempotencyKey:   baseKey + "-PRIN",
 		CreatedBy:        actor.DisplayName(),
 		BranchCode:       actor.BranchCode,
 		AccountOverrides: overrides,
 	}
 
 	err = s.txRunner.Run(ctx, func(tx any) error {
-		if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanPrincipalPay, Amounts{
-			Principal: outstandingPrincipal, Total: outstandingPrincipal,
-		}, meta); err != nil {
-			return fmt.Errorf("jurnal angsuran pokok: %w", err)
+		if allocation.Penalty.IsPositive() {
+			penaltyMeta := meta
+			penaltyMeta.IdempotencyKey = baseKey + "-PEN"
+			penaltyMeta.Description = fmt.Sprintf("Pembayaran denda kredit %s", loan.LoanNumber)
+			if err := s.postPenaltyCollection(ctx, tx, product, penaltyMeta, payAccount, allocation.Penalty); err != nil {
+				return fmt.Errorf("jurnal pembayaran denda: %w", err)
+			}
 		}
-		if outstandingProfit.IsPositive() {
-			// Kunci idempotensi porsi bunga tetap berakhiran -PROF agar semantik
-			// percobaan ulang tidak berubah dari perilaku lama.
-			meta.IdempotencyKey = baseKey + "-PROF"
+		if allocation.Principal.IsPositive() {
+			principalMeta := meta
+			principalMeta.IdempotencyKey = baseKey + "-PRIN"
+			if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanPrincipalPay, Amounts{
+				Principal: allocation.Principal, Total: allocation.Principal,
+			}, principalMeta); err != nil {
+				return fmt.Errorf("jurnal angsuran pokok: %w", err)
+			}
+		}
+		if allocation.Profit.IsPositive() {
+			profitMeta := meta
+			profitMeta.IdempotencyKey = baseKey + "-PROF"
 			if settle.IsPositive() {
 				// Sebagian/seluruh bunga sudah diakru: pendapatan tidak lagi diakui
 				// penuh di sini, melainkan memindahkan piutang bunga 10400.
-				if err := s.postProfitSettlement(ctx, tx, product, meta, outstandingProfit, settle); err != nil {
+				if err := s.postProfitSettlement(ctx, tx, product, profitMeta, allocation.Profit, settle); err != nil {
 					return fmt.Errorf("jurnal angsuran imbal hasil: %w", err)
 				}
 			} else if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanProfitPay, Amounts{
-				Profit: outstandingProfit, Total: outstandingProfit,
-			}, meta); err != nil {
+				Profit: allocation.Profit, Total: allocation.Profit,
+			}, profitMeta); err != nil {
 				return fmt.Errorf("jurnal angsuran imbal hasil: %w", err)
 			}
 		}
 
-		if err := s.loanRepo.UpdateSchedulePayment(ctx, target.ID, outstandingPrincipal, outstandingProfit, settle, domain.InstallmentStatusPaid); err != nil {
-			return fmt.Errorf("mencatat pembayaran angsuran: %w", err)
+		if touchesSchedule {
+			if err := s.loanRepo.UpdateSchedulePaymentTx(ctx, tx, target.ID, allocation.Principal, allocation.Profit, settle, installmentStatus); err != nil {
+				return fmt.Errorf("mencatat pembayaran angsuran: %w", err)
+			}
 		}
-
-		newOutstanding := loan.OutstandingPrincipal.Sub(outstandingPrincipal)
-		if newOutstanding.IsNegative() {
-			newOutstanding = decimal.Zero
-		}
-		return s.loanRepo.UpdateOutstanding(ctx, loan.ID, newOutstanding, loan.PenaltyAccrued)
+		return s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, newOutstanding, newPenalty)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	target.PaidPrincipal = target.PrincipalAmount
-	target.PaidProfit = target.ProfitAmount
+	target.PaidPrincipal = target.PaidPrincipal.Add(allocation.Principal)
+	target.PaidProfit = target.PaidProfit.Add(allocation.Profit)
 	target.ProfitAccruedAmount = target.ProfitAccruedAmount.Sub(settle)
 	if target.ProfitAccruedAmount.IsNegative() {
 		target.ProfitAccruedAmount = decimal.Zero
 	}
-	target.Status = domain.InstallmentStatusPaid
-	now := time.Now().UTC()
-	target.PaidAt = &now
+	if touchesSchedule {
+		target.Status = installmentStatus
+		if installmentStatus == domain.InstallmentStatusPaid {
+			now := time.Now().UTC()
+			target.PaidAt = &now
+		}
+	}
 
-	// Pelunasan: bila seluruh jadwal sudah dibayar, kredit menjadi lunas.
-	if s.allSchedulesPaid(ctx, loan.ID) {
-		_ = s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusPaidOff, &actor.UserID)
-		s.loanRepo.UpdateOutstanding(ctx, loan.ID, decimal.Zero, loan.PenaltyAccrued)
+	// Pelunasan hanya sah bila seluruh angsuran sudah dibayar DAN tidak ada denda yang
+	// masih terakru: denda menggantung berarti kredit belum selesai.
+	if !newPenalty.IsPositive() && s.allSchedulesPaid(ctx, loan.ID) {
+		if err := s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusPaidOff, &actor.UserID); err != nil {
+			return nil, fmt.Errorf("menandai kredit lunas: %w", err)
+		}
 	}
 
 	return target, nil
+}
+
+// postPenaltyCollection memindahkan denda yang sudah diakru dari piutang denda ke
+// rekening nasabah:
+//
+//	DEBIT  rekening nasabah            sebesar denda yang dibayar
+//	CREDIT akun piutang denda          sebesar yang sama
+//
+// Akun piutang diambil dari kaki DEBIT pemetaan LOAN_PENALTY produk (10305
+// konvensional, 11700 syariah) sehingga tidak ada kode akun yang dikarang di sini.
+// Kaki CREDIT pemetaan itu adalah pendapatan denda / dana kebajikan dan hanya dipakai
+// saat AKRUAL; memakainya lagi di sini akan mengakui pendapatan dua kali.
+func (s *loanService) postPenaltyCollection(
+	ctx context.Context,
+	tx any,
+	product *domain.BankingProduct,
+	meta PostingMeta,
+	payAccount *domain.Account,
+	amount decimal.Decimal,
+) error {
+	rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanPenalty)
+	if err != nil {
+		return fmt.Errorf("membaca pemetaan %s: %w", domain.EventLoanPenalty, err)
+	}
+	var receivableCOA string
+	for _, r := range rules {
+		if r.Direction == domain.DirectionDebit {
+			receivableCOA = r.COACode
+			break
+		}
+	}
+	if receivableCOA == "" {
+		return fmt.Errorf("pemetaan %s produk %s tidak punya kaki debit piutang denda",
+			domain.EventLoanPenalty, product.Code)
+	}
+	receivableAcc, err := s.resolver.ResolveGLAccount(ctx, tx, receivableCOA)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: meta.TransactionType,
+		Description:     meta.Description,
+		IdempotencyKey:  meta.IdempotencyKey,
+		CreatedBy:       meta.CreatedBy,
+		BranchCode:      meta.BranchCode,
+		EntryDate:       meta.EntryDate,
+		Lines: []domain.PostingLine{
+			{
+				AccountNumber: payAccount.AccountNumber,
+				Direction:     domain.DirectionDebit,
+				Amount:        amount,
+				Description:   "Pembayaran denda kredit",
+			},
+			{
+				AccountNumber: receivableAcc,
+				Direction:     domain.DirectionCredit,
+				Amount:        amount,
+				Description:   "Pelunasan piutang denda kredit",
+			},
+		},
+	})
+	return err
 }
 
 // postProfitSettlement memposting pembayaran porsi bunga angsuran saat sebagian atau

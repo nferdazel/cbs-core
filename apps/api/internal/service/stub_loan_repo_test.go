@@ -73,6 +73,10 @@ func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uui
 	return nil
 }
 
+func (s *stubLoanRepo) UpdateSchedulePaymentTx(ctx context.Context, _ any, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
+	return s.UpdateSchedulePayment(ctx, scheduleID, paidPrincipal, paidProfit, settleAccrued, status)
+}
+
 func (s *stubLoanRepo) UpdateRestructure(ctx context.Context, loan *domain.Loan, schedules []domain.LoanSchedule) error {
 	s.loan = loan
 	s.schedules = schedules
@@ -85,6 +89,10 @@ func (s *stubLoanRepo) UpdateCollectibility(ctx context.Context, id uuid.UUID, c
 
 func (s *stubLoanRepo) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
 	return nil
+}
+
+func (s *stubLoanRepo) UpdateOutstandingTx(ctx context.Context, _ any, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	return s.UpdateOutstanding(ctx, id, outstanding, penalty)
 }
 
 func (s *stubLoanRepo) ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanPenaltyCandidate, error) {

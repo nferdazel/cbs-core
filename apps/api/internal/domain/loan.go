@@ -237,9 +237,14 @@ type LoanRepository interface {
 	// profit_accrued_amount dikurangi sebesar itu (tidak pernah negatif) sehingga
 	// piutang bunga 10400 nol setelah seluruh angsuran dibayar.
 	UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status InstallmentStatus) error
+	// UpdateSchedulePaymentTx mencatat pembayaran angsuran di dalam transaksi pemanggil
+	// agar jurnal dan perubahan jadwal tidak pernah terpisah.
+	UpdateSchedulePaymentTx(ctx context.Context, tx any, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status InstallmentStatus) error
 	UpdateRestructure(ctx context.Context, loan *Loan, schedules []LoanSchedule) error
 	UpdateCollectibility(ctx context.Context, id uuid.UUID, col OJKCollectibility, dpd int, accrual AccrualStatus, ppap decimal.Decimal) error
 	UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error
+	// UpdateOutstandingTx menyimpan sisa pokok dan denda di dalam transaksi pemanggil.
+	UpdateOutstandingTx(ctx context.Context, tx any, id uuid.UUID, outstanding, penalty decimal.Decimal) error
 	// ListPenaltyCandidates mengambil kredit aktif beserta pokok angsuran yang lewat
 	// jatuh tempo pada asOf dan jatuh tempo angsuran tertua.
 	ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]LoanPenaltyCandidate, error)
