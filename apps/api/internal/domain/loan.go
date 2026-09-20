@@ -185,10 +185,28 @@ type ApplyLoanInput struct {
 	Purpose                string          `json:"purpose"`
 }
 
+// LoanPaymentMethod menentukan dari mana angsuran dibayar. Bank menerima angsuran
+// tunai di kas teller maupun lewat rekening nasabah, dan keduanya menghasilkan jurnal
+// yang berbeda: yang pertama menyentuh kas, yang kedua menyentuh rekening nasabah.
+type LoanPaymentMethod string
+
+const (
+	// LoanPaymentAccount mendebit rekening nasabah. Ini perilaku bawaan bila metode
+	// tidak disebutkan, sehingga pemanggil lama tidak berubah.
+	LoanPaymentAccount LoanPaymentMethod = "ACCOUNT"
+	// LoanPaymentCash mencatat penerimaan tunai di kas teller tanpa menyentuh
+	// rekening nasabah.
+	LoanPaymentCash LoanPaymentMethod = "CASH"
+)
+
 type PayInstallmentInput struct {
-	LoanID        uuid.UUID       `json:"loan_id"`
-	InstallmentNo int             `json:"installment_no"`
-	Amount        decimal.Decimal `json:"amount"`
+	LoanID        uuid.UUID `json:"loan_id"`
+	InstallmentNo int       `json:"installment_no"`
+	// Amount kosong berarti pelunasan penuh angsuran ini beserta dendanya; nominal
+	// yang lebih kecil dicatat sebagai angsuran sebagian.
+	Amount decimal.Decimal `json:"amount"`
+	// Method kosong diperlakukan sebagai LoanPaymentAccount.
+	Method LoanPaymentMethod `json:"method"`
 }
 
 type RestructureLoanInput struct {

@@ -387,6 +387,14 @@ func (s *loanService) ListLoans(ctx context.Context, page, pageSize int, actor d
 // PayInstallment mencatat pembayaran angsuran. Menolak bila kredit belum dicairkan.
 // Nominal yang dibayar diambil dari jadwal bila tidak diberikan.
 func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstallmentInput, actor domain.Actor) (*domain.LoanSchedule, error) {
+	method := input.Method
+	if method == "" {
+		method = domain.LoanPaymentAccount
+	}
+	if method != domain.LoanPaymentAccount && method != domain.LoanPaymentCash {
+		return nil, fmt.Errorf("metode pembayaran %q tidak dikenal", input.Method)
+	}
+
 	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
 	if err != nil {
 		return nil, err
@@ -412,10 +420,6 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	payAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 	if err != nil {
 		return nil, errors.New("rekening pembayaran angsuran tidak ditemukan")
-	}
-	overrides, err := customerAccountOverrides(product, payAccount)
-	if err != nil {
-		return nil, err
 	}
 	var target *domain.LoanSchedule
 	for i := range schedules {
@@ -498,19 +502,27 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		target.PaidPrincipal.Add(allocation.Principal).StringFixed(2),
 		target.PaidProfit.Add(allocation.Profit).StringFixed(2))
 	meta := PostingMeta{
-		TransactionType:  domain.TxTypeTransferInternal,
-		Description:      fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
-		CreatedBy:        actor.DisplayName(),
-		BranchCode:       actor.BranchCode,
-		AccountOverrides: overrides,
+		TransactionType: domain.TxTypeTransferInternal,
+		Description:     fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
+		CreatedBy:       actor.DisplayName(),
+		BranchCode:      actor.BranchCode,
 	}
 
 	err = s.txRunner.Run(ctx, func(tx any) error {
+		// Sumber dana ditentukan di dalam transaksi: penerimaan tunai mengarahkan kaki
+		// debit ke kas teller, sedangkan pembayaran lewat rekening mengarahkannya ke
+		// rekening nasabah (bawaan).
+		funding, err := s.fundingSource(ctx, tx, product, payAccount, method)
+		if err != nil {
+			return err
+		}
+		meta.AccountOverrides = funding.overrides
+
 		if allocation.Penalty.IsPositive() {
 			penaltyMeta := meta
 			penaltyMeta.IdempotencyKey = baseKey + "-PEN"
 			penaltyMeta.Description = fmt.Sprintf("Pembayaran denda kredit %s", loan.LoanNumber)
-			if err := s.postPenaltyCollection(ctx, tx, product, penaltyMeta, payAccount, allocation.Penalty); err != nil {
+			if err := s.postPenaltyCollection(ctx, tx, product, penaltyMeta, funding.accountNumber, allocation.Penalty); err != nil {
 				return fmt.Errorf("jurnal pembayaran denda: %w", err)
 			}
 		}
@@ -550,6 +562,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		if err := writeAudit(ctx, s.auditRepo, tx, actor, "PAY_INSTALLMENT", "loan", loan.ID.String(), map[string]any{
 			"loan_number":           loan.LoanNumber,
 			"installment_no":        input.InstallmentNo,
+			"payment_method":        string(method),
 			"amount":                amount.StringFixed(2),
 			"penalty":               allocation.Penalty.StringFixed(2),
 			"profit":                allocation.Profit.StringFixed(2),
@@ -601,12 +614,65 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 // konvensional, 11700 syariah) sehingga tidak ada kode akun yang dikarang di sini.
 // Kaki CREDIT pemetaan itu adalah pendapatan denda / dana kebajikan dan hanya dipakai
 // saat AKRUAL; memakainya lagi di sini akan mengakui pendapatan dua kali.
+// Sumber dana pembayaran angsuran. Pemetaan produk memakai akun kontrol tabungan untuk
+// kaki debit pembayaran, sehingga override-nya dikunci per kode COA rekening nasabah.
+// Mengikuti bagan COA migrasi 000005: 10101 Kas Teller, 11100 Kas Syariah.
+const (
+	configCashCOAConv = "payment.cash.coa.conventional"
+	configCashCOASyar = "payment.cash.coa.syariah"
+
+	defaultCashCOAConv = "10101"
+	defaultCashCOASyar = "11100"
+)
+
+// fundingSource adalah asal dana satu pembayaran angsuran: nomor akun yang didebit dan
+// override pemetaan yang membuat jurnal produk mengarah ke akun itu.
+type fundingSource struct {
+	accountNumber string
+	overrides     map[string]string
+}
+
+// configString membaca konfigurasi teks dengan nilai cadangan; cfg nil (mis. pada test)
+// mengembalikan cadangan.
+func (s *loanService) configString(ctx context.Context, key, fallback string) string {
+	if s.config == nil {
+		return fallback
+	}
+	return s.config.GetString(ctx, key, fallback)
+}
+
+// fundingSource menentukan dari mana angsuran dibayar. Pembayaran tunai mengarahkan
+// kaki debit ke kas teller sesuai buku produk; rekening nasabah tidak disentuh sama
+// sekali, karena uangnya diterima di kas, bukan dipindahkan dari rekeningnya.
+func (s *loanService) fundingSource(ctx context.Context, tx any, product *domain.BankingProduct, account *domain.Account, method domain.LoanPaymentMethod) (fundingSource, error) {
+	overrides, err := customerAccountOverrides(product, account)
+	if err != nil {
+		return fundingSource{}, err
+	}
+	if method != domain.LoanPaymentCash {
+		return fundingSource{accountNumber: account.AccountNumber, overrides: overrides}, nil
+	}
+
+	key, fallback := configCashCOAConv, defaultCashCOAConv
+	if product.Book == domain.BookSyariah {
+		key, fallback = configCashCOASyar, defaultCashCOASyar
+	}
+	cashAccount, err := s.resolver.ResolveGLAccount(ctx, tx, s.configString(ctx, key, fallback))
+	if err != nil {
+		return fundingSource{}, fmt.Errorf("akun kas teller: %w", err)
+	}
+	for coa := range overrides {
+		overrides[coa] = cashAccount
+	}
+	return fundingSource{accountNumber: cashAccount, overrides: overrides}, nil
+}
+
 func (s *loanService) postPenaltyCollection(
 	ctx context.Context,
 	tx any,
 	product *domain.BankingProduct,
 	meta PostingMeta,
-	payAccount *domain.Account,
+	fundingAccount string,
 	amount decimal.Decimal,
 ) error {
 	rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanPenalty)
@@ -638,7 +704,7 @@ func (s *loanService) postPenaltyCollection(
 		EntryDate:       meta.EntryDate,
 		Lines: []domain.PostingLine{
 			{
-				AccountNumber: payAccount.AccountNumber,
+				AccountNumber: fundingAccount,
 				Direction:     domain.DirectionDebit,
 				Amount:        amount,
 				Description:   "Pembayaran denda kredit",

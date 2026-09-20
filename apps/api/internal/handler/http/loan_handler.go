@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 type LoanHandler struct {
@@ -178,16 +180,29 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		InstallmentNo int `json:"installment_no"`
+		InstallmentNo int             `json:"installment_no"`
+		Amount        decimal.Decimal `json:"amount"`
+		Method        string          `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.InstallmentNo <= 0 {
 		Error(w, http.StatusBadRequest, "valid installment_no is required")
 		return
 	}
 
+	method := domain.LoanPaymentMethod(strings.ToUpper(strings.TrimSpace(body.Method)))
+	if method == "" {
+		method = domain.LoanPaymentAccount
+	}
+	if method != domain.LoanPaymentAccount && method != domain.LoanPaymentCash {
+		Error(w, http.StatusBadRequest, "method harus ACCOUNT atau CASH")
+		return
+	}
+
 	input := domain.PayInstallmentInput{
 		LoanID:        id,
 		InstallmentNo: body.InstallmentNo,
+		Amount:        body.Amount,
+		Method:        method,
 	}
 
 	schedule, err := h.loanSvc.PayInstallment(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
