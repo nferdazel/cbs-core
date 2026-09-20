@@ -100,7 +100,7 @@ func main() {
 	executors.Register(service.ActionReverse, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo, auditRepo)
-	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, auditRepo)
+	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, dateRepo, auditRepo)
 	// Hapus buku dan recovery kredit dieksekusi setelah disetujui pejabat kedua.
 	executors.Register(service.ActionLoanWriteOff, loanSvc)
 	executors.Register(service.ActionLoanRecovery, loanSvc)

@@ -122,4 +122,17 @@ func (s *stubLoanRepo) AddScheduleProfitAccruedTx(ctx context.Context, tx any, s
 	return false, nil
 }
 
+func (s *stubLoanRepo) HasInstallmentPaymentTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+func (s *stubLoanRepo) DeleteSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) error {
+	s.schedules = nil
+	return nil
+}
+
+func (s *stubLoanRepo) GetDisbursementJournalRefTx(ctx context.Context, tx any, loanNumber string) (string, error) {
+	return "REF-DISB", nil
+}
+
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

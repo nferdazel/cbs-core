@@ -571,4 +571,55 @@ func (r *LoanRepository) AddScheduleProfitAccruedTx(ctx context.Context, tx any,
 	return affected > 0, nil
 }
 
+// HasInstallmentPaymentTx mendeteksi angsuran yang sudah dibayar. Satu baris saja
+// yang punya paid_principal/paid_profit bukan nol atau status selain PENDING sudah
+// cukup: uang dan jadwal sudah berjalan sehingga pencairan tidak boleh dibatalkan.
+func (r *LoanRepository) HasInstallmentPaymentTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("loan: transaksi tidak valid")
+	}
+	q := `SELECT COUNT(*)
+		FROM loan_schedules
+		WHERE loan_id = $1
+		  AND (paid_principal <> 0 OR paid_profit <> 0 OR status <> 'PENDING')`
+	var count int
+	if err := sqlTx.QueryRowContext(ctx, q, loanID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// DeleteSchedulesTx menghapus seluruh jadwal angsuran satu kredit. Pola yang sama
+// dipakai jalur restrukturisasi yang mengganti jadwal lama dengan jadwal baru.
+func (r *LoanRepository) DeleteSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `DELETE FROM loan_schedules WHERE loan_id = $1`, loanID)
+	return err
+}
+
+// GetDisbursementJournalRefTx mengambil nomor referensi jurnal pencairan kredit.
+// Jurnal pencairan tidak menyimpan nomor kredit, jadi pencariannya lewat
+// idempotency_key yang dibentuk DisburseLoan ("DISB-"+nomor kredit).
+func (r *LoanRepository) GetDisbursementJournalRefTx(ctx context.Context, tx any, loanNumber string) (string, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return "", errors.New("loan: transaksi tidak valid")
+	}
+	var ref string
+	err := sqlTx.QueryRowContext(ctx,
+		`SELECT reference_number FROM journal_entries WHERE idempotency_key = $1`,
+		"DISB-"+loanNumber).Scan(&ref)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("jurnal pencairan kredit %s tidak ditemukan", loanNumber)
+	}
+	if err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
 var _ domain.LoanRepository = (*LoanRepository)(nil)

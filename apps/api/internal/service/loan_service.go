@@ -12,17 +12,32 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// loanLedger menggabungkan resolusi akun GL dengan operasi jurnal yang dibutuhkan
+// pembatalan pencairan. Satu implementasi produksi (LedgerRepository postgres)
+// memenuhi keduanya, sehingga service tidak perlu ketergantungan melingkar ke
+// ledgerService hanya untuk membaca dan menandai jurnal.
+type loanLedger interface {
+	domain.AccountResolver
+	domain.LedgerRepository
+}
+
 type loanService struct {
 	db          *sql.DB
 	loanRepo    domain.LoanRepository
 	productRepo domain.ProductRepository
 	accountRepo domain.AccountRepository
 	resolver    domain.AccountResolver
+	// ledgerRepo dipakai membalik jurnal pencairan saat pencairan dibatalkan.
+	ledgerRepo domain.LedgerRepository
 	poster      *ProductPoster
 	posting     domain.PostingService
 	references  domain.ReferenceGenerator
 	config      domain.SystemConfigService
 	auditRepo   domain.AuditRepository
+	// dates membaca tanggal bisnis berjalan. Jurnal kontra harus bertanggal bisnis,
+	// bukan tanggal kalender; boleh nil, dan bila nil pembatalan ditolak alih-alih
+	// menebak tanggal.
+	dates domain.BusinessDateRepository
 	// approvals menahan operasi kredit yang wajib disetujui pejabat kedua. Boleh nil
 	// (mis. pada test atau bila maker-checker belum disiapkan): operasi berjalan
 	// langsung seperti sebelumnya.
@@ -37,12 +52,13 @@ func NewLoanService(
 	loanRepo domain.LoanRepository,
 	productRepo domain.ProductRepository,
 	accountRepo domain.AccountRepository,
-	resolver domain.AccountResolver,
+	ledger loanLedger,
 	poster *ProductPoster,
 	posting domain.PostingService,
 	references domain.ReferenceGenerator,
 	config domain.SystemConfigService,
 	approvals domain.MakerCheckerService,
+	dates domain.BusinessDateRepository,
 	auditSinks ...domain.AuditRepository,
 ) domain.LoanService {
 	var auditRepo domain.AuditRepository
@@ -54,12 +70,14 @@ func NewLoanService(
 		loanRepo:    loanRepo,
 		productRepo: productRepo,
 		accountRepo: accountRepo,
-		resolver:    resolver,
+		resolver:    ledger,
+		ledgerRepo:  ledger,
 		poster:      poster,
 		posting:     posting,
 		references:  references,
 		config:      config,
 		auditRepo:   auditRepo,
+		dates:       dates,
 		approvals:   approvals,
 		txRunner:    sqlPPAPTxRunner{db: db},
 	}
@@ -1272,4 +1290,158 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		return nil, err
 	}
 	return loan, nil
+}
+
+// CancelDisbursementLoan membatalkan pencairan kredit sepenuhnya. Hanya kredit
+// DISBURSED yang belum menerima angsuran yang boleh dibatalkan: setelah uang
+// masuk, jurnal dan jadwal sudah berjalan dan koreksinya bukan pembatalan.
+//
+// Seluruh efek berada dalam satu transaksi: jurnal pencairan dibalik, jurnal
+// asal ditandai REVERSED, jadwal angsuran dihapus, status CANCELLED, sisa pokok
+// dinolkan, dan audit ditulis. Terpisah, kegagalan di antaranya akan meninggalkan
+// kredit yang jurnalnya sudah dibatalkan tetapi tagihannya masih menggantung.
+func (s *loanService) CancelDisbursementLoan(ctx context.Context, input domain.CancelLoanInput, actor domain.Actor) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	// Pembatalan pencairan lebih sensitif daripada pencairan. Kredit cabang lain
+	// disamarkan sebagai tidak ditemukan agar keberadaannya tidak terbocor.
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrLoanNotFound
+	}
+	if loan.Status != domain.LoanStatusDisbursed {
+		return nil, domain.ErrLoanNotCancellable
+	}
+	if input.Reason == "" {
+		return nil, errors.New("alasan pembatalan pencairan wajib diisi")
+	}
+
+	if err := s.txRunner.Run(ctx, func(tx any) error {
+		// Pemeriksaan angsuran dilakukan di dalam transaksi agar tidak ada
+		// pembayaran yang menyelinap di antara guard dan eksekusi.
+		paid, err := s.loanRepo.HasInstallmentPaymentTx(ctx, tx, loan.ID)
+		if err != nil {
+			return err
+		}
+		if paid {
+			return domain.ErrLoanHasInstallmentPayments
+		}
+
+		ref, err := s.loanRepo.GetDisbursementJournalRefTx(ctx, tx, loan.LoanNumber)
+		if err != nil {
+			return err
+		}
+		original, err := s.ledgerRepo.GetJournalByRef(ctx, ref)
+		if err != nil {
+			return fmt.Errorf("membaca jurnal pencairan %s: %w", ref, err)
+		}
+
+		posted, err := s.postLoanReversalTx(ctx, tx, original, loan, input.Reason, actor)
+		if err != nil {
+			return err
+		}
+		if err := s.loanRepo.DeleteSchedulesTx(ctx, tx, loan.ID); err != nil {
+			return fmt.Errorf("menghapus jadwal angsuran: %w", err)
+		}
+		if err := s.loanRepo.UpdateStatusTx(ctx, tx, loan.ID, domain.LoanStatusCancelled, &actor.UserID); err != nil {
+			return fmt.Errorf("membatalkan status kredit: %w", err)
+		}
+		// Sisa pokok dan denda dinolkan karena tagihan yang mendasarinya tidak ada.
+		if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, decimal.Zero); err != nil {
+			return fmt.Errorf("menolkan sisa pokok kredit: %w", err)
+		}
+		return writeAudit(ctx, s.auditRepo, tx, actor, "CANCEL_DISBURSEMENT_LOAN", "loan", loan.ID.String(), map[string]any{
+			"loan_number":        loan.LoanNumber,
+			"reason":             input.Reason,
+			"reversed_reference": original.ReferenceNumber,
+			"reversal_reference": posted.ReferenceNumber,
+			"amount":             loan.OutstandingPrincipal.StringFixed(2),
+		})
+	}); err != nil {
+		return nil, err
+	}
+
+	loan.Status = domain.LoanStatusCancelled
+	loan.OutstandingPrincipal = decimal.Zero
+	loan.PenaltyAccrued = decimal.Zero
+	loan.Schedules = nil
+	return loan, nil
+}
+
+// businessDate membaca tanggal bisnis berjalan dari repositori tanggal, bukan dari
+// layanan konfigurasi yang menyimpan nilainya di cache: nilai yang basi membuat jurnal
+// kontra jatuh di periode yang salah.
+func (s *loanService) businessDate(ctx context.Context) (time.Time, error) {
+	if s.dates == nil {
+		return time.Time{}, errors.New("sumber tanggal bisnis belum terpasang")
+	}
+	current, err := s.dates.GetCurrentDate(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("membaca tanggal bisnis: %w", err)
+	}
+	if current == nil || current.CurrentDate.IsZero() {
+		return time.Time{}, errors.New("tanggal bisnis tidak tersedia")
+	}
+	return current.CurrentDate, nil
+}
+
+// postLoanReversalTx menulis jurnal kontra atas jurnal pencairan di dalam transaksi
+// pemanggil. Ini salinan kecil dari ledgerService.postReversalTx: kedua service
+// tidak boleh saling bergantung, dan pembatalan pencairan punya konsekuensi domain
+// sendiri. Arah baris ditukar dan nominal tetap penuh — tidak ada pembatalan sebagian.
+func (s *loanService) postLoanReversalTx(ctx context.Context, tx any, original *domain.JournalEntry, loan *domain.Loan, reason string, actor domain.Actor) (*domain.JournalEntry, error) {
+	if len(original.Lines) == 0 {
+		return nil, fmt.Errorf("jurnal pencairan %s tidak memiliki baris untuk dibalik", original.ReferenceNumber)
+	}
+	lines := make([]domain.PostingLine, 0, len(original.Lines))
+	for _, line := range original.Lines {
+		if line.AccountNumber == "" {
+			return nil, fmt.Errorf("baris jurnal %s tidak memiliki nomor rekening", line.ID)
+		}
+		direction := domain.DirectionDebit
+		if line.Direction == domain.DirectionDebit {
+			direction = domain.DirectionCredit
+		}
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: line.AccountNumber,
+			Direction:     direction,
+			Amount:        line.Amount,
+			Description:   "Pembatalan pencairan " + loan.LoanNumber,
+		})
+	}
+
+	// Tanggal bisnis berjalan, bukan tanggal kalender. Pembatalan yang jatuh di periode
+	// yang belum dibuka tidak akan ikut terhitung tutup hari, sehingga buku cabang
+	// berbeda dari kenyataan sampai tutup hari menyusul.
+	entryDate, err := s.businessDate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	posted, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: domain.TxTypeReversal,
+		EntryDate:       entryDate,
+		Description:     fmt.Sprintf("Pembatalan pencairan kredit %s — %s", loan.LoanNumber, reason),
+		// Kunci tetap per jurnal asal: pengulangan mengembalikan jurnal kontra yang
+		// sama, bukan membuat pembalikan kedua.
+		IdempotencyKey: "REV-" + original.ReferenceNumber,
+		CreatedBy:      actor.DisplayName(),
+		// Cabang mewarisi jurnal asal; tanpa ini kontra tersimpan bank-wide dan
+		// laporan per cabang tidak lagi mencerminkan asalnya.
+		BranchCode: original.BranchCode,
+		Source:     domain.SourceLoan,
+		Lines:      lines,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("jurnal kontra pencairan: %w", err)
+	}
+
+	// Penandaan status asal berada di transaksi yang sama dengan jurnal kontranya:
+	// terpisah, kegagalan di antaranya meninggalkan jurnal POSTED padahal sudah ada
+	// kontranya, dan pembalikan kedua bisa lolos.
+	if err := s.ledgerRepo.MarkJournalReversed(ctx, tx, original.ReferenceNumber); err != nil {
+		return nil, err
+	}
+	return posted, nil
 }

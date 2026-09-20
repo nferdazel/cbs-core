@@ -217,6 +217,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/{id}/reject", p.LoanHandler.Reject)
 				r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 					Post("/{id}/disburse", p.LoanHandler.Disburse)
+				// Pembatalan pencairan lebih sensitif daripada pencairan: hanya peran
+				// tertinggi (Superadmin/Admin) yang memegang loans:cancel.
+				r.With(middleware.RequirePermission(domain.PermLoansCancel)).
+					Post("/{id}/cancel-disbursement", p.LoanHandler.CancelDisbursement)
 				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
 					Post("/{id}/pay-installment", p.LoanHandler.PayInstallment)
 				r.With(middleware.RequirePermission(domain.PermLoansApprove)).

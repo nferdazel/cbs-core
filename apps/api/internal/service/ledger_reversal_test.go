@@ -54,6 +54,10 @@ func (r *reversalTxRunner) Run(ctx context.Context, fn func(tx any) error) error
 // Tanggal dibaca dari repositori tanggal bisnis, bukan dari layanan konfigurasi: nilai di
 // layanan konfigurasi di-cache 60 detik, dan selama jeda itu pembatalan lintas hari akan
 // dinilai sebagai transaksi hari berjalan.
+// tanggalBisnisUji adalah tanggal bisnis tetap untuk uji: berbeda dari tanggal kalender
+// mana pun, sehingga tertangkap bila ada jalur yang memakai tanggal kalender.
+var tanggalBisnisUji = time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
+
 type reversalDateRepo struct {
 	domain.BusinessDateRepository
 	date time.Time
@@ -204,6 +208,12 @@ func TestReverse_MembuatKontraDanMenandaiJurnalAsal(t *testing.T) {
 	// Jurnal kontra dibuat alur yang sama dengan jurnal asal yang dibatalkannya.
 	if f.posting.last.Source != domain.SourceTeller {
 		t.Fatalf("alur jurnal kontra %q, mau TELLER", f.posting.last.Source)
+	}
+	// Tanggal jurnal kontra adalah tanggal bisnis berjalan, bukan tanggal kalender.
+	// Bila memakai tanggal kalender, pembatalan yang dijalankan saat tutup hari
+	// tertinggal akan jatuh di periode yang belum dibuka dan terlewat oleh tutup hari.
+	if !f.posting.last.EntryDate.Equal(tanggalBisnisUji) {
+		t.Fatalf("tanggal jurnal kontra %s, mau tanggal bisnis %s", f.posting.last.EntryDate, tanggalBisnisUji)
 	}
 
 	if len(f.repo.markedRef) != 1 || f.repo.markedRef[0] != "DEP-20260920-0001" {

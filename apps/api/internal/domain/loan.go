@@ -238,6 +238,14 @@ type RecoverWrittenOffLoanInput struct {
 	RecoveryAmount decimal.Decimal `json:"recovery_amount"`
 }
 
+// CancelLoanInput membatalkan pencairan kredit yang belum pernah menerima
+// angsuran. Reason wajib diisi: pembatalan yang membalik jurnal dan menghapus
+// seluruh jadwal tagihan harus dapat dipertanggungjawabkan.
+type CancelLoanInput struct {
+	LoanID uuid.UUID `json:"loan_id"`
+	Reason string    `json:"reason"`
+}
+
 // ProfitSchemeLabel menurunkan label skema imbal hasil untuk keperluan dokumen.
 func (l *Loan) ProfitSchemeLabel() string {
 	if l.ProfitSharingRatio.IsPositive() {
@@ -292,6 +300,18 @@ type LoanRepository interface {
 	// satu angsuran tidak pernah diakru dua kali. Nilai kembali false berarti angsuran
 	// itu sudah pernah diakru (replay idempoten).
 	AddScheduleProfitAccruedTx(ctx context.Context, tx any, scheduleID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedAt time.Time) (bool, error)
+	// HasInstallmentPaymentTx melaporkan apakah sudah ada angsuran yang dibayar atau
+	// tidak lagi PENDING. Selama masih seluruhnya PENDING, pencairan belum menyentuh
+	// uang dan jadwal, sehingga aman dibatalkan penuh.
+	HasInstallmentPaymentTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error)
+	// DeleteSchedulesTx menghapus seluruh jadwal angsuran satu kredit di dalam
+	// transaksi pemanggil. Kredit yang dibatalkan tidak pernah ada sebagai tagihan,
+	// jadi jadwalnya tidak boleh tertinggal menggantung.
+	DeleteSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) error
+	// GetDisbursementJournalRefTx mengambil nomor referensi jurnal pencairan kredit.
+	// Jurnal pencairan tidak menyimpan nomor kredit, jadi pencariannya lewat
+	// idempotency_key yang dibentuk DisburseLoan ("DISB-"+nomor kredit).
+	GetDisbursementJournalRefTx(ctx context.Context, tx any, loanNumber string) (string, error)
 }
 
 type LoanService interface {
@@ -309,6 +329,10 @@ type LoanService interface {
 	// baru terjadi saat ExecuteApproved dipanggil maker-checker.
 	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, actor Actor) (*Loan, error)
 	RecoverWrittenOffLoan(ctx context.Context, input RecoverWrittenOffLoanInput, actor Actor) (*Loan, error)
+	// CancelDisbursementLoan membatalkan pencairan kredit yang belum memiliki
+	// angsuran dibayar: jurnal pencairan dibalik, jadwal dihapus, status CANCELLED,
+	// dan sisa pokok nol. Seluruh efeknya berada dalam satu transaksi.
+	CancelDisbursementLoan(ctx context.Context, input CancelLoanInput, actor Actor) (*Loan, error)
 	// ExecuteApproved menjalankan hapus buku atau recovery yang sudah disetujui
 	// maker-checker, di dalam transaksi milik pemanggil.
 	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error

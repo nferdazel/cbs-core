@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -636,8 +637,25 @@ func (s *ledgerService) postReversalTx(ctx context.Context, tx any, original *do
 		return nil, fmt.Errorf("jurnal %s tidak memiliki sisi debit", original.ReferenceNumber)
 	}
 
+	// Tanggal bisnis berjalan, bukan tanggal kalender. Pembatalan yang jatuh di periode
+	// yang belum dibuka tidak akan ikut terhitung tutup hari, sehingga buku cabang
+	// berbeda dari kenyataan sampai tutup hari menyusul.
+	var entryDate time.Time
+	if s.dateRepo == nil {
+		return nil, errors.New("sumber tanggal bisnis belum terpasang")
+	}
+	current, err := s.dateRepo.GetCurrentDate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("membaca tanggal bisnis: %w", err)
+	}
+	if current == nil || current.CurrentDate.IsZero() {
+		return nil, errors.New("tanggal bisnis tidak tersedia")
+	}
+	entryDate = current.CurrentDate
+
 	posted, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
 		TransactionType: domain.TxTypeReversal,
+		EntryDate:       entryDate,
 		Description:     fmt.Sprintf("Pembatalan %s — %s", original.ReferenceNumber, reason),
 		// Kunci tetap per jurnal asal: permintaan ulang mengembalikan jurnal kontra yang
 		// sama, bukan membuat pembalikan kedua.
