@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,9 +31,13 @@ func (s *stubBusinessDateRepo) AdvanceDate(ctx context.Context, nextDate time.Ti
 	return nil
 }
 
-func (s *stubBusinessDateRepo) SetStatus(ctx context.Context, status domain.BusinessDateStatus) error {
-	s.status = status
-	return nil
+// ClaimEOD meniru compare-and-swap: klaim gagal bila tanggal sudah ditutup.
+func (s *stubBusinessDateRepo) ClaimEOD(ctx context.Context) (bool, error) {
+	if s.status == domain.BusinessDateStatusClosed {
+		return false, nil
+	}
+	s.status = domain.BusinessDateStatusEOD
+	return true, nil
 }
 
 func TestBatchProcessService_RunEOD(t *testing.T) {
@@ -52,6 +57,24 @@ func TestBatchProcessService_RunEOD(t *testing.T) {
 	expectedNext := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
 	if !res.NextBusinessDate.Equal(expectedNext) {
 		t.Fatalf("expected next business date 2026-09-03, got %s", res.NextBusinessDate.Format("2006-01-02"))
+	}
+}
+
+// Tanggal bisnis yang sudah CLOSED tidak boleh ditutup lagi. Keputusan ini datang
+// dari hasil klaim (compare-and-swap), bukan dari pembacaan status yang terpisah.
+func TestRunEODRejectsClosedBusinessDate(t *testing.T) {
+	initDate := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
+	dateRepo := &stubBusinessDateRepo{currentDate: initDate, status: domain.BusinessDateStatusClosed}
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	if _, err := svc.RunEOD(context.Background(), uuid.New()); !errors.Is(err, domain.ErrEODAlreadyRunForDate) {
+		t.Fatalf("tanggal tertutup harus ditolak ErrEODAlreadyRunForDate, dapat %v", err)
+	}
+	if dateRepo.status != domain.BusinessDateStatusClosed {
+		t.Fatalf("status tidak boleh berubah, dapat %s", dateRepo.status)
+	}
+	if !dateRepo.currentDate.Equal(initDate) {
+		t.Fatalf("tanggal bisnis tidak boleh maju, dapat %s", dateRepo.currentDate.Format("2006-01-02"))
 	}
 }
 

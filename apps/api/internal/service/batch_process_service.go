@@ -84,13 +84,15 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 		return nil, err
 	}
 
-	if curDate.Status == domain.BusinessDateStatusClosed {
-		return nil, domain.ErrEODAlreadyRunForDate
+	// 1. Klaim tanggal bisnis untuk tutup hari dalam satu statement. Pola
+	// baca-lalu-tulis sebelumnya membuat dua permintaan tutup hari yang datang
+	// bersamaan dapat sama-sama lolos dan menjalankan pekerjaan harian dua kali.
+	claimed, err := s.dateRepo.ClaimEOD(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("mengunci sistem untuk tutup hari: %w", err)
 	}
-
-	// 1. Mark status as IN_EOD_PROCESSING
-	if err := s.dateRepo.SetStatus(ctx, domain.BusinessDateStatusEOD); err != nil {
-		return nil, fmt.Errorf("failed to lock system for EOD: %w", err)
+	if !claimed {
+		return nil, domain.ErrEODAlreadyRunForDate
 	}
 
 	// 2. Pekerjaan harian dijalankan untuk tanggal bisnis yang sedang ditutup,

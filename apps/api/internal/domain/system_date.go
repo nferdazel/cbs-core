@@ -75,7 +75,11 @@ type EOYSummaryResult struct {
 type BusinessDateRepository interface {
 	GetCurrentDate(ctx context.Context) (*SystemBusinessDate, error)
 	AdvanceDate(ctx context.Context, nextDate time.Time, updatedBy uuid.UUID) error
-	SetStatus(ctx context.Context, status BusinessDateStatus) error
+	// ClaimEOD memindahkan status tanggal bisnis ke EOD dalam SATU statement, dan
+	// menolak bila tanggal sudah CLOSED. Hasil false berarti tutup hari tidak boleh
+	// dijalankan. Ini menggantikan pola baca-lalu-tulis yang membuat dua permintaan
+	// bersamaan dapat sama-sama lolos dan menjalankan pekerjaan harian dua kali.
+	ClaimEOD(ctx context.Context) (bool, error)
 }
 
 type BatchProcessService interface {
