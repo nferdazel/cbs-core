@@ -209,6 +209,37 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 	}
 }
 
+// eomPeriod menentukan periode bulan yang ditutup oleh EOM, sekaligus menolak
+// menjalankannya di luar dua keadaan yang sah.
+//
+// Tutup buku bulanan menutup satu bulan penuh dan membayarkan bunga/bagi hasil bulan
+// itu ke rekening nasabah. Dijalankan pada hari terakhir bulan tersebut, atau pada hari
+// pertama bulan berikutnya bila tutup hari terakhir sudah dijalankan lebih dulu (tanggal
+// bisnis sudah maju satu hari). Di luar keduanya, akrual memakai bulan yang belum
+// selesai: bank membayarkan bunga untuk periode yang belum dijalani nasabah.
+func eomPeriod(businessDate time.Time) (time.Time, error) {
+	first := time.Date(businessDate.Year(), businessDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	last := first.AddDate(0, 1, -1)
+
+	switch {
+	case sameBusinessDay(businessDate, last):
+		return first, nil
+	case sameBusinessDay(businessDate, first):
+		return first.AddDate(0, -1, 0), nil
+	default:
+		return time.Time{}, fmt.Errorf(
+			"EOM hanya dapat dijalankan pada hari terakhir bulan yang ditutup atau pada hari pertama bulan berikutnya; tanggal bisnis sekarang %s",
+			businessDate.Format("2006-01-02"))
+	}
+}
+
+// sameBusinessDay membandingkan tanggal saja, tanpa jam dan zona.
+func sameBusinessDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
 // RunEOM menjalankan akrual bunga/bagi hasil tabungan periode berjalan dan memotong
 // biaya administrasi bulanan. Tidak ada tarif yang diterima dari pemanggil: tarif
 // dibaca dari produk dan system_config. Ringkasan diisi dari hasil nyata tiap rekening.
@@ -221,7 +252,10 @@ func (s *batchProcessService) RunEOM(ctx context.Context, executedBy uuid.UUID) 
 		return nil, errors.New("layanan akrual tabungan belum dikonfigurasi")
 	}
 
-	period := time.Date(curDate.CurrentDate.Year(), curDate.CurrentDate.Month(), 1, 0, 0, 0, 0, time.UTC)
+	period, err := eomPeriod(curDate.CurrentDate)
+	if err != nil {
+		return nil, err
+	}
 	createdBy := executedBy.String()
 
 	interest, err := s.savingsSvc.AccrueAll(ctx, period, "", createdBy)
