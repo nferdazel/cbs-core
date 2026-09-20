@@ -670,7 +670,7 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	// bersih berturut-turut. required_ppap sengaja TIDAK dihitung ulang di sini:
 	// nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP yang boleh
 	// mengubahnya karena ia pula yang memposting selisih jurnalnya.
-	col := CollectibilityForDPD(ctx, s.config, loan.DPD)
+	col := CollectibilityForPosition(ctx, s.config, loan.DPD, DaysPastMaturity(now, loan.FinalDueDate))
 	col = domain.RestructureCollectibility(before, col, 0)
 	loan.Collectibility = col.OJKCode()
 	loan.AccrualStatus = AccrualForCollectibility(col)

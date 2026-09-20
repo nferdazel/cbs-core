@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/shopspring/decimal"
@@ -46,11 +47,21 @@ func collectibilityRates(ctx context.Context, config domain.SystemConfigService)
 	return out
 }
 
-// CollectibilityForDPD adalah satu-satunya jalur penentuan golongan kredit dari
-// keterlambatan angsuran. Golongan 3-5 (NPL) memakai cash basis sesuai POJK; pakai
-// AccrualForCollectibility untuk golongan yang sudah dibatasi/diubah pemanggil.
-func CollectibilityForDPD(ctx context.Context, config domain.SystemConfigService, dpd int) domain.Collectibility {
-	return domain.CollectibilityFromDPD(dpd, collectibilityThresholds(ctx, config))
+// CollectibilityForPosition adalah satu-satunya jalur penentuan golongan kredit di
+// service: ia memakai dimensi tunggakan angsuran (dpd) dan dimensi jatuh tempo Kredit
+// dengan konfigurasi yang sama, sehingga PPAP harian, restrukturisasi, dan akrual
+// bunga tidak pernah memakai aturan yang berbeda.
+func CollectibilityForPosition(ctx context.Context, config domain.SystemConfigService, dpd, daysPastMaturity int) domain.Collectibility {
+	return domain.CollectibilityFromPosition(dpd, daysPastMaturity, collectibilityThresholds(ctx, config))
+}
+
+// DaysPastMaturity menghitung umur Kredit sejak jatuh tempo terakhirnya dalam hari.
+// Nilai 0 berarti Kredit belum jatuh tempo, atau jadwalnya belum diketahui.
+func DaysPastMaturity(asOf time.Time, finalDueDate *time.Time) int {
+	if finalDueDate == nil {
+		return 0
+	}
+	return daysPastDue(asOf, *finalDueDate)
 }
 
 // AccrualForCollectibility memetakan golongan akhir ke status akrualnya. Wajib

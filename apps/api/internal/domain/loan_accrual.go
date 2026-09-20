@@ -29,6 +29,9 @@ type LoanInterestAccrualCandidate struct {
 	// OldestDueDate adalah jatuh tempo angsuran tertua yang belum dibayar, dipakai
 	// untuk menghitung DPD dan kolektibilitas lewat aturan yang sama dengan PPAP.
 	OldestDueDate *time.Time
+	// FinalDueDate adalah jatuh tempo angsuran terakhir Kredit, dipakai menilai
+	// dimensi "Kredit telah jatuh tempo" bersama DPD.
+	FinalDueDate *time.Time
 }
 
 // LoanInterestAccrualItem adalah hasil pemrosesan satu angsuran.

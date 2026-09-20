@@ -31,7 +31,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	akad_number, akad_date, purpose,
 	ao_id, approved_by, approved_at, disbursed_at,
 	created_at, updated_at,
-	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), '')`
+	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), ''),
+	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id)`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -39,6 +40,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var approvedAt, disbursedAt, restructuredAt, akadDate sql.NullTime
 	var restructuringReason, akadNumber, purpose sql.NullString
 	var preRestructure sql.NullString
+	var finalDue sql.NullTime
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -51,6 +53,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&aoID, &approvedBy, &approvedAt, &disbursedAt,
 		&l.CreatedAt, &l.UpdatedAt,
 		&l.BranchCode,
+		&finalDue,
 	)
 	if err != nil {
 		return nil, err
@@ -86,6 +89,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	}
 	if purpose.Valid {
 		l.Purpose = purpose.String
+	}
+	if finalDue.Valid {
+		l.FinalDueDate = &finalDue.Time
 	}
 	return &l, nil
 }
@@ -451,7 +457,9 @@ const listInterestAccrualCandidatesQuery = `
 		s.due_date,
 		GREATEST(s.profit_amount - s.paid_profit, 0) AS outstanding_profit,
 		(SELECT MIN(s2.due_date) FROM loan_schedules s2
-			WHERE s2.loan_id = l.id AND s2.status <> 'PAID') AS oldest_due_date
+			WHERE s2.loan_id = l.id AND s2.status <> 'PAID') AS oldest_due_date,
+		(SELECT MAX(sf.due_date) FROM loan_schedules sf
+			WHERE sf.loan_id = l.id) AS final_due_date
 	FROM loans l
 	JOIN loan_schedules s
 		ON s.loan_id = l.id
@@ -475,11 +483,12 @@ func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf
 		var c domain.LoanInterestAccrualCandidate
 		var productID sql.NullString
 		var loanType, status string
-		var oldestDue sql.NullTime
+		var oldestDue, finalDue sql.NullTime
 
 		if err := rows.Scan(
 			&c.LoanID, &c.LoanNumber, &productID, &loanType, &status,
 			&c.ScheduleID, &c.InstallmentNo, &c.DueDate, &c.OutstandingProfit, &oldestDue,
+			&finalDue,
 		); err != nil {
 			return nil, err
 		}
@@ -495,6 +504,10 @@ func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf
 		if oldestDue.Valid {
 			t := oldestDue.Time
 			c.OldestDueDate = &t
+		}
+		if finalDue.Valid {
+			t := finalDue.Time
+			c.FinalDueDate = &t
 		}
 		list = append(list, c)
 	}

@@ -37,6 +37,7 @@ const listDueLoansQuery = `
 		l.accrual_status::text,
 		l.required_ppap,
 		MIN(s.due_date) AS last_due_date,
+		(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = l.id) AS final_due_date,
 		l.is_restructured,
 		l.pre_restructure_collectibility,
 		CASE WHEN l.restructured_at IS NULL THEN 0 ELSE (
@@ -79,13 +80,13 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		var s domain.PPAPLoanSnapshot
 		var productID sql.NullString
 		var collectibility, accrual string
-		var lastDue sql.NullTime
+		var lastDue, finalDue sql.NullTime
 		var preRestructure sql.NullString
 		var cleanPeriods int
 
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
-			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP, &lastDue,
+			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP, &lastDue, &finalDue,
 			&s.IsRestructured, &preRestructure, &cleanPeriods,
 		); err != nil {
 			return nil, err
@@ -102,6 +103,10 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		if lastDue.Valid {
 			t := lastDue.Time
 			s.LastDueDate = &t
+		}
+		if finalDue.Valid {
+			t := finalDue.Time
+			s.FinalDueDate = &t
 		}
 		if preRestructure.Valid {
 			s.PreRestructureCollectibility = domain.CollectibilityFromOJK(domain.OJKCollectibility(preRestructure.String))

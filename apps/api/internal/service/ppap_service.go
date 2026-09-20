@@ -152,7 +152,7 @@ func (s *ppapService) processLoan(
 	if snap.LastDueDate != nil {
 		dpd = daysPastDue(asOf, *snap.LastDueDate)
 	}
-	col := domain.CollectibilityFromDPD(dpd, thresholds)
+	col := domain.CollectibilityFromPosition(dpd, DaysPastMaturity(asOf, snap.FinalDueDate), thresholds)
 	if snap.IsRestructured {
 		// Pasal 23 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
 		// 3 periode pembayaran bersih berturut-turut.

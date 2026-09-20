@@ -121,6 +121,10 @@ type Loan struct {
 	// restrukturisasi terakhir; dasar penerapan batas Pasal 23 POJK 1/2024.
 	PreRestructureCollectibility OJKCollectibility `json:"pre_restructure_collectibility,omitempty"`
 
+	// FinalDueDate adalah jatuh tempo Kredit (angsuran terakhir), dipakai menilai
+	// dimensi "Kredit telah jatuh tempo" POJK 1/2024 Lampiran II.
+	FinalDueDate *time.Time `json:"final_due_date,omitempty"`
+
 	PrincipalAmount    decimal.Decimal `json:"principal_amount"`
 	AcquisitionCost    decimal.Decimal `json:"acquisition_cost"`
 	DeferredMargin     decimal.Decimal `json:"deferred_margin"`

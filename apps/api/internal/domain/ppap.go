@@ -346,6 +346,9 @@ type PPAPLoanSnapshot struct {
 	// LastDueDate adalah jatuh tempo angsuran terlama yang belum dibayar; nil bila
 	// seluruh angsuran sudah lunas.
 	LastDueDate *time.Time
+	// FinalDueDate adalah jatuh tempo Kredit (angsuran terakhir), dipakai menilai
+	// dimensi "Kredit telah jatuh tempo" POJK 1/2024 Lampiran II.
+	FinalDueDate *time.Time
 	// IsRestructured menandai Kredit pernah direstrukturisasi. Bila true,
 	// RestructureCollectibility membatasi golongannya (POJK 1/2024 Pasal 23).
 	IsRestructured bool

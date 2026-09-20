@@ -268,6 +268,53 @@ func TestPPAPRunDaily_RestructuredLoanCannotImprove(t *testing.T) {
 	}
 }
 
+// Dimensi "Kredit telah jatuh tempo" ikut menentukan golongan: kredit yang sudah
+// lewat jatuh tempo 45 hari tetap Diragukan meski tidak ada tunggakan angsuran.
+func TestPPAPRunDaily_MaturedLoanUsesMaturityDimension(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	finalDue := asOf.AddDate(0, 0, -45)
+	lastDue := asOf // DPD angsuran nol
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:         loanID,
+			LoanNumber:     "KRD-JATUH-TEMPO",
+			Outstanding:    decimal.NewFromInt(2_000_000),
+			Collectibility: domain.KolLancar,
+			AccrualStatus:  domain.AccrualStatusAccrual,
+			RequiredPPAP:   decimal.NewFromInt(10_000),
+			LastDueDate:    &lastDue,
+			FinalDueDate:   &finalDue,
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	summary, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if summary.Failed != 0 {
+		t.Fatalf("run gagal: %+v", summary.Failures)
+	}
+	if len(repo.updated) != 1 {
+		t.Fatalf("state diperbarui %d kali, ingin 1", len(repo.updated))
+	}
+	upd := repo.updated[0]
+	if upd.Collectibility != domain.KolDiragukan {
+		t.Fatalf("jatuh tempo 45 hari harus Diragukan meski DPD 0, dapat %s",
+			upd.Collectibility.Label())
+	}
+	if !upd.StopAccrual || upd.AccrualStatus != domain.AccrualStatusCash {
+		t.Fatalf("Diragukan harus cash basis: %+v", upd)
+	}
+	// 50% x 2.000.000 = 1.000.000, dikurangi cadangan lama 10.000.
+	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(990_000)) {
+		t.Fatalf("total penyesuaian %s, ingin 990.000", summary.TotalAdjustment)
+	}
+}
+
 // Kredit yang sudah sesuai target tidak diposting ulang dan tidak diubah.
 func TestPPAPRunDaily_UnchangedIsSkipped(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
