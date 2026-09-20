@@ -149,6 +149,8 @@ func main() {
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
+	collateralRepo := postgres.NewCollateralRepository(db)
+	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, auditRepo)
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
@@ -168,7 +170,8 @@ func main() {
 		DocumentHandler:     docHandler,
 		DepositHandler:      depositHandler,
 		PPAPHandler:         ppapHandler,
-		AuditHandler:        httpHandler.NewAuditHandler(postgres.NewAuditRepository(db)),
+		AuditHandler:        httpHandler.NewAuditHandler(auditRepo),
+		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
 		AuthService:         authSvc,
 		Cookies:             cookies,
 		Logger:              logger,
