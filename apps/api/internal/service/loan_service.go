@@ -23,6 +23,10 @@ type loanService struct {
 	references  domain.ReferenceGenerator
 	config      domain.SystemConfigService
 	auditRepo   domain.AuditRepository
+	// approvals menahan operasi kredit yang wajib disetujui pejabat kedua. Boleh nil
+	// (mis. pada test atau bila maker-checker belum disiapkan): operasi berjalan
+	// langsung seperti sebelumnya.
+	approvals domain.MakerCheckerService
 	// txRunner membuka transaksi per kredit untuk akrual denda/bunga. Dipakai agar
 	// proses batch dan pembayaran bisa diuji tanpa database, sama seperti ppapService.
 	txRunner ppapTxRunner
@@ -38,6 +42,7 @@ func NewLoanService(
 	posting domain.PostingService,
 	references domain.ReferenceGenerator,
 	config domain.SystemConfigService,
+	approvals domain.MakerCheckerService,
 	auditSinks ...domain.AuditRepository,
 ) domain.LoanService {
 	var auditRepo domain.AuditRepository
@@ -55,6 +60,7 @@ func NewLoanService(
 		references:  references,
 		config:      config,
 		auditRepo:   auditRepo,
+		approvals:   approvals,
 		txRunner:    sqlPPAPTxRunner{db: db},
 	}
 }
@@ -849,112 +855,194 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	return loan, nil
 }
 
-func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoanInput, actor domain.Actor) (*domain.Loan, error) {
-	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+// Jenis aksi maker-checker untuk operasi kredit yang efeknya tidak dapat dibatalkan
+// begitu jurnalnya terposting. Nilai ini juga menjadi kunci pendaftaran eksekutor.
+const (
+	ActionLoanWriteOff = "LOAN_WRITE_OFF"
+	ActionLoanRecovery = "LOAN_RECOVERY"
+)
+
+// guardLoanApproval menahan operasi kredit yang wajib disetujui pejabat kedua.
+// Ambangnya dibaca dari system_config (maker_checker.<aksi>.threshold); nilai 0
+// berarti setiap nominal wajib disetujui. Bila layanan persetujuan belum tersedia
+// (mis. pada test), operasi berjalan langsung seperti sebelumnya.
+func (s *loanService) guardLoanApproval(ctx context.Context, actor domain.Actor, action string, amount decimal.Decimal, payload map[string]any) error {
+	if s.approvals == nil {
+		return nil
+	}
+	threshold := s.approvals.Threshold(ctx, action)
+	if threshold.IsPositive() && amount.LessThan(threshold) {
+		return nil
+	}
+	payload["maker_id"] = actor.UserID.String()
+	payload["maker_username"] = actor.Username
+	payload["maker_role"] = string(actor.Role)
+	payload["maker_branch"] = actor.BranchCode
+
+	req, err := s.approvals.CreateRequest(ctx, domain.CreateMakerCheckerInput{
+		ActionType: action,
+		Amount:     amount,
+		Payload:    payload,
+		Notes:      "Operasi kredit wajib disetujui pejabat berwenang",
+	}, actor)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if !canAccessLoan(actor, loan) {
-		return nil, domain.ErrCrossBranchAccess
+	return &domain.PendingApprovalError{RequestID: req.ID, ActionType: action}
+}
+
+// makerFromPayload memulihkan identitas pembuat keputusan dari payload persetujuan.
+// Jurnal mencatat PEMBUAT, bukan pemeriksa: pengesahan pemeriksa sudah tercatat di
+// audit maker-checker, dan mencatatnya sebagai pembuat akan menyesatkan penelusuran.
+func makerFromPayload(payload map[string]any, fallback domain.Actor) domain.Actor {
+	maker := fallback
+	if v, ok := payload["maker_id"].(string); ok {
+		if id, err := uuid.Parse(v); err == nil {
+			maker.UserID = id
+		}
 	}
+	if v, ok := payload["maker_username"].(string); ok && v != "" {
+		maker.Username = v
+	}
+	if v, ok := payload["maker_role"].(string); ok && v != "" {
+		maker.Role = domain.StaffRole(v)
+	}
+	if v, ok := payload["maker_branch"].(string); ok && v != "" {
+		maker.BranchCode = v
+	}
+	return maker
+}
+
+func loanIDFromPayload(payload map[string]any) (uuid.UUID, error) {
+	raw, ok := payload["loan_id"].(string)
+	if !ok {
+		return uuid.Nil, errors.New("payload persetujuan tidak memuat kredit")
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("id kredit pada payload tidak valid: %w", err)
+	}
+	return id, nil
+}
+
+// ExecuteApproved menjalankan hapus buku atau recovery yang sudah disetujui, di dalam
+// transaksi milik maker-checker service sehingga keputusan dan efeknya commit bersama.
+func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor domain.Actor) error {
+	loanID, err := loanIDFromPayload(payload)
+	if err != nil {
+		return err
+	}
+	loan, err := s.loanRepo.GetByID(ctx, loanID)
+	if err != nil {
+		return err
+	}
+	if loan == nil {
+		return errors.New("kredit pada permintaan persetujuan tidak ditemukan")
+	}
+	maker := makerFromPayload(payload, actor)
+
+	switch normalizeAction(actionType) {
+	case ActionLoanWriteOff:
+		product, amount, err := s.writeOffTarget(ctx, loan)
+		if err != nil {
+			return err
+		}
+		reason, _ := payload["reason"].(string)
+		return s.writeOffTx(ctx, tx, loan, product, amount, reason, maker)
+	case ActionLoanRecovery:
+		amount, err := decimalFromPayload(payload["recovery_amount"])
+		if err != nil {
+			return err
+		}
+		if !amount.IsPositive() {
+			return errors.New("nominal recovery harus positif")
+		}
+		product, overrides, err := s.recoveryTarget(ctx, loan)
+		if err != nil {
+			return err
+		}
+		return s.recoveryTx(ctx, tx, loan, product, amount, overrides, maker)
+	default:
+		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
+	}
+}
+
+// writeOffTarget memvalidasi kredit yang akan dihapus buku dan menghitung nominal yang
+// dilepas dari neraca.
+func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, decimal.Decimal, error) {
 	if loan.Status != domain.LoanStatusDisbursed {
-		return nil, errors.New("hanya kredit aktif yang dapat dihapus buku")
+		return nil, decimal.Zero, errors.New("hanya kredit aktif yang dapat dihapus buku")
 	}
 	if loan.ProductID == nil {
-		return nil, errors.New("kredit tidak terhubung ke produk")
+		return nil, decimal.Zero, errors.New("kredit tidak terhubung ke produk")
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
-		return nil, err
+		return nil, decimal.Zero, err
 	}
-
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
 	amount := loan.OutstandingPrincipal
 	if !amount.IsPositive() {
 		amount = loan.PrincipalAmount
 	}
+	return product, amount, nil
+}
+
+// recoveryTarget memvalidasi kredit hapus buku dan menyiapkan rekening penerimaannya.
+func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, map[string]string, error) {
+	if loan.Status != domain.LoanStatusWrittenOff {
+		return nil, nil, errors.New("kredit tidak berstatus hapus buku")
+	}
+	if loan.ProductID == nil {
+		return nil, nil, errors.New("kredit tidak terhubung ke produk")
+	}
+	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
+	if err != nil {
+		return nil, nil, err
+	}
+	recoveryAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
+	if err != nil {
+		return nil, nil, errors.New("rekening recovery tidak ditemukan")
+	}
+	overrides, err := customerAccountOverrides(product, recoveryAccount)
+	if err != nil {
+		return nil, nil, err
+	}
+	return product, overrides, nil
+}
+
+// writeOffTx menjalankan hapus buku di dalam transaksi pemanggil: jurnal, status, sisa
+// pokok, dan jejak auditnya commit bersama.
+func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, reason string, actor domain.Actor) error {
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanWriteOff, Amounts{
 		Principal: amount, Total: amount,
 	}, PostingMeta{
 		TransactionType: domain.TxTypeAdjustment,
-		Description:     fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, input.Reason),
+		Description:     fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, reason),
 		IdempotencyKey:  "WOFF-" + loan.LoanNumber,
 		CreatedBy:       actor.DisplayName(),
 		BranchCode:      actor.BranchCode,
 	}); err != nil {
-		return nil, fmt.Errorf("jurnal hapus buku: %w", err)
+		return fmt.Errorf("jurnal hapus buku: %w", err)
 	}
-
-	// Status, sisa pokok, dan jejak audit ikut transaksi yang sama. Sebelumnya dua
-	// pembaruan ini berjalan di luar transaksi, sehingga jurnal hapus buku bisa
-	// tergulung sementara kreditnya tetap berstatus aktif.
 	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loan.ID, domain.LoanStatusWrittenOff, &actor.UserID); err != nil {
-		return nil, err
+		return err
 	}
 	if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, loan.PenaltyAccrued); err != nil {
-		return nil, err
+		return err
 	}
-	if err := writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
+	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":           loan.LoanNumber,
-		"reason":                input.Reason,
+		"reason":                reason,
 		"amount":                amount.StringFixed(2),
 		"outstanding_principal": loan.OutstandingPrincipal.StringFixed(2),
 		"penalty_outstanding":   loan.PenaltyAccrued.StringFixed(2),
-	}); err != nil {
-		return nil, fmt.Errorf("audit hapus buku: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	loan.Status = domain.LoanStatusWrittenOff
-	loan.OutstandingPrincipal = decimal.Zero
-	return loan, nil
+	})
 }
 
-func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.RecoverWrittenOffLoanInput, actor domain.Actor) (*domain.Loan, error) {
-	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
-	if err != nil {
-		return nil, err
-	}
-	if !canAccessLoan(actor, loan) {
-		return nil, domain.ErrCrossBranchAccess
-	}
-	if loan.Status != domain.LoanStatusWrittenOff {
-		return nil, errors.New("kredit tidak berstatus hapus buku")
-	}
-	if input.RecoveryAmount.LessThanOrEqual(decimal.Zero) {
-		return nil, errors.New("nominal recovery harus positif")
-	}
-	if loan.ProductID == nil {
-		return nil, errors.New("kredit tidak terhubung ke produk")
-	}
-	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
-	if err != nil {
-		return nil, err
-	}
-	recoveryAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
-	if err != nil {
-		return nil, errors.New("rekening recovery tidak ditemukan")
-	}
-	overrides, err := customerAccountOverrides(product, recoveryAccount)
-	if err != nil {
-		return nil, err
-	}
-
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
+// recoveryTx mencatat penerimaan kas atas kredit yang sudah dihapus buku.
+func (s *loanService) recoveryTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, overrides map[string]string, actor domain.Actor) error {
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanRecovery, Amounts{
-		Principal: input.RecoveryAmount, Total: input.RecoveryAmount,
+		Principal: amount, Total: amount,
 	}, PostingMeta{
 		TransactionType:  domain.TxTypeAdjustment,
 		Description:      fmt.Sprintf("Recovery kredit hapus buku %s", loan.LoanNumber),
@@ -963,17 +1051,80 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		BranchCode:       actor.BranchCode,
 		AccountOverrides: overrides,
 	}); err != nil {
-		return nil, fmt.Errorf("jurnal recovery: %w", err)
+		return fmt.Errorf("jurnal recovery: %w", err)
 	}
-
-	if err := writeAudit(ctx, s.auditRepo, tx, actor, "RECOVER_WRITTEN_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
+	return writeAudit(ctx, s.auditRepo, tx, actor, "RECOVER_WRITTEN_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":     loan.LoanNumber,
-		"recovery_amount": input.RecoveryAmount.StringFixed(2),
-	}); err != nil {
-		return nil, fmt.Errorf("audit recovery: %w", err)
+		"recovery_amount": amount.StringFixed(2),
+	})
+}
+
+// WriteOffLoan mengajukan hapus buku. Karena melepas tagihan dari neraca dan tidak
+// dapat dibatalkan begitu jurnalnya terposting, operasinya wajib disetujui pejabat
+// kedua: efeknya baru terjadi saat persetujuan diproses lewat ExecuteApproved.
+func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoanInput, actor domain.Actor) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	product, amount, err := s.writeOffTarget(ctx, loan)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.guardLoanApproval(ctx, actor, ActionLoanWriteOff, amount, map[string]any{
+		"loan_id":     loan.ID.String(),
+		"loan_number": loan.LoanNumber,
+		"reason":      input.Reason,
+	}); err != nil {
+		return nil, err
+	}
+
+	// Transaksi dibuka lewat txRunner yang sama dengan pembayaran angsuran: isolasi
+	// ReadCommitted dan jalur uji tanpa database tetap satu pintu.
+	if err := s.txRunner.Run(ctx, func(tx any) error {
+		return s.writeOffTx(ctx, tx, loan, product, amount, input.Reason, actor)
+	}); err != nil {
+		return nil, err
+	}
+
+	loan.Status = domain.LoanStatusWrittenOff
+	loan.OutstandingPrincipal = decimal.Zero
+	return loan, nil
+}
+
+// RecoverWrittenOffLoan mengajukan penerimaan kas atas kredit hapus buku, dengan alur
+// persetujuan yang sama seperti hapus buku.
+func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.RecoverWrittenOffLoanInput, actor domain.Actor) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	if input.RecoveryAmount.LessThanOrEqual(decimal.Zero) {
+		return nil, errors.New("nominal recovery harus positif")
+	}
+	product, overrides, err := s.recoveryTarget(ctx, loan)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.guardLoanApproval(ctx, actor, ActionLoanRecovery, input.RecoveryAmount, map[string]any{
+		"loan_id":         loan.ID.String(),
+		"loan_number":     loan.LoanNumber,
+		"recovery_amount": input.RecoveryAmount.String(),
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := s.txRunner.Run(ctx, func(tx any) error {
+		return s.recoveryTx(ctx, tx, loan, product, input.RecoveryAmount, overrides, actor)
+	}); err != nil {
 		return nil, err
 	}
 	return loan, nil

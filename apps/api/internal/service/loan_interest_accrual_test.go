@@ -572,3 +572,12 @@ func TestPayInstallment_WritesAuditEvent(t *testing.T) {
 		t.Fatalf("status angsuran audit %v, ingin %s", got, domain.InstallmentStatusPaid)
 	}
 }
+
+// UpdateStatusTx mencatat perubahan status kredit agar test hapus buku dapat
+// memastikan status tidak berubah sebelum persetujuan dan berubah sesudahnya.
+func (r *interestLoanRepo) UpdateStatusTx(_ context.Context, _ any, id uuid.UUID, status domain.LoanStatus, _ *uuid.UUID) error {
+	if r.loan != nil && r.loan.ID == id {
+		r.loan.Status = status
+	}
+	return nil
+}

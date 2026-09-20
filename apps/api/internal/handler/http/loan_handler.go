@@ -255,7 +255,7 @@ func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Fail(w, r, http.StatusUnprocessableEntity, err)
+		writeTransactionError(w, r, err)
 		return
 	}
 
@@ -285,7 +285,7 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 
 	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Fail(w, r, http.StatusUnprocessableEntity, err)
+		writeTransactionError(w, r, err)
 		return
 	}
 

@@ -275,8 +275,14 @@ type LoanService interface {
 	ListLoans(ctx context.Context, page, pageSize int, actor Actor) ([]Loan, int, error)
 	PayInstallment(ctx context.Context, input PayInstallmentInput, actor Actor) (*LoanSchedule, error)
 	RestructureLoan(ctx context.Context, input RestructureLoanInput, actor Actor) (*Loan, error)
+	// WriteOffLoan dan RecoverWrittenOffLoan tidak langsung berefek bila melewati
+	// ambang persetujuan: keduanya mengembalikan PendingApprovalError dan efeknya
+	// baru terjadi saat ExecuteApproved dipanggil maker-checker.
 	WriteOffLoan(ctx context.Context, input WriteOffLoanInput, actor Actor) (*Loan, error)
 	RecoverWrittenOffLoan(ctx context.Context, input RecoverWrittenOffLoanInput, actor Actor) (*Loan, error)
+	// ExecuteApproved menjalankan hapus buku atau recovery yang sudah disetujui
+	// maker-checker, di dalam transaksi milik pemanggil.
+	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error
 	AccruePenalties(ctx context.Context, asOf time.Time, actor Actor) (LoanPenaltySummary, error)
 	// AccrueInterest mengakru pendapatan bunga kredit konvensional berbasis jadwal
 	// angsuran; kredit tidak lancar dan produk syariah dilewati.

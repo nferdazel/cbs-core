@@ -84,4 +84,7 @@ type MakerCheckerService interface {
 	Approve(ctx context.Context, id uuid.UUID, actor Actor, notes string) error
 	Reject(ctx context.Context, id uuid.UUID, actor Actor, notes string) error
 	ListPending(ctx context.Context, actor Actor) ([]MakerCheckerRequest, error)
+	// Threshold membaca ambang nominal yang mewajibkan persetujuan pejabat untuk satu
+	// jenis aksi. Nilai 0 berarti setiap nominal wajib disetujui.
+	Threshold(ctx context.Context, actionType string) decimal.Decimal
 }

@@ -187,7 +187,7 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	// Konfigurasi kosong memakai fallback POJK: Lancar 30, DPK 90, Kurang Lancar 180,
 	// Diragukan 360.
 	config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
-	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config)
+	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config, nil)
 
 	loan, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
 		LoanID:        loanID,
@@ -234,7 +234,7 @@ func TestRestructureLoan_MacetTidakKembaliLancar(t *testing.T) {
 		RateAnnual:     decimal.NewFromInt(12),
 	}}
 	config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
-	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config)
+	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config, nil)
 
 	loan, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
 		LoanID:        loanID,
@@ -282,7 +282,7 @@ func TestRestructureLoan_MenolakKreditCabangLain(t *testing.T) {
 			RateAnnual:     decimal.NewFromInt(12),
 		}}
 		config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
-		return service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config)
+		return service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config, nil)
 	}
 	input := domain.RestructureLoanInput{LoanID: loanID, NewTermMonths: 12}
 
@@ -308,7 +308,7 @@ func TestGetLoan_MenolakKreditCabangLain(t *testing.T) {
 	loanID := uuid.New()
 	branchID := uuid.New()
 	repo := &stubLoanRepo{loan: &domain.Loan{ID: loanID, BranchID: &branchID, BranchCode: "002"}}
-	svc := service.NewLoanService(nil, repo, nil, nil, nil, nil, nil, nil, nil)
+	svc := service.NewLoanService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	t.Run("teller cabang berbeda ditolak", func(t *testing.T) {
 		_, err := svc.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
@@ -335,7 +335,7 @@ func TestGetLoan_MenolakKreditCabangLain(t *testing.T) {
 
 	t.Run("kredit bercabang NULL tetap terlihat", func(t *testing.T) {
 		repoNull := &stubLoanRepo{loan: &domain.Loan{ID: loanID}}
-		svcNull := service.NewLoanService(nil, repoNull, nil, nil, nil, nil, nil, nil, nil)
+		svcNull := service.NewLoanService(nil, repoNull, nil, nil, nil, nil, nil, nil, nil, nil)
 		if _, err := svcNull.GetLoan(context.Background(), loanID, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"}); err != nil {
 			t.Fatalf("data pra-migrasi tanpa cabang tidak boleh ditolak: %v", err)
 		}

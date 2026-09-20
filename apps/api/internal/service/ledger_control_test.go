@@ -25,6 +25,18 @@ func (s stubLimits) Check(ctx context.Context, actor domain.Actor, txType string
 type stubApprovals struct {
 	created []domain.CreateMakerCheckerInput
 	err     error
+	// threshold mengatur ambang persetujuan per jenis aksi. Bila nil, dipakai ambang
+	// default 50 juta agar test lain tidak berubah perilaku.
+	threshold map[string]decimal.Decimal
+}
+
+func (s *stubApprovals) Threshold(_ context.Context, actionType string) decimal.Decimal {
+	if s.threshold != nil {
+		if v, ok := s.threshold[actionType]; ok {
+			return v
+		}
+	}
+	return decimal.NewFromInt(50_000_000)
 }
 
 func (s *stubApprovals) CreateRequest(ctx context.Context, input domain.CreateMakerCheckerInput, actor domain.Actor) (*domain.MakerCheckerRequest, error) {
