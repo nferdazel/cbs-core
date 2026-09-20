@@ -224,6 +224,35 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	return &entry, nil
 }
 
+// MarkJournalReversed menandai jurnal asal sebagai REVERSED. Klausa status = 'POSTED'
+// membuat dua pembatalan yang datang bersamaan hanya menghasilkan satu perubahan:
+// yang kalah menerima ErrJournalAlreadyReversed, bukan diam-diam menimpa.
+func (r *LedgerRepository) MarkJournalReversed(ctx context.Context, tx any, reference string) error {
+	var exec execer = r.db
+	if tx != nil {
+		sqlTx, ok := tx.(*sql.Tx)
+		if !ok {
+			return errors.New("konteks transaksi pembatalan tidak valid")
+		}
+		exec = sqlTx
+	}
+
+	res, err := exec.ExecContext(ctx,
+		`UPDATE journal_entries SET status = 'REVERSED' WHERE reference_number = $1 AND status = 'POSTED'`,
+		reference)
+	if err != nil {
+		return fmt.Errorf("menandai jurnal %s dibatalkan: %w", reference, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrJournalAlreadyReversed
+	}
+	return nil
+}
+
 // buildJournalListQuery menyusun query daftar jurnal beserta klausa filter cabang
 // dan argumennya. Klausa yang sama dipakai untuk COUNT(*) dan SELECT agar
 // total_items cocok dengan halaman yang dikembalikan. Dipisah sebagai fungsi

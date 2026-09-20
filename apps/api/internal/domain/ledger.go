@@ -198,6 +198,28 @@ type CustomJournalRequest struct {
 	Lines           []CustomJournalLineInput `json:"lines"`
 }
 
+// Kesalahan pembatalan transaksi. Dipisah agar handler bisa memetakan status HTTP tanpa
+// menebak dari teks pesan.
+var (
+	// ErrJournalNotFound juga dipakai untuk jurnal yang ada di cabang lain: membedakan
+	// keduanya memberi tahu pemanggil bahwa referensi tertentu memang ada di bank ini.
+	ErrJournalNotFound        = errors.New("transaksi tidak ditemukan")
+	ErrJournalAlreadyReversed = errors.New("transaksi sudah pernah dibatalkan")
+	ErrJournalNotPosted       = errors.New("hanya transaksi yang sudah diposting dapat dibatalkan")
+	ErrReversalNotAllowed     = errors.New("jurnal pembatalan tidak dapat dibatalkan lagi")
+	ErrSelfReversal           = errors.New("pencatat transaksi tidak boleh membatalkan transaksinya sendiri")
+)
+
+// ReversalRequest meminta pembatalan satu jurnal. Tidak ada nominal pada permintaan:
+// nominal diambil dari jurnal asal, sehingga pembatalan tidak bisa dipakai memindahkan
+// dana dengan jumlah karangan.
+type ReversalRequest struct {
+	Reference string `json:"-"`
+	// Reason wajib: pembatalan transaksi harus dapat dipertanggungjawabkan.
+	Reason string `json:"reason"`
+	Actor  Actor  `json:"-"`
+}
+
 type LedgerRepository interface {
 	GetCOAList(ctx context.Context) ([]ChartOfAccount, error)
 	GetCOAByCode(ctx context.Context, code string) (*ChartOfAccount, error)
@@ -205,6 +227,9 @@ type LedgerRepository interface {
 	ListJournals(ctx context.Context, limit, offset int, actor Actor) ([]JournalEntry, int, error)
 	ListAccountStatements(ctx context.Context, accountID uuid.UUID, limit, offset int, actor Actor) ([]JournalLine, int, error)
 	SumDebitByCreatedByAndDate(ctx context.Context, createdBy string, date time.Time) (decimal.Decimal, error)
+	// MarkJournalReversed menandai jurnal asal sebagai REVERSED. Hanya jurnal berstatus
+	// POSTED yang berubah, sehingga pembalikan ganda tertolak di level basis data.
+	MarkJournalReversed(ctx context.Context, tx any, reference string) error
 }
 
 type LedgerService interface {
@@ -212,6 +237,10 @@ type LedgerService interface {
 	Withdraw(ctx context.Context, req WithdrawRequest) (*JournalEntry, error)
 	TransferInternal(ctx context.Context, req TransferRequest) (*JournalEntry, error)
 	PostCompoundJournal(ctx context.Context, req CustomJournalRequest) (*JournalEntry, error)
+	// Reverse membatalkan jurnal yang sudah diposting dengan jurnal kontra bertanggal
+	// bisnis berjalan. Tidak ada state domain yang dikembalikan: hanya untuk transaksi
+	// yang tidak mengubah jadwal/status kredit atau deposito.
+	Reverse(ctx context.Context, req ReversalRequest) (*JournalEntry, error)
 	// ExecuteApproved menjalankan transaksi rekening yang sudah disetujui maker-checker,
 	// di dalam transaksi milik pemanggil. Memenuhi kontrak MakerCheckerExecutor,
 	// sehingga ledger service menjadi eksekutor untuk jenis transaksinya sendiri.

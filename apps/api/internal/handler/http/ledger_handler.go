@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/observability"
@@ -44,6 +45,52 @@ func writeTransactionError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	Fail(w, r, http.StatusUnprocessableEntity, err)
+}
+
+// Reverse handles POST /api/v1/transactions/{reference}/reverse
+//
+// Hanya untuk transaksi yang tidak menyalakan state domain (setoran, penarikan, transfer,
+// biaya). Nominal diambil dari jurnal asal, sehingga yang perlu dikirim hanya alasannya.
+func (h *LedgerHandler) Reverse(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
+	reference := chi.URLParam(r, "reference")
+	if reference == "" {
+		Error(w, http.StatusBadRequest, "reference transaksi wajib diisi")
+		return
+	}
+
+	var req domain.ReversalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		Error(w, http.StatusBadRequest, "alasan pembatalan wajib diisi")
+		return
+	}
+	req.Reference = reference
+	req.Actor = actor
+
+	entry, err := h.service.Reverse(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrJournalNotFound):
+			Error(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, domain.ErrJournalAlreadyReversed), errors.Is(err, domain.ErrJournalNotPosted),
+			errors.Is(err, domain.ErrReversalNotAllowed), errors.Is(err, domain.ErrSelfReversal):
+			Error(w, http.StatusConflict, err.Error())
+		default:
+			writeTransactionError(w, r, err)
+		}
+		return
+	}
+
+	Success(w, http.StatusCreated, "transaksi dibatalkan", entry)
 }
 
 func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {

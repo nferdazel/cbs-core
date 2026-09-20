@@ -192,6 +192,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/withdraw", p.LedgerHandler.Withdraw)
 				r.With(middleware.RequirePermission(domain.PermTransactionsTransfer)).
 					Post("/transfer", p.LedgerHandler.Transfer)
+				// Pembatalan transaksi: hanya peran pengawas (Supervisor ke atas), dan
+				// pencatat transaksi asal tidak boleh membatalkannya sendiri.
+				r.With(middleware.RequirePermission(domain.PermTransactionsReverse)).
+					Post("/{reference}/reverse", p.LedgerHandler.Reverse)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/journals", p.LedgerHandler.ListJournals)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
