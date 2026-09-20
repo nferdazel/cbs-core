@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -494,6 +495,24 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 	if original.TransactionType == domain.TxTypeReversal {
 		return nil, fmt.Errorf("%w: %s", domain.ErrReversalNotAllowed, original.ReferenceNumber)
 	}
+	// Akrual dan penyesuaian selalu membawa state domain atau periode: jurnal kontra
+	// tidak mengembalikan bunga yang sudah diakru, jadwal yang sudah dibentuk, atau
+	// periode yang sudah ditutup. Jurnal yang dibuat sistem (batch/EOD) termasuk di sini.
+	switch original.TransactionType {
+	case domain.TxTypeInterestAccrual, domain.TxTypeAdjustment:
+		return nil, fmt.Errorf("%w: jurnal %s tidak dapat dibatalkan lewat jalur ini",
+			domain.ErrReversalNotAllowed, original.TransactionType)
+	}
+	if createdBy := strings.ToUpper(strings.TrimSpace(original.CreatedBy)); createdBy == "" || createdBy == "SYSTEM" {
+		return nil, fmt.Errorf("%w: jurnal sistem", domain.ErrReversalNotAllowed)
+	}
+	// CATATAN CAKUPAN YANG BELUM TERTUTUP: label transaction_type tidak membedakan alur
+	// bisnis. Penempatan dan pencairan deposito berjangka memakai DEPOSIT/WITHDRAWAL yang
+	// sama dengan setoran dan penarikan teller, dan jurnal kredit juga memakai label ini.
+	// Karena itu transaksi deposito/kredit masih dapat dibatalkan lewat endpoint ini dan
+	// meninggalkan state domainnya tidak sinkron. Penutupnya harus penanda alur di
+	// journal_entries (kolom source), bukan daftar putih atas label. Sampai itu ada,
+	// endpoint ini hanya boleh dipakai untuk kesalahan input teller pada rekening.
 	if maker := original.CreatedBy; maker != "" && (maker == req.Actor.DisplayName() || maker == req.Actor.Username) {
 		return nil, fmt.Errorf("%w: %s", domain.ErrSelfReversal, original.ReferenceNumber)
 	}

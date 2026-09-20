@@ -212,6 +212,21 @@ func TestReverse_MenolakPembatalanYangTidakSah(t *testing.T) {
 			wantErr: domain.ErrSelfReversal,
 		},
 		{
+			name:    "jurnal akrual",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.TransactionType = domain.TxTypeInterestAccrual }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal penyesuaian batch",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.TransactionType = domain.TxTypeAdjustment }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal yang dibuat sistem",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.CreatedBy = "SYSTEM" }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
 			name:  "jurnal tanpa baris",
 			entry: asesmen(func(e *domain.JournalEntry) { e.Lines = nil }),
 		},
