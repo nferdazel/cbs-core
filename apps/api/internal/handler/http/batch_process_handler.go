@@ -3,9 +3,24 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 )
+
+// batchWriteTimeout adalah batas waktu penulisan respons untuk batch tutup buku.
+// Server memakai WriteTimeout 15 detik, sedangkan akrual seluruh rekening dapat
+// berjalan menit-menitan. Tanpa perpanjangan ini koneksi ditutup sebelum hasilnya
+// terkirim, dan operator mengira tutup buku gagal padahal jurnalnya sudah masuk —
+// lalu menjalankannya ulang.
+const batchWriteTimeout = 15 * time.Minute
+
+// extendWriteDeadline memperpanjang batas tulis hanya untuk permintaan ini.
+func extendWriteDeadline(w http.ResponseWriter) {
+	// Kegagalan (mis. server atau pembungkus yang tidak mendukung deadline) dibiarkan:
+	// batas global tetap berlaku, dan batch tetap berjalan sampai selesai.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(batchWriteTimeout))
+}
 
 type BatchProcessHandler struct {
 	batchSvc domain.BatchProcessService
@@ -27,6 +42,7 @@ func (h *BatchProcessHandler) GetBusinessDate(w http.ResponseWriter, r *http.Req
 
 // RunEOD handles POST /api/v1/batch/eod (Supervisor / Admin)
 func (h *BatchProcessHandler) RunEOD(w http.ResponseWriter, r *http.Request) {
+	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
 		Error(w, http.StatusUnauthorized, "authentication required")
@@ -46,6 +62,7 @@ func (h *BatchProcessHandler) RunEOD(w http.ResponseWriter, r *http.Request) {
 // Tarif bunga dan biaya admin tidak lagi diterima dari body: keduanya dibaca dari
 // produk dan system_config agar batch tidak bisa dijalankan dengan tarif sembarang.
 func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
+	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
 		Error(w, http.StatusUnauthorized, "authentication required")
@@ -64,6 +81,7 @@ func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 // RunEOY handles POST /api/v1/batch/eoy (Superadmin / Admin)
 // Body opsional: {"book":"CONVENTIONAL"|"SYARIAH"}; kosong berarti kedua buku.
 func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
+	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
 		Error(w, http.StatusUnauthorized, "authentication required")
