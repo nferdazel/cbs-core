@@ -24,6 +24,11 @@ const (
 	configAdminFeeMonthly        = "fee.admin.monthly"
 	configAdminFeeRevenueCOAConv = "fee.admin.income.coa.conventional"
 	configAdminFeeRevenueCOASyar = "fee.admin.income.coa.syariah"
+	// PPh final atas bunga tabungan (PP 131/2000). Tarif dan ambang pembebasan
+	// dibandingkan dengan SALDO tabungan, bukan bunga yang dibayarkan.
+	configSavingsTaxRate       = "tax.savings.rate"
+	configSavingsTaxExempt     = "tax.savings.exempt_amount"
+	configSavingsTaxPayableCOA = "tax.savings.payable.coa"
 
 	defaultSavingsExpenseCOAConv  = "50100" // Beban Bunga Deposito (satu-satunya akun beban bunga)
 	defaultSavingsExpenseCOASyar  = "15100" // Bagi Hasil untuk Pemilik Dana
@@ -31,6 +36,12 @@ const (
 	defaultSavingsPayableCOASyar  = "12400" // Bagi Hasil yang Masih Harus Dibayar
 	defaultAdminFeeRevenueCOAConv = "40400" // Pendapatan Administrasi
 	defaultAdminFeeRevenueCOASyar = "14500" // Pendapatan Administrasi Syariah
+	defaultSavingsTaxPayableCOA   = "20500" // Utang Pajak
+)
+
+var (
+	defaultSavingsTaxRate   = decimal.NewFromInt(20)
+	defaultSavingsTaxExempt = decimal.NewFromInt(7_500_000)
 )
 
 type savingsInterestService struct {
@@ -411,6 +422,7 @@ func (s *savingsInterestService) PayInterestToAccounts(ctx context.Context, peri
 		case domain.BatchItemPaid:
 			summary.ProcessedAccounts++
 			summary.TotalInterest = summary.TotalInterest.Add(result.Amount)
+			summary.TotalTax = summary.TotalTax.Add(result.TaxAmount)
 		case domain.BatchItemFailed:
 			summary.FailedAccounts++
 		default:
@@ -448,6 +460,20 @@ func (s *savingsInterestService) payAccrual(
 	// Bunga dibayakan pada akhir bulan periode, sama dengan biaya administrasi.
 	entryDate := time.Date(period.Year(), period.Month()+1, 0, 0, 0, 0, 0, time.UTC)
 
+	// PPh final dipotong dari bunga yang dibayarkan ke nasabah. Ambang pembebasan
+	// dibandingkan dengan saldo tabungan (PP 131/2000 Pasal 3 huruf a), jadi saldo
+	// dibaca sebelum bunga dikreditkan.
+	tax, err := s.savingsAccrualTax(ctx, rec)
+	if err != nil {
+		res.Message = fmt.Sprintf("menghitung PPh final: %v", err)
+		return res
+	}
+	if tax.GreaterThan(rec.Amount) {
+		res.Message = "PPh final melebihi bunga yang dibayarkan"
+		return res
+	}
+	net := rec.Amount.Sub(tax)
+
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		res.Message = err.Error()
@@ -461,16 +487,39 @@ func (s *savingsInterestService) payAccrual(
 		return res
 	}
 
+	lines := []domain.PostingLine{
+		{AccountNumber: payableAcc, Direction: domain.DirectionDebit, Amount: rec.Amount, Description: "Pelunasan utang bunga tabungan"},
+	}
+	if net.IsPositive() {
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: rec.AccountNumber,
+			Direction:     domain.DirectionCredit,
+			Amount:        net,
+			Description:   "Bunga tabungan",
+		})
+	}
+	if tax.IsPositive() {
+		taxAcc, err := s.resolver.ResolveGLAccount(ctx, tx,
+			s.configString(ctx, configSavingsTaxPayableCOA, defaultSavingsTaxPayableCOA))
+		if err != nil {
+			res.Message = fmt.Sprintf("akun utang pajak: %v", err)
+			return res
+		}
+		lines = append(lines, domain.PostingLine{
+			AccountNumber: taxAcc,
+			Direction:     domain.DirectionCredit,
+			Amount:        tax,
+			Description:   "PPh final bunga tabungan",
+		})
+	}
+
 	entry, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
 		TransactionType: domain.TxTypeInterestAccrual,
 		Description:     fmt.Sprintf("Pembayaran bunga tabungan %s periode %s", rec.AccountNumber, rec.Period),
 		IdempotencyKey:  fmt.Sprintf("SAV-INT-PAY-%s-%s", rec.AccountNumber, rec.Period),
 		CreatedBy:       createdBy,
 		EntryDate:       entryDate,
-		Lines: []domain.PostingLine{
-			{AccountNumber: payableAcc, Direction: domain.DirectionDebit, Amount: rec.Amount, Description: "Pelunasan utang bunga tabungan"},
-			{AccountNumber: rec.AccountNumber, Direction: domain.DirectionCredit, Amount: rec.Amount, Description: "Bunga tabungan"},
-		},
+		Lines:           lines,
 	})
 	if err != nil {
 		res.Message = fmt.Sprintf("posting pembayaran bunga: %v", err)
@@ -487,6 +536,7 @@ func (s *savingsInterestService) payAccrual(
 
 	res.Status = domain.BatchItemPaid
 	res.JournalReference = entry.ReferenceNumber
+	res.TaxAmount = tax
 	res.Message = ""
 	return res
 }
@@ -639,6 +689,26 @@ func (s *savingsInterestService) adminFeeRevenueCOA(ctx context.Context, product
 		return s.configString(ctx, configAdminFeeRevenueCOASyar, defaultAdminFeeRevenueCOASyar)
 	}
 	return s.configString(ctx, configAdminFeeRevenueCOAConv, defaultAdminFeeRevenueCOAConv)
+}
+
+// savingsAccrualTax menghitung PPh final atas satu akrual bunga tabungan. Ambang
+// pembebasan dibandingkan dengan SALDO tabungan, bukan bunganya (PP 131/2000 Pasal 3
+// huruf a). Bagi hasil mudharabah belum dipotong: ia bukan bunga, dan perlakuan
+// pajaknya menunggu keputusan bank (dicatat di backlog).
+func (s *savingsInterestService) savingsAccrualTax(ctx context.Context, rec domain.InterestAccrualRecord) (decimal.Decimal, error) {
+	if rec.Book != domain.BookConventional {
+		return decimal.Zero, nil
+	}
+	account, err := s.accountRepo.GetByID(ctx, rec.AccountID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return domain.SavingsInterestTax(
+		rec.Amount,
+		account.Balance,
+		s.configDecimal(ctx, configSavingsTaxRate, defaultSavingsTaxRate),
+		s.configDecimal(ctx, configSavingsTaxExempt, defaultSavingsTaxExempt),
+	), nil
 }
 
 func (s *savingsInterestService) configDecimal(ctx context.Context, key string, fallback decimal.Decimal) decimal.Decimal {

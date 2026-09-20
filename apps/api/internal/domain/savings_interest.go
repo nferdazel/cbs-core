@@ -82,11 +82,14 @@ type AdminFeeChargeRecord struct {
 
 // SavingsInterestResult adalah hasil satu rekening pada akrual bunga/bagi hasil.
 type SavingsInterestResult struct {
-	AccountNumber    string
-	Book             COABook
-	ProfitScheme     ProfitScheme
-	AverageBalance   decimal.Decimal
-	Amount           decimal.Decimal
+	AccountNumber  string
+	Book           COABook
+	ProfitScheme   ProfitScheme
+	AverageBalance decimal.Decimal
+	Amount         decimal.Decimal
+	// TaxAmount adalah PPh final yang dipotong dari bunga ini; sisanya yang masuk ke
+	// rekening nasabah. Bank wajib mencatatnya sebagai utang pajak (20500).
+	TaxAmount        decimal.Decimal
 	ExpenseCOACode   string
 	PayableCOACode   string
 	JournalReference string
@@ -103,7 +106,10 @@ type SavingsInterestSummary struct {
 	SkippedAccounts   int
 	FailedAccounts    int
 	TotalInterest     decimal.Decimal
-	Results           []SavingsInterestResult
+	// TotalTax merangkum PPh final yang dipotong pada eksekusi yang sama, untuk bukti
+	// potong dan pelaporan masa pajak.
+	TotalTax decimal.Decimal
+	Results  []SavingsInterestResult
 }
 
 // AdminFeeResult adalah hasil pemotongan biaya administrasi satu rekening.
@@ -201,4 +207,21 @@ type SavingsInterestService interface {
 	// nasabah: debit utang bunga, kredit rekening nasabah.
 	PayInterestToAccounts(ctx context.Context, period time.Time, createdBy string) (*SavingsInterestSummary, error)
 	ChargeAdminFees(ctx context.Context, period time.Time, createdBy string) (*AdminFeeSummary, error)
+}
+
+// SavingsInterestTax menghitung PPh final atas bunga tabungan yang dibayarkan bank.
+//
+// PP 131/2000 Pasal 3 huruf a membebaskan pemotongan sepanjang JUMLAH tabungan tidak
+// melebihi ambang (Rp 7.500.000 menurut aturan aslinya, dan bukan jumlah yang
+// dipecah-pecah); Pasal 2 hanya mengenakan tarif 20% dari bruto bila jumlah tabungan
+// MELAMPAUI ambang itu. Yang dibandingkan adalah saldo tabungannya, bukan bunga yang
+// dibayarkan. exemptAmount 0 berarti tanpa pembebasan.
+func SavingsInterestTax(gross, balance, taxRatePercent, exemptAmount decimal.Decimal) decimal.Decimal {
+	if !gross.IsPositive() || !taxRatePercent.IsPositive() {
+		return decimal.Zero
+	}
+	if exemptAmount.IsPositive() && balance.LessThanOrEqual(exemptAmount) {
+		return decimal.Zero
+	}
+	return RoundToRupiah(gross.Mul(taxRatePercent).Div(decimal.NewFromInt(100)))
 }
