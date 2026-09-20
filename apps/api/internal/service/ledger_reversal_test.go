@@ -50,17 +50,21 @@ func (r *reversalTxRunner) Run(ctx context.Context, fn func(tx any) error) error
 	return r.err
 }
 
-// reversalConfig menyediakan tanggal bisnis untuk pemisahan same-day dan lintas hari.
-type reversalConfig struct {
-	domain.SystemConfigService
-	date string
+// reversalDateRepo menyediakan tanggal bisnis untuk pemisahan same-day dan lintas hari.
+// Tanggal dibaca dari repositori tanggal bisnis, bukan dari layanan konfigurasi: nilai di
+// layanan konfigurasi di-cache 60 detik, dan selama jeda itu pembatalan lintas hari akan
+// dinilai sebagai transaksi hari berjalan.
+type reversalDateRepo struct {
+	domain.BusinessDateRepository
+	date time.Time
+	err  error
 }
 
-func (c *reversalConfig) GetString(ctx context.Context, key, fallback string) string {
-	if key == "system.business_date" && c.date != "" {
-		return c.date
+func (r *reversalDateRepo) GetCurrentDate(ctx context.Context) (*domain.SystemBusinessDate, error) {
+	if r.err != nil {
+		return nil, r.err
 	}
-	return fallback
+	return &domain.SystemBusinessDate{CurrentDate: r.date}, nil
 }
 
 // reversalApprovals mencatat permintaan persetujuan yang dibuat.
@@ -133,7 +137,7 @@ func newReversalFixture(entry *domain.JournalEntry) reversalFixture {
 			txRunner:   runner,
 			approvals:  approvals,
 			// Tanggal bisnis sama dengan EntryDate fixture: jalur langsung.
-			configSvc: &reversalConfig{date: "2026-09-20"},
+			dateRepo: &reversalDateRepo{date: time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)},
 		},
 		repo:      repo,
 		posting:   posting,
@@ -372,7 +376,7 @@ func TestReverse_TidakAdaPeranTanpaIzinDibalokDiHandler(t *testing.T) {
 // lewat pejabat kedua meskipun pelakunya supervisor.
 func TestReverse_LintasHariWajibPersetujuan(t *testing.T) {
 	f := newReversalFixture(reversalEntry())
-	f.svc.configSvc = &reversalConfig{date: "2026-09-21"} // jurnal kemarin
+	f.svc.dateRepo = &reversalDateRepo{date: time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)} // jurnal kemarin
 
 	_, err := f.svc.Reverse(context.Background(), f.request())
 
@@ -395,7 +399,7 @@ func TestReverse_LintasHariWajibPersetujuan(t *testing.T) {
 // tidak dapat dipastikan berasal dari hari berjalan tidak boleh lolos tanpa persetujuan.
 func TestReverse_TanggalBisnisTidakTerbacaDianggapLintasHari(t *testing.T) {
 	f := newReversalFixture(reversalEntry())
-	f.svc.configSvc = &reversalConfig{} // tanpa tanggal bisnis
+	f.svc.dateRepo = &reversalDateRepo{err: errors.New("tanggal bisnis tidak terbaca")}
 
 	_, err := f.svc.Reverse(context.Background(), f.request())
 
@@ -412,7 +416,7 @@ func TestReverse_TanggalBisnisTidakTerbacaDianggapLintasHari(t *testing.T) {
 // diloloskan tanpa pejabat kedua.
 func TestReverse_LintasHariTanpaLayananPersetujuanDitolak(t *testing.T) {
 	f := newReversalFixture(reversalEntry())
-	f.svc.configSvc = &reversalConfig{date: "2026-09-21"}
+	f.svc.dateRepo = &reversalDateRepo{date: time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)}
 	f.svc.approvals = nil
 
 	_, err := f.svc.Reverse(context.Background(), f.request())
@@ -428,7 +432,7 @@ func TestReverse_LintasHariTanpaLayananPersetujuanDitolak(t *testing.T) {
 // permintaan sebagai pencatat jurnal, bukan pejabat yang menyetujui.
 func TestReverse_EksekusiPersetujuanMenulisDiTransaksiPenyetuju(t *testing.T) {
 	f := newReversalFixture(reversalEntry())
-	f.svc.configSvc = &reversalConfig{date: "2026-09-21"}
+	f.svc.dateRepo = &reversalDateRepo{date: time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)}
 
 	approved := false
 	err := f.svc.ExecuteApproved(context.Background(), "tx-persetujuan", ActionReverse, map[string]any{

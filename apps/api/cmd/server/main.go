@@ -90,7 +90,7 @@ func main() {
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, configSvc, auditRepo)
 	branchSvc := service.NewBranchService(branchRepo)
 	productSvc := service.NewProductService(productRepo)
-	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc, auditRepo)
+	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc, dateRepo, auditRepo)
 
 	// Ledger service adalah eksekutor untuk transaksi rekening yang disetujui.
 	executors.Register(service.ActionDeposit, ledgerSvc)

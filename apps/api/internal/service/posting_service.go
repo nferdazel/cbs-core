@@ -121,8 +121,12 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 		EntryDate:       entryDate,
 		CreatedBy:       req.CreatedBy,
 		BranchCode:      req.BranchCode,
-		Lines:           lines,
-		CreatedAt:       now,
+		// Source wajib diteruskan: tanpa ini seluruh jurnal tersimpan tanpa penanda alur,
+		// dan pembatalan transaksi menolak semuanya karena alur yang tidak dikenal memang
+		// tidak boleh dibatalkan.
+		Source:    req.Source,
+		Lines:     lines,
+		CreatedAt: now,
 	}
 
 	if err := s.postingRepo.InsertJournal(ctx, sqlTx, entry); err != nil {

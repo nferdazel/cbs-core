@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -37,6 +36,11 @@ type ledgerService struct {
 	// txRunner membuka transaksi untuk pembatalan. Lewat interface agar jalurnya dapat
 	// diuji tanpa database, sama seperti pemrosesan PPAP dan pembayaran angsuran.
 	txRunner ppapTxRunner
+	// dateRepo dibaca LANGSUNG, bukan lewat layanan konfigurasi yang menyimpan nilai di
+	// cache. Tanggal bisnis berubah setiap tutup hari, sedangkan cache konfigurasi berlaku
+	// 60 detik: selama jeda itu pembatalan lintas hari akan dinilai sebagai transaksi hari
+	// berjalan dan lolos tanpa pejabat kedua.
+	dateRepo domain.BusinessDateRepository
 }
 
 func NewLedgerService(
@@ -49,6 +53,7 @@ func NewLedgerService(
 	configSvc domain.SystemConfigService,
 	limits domain.TransactionLimitService,
 	approvals domain.MakerCheckerService,
+	dateRepo domain.BusinessDateRepository,
 	auditSinks ...domain.AuditRepository,
 ) domain.LedgerService {
 	var auditRepo domain.AuditRepository
@@ -67,6 +72,7 @@ func NewLedgerService(
 		approvals:   approvals,
 		auditRepo:   auditRepo,
 		txRunner:    sqlPPAPTxRunner{db: db},
+		dateRepo:    dateRepo,
 	}
 }
 
@@ -673,18 +679,14 @@ func (s *ledgerService) postReversalTx(ctx context.Context, tx any, original *do
 // Bila tanggal bisnis tidak dapat dibaca, jawabannya ya: pembatalan yang tidak dapat
 // dipastikan berasal dari hari berjalan diperlakukan sebagai lintas hari.
 func (s *ledgerService) isCrossDate(ctx context.Context, original *domain.JournalEntry) bool {
-	if original.EntryDate.IsZero() || s.configSvc == nil {
+	if original.EntryDate.IsZero() || s.dateRepo == nil {
 		return true
 	}
-	raw := strings.TrimSpace(s.configSvc.GetString(ctx, "system.business_date", ""))
-	if raw == "" {
+	current, err := s.dateRepo.GetCurrentDate(ctx)
+	if err != nil || current == nil {
 		return true
 	}
-	businessDate, err := time.Parse("2006-01-02", raw)
-	if err != nil {
-		return true
-	}
-	by, bm, bd := businessDate.Date()
+	by, bm, bd := current.CurrentDate.Date()
 	ey, em, ed := original.EntryDate.Date()
 	return by != ey || bm != em || bd != ed
 }
