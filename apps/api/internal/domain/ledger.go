@@ -95,7 +95,9 @@ type JournalEntry struct {
 	PostedAt        time.Time       `json:"posted_at"`
 	// EntryDate adalah tanggal akuntansi entri yang dipakai laporan periode.
 	EntryDate time.Time `json:"entry_date"`
-	CreatedBy string    `json:"created_by"`
+	// Source adalah alur pembuat jurnal; kosong berarti belum ditandai.
+	Source    JournalSource `json:"source,omitempty"`
+	CreatedBy string        `json:"created_by"`
 	// BranchCode adalah cabang tempat jurnal dibukukan. Kosong berarti jurnal
 	// sistem/batch yang memang bank-wide dan disimpan sebagai branch_id NULL.
 	// Nilai ini hanya dipakai saat insert; pembacaan mengandalkan filter SQL.

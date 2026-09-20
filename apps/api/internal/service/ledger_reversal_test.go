@@ -71,6 +71,7 @@ func reversalEntry() *domain.JournalEntry {
 		Description:     "Setoran tunai",
 		CreatedBy:       "teller1",
 		BranchCode:      "KC001",
+		Source:          domain.SourceTeller,
 		Lines: []domain.JournalLine{
 			{AccountNumber: "10101", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(500000), Currency: "IDR"},
 			{AccountNumber: "2010000001", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(500000), Currency: "IDR"},
@@ -160,6 +161,10 @@ func TestReverse_MembuatKontraDanMenandaiJurnalAsal(t *testing.T) {
 	if f.posting.last.BranchCode != "KC001" {
 		t.Fatalf("cabang kontra %q, mau mengikuti jurnal asal KC001", f.posting.last.BranchCode)
 	}
+	// Jurnal kontra dibuat alur yang sama dengan jurnal asal yang dibatalkannya.
+	if f.posting.last.Source != domain.SourceTeller {
+		t.Fatalf("alur jurnal kontra %q, mau TELLER", f.posting.last.Source)
+	}
 
 	if len(f.repo.markedRef) != 1 || f.repo.markedRef[0] != "DEP-20260920-0001" {
 		t.Fatalf("jurnal asal tidak ditandai dibatalkan: %+v", f.repo.markedRef)
@@ -224,6 +229,26 @@ func TestReverse_MenolakPembatalanYangTidakSah(t *testing.T) {
 		{
 			name:    "jurnal yang dibuat sistem",
 			entry:   asesmen(func(e *domain.JournalEntry) { e.CreatedBy = "SYSTEM" }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal alur kredit",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.Source = domain.SourceLoan }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal alur deposito",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.Source = domain.SourceDeposit }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal alur batch",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.Source = domain.SourceBatch }),
+			wantErr: domain.ErrReversalNotAllowed,
+		},
+		{
+			name:    "jurnal tanpa penanda alur",
+			entry:   asesmen(func(e *domain.JournalEntry) { e.Source = "" }),
 			wantErr: domain.ErrReversalNotAllowed,
 		},
 		{

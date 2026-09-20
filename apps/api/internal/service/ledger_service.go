@@ -206,6 +206,7 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 
 	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeDeposit,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(req.Description, "Setoran tunai "+acc.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
@@ -252,6 +253,7 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 
 	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeWithdrawal,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(req.Description, "Penarikan tunai "+acc.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
@@ -303,6 +305,7 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 
 	return s.posting.Post(ctx, domain.PostingRequest{
 		TransactionType: domain.TxTypeTransferInternal,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(req.Description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
 		IdempotencyKey:  req.IdempotencyKey,
 		CreatedBy:       actorName(req.Actor, req.CreatedBy),
@@ -334,6 +337,7 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 
 	_, err = s.posting.PostTx(ctx, tx, domain.PostingRequest{
 		TransactionType: domain.TxTypeDeposit,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(description, "Setoran tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
@@ -364,6 +368,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 
 	_, err = s.posting.PostTx(ctx, tx, domain.PostingRequest{
 		TransactionType: domain.TxTypeWithdrawal,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(description, "Penarikan tunai "+acc.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
@@ -402,6 +407,7 @@ func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, dest
 
 	_, err = s.posting.PostTx(ctx, tx, domain.PostingRequest{
 		TransactionType: domain.TxTypeTransferInternal,
+		Source:          domain.SourceTeller,
 		Description:     defaultDescription(description, "Transfer "+src.AccountNumber+" ke "+dest.AccountNumber),
 		IdempotencyKey:  idempotencyKey,
 		CreatedBy:       createdBy,
@@ -506,13 +512,18 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 	if createdBy := strings.ToUpper(strings.TrimSpace(original.CreatedBy)); createdBy == "" || createdBy == "SYSTEM" {
 		return nil, fmt.Errorf("%w: jurnal sistem", domain.ErrReversalNotAllowed)
 	}
-	// CATATAN CAKUPAN YANG BELUM TERTUTUP: label transaction_type tidak membedakan alur
-	// bisnis. Penempatan dan pencairan deposito berjangka memakai DEPOSIT/WITHDRAWAL yang
-	// sama dengan setoran dan penarikan teller, dan jurnal kredit juga memakai label ini.
-	// Karena itu transaksi deposito/kredit masih dapat dibatalkan lewat endpoint ini dan
-	// meninggalkan state domainnya tidak sinkron. Penutupnya harus penanda alur di
-	// journal_entries (kolom source), bukan daftar putih atas label. Sampai itu ada,
-	// endpoint ini hanya boleh dipakai untuk kesalahan input teller pada rekening.
+	// Penegakan cakupan memakai penanda alur, bukan transaction_type: DEPOSIT dan
+	// WITHDRAWAL dipakai bersama oleh transaksi teller dan transaksi deposito berjangka,
+	// sehingga daftar putih atas label akan meloloskan justru jurnal yang membawa state
+	// domain — deposito berstatus CLOSED, jadwal angsuran, atau akrual. Jurnal tanpa
+	// penanda alur juga ditolak: alur yang belum dikenal tidak boleh dibatalkan.
+	if original.Source != domain.SourceTeller {
+		source := string(original.Source)
+		if source == "" {
+			source = "tidak bertanda"
+		}
+		return nil, fmt.Errorf("%w: alur jurnal %s bukan transaksi teller", domain.ErrReversalNotAllowed, source)
+	}
 	if maker := original.CreatedBy; maker != "" && (maker == req.Actor.DisplayName() || maker == req.Actor.Username) {
 		return nil, fmt.Errorf("%w: %s", domain.ErrSelfReversal, original.ReferenceNumber)
 	}
@@ -560,6 +571,7 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 			// branch_id NULL, yaitu jurnal bank-wide, sehingga laporan per cabang dan
 			// pemeriksaan cabang atas jurnal itu tidak lagi mencerminkan asalnya.
 			BranchCode: original.BranchCode,
+			Source:     domain.SourceTeller,
 			Lines:      lines,
 		})
 		if err != nil {

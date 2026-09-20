@@ -18,13 +18,33 @@ type PostingLine struct {
 // PostingRequest adalah permintaan tunggal untuk memposting jurnal. Semua modul
 // (tabungan, deposito, kredit, pembiayaan) memakai struktur ini, tidak lagi menulis
 // SQL jurnal sendiri.
+// JournalSource menandai alur bisnis yang membuat jurnal. Dipakai untuk memisahkan
+// transaksi yang aman dibatalkan dari yang membawa state domain: transaction_type tidak
+// bisa dipakai karena DEPOSIT/WITHDRAWAL dipakai bersama oleh alur teller dan alur deposito.
+type JournalSource string
+
+const (
+	// SourceTeller adalah transaksi rekening yang diinput petugas: setoran, penarikan,
+	// transfer antar rekening, dan pembatalannya.
+	SourceTeller JournalSource = "TELLER"
+	// SourceLoan adalah jurnal kredit: pencairan, angsuran, denda, hapus buku, recovery.
+	SourceLoan JournalSource = "LOAN"
+	// SourceDeposit adalah jurnal deposito berjangka: penempatan, akrual, pencairan.
+	SourceDeposit JournalSource = "DEPOSIT"
+	// SourceBatch adalah jurnal proses otomatis: tutup hari/bulan/tahun, PPAP, akrual.
+	SourceBatch JournalSource = "BATCH"
+)
+
 type PostingRequest struct {
 	TransactionType TransactionType `json:"transaction_type"`
-	Description     string          `json:"description"`
-	ReferenceNumber string          `json:"reference_number,omitempty"` // kosong = dibangkitkan
-	IdempotencyKey  string          `json:"idempotency_key,omitempty"`
-	CreatedBy       string          `json:"created_by"`
-	BranchCode      string          `json:"branch_code,omitempty"`
+	// Source diisi pemanggil sesuai alurnya. Kosong berarti alur belum ditandai, dan
+	// jurnal seperti itu tidak boleh dibatalkan.
+	Source          JournalSource `json:"source,omitempty"`
+	Description     string        `json:"description"`
+	ReferenceNumber string        `json:"reference_number,omitempty"` // kosong = dibangkitkan
+	IdempotencyKey  string        `json:"idempotency_key,omitempty"`
+	CreatedBy       string        `json:"created_by"`
+	BranchCode      string        `json:"branch_code,omitempty"`
 	// EntryDate adalah tanggal akuntansi entri. Bila nol, posting engine memakai
 	// tanggal UTC hari ini. Pemanggil yang tanggalnya penting (tutup buku, akrual)
 	// wajib mengisinya, karena laporan periode membaca kolom ini.
