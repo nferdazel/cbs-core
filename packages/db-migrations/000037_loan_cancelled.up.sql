@@ -1,0 +1,14 @@
+-- CBS Migration 000037: status kredit CANCELLED
+-- Run after: 000036_collateral_module.up.sql
+-- Idempotent: aman dijalankan ulang.
+--
+-- Keputusan pemilik sistem untuk koreksi transaksi kredit (nomor 5c): pembatalan pencairan
+-- hanya boleh bila angsuran belum pernah dibayar, dan kreditnya benar-benar batal — bukan
+-- sekadar ditandai lunas atau macet. Status lama tidak ada yang mewakili keadaan itu:
+-- PAID_OFF berarti kredit selesai dibayar, DEFAULTED berarti gagal bayar, WRITTEN_OFF
+-- berarti dihapusbukukan. Memakai salah satunya akan membuat laporan kredit menyesatkan.
+--
+-- ALTER TYPE ... ADD VALUE dijalankan di dalam transaksi milik migrate.sh. Sejak PostgreSQL
+-- 12 hal itu diperbolehkan selama nilai barunya belum dipakai di transaksi yang sama, dan
+-- migrasi ini hanya menambahkannya. Preseden yang sama sudah dipakai migrasi 000004.
+ALTER TYPE loan_status ADD VALUE IF NOT EXISTS 'CANCELLED';

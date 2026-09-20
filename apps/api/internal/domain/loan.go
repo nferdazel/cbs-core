@@ -14,6 +14,13 @@ var (
 	ErrLoanAlreadyApproved  = errors.New("kredit sudah disetujui atau ditolak")
 	ErrLoanNotApproved      = errors.New("kredit harus berstatus APPROVED sebelum dicairkan")
 	ErrLoanAlreadyDisbursed = errors.New("kredit sudah dicairkan")
+	// ErrLoanNotCancellable dipakai saat pembatalan pencairan diminta tetapi kredit tidak
+	// dalam keadaan bisa dibatalkan (mis. sudah lunas, macet, atau dihapusbukukan).
+	ErrLoanNotCancellable = errors.New("hanya kredit berstatus DISBURSED yang dapat dibatalkan pencairannya")
+	// ErrLoanHasInstallmentPayments dipakai saat sudah ada angsuran yang dibayar. Dalam
+	// keadaan itu pencairan tidak boleh dibatalkan — yang benar adalah koreksi nominal,
+	// karena uang dan jadwal angsuran sudah berjalan.
+	ErrLoanHasInstallmentPayments = errors.New("kredit sudah memiliki angsuran dibayar, pembatalan pencairan tidak dapat dilakukan")
 	ErrInvalidLoanAmount    = errors.New("nominal pokok harus positif")
 	ErrInvalidLoanTerm      = errors.New("jangka waktu minimal 1 bulan")
 )
@@ -28,6 +35,10 @@ const (
 	LoanStatusPaidOff         LoanStatus = "PAID_OFF"
 	LoanStatusDefaulted       LoanStatus = "DEFAULTED"
 	LoanStatusWrittenOff      LoanStatus = "WRITTEN_OFF"
+	// LoanStatusCancelled menandai pencairan yang dibatalkan sebelum ada angsuran dibayar.
+	// Berbeda dari PAID_OFF (selesai dibayar), DEFAULTED (gagal bayar), dan WRITTEN_OFF
+	// (dihapusbukukan): kredit yang batal tidak pernah ada sebagai tagihan.
+	LoanStatusCancelled LoanStatus = "CANCELLED"
 )
 
 // LoanType mengikuti enum loan_type di database dan tidak punya nilai default,
