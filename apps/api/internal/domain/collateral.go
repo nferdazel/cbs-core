@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -69,6 +70,18 @@ var (
 	ErrCollateralHaircutInvalid       = errors.New("haircut agunan harus antara 0 dan 100 persen")
 	ErrCollateralNotActive            = errors.New("hanya agunan berstatus aktif yang dapat diubah")
 )
+
+// CollateralRepository menyimpan agunan kredit. Ringkas dengan sengaja: yang dibutuhkan
+// perhitungan PPAP hanyalah jumlah nilai pengurang agunan aktif per kredit.
+type CollateralRepository interface {
+	Create(ctx context.Context, c *LoanCollateral) error
+	GetByID(ctx context.Context, id uuid.UUID) (*LoanCollateral, error)
+	ListByLoan(ctx context.Context, loanID uuid.UUID) ([]LoanCollateral, error)
+	Update(ctx context.Context, c *LoanCollateral) error
+	// SumActiveBoundByLoan menjumlahkan bound_amount agunan berstatus ACTIVE untuk
+	// sekumpulan kredit dalam SATU query, agar perhitungan PPAP tidak menjadi N+1.
+	SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error)
+}
 
 // LoanCollateral adalah satu agunan yang terikat pada satu kredit.
 //
