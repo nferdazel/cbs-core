@@ -108,7 +108,9 @@ func main() {
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
 	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
-	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc)
+	// Repositori agunan dipakai dua jalur: pencatatan agunan dan pengurangan eksposur PPAP.
+	collateralRepo := postgres.NewCollateralRepository(db)
+	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc, collateralRepo)
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
@@ -149,7 +151,6 @@ func main() {
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
-	collateralRepo := postgres.NewCollateralRepository(db)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, auditRepo)
 
 	// 6. Router

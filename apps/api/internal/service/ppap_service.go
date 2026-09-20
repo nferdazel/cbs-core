@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -54,13 +56,14 @@ func (r sqlPPAPTxRunner) Run(ctx context.Context, fn func(tx any) error) error {
 }
 
 type ppapService struct {
-	txRunner    ppapTxRunner
-	repo        domain.PPAPRepository
-	productRepo domain.ProductRepository
-	resolver    domain.AccountResolver
-	poster      *ProductPoster
-	posting     domain.PostingService
-	config      domain.SystemConfigService
+	txRunner       ppapTxRunner
+	repo           domain.PPAPRepository
+	collateralRepo domain.CollateralRepository
+	productRepo    domain.ProductRepository
+	resolver       domain.AccountResolver
+	poster         *ProductPoster
+	posting        domain.PostingService
+	config         domain.SystemConfigService
 }
 
 func NewPPAPService(
@@ -71,15 +74,21 @@ func NewPPAPService(
 	poster *ProductPoster,
 	posting domain.PostingService,
 	config domain.SystemConfigService,
+	collateralSinks ...domain.CollateralRepository,
 ) domain.PPAPService {
+	var collateralRepo domain.CollateralRepository
+	if len(collateralSinks) > 0 {
+		collateralRepo = collateralSinks[0]
+	}
 	return &ppapService{
-		txRunner:    sqlPPAPTxRunner{db: db},
-		repo:        repo,
-		productRepo: productRepo,
-		resolver:    resolver,
-		poster:      poster,
-		posting:     posting,
-		config:      config,
+		collateralRepo: collateralRepo,
+		txRunner:       sqlPPAPTxRunner{db: db},
+		repo:           repo,
+		productRepo:    productRepo,
+		resolver:       resolver,
+		poster:         poster,
+		posting:        posting,
+		config:         config,
 	}
 }
 
@@ -105,6 +114,14 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	thresholds := collectibilityThresholds(ctx, s.config)
 	rates := collectibilityRates(ctx, s.config)
 
+	// Nilai agunan pengurang dibaca SEKALI untuk seluruh kredit dalam satu query. Bila
+	// dibaca per kredit, pekerjaan harian ini menjadi N+1 tepat pada saat jumlah kredit
+	// bertambah — persis saat kecepatannya paling dibutuhkan.
+	collateralValues, err := s.collateralValues(ctx, snapshots)
+	if err != nil {
+		return domain.PPAPRunSummary{}, err
+	}
+
 	summary := domain.PPAPRunSummary{
 		AsOf:          asOf,
 		Total:         len(snapshots),
@@ -113,7 +130,7 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	}
 
 	for _, snap := range snapshots {
-		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, actor, preview)
+		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, collateralValues[snap.LoanID], actor, preview)
 		if err != nil {
 			summary.Failed++
 			summary.Failures = append(summary.Failures, domain.PPAPRunFailure{
@@ -138,6 +155,33 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	return summary, nil
 }
 
+// collateralValues mengembalikan nilai agunan pengurang per kredit. Tidak ada yang dibaca
+// dan tidak ada query dijalankan selama ppap.collateral.enabled bernilai false, sehingga
+// modul agunan yang belum diaktifkan tidak menambah beban maupun risiko pada tutup hari.
+//
+// Kegagalan membaca agunan dikembalikan sebagai error, bukan diabaikan: mengabaikannya
+// berarti menjalankan PPAP atas pokok penuh sambil melaporkan sukses, dan selisihnya baru
+// terlihat saat rekonsiliasi cadangan.
+func (s *ppapService) collateralValues(ctx context.Context, snapshots []domain.PPAPLoanSnapshot) (map[uuid.UUID]decimal.Decimal, error) {
+	if s.collateralRepo == nil || s.config == nil {
+		return nil, nil
+	}
+	raw := strings.ToLower(strings.TrimSpace(s.config.GetString(ctx, domain.PPAPCollateralEnabledKey, "false")))
+	if raw != "true" && raw != "1" && raw != "ya" {
+		return nil, nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(snapshots))
+	for _, snap := range snapshots {
+		ids = append(ids, snap.LoanID)
+	}
+	sums, err := s.collateralRepo.SumActiveBoundByLoan(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("mengambil nilai agunan untuk PPAP: %w", err)
+	}
+	return sums, nil
+}
+
 // processLoan menghitung dan menerapkan PPAP satu kredit. preview=true hanya menghitung.
 func (s *ppapService) processLoan(
 	ctx context.Context,
@@ -145,6 +189,7 @@ func (s *ppapService) processLoan(
 	snap domain.PPAPLoanSnapshot,
 	thresholds domain.CollectibilityThresholds,
 	rates domain.PPAPRates,
+	collateralValue decimal.Decimal,
 	actor domain.Actor,
 	preview bool,
 ) (domain.PPAPRunItem, error) {
@@ -163,7 +208,11 @@ func (s *ppapService) processLoan(
 	// di loans.required_ppap. Saldo akun GL cadangan bersifat agregat portofolio,
 	// sehingga memakainya sebagai pengurang per kredit akan menggandakan/menghilangkan
 	// selisih antar kredit. Saldo GL tetap dipakai untuk rekonsiliasi awal/akhir run.
-	calc := domain.CalculatePPAP(snap.Outstanding, col, snap.RequiredPPAP, rates)
+	// Agunan mengurangi eksposur yang dikenai tarif, bukan cadangan yang sudah ada.
+	// Selama ppap.collateral.enabled false, nilai agunan tidak dibaca sama sekali
+	// sehingga perilaku PPAP identik dengan sebelum modul agunan ada.
+	exposure := domain.PPAPExposure(snap.Outstanding, collateralValue)
+	calc := domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 
 	stop := col.IsNPL() // golongan 3-5: akrual dihentikan (cash basis) sesuai POJK
 	accrual := domain.AccrualStatusAccrual
@@ -177,6 +226,8 @@ func (s *ppapService) processLoan(
 		DPD:                   dpd,
 		Collectibility:        col,
 		Outstanding:           snap.Outstanding,
+		CollateralValue:       collateralValue,
+		Exposure:              exposure,
 		Target:                calc.Target,
 		Existing:              calc.Existing,
 		Adjustment:            calc.Adjustment,

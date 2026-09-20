@@ -18,6 +18,9 @@ type collateralRepoStub struct {
 	created     []domain.LoanCollateral
 	branchCodes []string
 	existing    []domain.LoanCollateral
+	sums        map[uuid.UUID]decimal.Decimal
+	sumErr      error
+	sumCalled   bool
 }
 
 func (r *collateralRepoStub) Create(ctx context.Context, c *domain.LoanCollateral, branchCode string) error {
@@ -35,6 +38,16 @@ func (r *collateralRepoStub) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		}
 	}
 	return nil, domain.ErrCollateralNotFound
+}
+
+// SumActiveBoundByLoan dipakai jalur PPAP. Nilai dikembalikan dari peta tetap agar test
+// dapat memeriksa perilaku saklar tanpa database.
+func (r *collateralRepoStub) SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error) {
+	r.sumCalled = true
+	if r.sumErr != nil {
+		return nil, r.sumErr
+	}
+	return r.sums, nil
 }
 
 func (r *collateralRepoStub) ListByLoan(ctx context.Context, loanID uuid.UUID) ([]domain.LoanCollateral, error) {

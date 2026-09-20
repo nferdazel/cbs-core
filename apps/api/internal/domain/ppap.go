@@ -136,6 +136,25 @@ func SubMonthlyCollectibilityThresholds() CollectibilityThresholds {
 	return CollectibilityThresholds{Lancar: 15, DPK: 30, KurangLancar: 90, Diragukan: 180}
 }
 
+// PPAPExposure menghitung eksposur yang dikenai tarif PPAP setelah dikurangi nilai agunan
+// pengurang, dengan lantai nol: agunan yang nilainya melebihi baki debet tidak menghasilkan
+// eksposur negatif, karena penyisihan negatif tidak punya arti.
+//
+// PASAL DAN CAKUPAN RESMINYA BELUM DIVERIFIKASI. Catatan lama proyek menyebut Pasal 20,
+// komentar migrasi 000026 menyebut Pasal 17; salah satu salah. Fungsi ini disediakan agar
+// perhitungannya siap, tetapi baru dipakai bila ppap.collateral.enabled diaktifkan setelah
+// teks POJK No. 1 Tahun 2024 diverifikasi.
+func PPAPExposure(outstanding, collateralValue decimal.Decimal) decimal.Decimal {
+	if collateralValue.IsNegative() {
+		collateralValue = decimal.Zero
+	}
+	exposure := outstanding.Sub(collateralValue)
+	if exposure.IsNegative() {
+		return decimal.Zero
+	}
+	return exposure
+}
+
 // Batas umur jatuh tempo Kredit dalam hari (POJK 1/2024 Lampiran II, kolom
 // kemampuan membayar). Berlaku sama untuk kedua tabel frekuensi angsuran.
 const (
@@ -371,11 +390,17 @@ type PPAPLoanUpdate struct {
 
 // PPAPRunItem adalah hasil pemrosesan satu kredit.
 type PPAPRunItem struct {
-	LoanID                uuid.UUID       `json:"loan_id"`
-	LoanNumber            string          `json:"loan_number"`
-	DPD                   int             `json:"dpd"`
-	Collectibility        Collectibility  `json:"collectibility"`
-	Outstanding           decimal.Decimal `json:"outstanding"`
+	LoanID         uuid.UUID      `json:"loan_id"`
+	LoanNumber     string         `json:"loan_number"`
+	DPD            int            `json:"dpd"`
+	Collectibility Collectibility `json:"collectibility"`
+	Outstanding    decimal.Decimal
+	// CollateralValue adalah nilai agunan pengurang yang dipakai, dan Exposure adalah
+	// baki debet setelah dikuranginya. Keduanya disimpan pada hasil agar selisih cadangan
+	// antar hari dapat ditelusuri: tanpa ini, perubahan cadangan yang berasal dari agunan
+	// baru tidak dapat dibedakan dari perubahan kolektibilitas.
+	CollateralValue       decimal.Decimal
+	Exposure              decimal.Decimal `json:"outstanding"`
 	Target                decimal.Decimal `json:"target"`
 	Existing              decimal.Decimal `json:"existing"`
 	Adjustment            decimal.Decimal `json:"adjustment"`
