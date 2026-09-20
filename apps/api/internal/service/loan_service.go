@@ -645,6 +645,11 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	}
 
 	now := time.Now().UTC()
+	// Kualitas sebelum restrukturisasi disimpan sebelum apa pun berubah: Pasal 23
+	// POJK 1/2024 membatasi kualitas sesudahnya berdasarkan nilai ini, dan proses
+	// harian memakainya lagi lewat pre_restructure_collectibility.
+	before := domain.CollectibilityFromOJK(loan.Collectibility)
+	loan.PreRestructureCollectibility = loan.Collectibility
 	loan.IsRestructured = true
 	loan.RestructuredCount++
 	loan.RestructuredAt = &now
@@ -660,12 +665,15 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	}
 
 	// Kolektibilitas mengikuti DPD kredit dari konfigurasi yang sama dengan proses
-	// PPAP harian, bukan aturan tersendiri. required_ppap sengaja TIDAK dihitung ulang
-	// di sini: nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP
-	// yang boleh mengubahnya karena ia pula yang memposting selisih jurnalnya.
-	col, accrual := CollectibilityForDPD(ctx, s.config, loan.DPD)
+	// PPAP harian, bukan aturan tersendiri, lalu dibatasi Pasal 23 POJK 1/2024:
+	// restrukturisasi tidak boleh menaikkan golongan sebelum 3 periode pembayaran
+	// bersih berturut-turut. required_ppap sengaja TIDAK dihitung ulang di sini:
+	// nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP yang boleh
+	// mengubahnya karena ia pula yang memposting selisih jurnalnya.
+	col := CollectibilityForDPD(ctx, s.config, loan.DPD)
+	col = domain.RestructureCollectibility(before, col, 0)
 	loan.Collectibility = col.OJKCode()
-	loan.AccrualStatus = accrual
+	loan.AccrualStatus = AccrualForCollectibility(col)
 
 	method, profitType, margin := scheduleTermsFor(product, loan.MarginAmount)
 	schedules, totalPayable, monthly := domain.BuildSchedule(loan.ID, domain.ScheduleParams{

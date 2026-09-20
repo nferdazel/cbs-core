@@ -223,6 +223,51 @@ func TestPPAPRunDaily_MacetTriggersStopAccrual(t *testing.T) {
 	}
 }
 
+// Pasal 23 POJK 1/2024: kredit yang direstrukturisasi tidak boleh kembali Lancar
+// hanya karena DPD-nya nol; batasnya lepas setelah 3 periode pembayaran bersih.
+func TestPPAPRunDaily_RestructuredLoanCannotImprove(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf // tidak ada tunggakan: DPD 0
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:                       loanID,
+			LoanNumber:                   "KRD-RESTRUKTUR",
+			Outstanding:                  decimal.NewFromInt(10_000_000),
+			Collectibility:               domain.KolLancar,
+			AccrualStatus:                domain.AccrualStatusAccrual,
+			RequiredPPAP:                 decimal.NewFromInt(50_000),
+			LastDueDate:                  &due,
+			IsRestructured:               true,
+			PreRestructureCollectibility: domain.KolMacet,
+			CleanPeriods:                 0,
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	summary, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if len(repo.updated) != 1 {
+		t.Fatalf("state diperbarui %d kali, ingin 1", len(repo.updated))
+	}
+	upd := repo.updated[0]
+	if upd.Collectibility != domain.KolKurangLancar {
+		t.Fatalf("mantan Macet yang direstrukturisasi harus tetap Kurang Lancar, dapat %s",
+			upd.Collectibility.Label())
+	}
+	if !upd.StopAccrual || upd.AccrualStatus != domain.AccrualStatusCash {
+		t.Fatalf("Kurang Lancar harus cash basis: %+v", upd)
+	}
+	// 10% x 10.000.000 = 1.000.000, dikurangi cadangan lama 50.000.
+	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
+		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
+	}
+}
+
 // Kredit yang sudah sesuai target tidak diposting ulang dan tidak diubah.
 func TestPPAPRunDaily_UnchangedIsSkipped(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)

@@ -232,6 +232,38 @@ func tighten(configured, def int) int {
 	return configured
 }
 
+// RestructureCleanPeriodsForLancar adalah jumlah periode pembayaran bersih
+// berturut-turut yang membebaskan Kredit restrukturisasi dari batas kualitasnya
+// (POJK No. 1 Tahun 2024 Pasal 23 ayat (2) huruf a).
+const RestructureCleanPeriodsForLancar = 3
+
+// RestructureCollectibility menerapkan Pasal 23 POJK No. 1 Tahun 2024:
+//
+//   - Kredit yang sebelum restrukturisasi tergolong Diragukan atau Macet paling tinggi
+//     Kurang Lancar (ayat (1) huruf a).
+//   - Kredit yang sebelum restrukturisasi tergolong Lancar, DPK, atau Kurang Lancar
+//     tidak boleh membaik (ayat (1) huruf b).
+//   - Batas itu lepas setelah RestructureCleanPeriodsForLancar kali periode pembayaran
+//     bersih berturut-turut (ayat (2) huruf a). Sebelum itu Kredit tetap boleh
+//     memburuk, karena POJK adalah standar minimum, bukan plafon.
+//
+// before adalah kualitas sesaat sebelum restrukturisasi terakhir, computed adalah
+// kualitas dari penilaian biasa, dan cleanPeriods adalah jumlah angsuran yang dibayar
+// tepat waktu berturut-turut sejak restrukturisasi terakhir.
+func RestructureCollectibility(before, computed Collectibility, cleanPeriods int) Collectibility {
+	if cleanPeriods >= RestructureCleanPeriodsForLancar {
+		return computed
+	}
+	floor := before
+	if before >= KolDiragukan {
+		floor = KolKurangLancar
+	}
+	if computed > floor {
+		return computed
+	}
+	return floor
+}
+
 // PPAPRate adalah tarif penyisihan minimum atas pokok terutang, dalam fraksi
 // (0.005 = 0,5%). Disimpan sebagai decimal agar tidak ada galat pembulatan biner.
 type PPAPRate decimal.Decimal
@@ -314,6 +346,14 @@ type PPAPLoanSnapshot struct {
 	// LastDueDate adalah jatuh tempo angsuran terlama yang belum dibayar; nil bila
 	// seluruh angsuran sudah lunas.
 	LastDueDate *time.Time
+	// IsRestructured menandai Kredit pernah direstrukturisasi. Bila true,
+	// RestructureCollectibility membatasi golongannya (POJK 1/2024 Pasal 23).
+	IsRestructured bool
+	// PreRestructureCollectibility adalah kualitas sesaat sebelum restrukturisasi
+	// terakhir; CleanPeriods adalah jumlah angsuran tepat waktu berturut-turut sejak
+	// restrukturisasi terakhir. Keduanya masukan RestructureCollectibility.
+	PreRestructureCollectibility Collectibility
+	CleanPeriods                 int
 }
 
 // PPAPLoanUpdate membawa perubahan state kredit hasil proses PPAP.

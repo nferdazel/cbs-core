@@ -36,7 +36,27 @@ const listDueLoansQuery = `
 		l.dpd,
 		l.accrual_status::text,
 		l.required_ppap,
-		MIN(s.due_date) AS last_due_date
+		MIN(s.due_date) AS last_due_date,
+		l.is_restructured,
+		l.pre_restructure_collectibility,
+		CASE WHEN l.restructured_at IS NULL THEN 0 ELSE (
+			SELECT COUNT(*)
+			FROM loan_schedules sc
+			WHERE sc.loan_id = l.id
+				AND sc.due_date >= l.restructured_at::date
+				AND sc.due_date <= $1
+				AND sc.status = 'PAID'
+				AND sc.paid_at IS NOT NULL
+				AND sc.paid_at::date <= sc.due_date
+				AND sc.due_date > COALESCE((
+					SELECT MAX(sv.due_date)
+					FROM loan_schedules sv
+					WHERE sv.loan_id = l.id
+						AND sv.due_date >= l.restructured_at::date
+						AND sv.due_date <= $1
+						AND NOT (sv.status = 'PAID' AND sv.paid_at IS NOT NULL AND sv.paid_at::date <= sv.due_date)
+				), l.restructured_at::date - 1)
+		) END AS clean_periods
 	FROM loans l
 	LEFT JOIN loan_schedules s
 		ON s.loan_id = l.id
@@ -60,10 +80,13 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		var productID sql.NullString
 		var collectibility, accrual string
 		var lastDue sql.NullTime
+		var preRestructure sql.NullString
+		var cleanPeriods int
 
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP, &lastDue,
+			&s.IsRestructured, &preRestructure, &cleanPeriods,
 		); err != nil {
 			return nil, err
 		}
@@ -80,6 +103,10 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 			t := lastDue.Time
 			s.LastDueDate = &t
 		}
+		if preRestructure.Valid {
+			s.PreRestructureCollectibility = domain.CollectibilityFromOJK(domain.OJKCollectibility(preRestructure.String))
+		}
+		s.CleanPeriods = cleanPeriods
 		list = append(list, s)
 	}
 	return list, rows.Err()

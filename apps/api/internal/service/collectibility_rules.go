@@ -46,15 +46,21 @@ func collectibilityRates(ctx context.Context, config domain.SystemConfigService)
 	return out
 }
 
-// CollectibilityForDPD adalah satu-satunya jalur penentuan golongan kredit beserta
-// status akrualnya. Golongan 3-5 (NPL) memakai cash basis sesuai POJK.
-func CollectibilityForDPD(ctx context.Context, config domain.SystemConfigService, dpd int) (domain.Collectibility, domain.AccrualStatus) {
-	col := domain.CollectibilityFromDPD(dpd, collectibilityThresholds(ctx, config))
-	accrual := domain.AccrualStatusAccrual
-	if col.IsNPL() {
-		accrual = domain.AccrualStatusCash
+// CollectibilityForDPD adalah satu-satunya jalur penentuan golongan kredit dari
+// keterlambatan angsuran. Golongan 3-5 (NPL) memakai cash basis sesuai POJK; pakai
+// AccrualForCollectibility untuk golongan yang sudah dibatasi/diubah pemanggil.
+func CollectibilityForDPD(ctx context.Context, config domain.SystemConfigService, dpd int) domain.Collectibility {
+	return domain.CollectibilityFromDPD(dpd, collectibilityThresholds(ctx, config))
+}
+
+// AccrualForCollectibility memetakan golongan akhir ke status akrualnya. Wajib
+// dipakai setelah golongan diubah (mis. dibatasi Pasal 23), agar penghentian akrual
+// selalu mengikuti golongan yang benar-benar disimpan.
+func AccrualForCollectibility(c domain.Collectibility) domain.AccrualStatus {
+	if c.IsNPL() {
+		return domain.AccrualStatusCash
 	}
-	return col, accrual
+	return domain.AccrualStatusAccrual
 }
 
 // Pembaca konfigurasi dengan toleransi service nil (mis. test) agar fallback tetap dipakai.

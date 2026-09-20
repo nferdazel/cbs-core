@@ -103,7 +103,7 @@ func (s *loanService) accrueInterestForLoan(
 	if first.OldestDueDate != nil {
 		dpd = daysPastDue(day, *first.OldestDueDate)
 	}
-	col, _ := CollectibilityForDPD(ctx, s.config, dpd)
+	col := CollectibilityForDPD(ctx, s.config, dpd)
 	if col.IsNPL() {
 		return skipInterestItems(items, "kolektibilitas "+col.Label()+" (NPL): akrual dihentikan"), ""
 	}

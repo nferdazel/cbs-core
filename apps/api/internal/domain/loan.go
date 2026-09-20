@@ -117,6 +117,10 @@ type Loan struct {
 	RestructuredAt      *time.Time `json:"restructured_at,omitempty"`
 	RestructuringReason string     `json:"restructuring_reason,omitempty"`
 
+	// PreRestructureCollectibility adalah kualitas Kredit sesaat sebelum
+	// restrukturisasi terakhir; dasar penerapan batas Pasal 23 POJK 1/2024.
+	PreRestructureCollectibility OJKCollectibility `json:"pre_restructure_collectibility,omitempty"`
+
 	PrincipalAmount    decimal.Decimal `json:"principal_amount"`
 	AcquisitionCost    decimal.Decimal `json:"acquisition_cost"`
 	DeferredMargin     decimal.Decimal `json:"deferred_margin"`

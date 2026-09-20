@@ -146,8 +146,36 @@ func TestCollectibilityFromDPD_NeverLighterThanDefault(t *testing.T) {
 	}
 }
 
-// Tarif PPAP minimum BPR (POJK 33/POJK.03/2018 Pasal 16): PPAP umum 0,5% untuk
-// Lancar, dan PPAP khusus 3% / 10% / 50% / 100% atas pokok terutang.
+// Pasal 23 POJK 1/2024: restrukturisasi tidak boleh menaikkan kualitas Kredit.
+func TestRestructureCollectibility_Pasal23(t *testing.T) {
+	tests := []struct {
+		name         string
+		before       domain.Collectibility
+		computed     domain.Collectibility
+		cleanPeriods int
+		want         domain.Collectibility
+	}{
+		{"sebelum Macet, DPD nol, belum 3 periode bersih", domain.KolMacet, domain.KolLancar, 0, domain.KolKurangLancar},
+		{"sebelum Diragukan, 2 periode bersih belum cukup", domain.KolDiragukan, domain.KolLancar, 2, domain.KolKurangLancar},
+		{"sebelum Macet dan makin buruk tetap Macet", domain.KolMacet, domain.KolMacet, 0, domain.KolMacet},
+		{"sebelum Lancar tetap Lancar", domain.KolLancar, domain.KolLancar, 0, domain.KolLancar},
+		{"sebelum DPK tidak boleh membaik", domain.KolDPK, domain.KolLancar, 0, domain.KolDPK},
+		{"sebelum Kurang Lancar tidak berubah", domain.KolKurangLancar, domain.KolLancar, 0, domain.KolKurangLancar},
+		{"3 periode bersih membebaskan batas", domain.KolMacet, domain.KolLancar, 3, domain.KolLancar},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.RestructureCollectibility(tt.before, tt.computed, tt.cleanPeriods)
+			if got != tt.want {
+				t.Fatalf("sebelum=%s dihitung=%s bersih=%d: got %s, want %s",
+					tt.before.Label(), tt.computed.Label(), tt.cleanPeriods, got.Label(), tt.want.Label())
+			}
+		})
+	}
+}
+
+// Tarif PPAP minimum BPR (POJK 1/2024 Pasal 19): PPAP umum 0,5% untuk Lancar, dan
+// PPAP khusus 3% / 10% / 50% / 100% atas pokok terutang.
 func TestPPAPAmount_DefaultRates(t *testing.T) {
 	rates := domain.DefaultPPAPRates()
 	outstanding := decimal.NewFromInt(1_000_000)

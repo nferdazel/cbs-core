@@ -210,6 +210,51 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	}
 }
 
+// Restrukturisasi kredit bermasalah tidak boleh menghapus NPL (Pasal 23 POJK 1/2024):
+// meski jadwal baru membuat DPD nol, kualitasnya paling tinggi Kurang Lancar.
+func TestRestructureLoan_MacetTidakKembaliLancar(t *testing.T) {
+	loanID := uuid.New()
+	productID := uuid.New()
+	repo := &stubLoanRepo{loan: &domain.Loan{
+		ID:                   loanID,
+		Status:               domain.LoanStatusDisbursed,
+		ProductID:            &productID,
+		DPD:                  10,
+		Collectibility:       domain.CollectibilityKol5,
+		PrincipalAmount:      decimal.NewFromInt(10_000_000),
+		OutstandingPrincipal: decimal.NewFromInt(10_000_000),
+		TermMonths:           12,
+		InterestRateAnnual:   decimal.NewFromInt(12),
+	}}
+	products := &stubLoanProductRepo{product: &domain.BankingProduct{
+		ID:             productID,
+		Code:           "KRD-FLAT",
+		ProfitScheme:   domain.SchemeInterest,
+		ScheduleMethod: domain.ScheduleFlat,
+		RateAnnual:     decimal.NewFromInt(12),
+	}}
+	config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
+	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config)
+
+	loan, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:        loanID,
+		NewTermMonths: 12,
+	}, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+	if loan.Collectibility != domain.CollectibilityKol3 {
+		t.Fatalf("mantan Macet harus paling tinggi Kurang Lancar, dapat %s", loan.Collectibility)
+	}
+	if loan.AccrualStatus != domain.AccrualStatusCash {
+		t.Fatalf("Kurang Lancar harus cash basis, dapat %s", loan.AccrualStatus)
+	}
+	if loan.PreRestructureCollectibility != domain.CollectibilityKol5 {
+		t.Fatalf("kualitas sebelum restrukturisasi harus tersimpan Macet, dapat %s",
+			loan.PreRestructureCollectibility)
+	}
+}
+
 // Restrukturisasi kredit cabang lain harus ditolak bagi peran operasional, tetapi
 // tetap boleh dijalankan oleh pelaku lintas cabang (pengawas/batch).
 func TestRestructureLoan_MenolakKreditCabangLain(t *testing.T) {

@@ -153,6 +153,11 @@ func (s *ppapService) processLoan(
 		dpd = daysPastDue(asOf, *snap.LastDueDate)
 	}
 	col := domain.CollectibilityFromDPD(dpd, thresholds)
+	if snap.IsRestructured {
+		// Pasal 23 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
+		// 3 periode pembayaran bersih berturut-turut.
+		col = domain.RestructureCollectibility(snap.PreRestructureCollectibility, col, snap.CleanPeriods)
+	}
 
 	// Cadangan yang sudah ada untuk kredit ini adalah target terakhir yang tersimpan
 	// di loans.required_ppap. Saldo akun GL cadangan bersifat agregat portofolio,

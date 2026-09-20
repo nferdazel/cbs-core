@@ -27,6 +27,7 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
 	collectibility, dpd, accrual_status, required_ppap,
 	is_restructured, restructured_count, restructured_at, restructuring_reason,
+	pre_restructure_collectibility,
 	akad_number, akad_date, purpose,
 	ao_id, approved_by, approved_at, disbursed_at,
 	created_at, updated_at,
@@ -37,6 +38,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var aoID, approvedBy sql.NullString
 	var approvedAt, disbursedAt, restructuredAt, akadDate sql.NullTime
 	var restructuringReason, akadNumber, purpose sql.NullString
+	var preRestructure sql.NullString
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -44,6 +46,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment, &l.OutstandingPrincipal, &l.PenaltyAccrued,
 		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
 		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &restructuringReason,
+		&preRestructure,
 		&akadNumber, &akadDate, &purpose,
 		&aoID, &approvedBy, &approvedAt, &disbursedAt,
 		&l.CreatedAt, &l.UpdatedAt,
@@ -71,6 +74,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	}
 	if restructuringReason.Valid {
 		l.RestructuringReason = restructuringReason.String
+	}
+	if preRestructure.Valid {
+		l.PreRestructureCollectibility = domain.OJKCollectibility(preRestructure.String)
 	}
 	if akadNumber.Valid {
 		l.AkadNumber = akadNumber.String
@@ -287,13 +293,15 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 		term_months=$1, interest_rate_annual=$2, margin_amount=$3, total_payable=$4, monthly_installment=$5,
 		collectibility=$6, accrual_status=$7, required_ppap=$8,
 		is_restructured=$9, restructured_count=$10, restructured_at=$11, restructuring_reason=$12,
+		pre_restructure_collectibility=$13,
 		updated_at=NOW()
-		WHERE id=$13`
+		WHERE id=$14`
 
 	_, err = tx.ExecContext(ctx, q,
 		l.TermMonths, l.InterestRateAnnual, l.MarginAmount, l.TotalPayable, l.MonthlyInstallment,
 		l.Collectibility, l.AccrualStatus, l.RequiredPPAP,
 		l.IsRestructured, l.RestructuredCount, l.RestructuredAt, l.RestructuringReason,
+		l.PreRestructureCollectibility,
 		l.ID,
 	)
 	if err != nil {
