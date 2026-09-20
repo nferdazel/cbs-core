@@ -12,6 +12,9 @@ import (
 var (
 	ErrEODAlreadyRunForDate = errors.New("end of day (EOD) process has already been executed for this business date")
 	ErrInvalidBusinessDate  = errors.New("business date cannot be set to a past date")
+	// ErrEODInProgress menandai tutup hari lain yang sedang berjalan. Berbeda dari
+	// ErrEODAlreadyRunForDate yang berarti tanggalnya memang sudah ditutup.
+	ErrEODInProgress = errors.New("tutup hari sedang berjalan; tunggu sampai selesai")
 )
 
 type BusinessDateStatus string
@@ -80,6 +83,14 @@ type BusinessDateRepository interface {
 	// dijalankan. Ini menggantikan pola baca-lalu-tulis yang membuat dua permintaan
 	// bersamaan dapat sama-sama lolos dan menjalankan pekerjaan harian dua kali.
 	ClaimEOD(ctx context.Context) (bool, error)
+	// TryEODLock mengambil kunci eksklusif tutup hari pada sesi database. Selama
+	// kunci dipegang, permintaan tutup hari lain ditolak dengan ErrEODInProgress.
+	// Klaim status saja tidak cukup: status EOD berarti "sedang berjalan" sekaligus
+	// "pernah berhenti di tengah", dan keduanya harus dibedakan. Kunci dilepas
+	// otomatis bila koneksi berakhir, sehingga proses yang mati di tengah tidak
+	// meninggalkan kunci permanen; fungsi release yang dikembalikan melepasnya lebih
+	// awal.
+	TryEODLock(ctx context.Context) (func() error, error)
 }
 
 type BatchProcessService interface {

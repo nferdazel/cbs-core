@@ -15,6 +15,20 @@ import (
 type stubBusinessDateRepo struct {
 	currentDate time.Time
 	status      domain.BusinessDateStatus
+	// lockHeld meniru kunci tutup hari yang sedang dipegang proses lain.
+	lockHeld bool
+}
+
+// TryEODLock meniru kunci advisory: gagal bila kunci sedang dipegang.
+func (s *stubBusinessDateRepo) TryEODLock(ctx context.Context) (func() error, error) {
+	if s.lockHeld {
+		return nil, domain.ErrEODInProgress
+	}
+	s.lockHeld = true
+	return func() error {
+		s.lockHeld = false
+		return nil
+	}, nil
 }
 
 func (s *stubBusinessDateRepo) GetCurrentDate(ctx context.Context) (*domain.SystemBusinessDate, error) {
@@ -71,6 +85,29 @@ func TestRunEODRejectsClosedBusinessDate(t *testing.T) {
 		t.Fatalf("tanggal tertutup harus ditolak ErrEODAlreadyRunForDate, dapat %v", err)
 	}
 	if dateRepo.status != domain.BusinessDateStatusClosed {
+		t.Fatalf("status tidak boleh berubah, dapat %s", dateRepo.status)
+	}
+	if !dateRepo.currentDate.Equal(initDate) {
+		t.Fatalf("tanggal bisnis tidak boleh maju, dapat %s", dateRepo.currentDate.Format("2006-01-02"))
+	}
+}
+
+// Tutup hari kedua yang datang saat tutup hari lain masih berjalan harus ditolak
+// sebelum pekerjaan harian apa pun dijalankan. Status saja tidak dapat membedakan
+// "sedang berjalan" dari "pernah berhenti di tengah".
+func TestRunEODRejectsWhenAnotherRunHoldsLock(t *testing.T) {
+	initDate := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: initDate,
+		status:      domain.BusinessDateStatusOpen,
+		lockHeld:    true,
+	}
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	if _, err := svc.RunEOD(context.Background(), uuid.New()); !errors.Is(err, domain.ErrEODInProgress) {
+		t.Fatalf("tutup hari kedua harus ditolak ErrEODInProgress, dapat %v", err)
+	}
+	if dateRepo.status != domain.BusinessDateStatusOpen {
 		t.Fatalf("status tidak boleh berubah, dapat %s", dateRepo.status)
 	}
 	if !dateRepo.currentDate.Equal(initDate) {

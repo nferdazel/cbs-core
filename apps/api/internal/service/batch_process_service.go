@@ -79,6 +79,19 @@ func (s *batchProcessService) GetCurrentBusinessDate(ctx context.Context) (*doma
 }
 
 func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) (*domain.EODSummaryResult, error) {
+	// Kunci eksklusif lebih dulu. Klaim status saja tidak memadai: status EOD berarti
+	// "sedang berjalan" sekaligus "pernah berhenti di tengah", sedangkan kunci ini
+	// hanya membedakan yang pertama dan dilepas otomatis bila proses mati.
+	release, err := s.dateRepo.TryEODLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := release(); err != nil {
+			observability.FromContext(ctx).ErrorContext(ctx, "gagal melepas kunci tutup hari", "error", err)
+		}
+	}()
+
 	curDate, err := s.dateRepo.GetCurrentDate(ctx)
 	if err != nil {
 		return nil, err

@@ -104,4 +104,36 @@ func (r *BusinessDateRepository) ClaimEOD(ctx context.Context) (bool, error) {
 	return affected > 0, nil
 }
 
+// eodAdvisoryLockKey adalah kunci advisory PostgreSQL yang dipakai khusus tutup
+// hari. Nilainya cukup unik di dalam satu database.
+const eodAdvisoryLockKey int64 = 4217001
+
+// TryEODLock mengambil kunci advisory pada satu sesi database yang dipegang selama
+// tutup hari berlangsung. Kunci advisory bersifat per sesi, jadi koneksinya harus
+// dipegang utuh — bukan dipinjam-lepas dari pool setiap query.
+func (r *BusinessDateRepository) TryEODLock(ctx context.Context) (func() error, error) {
+	conn, err := r.db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var acquired bool
+	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", eodAdvisoryLockKey).Scan(&acquired); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if !acquired {
+		conn.Close()
+		return nil, domain.ErrEODInProgress
+	}
+
+	return func() error {
+		// Pelepasan memakai konteks baru: konteks permintaan bisa sudah dibatalkan saat
+		// tutup hari selesai, dan kunci tidak boleh tertinggal sampai koneksi ditutup.
+		defer conn.Close()
+		_, err := conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", eodAdvisoryLockKey)
+		return err
+	}, nil
+}
+
 var _ domain.BusinessDateRepository = (*BusinessDateRepository)(nil)

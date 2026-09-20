@@ -95,6 +95,7 @@ var businessErrors = []error{
 	domain.ErrLoanAlreadyApproved,
 	domain.ErrInvalidBusinessDate,
 	domain.ErrEODAlreadyRunForDate,
+	domain.ErrEODInProgress,
 	domain.ErrCipherNotConfigured,
 	// Batas transaksi dan maker-checker adalah aturan bisnis: pesannya harus terlihat
 	// pengguna agar mereka tahu mengapa transaksi ditolak atau dialihkan.
