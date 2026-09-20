@@ -154,7 +154,7 @@ func TestDepositDailyAccrualKonvensional(t *testing.T) {
 		ProfitRate:      decimal.NewFromInt(4),
 		TaxRate:         decimal.NewFromInt(20),
 	}
-	profit, tax := depositDailyAccrual(dep)
+	profit, tax := depositDailyAccrual(dep, defaultDepositTaxExemptAmount)
 	if !profit.Equal(decimal.NewFromInt(1096)) {
 		t.Fatalf("bunga harian = %s, mau 1096", profit)
 	}
@@ -171,7 +171,7 @@ func TestDepositDailyAccrualBagiHasilTanpaPajak(t *testing.T) {
 		YieldRate:       decimal.NewFromInt(6),
 		TaxRate:         decimal.Zero,
 	}
-	profit, tax := depositDailyAccrual(dep)
+	profit, tax := depositDailyAccrual(dep, defaultDepositTaxExemptAmount)
 	if !profit.Equal(decimal.NewFromInt(986)) {
 		t.Fatalf("bagi hasil harian = %s, mau 986", profit)
 	}
@@ -500,4 +500,43 @@ func TestDepositGetByID_MenolakCabangLain(t *testing.T) {
 			t.Fatalf("data pra-migrasi tanpa cabang tidak boleh ditolak: %v", err)
 		}
 	})
+}
+
+// Deposito yang jumlahnya tidak melebihi ambang dibebaskan dari pemotongan PPh final
+// (PP 131/2000 Pasal 3 huruf a). Memotongnya berarti menahan hak nasabah kecil.
+func TestDepositDailyAccrualBebasPajakDiBawahAmbang(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(7_500_000),
+		ProfitType:      domain.ProfitTypeInterest,
+		ProfitRate:      decimal.NewFromInt(4),
+		TaxRate:         decimal.NewFromInt(20),
+	}
+	profit, tax := depositDailyAccrual(dep, defaultDepositTaxExemptAmount)
+	if !profit.IsPositive() {
+		t.Fatalf("bunga harian harus tetap diakru, dapat %s", profit)
+	}
+	if !tax.IsZero() {
+		t.Fatalf("deposito tepat di ambang tidak boleh dipotong, dapat %s", tax)
+	}
+
+	// Satu rupiah di atas ambang kembali dikenakan tarif bruto.
+	dep.PlacementAmount = decimal.NewFromInt(7_500_001)
+	_, tax = depositDailyAccrual(dep, defaultDepositTaxExemptAmount)
+	if !tax.IsPositive() {
+		t.Fatal("deposito di atas ambang harus dipotong PPh final")
+	}
+}
+
+// Ambang 0 mematikan pembebasan: seluruh deposito dikenakan tarif produk.
+func TestDepositDailyAccrualTanpaAmbangPembebasan(t *testing.T) {
+	dep := &domain.Deposit{
+		PlacementAmount: decimal.NewFromInt(1_000_000),
+		ProfitType:      domain.ProfitTypeInterest,
+		ProfitRate:      decimal.NewFromInt(4),
+		TaxRate:         decimal.NewFromInt(20),
+	}
+	_, tax := depositDailyAccrual(dep, decimal.Zero)
+	if !tax.IsPositive() {
+		t.Fatal("ambang 0 harus tetap memotong pajak")
+	}
 }

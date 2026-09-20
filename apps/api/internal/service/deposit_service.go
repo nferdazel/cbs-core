@@ -21,8 +21,13 @@ type ProductEventPoster interface {
 
 var defaultDepositTaxRate = decimal.NewFromInt(20)
 
+// defaultDepositTaxExemptAmount adalah ambang jumlah deposito yang dibebaskan dari
+// pemotongan PPh final (PP 131/2000 Pasal 3 huruf a). Nilai 0 berarti tanpa pembebasan.
+var defaultDepositTaxExemptAmount = decimal.NewFromInt(7_500_000)
+
 const (
 	depositTaxRateConfigKey  = "tax.deposit.rate"
+	taxExemptAmountConfigKey = "tax.deposit.exempt_amount"
 	mudharabahYieldConfigKey = "deposit.mudharabah.yield_annual"
 
 	// depositPenaltyCOAConfigKey menimpa akun pendapatan denda pencairan.
@@ -314,8 +319,19 @@ func depositTerms(ctx context.Context, cfg domain.SystemConfigService, product *
 
 // depositDailyAccrual adalah perhitungan murni akrual satu hari. Dipisah agar
 // dapat diuji tanpa database dan dipakai konsisten oleh Accrue.
-func depositDailyAccrual(d *domain.Deposit) (profit, tax decimal.Decimal) {
+// depositDailyAccrual menghitung imbal hasil dan PPh final harian deposito.
+//
+// Ambang pembebasan PPh dibandingkan dengan JUMLAH DEPOSITONYA, bukan dengan bunga:
+// PP 131/2000 Pasal 3 huruf a membebaskan pemotongan sepanjang "jumlah deposito dan
+// tabungan ... tidak melebihi Rp 7.500.000", dan Pasal 2 hanya mengenakan tarif 20%
+// bila jumlah deposito MELAMPAUI angka itu. Deposito kecil karena itu tidak boleh
+// dipotong sama sekali; memotongnya berarti menahan hak nasabah dan menambah utang
+// pajak yang tidak seharusnya ada.
+func depositDailyAccrual(d *domain.Deposit, taxExemptAmount decimal.Decimal) (profit, tax decimal.Decimal) {
 	profit = domain.DepositDailyProfit(d.PlacementAmount, d.ProfitRate, d.YieldRate, domain.IsBagiHasilProfit(d.ProfitType))
+	if taxExemptAmount.IsPositive() && d.PlacementAmount.LessThanOrEqual(taxExemptAmount) {
+		return profit, decimal.Zero
+	}
 	tax = domain.DepositDailyTax(profit, d.TaxRate)
 	return profit, tax
 }
@@ -413,7 +429,8 @@ func (s *depositService) Accrue(ctx context.Context, depositID uuid.UUID, asOf t
 		return nil, err
 	}
 
-	profit, tax := depositDailyAccrual(dep)
+	profit, tax := depositDailyAccrual(dep,
+		s.configSvc.GetDecimal(ctx, taxExemptAmountConfigKey, defaultDepositTaxExemptAmount))
 	if profit.IsPositive() {
 		_, err = s.poster.PostEventTx(ctx, tx, product, domain.EventInterestAccrual, Amounts{
 			Profit: profit,
