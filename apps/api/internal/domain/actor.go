@@ -61,3 +61,14 @@ func (a Actor) CanAccessBranch(branchCode string) bool {
 	}
 	return a.BranchCode != "" && a.BranchCode == branchCode
 }
+
+// CanManageStaff melaporkan apakah aktor berwenang mengubah akun staf dengan peran
+// target. Peran setingkat tidak boleh saling mengubah — kecuali sesama SUPERADMIN,
+// karena tidak ada satu akun pemilik tunggal — sehingga perubahan wewenang selalu
+// turun dari tingkat di atasnya dan tidak ada jalur naik lewat rekan sejawat.
+func (a Actor) CanManageStaff(target StaffRole) bool {
+	if a.Role == RoleSuperAdmin {
+		return true
+	}
+	return a.Role.PrivilegeRank() > target.PrivilegeRank()
+}

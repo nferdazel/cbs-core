@@ -156,6 +156,12 @@ func Fail(w http.ResponseWriter, r *http.Request, status int, err error) {
 		Error(w, http.StatusForbidden, err.Error())
 		return
 	}
+	// Penolakan kewenangan atas akun staf juga 403: klien perlu membedakannya dari
+	// kesalahan validasi masukan, bukan dari status yang dipilih pemanggil.
+	if errors.Is(err, domain.ErrStaffRoleNotManageable) {
+		Error(w, http.StatusForbidden, err.Error())
+		return
+	}
 	if isBusinessError(err) {
 		Error(w, status, err.Error())
 		return

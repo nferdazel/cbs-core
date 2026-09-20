@@ -97,7 +97,7 @@ func main() {
 	executors.Register(service.ActionWithdraw, ledgerSvc)
 	executors.Register(service.ActionTransfer, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
-	staffSvc := service.NewStaffService(staffRepo)
+	staffSvc := service.NewStaffService(staffRepo, auditRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, auditRepo)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)

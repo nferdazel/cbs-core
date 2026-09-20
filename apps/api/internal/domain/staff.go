@@ -18,6 +18,9 @@ var (
 	ErrInvalidToken        = errors.New("invalid or malformed token")
 	ErrForbidden           = errors.New("you do not have permission to perform this action")
 	ErrPasswordExpired     = errors.New("password has expired, please change it")
+	// ErrStaffRoleNotManageable menolak perubahan atas akun staf yang perannya
+	// setingkat atau lebih tinggi dari pelaku.
+	ErrStaffRoleNotManageable = errors.New("peran Anda tidak berwenang mengubah akun ini")
 )
 
 // --- Staff Role & Permissions ---
@@ -37,6 +40,27 @@ const (
 	// peran pegawai; hanya dipakai pada Actor di dalam proses.
 	RoleSystem StaffRole = "SYSTEM"
 )
+
+// PrivilegeRank mengurutkan kewenangan peran untuk pengelolaan akun staf. Tanpa
+// urutan ini ADMIN dapat mereset kata sandi SUPERADMIN dan mengambil alih kendali
+// penuh sistem, atau menaikkan rekan ke peran di atasnya.
+//
+// AUDITOR diberi peringkat setara ADMIN supaya pengelola akun tidak dapat mengubah
+// akun pemeriksa: independensi pemeriksa hanya boleh disentuh SUPERADMIN.
+func (r StaffRole) PrivilegeRank() int {
+	switch r {
+	case RoleSuperAdmin:
+		return 50
+	case RoleAdmin, RoleAuditor:
+		return 40
+	case RoleSupervisor:
+		return 30
+	case RoleTeller, RoleCS, RoleAO:
+		return 10
+	default:
+		return 0
+	}
+}
 
 type Permission string
 
@@ -341,10 +365,10 @@ type AuthService interface {
 }
 
 type StaffService interface {
-	CreateStaff(ctx context.Context, input CreateStaffInput, createdBy uuid.UUID) (*StaffUser, error)
+	CreateStaff(ctx context.Context, input CreateStaffInput, actor Actor) (*StaffUser, error)
 	GetStaff(ctx context.Context, id uuid.UUID) (*StaffUser, error)
 	ListStaff(ctx context.Context, page, pageSize int) ([]StaffUser, int, error)
-	UpdateStaff(ctx context.Context, id uuid.UUID, input UpdateStaffInput) (*StaffUser, error)
-	ChangePassword(ctx context.Context, id uuid.UUID, input ChangePasswordInput) error
-	ResetPassword(ctx context.Context, id uuid.UUID, newPassword string, resetBy uuid.UUID) error
+	UpdateStaff(ctx context.Context, id uuid.UUID, input UpdateStaffInput, actor Actor) (*StaffUser, error)
+	ChangePassword(ctx context.Context, id uuid.UUID, input ChangePasswordInput, actor Actor) error
+	ResetPassword(ctx context.Context, id uuid.UUID, newPassword string, actor Actor) error
 }
