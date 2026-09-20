@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -49,6 +50,34 @@ func (r *reversalTxRunner) Run(ctx context.Context, fn func(tx any) error) error
 	return r.err
 }
 
+// reversalConfig menyediakan tanggal bisnis untuk pemisahan same-day dan lintas hari.
+type reversalConfig struct {
+	domain.SystemConfigService
+	date string
+}
+
+func (c *reversalConfig) GetString(ctx context.Context, key, fallback string) string {
+	if key == "system.business_date" && c.date != "" {
+		return c.date
+	}
+	return fallback
+}
+
+// reversalApprovals mencatat permintaan persetujuan yang dibuat.
+type reversalApprovals struct {
+	domain.MakerCheckerService
+	created int
+	err     error
+}
+
+func (a *reversalApprovals) CreateRequest(ctx context.Context, input domain.CreateMakerCheckerInput, actor domain.Actor) (*domain.MakerCheckerRequest, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+	a.created++
+	return &domain.MakerCheckerRequest{ID: uuid.New(), ActionType: input.ActionType, Payload: input.Payload}, nil
+}
+
 type reversalAuditRepo struct {
 	events []domain.AuditEvent
 }
@@ -72,6 +101,7 @@ func reversalEntry() *domain.JournalEntry {
 		CreatedBy:       "teller1",
 		BranchCode:      "KC001",
 		Source:          domain.SourceTeller,
+		EntryDate:       time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC),
 		Lines: []domain.JournalLine{
 			{AccountNumber: "10101", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(500000), Currency: "IDR"},
 			{AccountNumber: "2010000001", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(500000), Currency: "IDR"},
@@ -80,12 +110,13 @@ func reversalEntry() *domain.JournalEntry {
 }
 
 type reversalFixture struct {
-	svc     *ledgerService
-	repo    *reversalLedgerRepo
-	posting *stubPostingSvc
-	audit   *reversalAuditRepo
-	tx      *reversalTxRunner
-	actor   domain.Actor
+	svc       *ledgerService
+	repo      *reversalLedgerRepo
+	posting   *stubPostingSvc
+	audit     *reversalAuditRepo
+	tx        *reversalTxRunner
+	actor     domain.Actor
+	approvals *reversalApprovals
 }
 
 func newReversalFixture(entry *domain.JournalEntry) reversalFixture {
@@ -93,17 +124,22 @@ func newReversalFixture(entry *domain.JournalEntry) reversalFixture {
 	posting := &stubPostingSvc{}
 	audit := &reversalAuditRepo{}
 	runner := &reversalTxRunner{}
+	approvals := &reversalApprovals{}
 	return reversalFixture{
 		svc: &ledgerService{
 			ledgerRepo: repo,
 			posting:    posting,
 			auditRepo:  audit,
 			txRunner:   runner,
+			approvals:  approvals,
+			// Tanggal bisnis sama dengan EntryDate fixture: jalur langsung.
+			configSvc: &reversalConfig{date: "2026-09-20"},
 		},
-		repo:    repo,
-		posting: posting,
-		audit:   audit,
-		tx:      runner,
+		repo:      repo,
+		posting:   posting,
+		audit:     audit,
+		tx:        runner,
+		approvals: approvals,
 		actor: domain.Actor{
 			UserID:     uuid.New(),
 			Username:   "supervisor1",
@@ -329,5 +365,93 @@ func TestReverse_TidakAdaPeranTanpaIzinDibalokDiHandler(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("supervisor harus berwenang membatalkan transaksi")
+	}
+}
+
+// Transaksi lintas hari mengubah angka yang sudah masuk laporan tutup buku, jadi wajib
+// lewat pejabat kedua meskipun pelakunya supervisor.
+func TestReverse_LintasHariWajibPersetujuan(t *testing.T) {
+	f := newReversalFixture(reversalEntry())
+	f.svc.configSvc = &reversalConfig{date: "2026-09-21"} // jurnal kemarin
+
+	_, err := f.svc.Reverse(context.Background(), f.request())
+
+	var pending *domain.PendingApprovalError
+	if !errors.As(err, &pending) {
+		t.Fatalf("kesalahan %v, mau menunggu persetujuan", err)
+	}
+	if pending.ActionType != ActionReverse {
+		t.Fatalf("jenis aksi %q, mau %q", pending.ActionType, ActionReverse)
+	}
+	if f.approvals.created != 1 {
+		t.Fatalf("permintaan persetujuan %d, mau 1", f.approvals.created)
+	}
+	if f.posting.calls != 0 || len(f.repo.markedRef) != 0 {
+		t.Fatal("jurnal kontra tidak boleh dibuat sebelum disetujui")
+	}
+}
+
+// Tanggal bisnis yang tidak terbaca diperlakukan sebagai lintas hari: pembatalan yang
+// tidak dapat dipastikan berasal dari hari berjalan tidak boleh lolos tanpa persetujuan.
+func TestReverse_TanggalBisnisTidakTerbacaDianggapLintasHari(t *testing.T) {
+	f := newReversalFixture(reversalEntry())
+	f.svc.configSvc = &reversalConfig{} // tanpa tanggal bisnis
+
+	_, err := f.svc.Reverse(context.Background(), f.request())
+
+	var pending *domain.PendingApprovalError
+	if !errors.As(err, &pending) {
+		t.Fatalf("kesalahan %v, mau menunggu persetujuan", err)
+	}
+	if f.posting.calls != 0 {
+		t.Fatal("jurnal kontra tidak boleh dibuat tanpa persetujuan")
+	}
+}
+
+// Bila layanan persetujuan tidak tersedia, pembatalan lintas hari harus ditolak, bukan
+// diloloskan tanpa pejabat kedua.
+func TestReverse_LintasHariTanpaLayananPersetujuanDitolak(t *testing.T) {
+	f := newReversalFixture(reversalEntry())
+	f.svc.configSvc = &reversalConfig{date: "2026-09-21"}
+	f.svc.approvals = nil
+
+	_, err := f.svc.Reverse(context.Background(), f.request())
+	if !errors.Is(err, domain.ErrReversalNotAllowed) {
+		t.Fatalf("kesalahan %v, mau penolakan", err)
+	}
+	if f.posting.calls != 0 {
+		t.Fatal("jurnal kontra tidak boleh dibuat")
+	}
+}
+
+// Eksekusi setelah disetujui memakai transaksi milik maker-checker dan mencatat pembuat
+// permintaan sebagai pencatat jurnal, bukan pejabat yang menyetujui.
+func TestReverse_EksekusiPersetujuanMenulisDiTransaksiPenyetuju(t *testing.T) {
+	f := newReversalFixture(reversalEntry())
+	f.svc.configSvc = &reversalConfig{date: "2026-09-21"}
+
+	approved := false
+	err := f.svc.ExecuteApproved(context.Background(), "tx-persetujuan", ActionReverse, map[string]any{
+		"reference":      "DEP-20260920-0001",
+		"reason":         "salah rekening tujuan",
+		"amount":         "500000.00",
+		"maker_username": "supervisor1",
+	}, domain.Actor{UserID: uuid.New(), Username: "admin1", Role: domain.RoleAdmin, BranchCode: "KC001"})
+	if err != nil {
+		t.Fatalf("eksekusi persetujuan gagal: %v", err)
+	}
+	approved = true
+
+	if !approved || f.posting.calls != 1 {
+		t.Fatalf("jurnal kontra %d kali, mau 1", f.posting.calls)
+	}
+	if f.posting.lastAnyTx != "tx-persetujuan" {
+		t.Fatalf("jurnal kontra tidak ditulis di transaksi maker-checker: %v", f.posting.lastAnyTx)
+	}
+	if f.posting.last.CreatedBy != "supervisor1" {
+		t.Fatalf("pencatat jurnal %q, mau pembuat permintaan supervisor1", f.posting.last.CreatedBy)
+	}
+	if len(f.repo.markedRef) != 1 {
+		t.Fatal("jurnal asal harus ditandai dibatalkan")
 	}
 }

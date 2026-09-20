@@ -96,6 +96,8 @@ func main() {
 	executors.Register(service.ActionDeposit, ledgerSvc)
 	executors.Register(service.ActionWithdraw, ledgerSvc)
 	executors.Register(service.ActionTransfer, ledgerSvc)
+	// Pembatalan transaksi lintas hari dieksekusi setelah disetujui pejabat kedua.
+	executors.Register(service.ActionReverse, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo, auditRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, auditRepo)

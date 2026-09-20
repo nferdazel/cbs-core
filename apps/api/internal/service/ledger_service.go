@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -142,6 +143,24 @@ func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType 
 	}
 
 	switch normalizeAction(actionType) {
+	case ActionReverse:
+		reference, _ := payload["reference"].(string)
+		reason, _ := payload["reason"].(string)
+		maker, _ := payload["maker_username"].(string)
+		if reference == "" {
+			return errors.New("referensi transaksi tidak ada pada payload persetujuan")
+		}
+		if maker == "" {
+			maker = actor.DisplayName()
+		}
+		original, err := s.guardReversible(ctx, reference, actor, maker)
+		if err != nil {
+			return err
+		}
+		// Jurnal kontra ditulis di transaksi maker-checker: persetujuan dan
+		// pembatalannya harus berhasil atau gagal bersama.
+		_, err = s.postReversalTx(ctx, tx, original, reason, maker, actor)
+		return err
 	case ActionDeposit:
 		return s.postDepositTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy)
 	case ActionWithdraw:
@@ -481,14 +500,65 @@ func actorName(actor domain.Actor, fallback string) string {
 //     pencairan deposito tidak boleh dibatalkan di sini: jurnal dan data domainnya akan
 //     tidak sinkron. Koreksinya harus lewat fitur domain masing-masing.
 func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest) (*domain.JournalEntry, error) {
-	original, err := s.ledgerRepo.GetJournalByRef(ctx, req.Reference)
+	original, err := s.guardReversible(ctx, req.Reference, req.Actor, req.Actor.DisplayName())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", domain.ErrJournalNotFound, req.Reference)
+		return nil, err
+	}
+
+	// Lintas hari berarti mengubah angka yang sudah masuk laporan tutup buku, jadi
+	// pembatalannya wajib lewat pejabat kedua meskipun pelakunya sudah supervisor.
+	// Transaksi hari berjalan masih operasional dan cukup disetujui supervisor.
+	if s.isCrossDate(ctx, original) {
+		if s.approvals == nil {
+			return nil, fmt.Errorf("%w: pembatalan lintas hari memerlukan persetujuan pejabat kedua, tetapi layanan persetujuan tidak tersedia", domain.ErrReversalNotAllowed)
+		}
+		approval, err := s.approvals.CreateRequest(ctx, domain.CreateMakerCheckerInput{
+			ActionType: ActionReverse,
+			Amount:     debitTotal(original),
+			Payload: map[string]any{
+				"reference": original.ReferenceNumber,
+				"reason":    req.Reason,
+				// Nominal disertakan agar pejabat penyetuju melihat nilai yang
+				// dibatalkan; nilai yang benar-benar dipakai tetap dihitung dari jurnal
+				// asal, bukan dari payload ini.
+				"amount":         debitTotal(original).StringFixed(2),
+				"maker_username": req.Actor.DisplayName(),
+			},
+			Notes: "Pembatalan transaksi lintas hari",
+		}, req.Actor)
+		if err != nil {
+			return nil, err
+		}
+		return nil, &domain.PendingApprovalError{RequestID: approval.ID, ActionType: ActionReverse}
+	}
+
+	var entry *domain.JournalEntry
+	err = s.txRunner.Run(ctx, func(tx any) error {
+		posted, err := s.postReversalTx(ctx, tx, original, req.Reason, req.Actor.DisplayName(), req.Actor)
+		if err != nil {
+			return err
+		}
+		entry = posted
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
+// guardReversible memuat jurnal asal dan menegakkan seluruh syarat pembatalan.
+// requesterName adalah pencatat permintaan; pada jalur persetujuan yang diperiksa
+// sebagai pencatat transaksi asal adalah pembuat permintaan, bukan pejabat penyetuju.
+func (s *ledgerService) guardReversible(ctx context.Context, reference string, actor domain.Actor, requesterName string) (*domain.JournalEntry, error) {
+	original, err := s.ledgerRepo.GetJournalByRef(ctx, reference)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrJournalNotFound, reference)
 	}
 	// Cabang lain dilaporkan sebagai tidak ditemukan: membedakannya memberi tahu
 	// pemanggil bahwa referensi tertentu memang ada di bank ini.
-	if !req.Actor.CanAccessBranch(original.BranchCode) {
-		return nil, fmt.Errorf("%w: %s", domain.ErrJournalNotFound, req.Reference)
+	if !actor.CanAccessBranch(original.BranchCode) {
+		return nil, fmt.Errorf("%w: %s", domain.ErrJournalNotFound, reference)
 	}
 
 	switch original.Status {
@@ -503,7 +573,7 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 	}
 	// Akrual dan penyesuaian selalu membawa state domain atau periode: jurnal kontra
 	// tidak mengembalikan bunga yang sudah diakru, jadwal yang sudah dibentuk, atau
-	// periode yang sudah ditutup. Jurnal yang dibuat sistem (batch/EOD) termasuk di sini.
+	// periode yang sudah ditutup.
 	switch original.TransactionType {
 	case domain.TxTypeInterestAccrual, domain.TxTypeAdjustment:
 		return nil, fmt.Errorf("%w: jurnal %s tidak dapat dibatalkan lewat jalur ini",
@@ -524,17 +594,22 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 		}
 		return nil, fmt.Errorf("%w: alur jurnal %s bukan transaksi teller", domain.ErrReversalNotAllowed, source)
 	}
-	if maker := original.CreatedBy; maker != "" && (maker == req.Actor.DisplayName() || maker == req.Actor.Username) {
+	if maker := original.CreatedBy; maker != "" && (maker == requesterName || maker == actor.Username) {
 		return nil, fmt.Errorf("%w: %s", domain.ErrSelfReversal, original.ReferenceNumber)
 	}
 	if len(original.Lines) == 0 {
 		return nil, fmt.Errorf("jurnal %s tidak memiliki baris untuk dibalik", original.ReferenceNumber)
 	}
+	return original, nil
+}
 
+// postReversalTx menulis jurnal kontra, menandai jurnal asal, dan menulis audit di dalam
+// transaksi pemanggil. Dipakai jalur langsung maupun jalur persetujuan, sehingga
+// keduanya tidak dapat berbeda perilaku.
+func (s *ledgerService) postReversalTx(ctx context.Context, tx any, original *domain.JournalEntry, reason, createdBy string, actor domain.Actor) (*domain.JournalEntry, error) {
 	// Kontra: arah ditukar, nominal tetap penuh. Tidak ada pembatalan sebagian —
 	// koreksi sebagian adalah transaksi baru, bukan pembatalan.
 	lines := make([]domain.PostingLine, 0, len(original.Lines))
-	total := decimal.Zero
 	for _, line := range original.Lines {
 		if line.AccountNumber == "" {
 			return nil, fmt.Errorf("baris jurnal %s tidak memiliki nomor rekening", line.ID)
@@ -542,7 +617,6 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 		direction := domain.DirectionDebit
 		if line.Direction == domain.DirectionDebit {
 			direction = domain.DirectionCredit
-			total = total.Add(line.Amount)
 		}
 		lines = append(lines, domain.PostingLine{
 			AccountNumber: line.AccountNumber,
@@ -551,55 +625,79 @@ func (s *ledgerService) Reverse(ctx context.Context, req domain.ReversalRequest)
 			Description:   "Pembatalan " + original.ReferenceNumber,
 		})
 	}
+	total := debitTotal(original)
 	if total.IsZero() {
 		return nil, fmt.Errorf("jurnal %s tidak memiliki sisi debit", original.ReferenceNumber)
 	}
 
-	// Jurnal kontra, penandaan status asal, dan jejak audit berada dalam SATU transaksi.
-	// Terpisah, kegagalan di antaranya meninggalkan jurnal yang masih POSTED padahal
-	// sudah ada kontranya, dan pembalikan kedua bisa lolos.
-	var entry *domain.JournalEntry
-	err = s.txRunner.Run(ctx, func(tx any) error {
-		posted, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
-			TransactionType: domain.TxTypeReversal,
-			Description:     fmt.Sprintf("Pembatalan %s — %s", original.ReferenceNumber, req.Reason),
-			// Kunci tetap per jurnal asal: permintaan ulang mengembalikan jurnal kontra
-			// yang sama, bukan membuat pembalikan kedua.
-			IdempotencyKey: "REV-" + original.ReferenceNumber,
-			CreatedBy:      req.Actor.DisplayName(),
-			// Cabang mengikuti jurnal asal. Tanpa ini jurnal kontra tersimpan dengan
-			// branch_id NULL, yaitu jurnal bank-wide, sehingga laporan per cabang dan
-			// pemeriksaan cabang atas jurnal itu tidak lagi mencerminkan asalnya.
-			BranchCode: original.BranchCode,
-			Source:     domain.SourceTeller,
-			Lines:      lines,
-		})
-		if err != nil {
-			return err
-		}
-
-		if err := s.ledgerRepo.MarkJournalReversed(ctx, tx, original.ReferenceNumber); err != nil {
-			return err
-		}
-
-		// Pembatalan tanpa catatan siapa dan mengapa adalah perubahan angka yang tidak
-		// dapat dipertanggungjawabkan.
-		if err := writeAudit(ctx, s.auditRepo, tx, req.Actor, ActionReverse, "JOURNAL", original.ReferenceNumber, map[string]any{
-			"reversal_reference": posted.ReferenceNumber,
-			"reason":             req.Reason,
-			"amount":             total.StringFixed(2),
-			"transaction_type":   string(original.TransactionType),
-		}); err != nil {
-			return err
-		}
-
-		entry = posted
-		return nil
+	posted, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: domain.TxTypeReversal,
+		Description:     fmt.Sprintf("Pembatalan %s — %s", original.ReferenceNumber, reason),
+		// Kunci tetap per jurnal asal: permintaan ulang mengembalikan jurnal kontra yang
+		// sama, bukan membuat pembalikan kedua.
+		IdempotencyKey: "REV-" + original.ReferenceNumber,
+		CreatedBy:      createdBy,
+		// Cabang mengikuti jurnal asal. Tanpa ini jurnal kontra tersimpan dengan
+		// branch_id NULL, yaitu jurnal bank-wide, sehingga laporan per cabang dan
+		// pemeriksaan cabang atas jurnal itu tidak lagi mencerminkan asalnya.
+		BranchCode: original.BranchCode,
+		Source:     domain.SourceTeller,
+		Lines:      lines,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return entry, nil
+
+	// Penandaan status asal berada di transaksi yang sama dengan jurnal kontranya.
+	// Terpisah, kegagalan di antaranya meninggalkan jurnal yang masih POSTED padahal
+	// sudah ada kontranya, dan pembalikan kedua bisa lolos.
+	if err := s.ledgerRepo.MarkJournalReversed(ctx, tx, original.ReferenceNumber); err != nil {
+		return nil, err
+	}
+
+	// Pembatalan tanpa catatan siapa dan mengapa adalah perubahan angka yang tidak
+	// dapat dipertanggungjawabkan.
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, ActionReverse, "JOURNAL", original.ReferenceNumber, map[string]any{
+		"reversal_reference": posted.ReferenceNumber,
+		"reason":             reason,
+		"amount":             total.StringFixed(2),
+		"transaction_type":   string(original.TransactionType),
+		"created_by":         createdBy,
+	}); err != nil {
+		return nil, err
+	}
+	return posted, nil
+}
+
+// isCrossDate melaporkan apakah jurnal asal berasal dari tanggal bisnis sebelum hari ini.
+// Bila tanggal bisnis tidak dapat dibaca, jawabannya ya: pembatalan yang tidak dapat
+// dipastikan berasal dari hari berjalan diperlakukan sebagai lintas hari.
+func (s *ledgerService) isCrossDate(ctx context.Context, original *domain.JournalEntry) bool {
+	if original.EntryDate.IsZero() || s.configSvc == nil {
+		return true
+	}
+	raw := strings.TrimSpace(s.configSvc.GetString(ctx, "system.business_date", ""))
+	if raw == "" {
+		return true
+	}
+	businessDate, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return true
+	}
+	by, bm, bd := businessDate.Date()
+	ey, em, ed := original.EntryDate.Date()
+	return by != ey || bm != em || bd != ed
+}
+
+// debitTotal menjumlahkan sisi debit jurnal, yaitu nominal yang dipindahkan.
+func debitTotal(original *domain.JournalEntry) decimal.Decimal {
+	total := decimal.Zero
+	for _, line := range original.Lines {
+		if line.Direction == domain.DirectionDebit {
+			total = total.Add(line.Amount)
+		}
+	}
+	return total
 }
 
 func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.CustomJournalRequest) (*domain.JournalEntry, error) {
