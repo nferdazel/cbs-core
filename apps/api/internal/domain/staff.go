@@ -110,9 +110,13 @@ const (
 	// Chart of Accounts
 	PermCOAManage Permission = "coa:manage"
 
+	// Agunan kredit
+	PermCollateralRead   Permission = "collateral:read"
+	PermCollateralManage Permission = "collateral:manage"
+
 	// Audit & Reports
-	PermAuditLogsRead  Permission = "audit_logs:read"
-	PermReportsExport  Permission = "reports:export"
+	PermAuditLogsRead Permission = "audit_logs:read"
+	PermReportsExport Permission = "reports:export"
 
 	// System
 	PermSystemConfig Permission = "system:config"
@@ -127,6 +131,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
+		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
 		PermAuditLogsRead, PermReportsExport,
@@ -139,6 +144,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
+		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
 		PermAuditLogsRead, PermReportsExport,
@@ -150,6 +156,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsRead, PermAccountsFreeze,
 		PermTransactionsReverse,
 		PermLoansRead, PermLoansApprove,
+		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead,
 		PermAuditLogsRead, PermReportsExport,
@@ -203,22 +210,22 @@ func (r StaffRole) HasPermission(p Permission) bool {
 // --- Staff User Entity ---
 
 type StaffUser struct {
-	ID                  uuid.UUID  `json:"id"`
-	EmployeeID          string     `json:"employee_id"`
-	Username            string     `json:"username"`
-	FullName            string     `json:"full_name"`
-	Email               string     `json:"email"`
-	PasswordHash        string     `json:"-"` // never serialised
-	Role                StaffRole  `json:"role"`
-	BranchCode          string     `json:"branch_code"`
-	IsActive            bool       `json:"is_active"`
-	LastLoginAt         *time.Time `json:"last_login_at,omitempty"`
-	PasswordChangedAt   time.Time  `json:"password_changed_at"`
-	FailedLoginCount    int        `json:"-"`
-	LockedUntil         *time.Time `json:"-"`
-	CreatedBy           *uuid.UUID `json:"created_by,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	EmployeeID        string     `json:"employee_id"`
+	Username          string     `json:"username"`
+	FullName          string     `json:"full_name"`
+	Email             string     `json:"email"`
+	PasswordHash      string     `json:"-"` // never serialised
+	Role              StaffRole  `json:"role"`
+	BranchCode        string     `json:"branch_code"`
+	IsActive          bool       `json:"is_active"`
+	LastLoginAt       *time.Time `json:"last_login_at,omitempty"`
+	PasswordChangedAt time.Time  `json:"password_changed_at"`
+	FailedLoginCount  int        `json:"-"`
+	LockedUntil       *time.Time `json:"-"`
+	CreatedBy         *uuid.UUID `json:"created_by,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // IsLocked returns true if the account is currently locked.

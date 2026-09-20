@@ -71,10 +71,35 @@ var (
 	ErrCollateralNotActive            = errors.New("hanya agunan berstatus aktif yang dapat diubah")
 )
 
+// CollateralInput adalah permintaan pencatatan agunan. Haircut tidak wajib diisi: bila
+// kosong, kebijakan bank untuk jenis agunan itu yang dipakai.
+type CollateralInput struct {
+	LoanID         uuid.UUID
+	CollateralType CollateralType
+	Description    string
+	DocumentNumber string
+	OwnerName      string
+	AppraisalValue decimal.Decimal
+	AppraisalDate  time.Time
+	Appraiser      string
+	// HaircutPercent kosong berarti pakai kebijakan jenis agunan dari konfigurasi.
+	HaircutPercent *decimal.Decimal
+	Notes          string
+}
+
+// CollateralService mengelola agunan kredit. Fase ini hanya pencatatan dan pembacaan;
+// pengurangan PPAP masih dimatikan lewat ppap.collateral.enabled.
+type CollateralService interface {
+	Create(ctx context.Context, input CollateralInput, actor Actor) (*LoanCollateral, error)
+	GetByID(ctx context.Context, id uuid.UUID, actor Actor) (*LoanCollateral, error)
+	ListByLoan(ctx context.Context, loanID uuid.UUID, actor Actor) ([]LoanCollateral, error)
+}
+
 // CollateralRepository menyimpan agunan kredit. Ringkas dengan sengaja: yang dibutuhkan
 // perhitungan PPAP hanyalah jumlah nilai pengurang agunan aktif per kredit.
 type CollateralRepository interface {
-	Create(ctx context.Context, c *LoanCollateral) error
+	// branchCode kosong berarti cabang tidak diketahui dan disimpan sebagai NULL.
+	Create(ctx context.Context, c *LoanCollateral, branchCode string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*LoanCollateral, error)
 	ListByLoan(ctx context.Context, loanID uuid.UUID) ([]LoanCollateral, error)
 	Update(ctx context.Context, c *LoanCollateral) error
@@ -89,9 +114,12 @@ type CollateralRepository interface {
 // HaircutPercent sebagai kolom generated, supaya nilai pengurang yang tersimpan selalu
 // konsisten dengan kebijakan pada saat pencatatan dan tetap dapat diaudit sesudahnya.
 type LoanCollateral struct {
-	ID             uuid.UUID        `json:"id"`
-	LoanID         uuid.UUID        `json:"loan_id"`
+	ID     uuid.UUID `json:"id"`
+	LoanID uuid.UUID `json:"loan_id"`
+	// BranchID dan BranchCode diisi dari join ke branches. Pemeriksaan akses memakai
+	// BranchCode karena Actor membawa kode cabang, bukan id.
 	BranchID       *uuid.UUID       `json:"branch_id,omitempty"`
+	BranchCode     string           `json:"branch_code,omitempty"`
 	CollateralType CollateralType   `json:"collateral_type"`
 	Description    string           `json:"description"`
 	DocumentNumber string           `json:"document_number"`

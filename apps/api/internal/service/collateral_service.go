@@ -1,0 +1,152 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+// collateralService mengelola pencatatan agunan kredit.
+//
+// Fase ini sengaja terbatas: agunan dapat dicatat dan dibaca, tetapi belum mengurangi
+// eksposur PPAP karena saklar ppap.collateral.enabled masih false dan pasal POJK yang
+// mengatur agunan pengurang belum diverifikasi. Mencatat agunan lebih dulu tidak
+// berbahaya — tidak ada angka laporan yang bergerak sampai pengurangannya dinyalakan.
+type collateralService struct {
+	repo      domain.CollateralRepository
+	config    domain.SystemConfigService
+	auditRepo domain.AuditRepository
+}
+
+func NewCollateralService(
+	repo domain.CollateralRepository,
+	config domain.SystemConfigService,
+	auditSinks ...domain.AuditRepository,
+) domain.CollateralService {
+	var auditRepo domain.AuditRepository
+	if len(auditSinks) > 0 {
+		auditRepo = auditSinks[0]
+	}
+	return &collateralService{repo: repo, config: config, auditRepo: auditRepo}
+}
+
+// haircutFor memilih kebijakan haircut: permintaan operator bila diisi, kalau tidak
+// kebijakan bank untuk jenis agunan tersebut dari konfigurasi.
+//
+// Nilai bawaan konfigurasi adalah 100 (tanpa pengurangan). Bila operator mengisi nilai
+// yang tidak sah, permintaan ditolak — bukan dibulatkan diam-diam, karena haircut yang
+// salah langsung mengubah besaran penyisihan bank.
+func (s *collateralService) haircutFor(ctx context.Context, input domain.CollateralInput) (decimal.Decimal, error) {
+	if input.HaircutPercent != nil {
+		haircut := *input.HaircutPercent
+		if haircut.IsNegative() || haircut.GreaterThan(decimal.NewFromInt(100)) {
+			return decimal.Zero, domain.ErrCollateralHaircutInvalid
+		}
+		return haircut, nil
+	}
+
+	haircut := domain.DefaultHaircutPercent()
+	if s.config != nil {
+		raw := strings.TrimSpace(s.config.GetString(ctx, domain.HaircutConfigKey(input.CollateralType), ""))
+		if raw != "" {
+			parsed, err := decimal.NewFromString(raw)
+			if err != nil {
+				return decimal.Zero, fmt.Errorf("kebijakan haircut agunan %q tidak dapat dibaca: %w", raw, err)
+			}
+			if parsed.IsNegative() || parsed.GreaterThan(decimal.NewFromInt(100)) {
+				return decimal.Zero, domain.ErrCollateralHaircutInvalid
+			}
+			haircut = parsed
+		}
+	}
+	return haircut, nil
+}
+
+// Create mencatat satu agunan pada kredit. Cabang diambil dari aktor, bukan dari
+// permintaan: agunan yang dicatat pegawai cabang tertentu harus melekat pada cabang itu,
+// dan permintaan yang datang dengan cabang lain tidak dipercaya.
+func (s *collateralService) Create(ctx context.Context, input domain.CollateralInput, actor domain.Actor) (*domain.LoanCollateral, error) {
+	haircut, err := s.haircutFor(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	collateral := &domain.LoanCollateral{
+		LoanID:         input.LoanID,
+		CollateralType: input.CollateralType,
+		Description:    strings.TrimSpace(input.Description),
+		DocumentNumber: strings.TrimSpace(input.DocumentNumber),
+		OwnerName:      strings.TrimSpace(input.OwnerName),
+		AppraisalValue: input.AppraisalValue,
+		AppraisalDate:  input.AppraisalDate,
+		Appraiser:      strings.TrimSpace(input.Appraiser),
+		HaircutPercent: haircut,
+		Status:         domain.CollateralActive,
+		Notes:          strings.TrimSpace(input.Notes),
+		CreatedBy:      actor.DisplayName(),
+	}
+	if err := collateral.Validate(time.Now().UTC()); err != nil {
+		return nil, err
+	}
+	// Agunan tanpa cabang tidak dapat diatribusikan ke laporan cabang mana pun, jadi
+	// pegawai yang cabangnya tidak diketahui tidak boleh mencatat agunan.
+	if !actor.IsCrossBranch() && strings.TrimSpace(actor.BranchCode) == "" {
+		return nil, fmt.Errorf("cabang aktor tidak diketahui, agunan tidak dapat diatribusikan")
+	}
+
+	if err := s.repo.Create(ctx, collateral, actor.BranchCode); err != nil {
+		return nil, err
+	}
+
+	// Audit ditulis setelah agunan tersimpan. Nilai pengurang ikut dicatat karena
+	// kebijakan haircut dapat berubah: yang perlu dapat ditelusuri kemudian adalah nilai
+	// yang berlaku saat agunan itu dicatat, bukan hanya persentasenya.
+	if err := writeAudit(ctx, s.auditRepo, nil, actor, "CREATE_COLLATERAL", "COLLATERAL", collateral.ID.String(), map[string]any{
+		"loan_id":         collateral.LoanID.String(),
+		"collateral_type": string(collateral.CollateralType),
+		"document_number": collateral.DocumentNumber,
+		"appraisal_value": collateral.AppraisalValue.StringFixed(2),
+		"haircut_percent": collateral.HaircutPercent.StringFixed(2),
+		"bound_amount":    collateral.BoundAmount.StringFixed(2),
+	}); err != nil {
+		return nil, err
+	}
+	return collateral, nil
+}
+
+// GetByID membaca satu agunan dengan pemeriksaan cabang.
+func (s *collateralService) GetByID(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.LoanCollateral, error) {
+	collateral, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBranch(collateral.BranchCode) {
+		// Agunan cabang lain dilaporkan sebagai tidak ditemukan: membedakannya memberi tahu
+		// pemanggil bahwa agunan dengan id tertentu memang ada di bank ini.
+		return nil, domain.ErrCollateralNotFound
+	}
+	return collateral, nil
+}
+
+// ListByLoan membaca seluruh agunan satu kredit dengan pemeriksaan cabang.
+func (s *collateralService) ListByLoan(ctx context.Context, loanID uuid.UUID, actor domain.Actor) ([]domain.LoanCollateral, error) {
+	// Penyaringan dilakukan per baris: daftar agunan satu kredit dapat memuat agunan
+	// lintas cabang, dan yang boleh terkirim hanya yang cabangnya dapat diakses aktor.
+	// Hasil kosong bukan kesalahan — pemanggil sudah menyebut kreditnya sendiri.
+	list, err := s.repo.ListByLoan(ctx, loanID)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]domain.LoanCollateral, 0, len(list))
+	for _, item := range list {
+		if actor.CanAccessBranch(item.BranchCode) {
+			visible = append(visible, item)
+		}
+	}
+	return visible, nil
+}

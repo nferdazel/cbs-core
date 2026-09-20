@@ -23,10 +23,16 @@ func NewCollateralRepository(db *sql.DB) *CollateralRepository {
 	return &CollateralRepository{db: db}
 }
 
-const collateralColumns = `id, loan_id, branch_id, collateral_type, description, document_number,
-	owner_name, appraisal_value, appraisal_date, COALESCE(appraiser, ''), haircut_percent,
-	bound_amount, status, released_at, COALESCE(notes, ''), created_by, created_at,
-	COALESCE(updated_by, ''), updated_at`
+// collateralColumns dipakai bersama GetByID dan ListByLoan, jadi keduanya pasti membaca
+// kolom yang sama. Kode cabang diambil lewat join karena pemeriksaan akses memakai kode,
+// bukan id: tanpa ini pegawai cabang tidak dapat melihat agunan cabangnya sendiri.
+const collateralColumns = `lc.id, lc.loan_id, lc.branch_id, lc.collateral_type, lc.description,
+	lc.document_number, lc.owner_name, lc.appraisal_value, lc.appraisal_date,
+	COALESCE(lc.appraiser, ''), lc.haircut_percent, lc.bound_amount, lc.status, lc.released_at,
+	COALESCE(lc.notes, ''), lc.created_by, lc.created_at, COALESCE(lc.updated_by, ''), lc.updated_at,
+	COALESCE(b.code, '')`
+
+const collateralFrom = `FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id`
 
 func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	var c domain.LoanCollateral
@@ -37,7 +43,7 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		&c.ID, &c.LoanID, &branchID, &c.CollateralType, &c.Description, &c.DocumentNumber,
 		&c.OwnerName, &c.AppraisalValue, &c.AppraisalDate, &c.Appraiser, &c.HaircutPercent,
 		&c.BoundAmount, &c.Status, &releasedAt, &c.Notes, &c.CreatedBy, &c.CreatedAt,
-		&updatedBy, &c.UpdatedAt,
+		&updatedBy, &c.UpdatedAt, &c.BranchCode,
 	); err != nil {
 		return nil, err
 	}
@@ -55,20 +61,23 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	return &c, nil
 }
 
-func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollateral) error {
+func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollateral, branchCode string) error {
 	query := `
 		INSERT INTO loan_collaterals (
 			loan_id, branch_id, collateral_type, description, document_number, owner_name,
 			appraisal_value, appraisal_date, appraiser, haircut_percent, status, notes,
 			created_by, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, NULLIF($12, ''), $13, NOW(), NOW())
+		VALUES ($1, (SELECT id FROM branches WHERE code = $2), $3, $4, $5, $6, $7, $8, NULLIF($9, ''),
+		        $10, $11, NULLIF($12, ''), $13, NOW(), NOW())
 		RETURNING id, bound_amount, created_at, updated_at
 	`
 	// bound_amount tidak ada pada daftar INSERT karena dihitung database; nilainya
 	// dibaca kembali lewat RETURNING, bukan ditaksir di aplikasi.
+	// Cabang di-resolve dari kode lewat subquery, sama seperti posting jurnal, supaya
+	// service tidak perlu bergantung pada repositori cabang hanya untuk satu lookup.
 	err := r.db.QueryRowContext(ctx, query,
-		c.LoanID, c.BranchID, c.CollateralType, c.Description, c.DocumentNumber, c.OwnerName,
+		c.LoanID, branchCode, c.CollateralType, c.Description, c.DocumentNumber, c.OwnerName,
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status, c.Notes,
 		c.CreatedBy,
 	).Scan(&c.ID, &c.BoundAmount, &c.CreatedAt, &c.UpdatedAt)
@@ -79,7 +88,7 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 }
 
 func (r *CollateralRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.LoanCollateral, error) {
-	query := `SELECT ` + collateralColumns + ` FROM loan_collaterals WHERE id = $1`
+	query := `SELECT ` + collateralColumns + ` ` + collateralFrom + ` WHERE lc.id = $1`
 	c, err := scanCollateral(r.db.QueryRowContext(ctx, query, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrCollateralNotFound
@@ -91,8 +100,8 @@ func (r *CollateralRepository) GetByID(ctx context.Context, id uuid.UUID) (*doma
 }
 
 func (r *CollateralRepository) ListByLoan(ctx context.Context, loanID uuid.UUID) ([]domain.LoanCollateral, error) {
-	query := `SELECT ` + collateralColumns + ` FROM loan_collaterals WHERE loan_id = $1
-		ORDER BY created_at ASC`
+	query := `SELECT ` + collateralColumns + ` ` + collateralFrom + ` WHERE lc.loan_id = $1
+		ORDER BY lc.created_at ASC`
 	rows, err := r.db.QueryContext(ctx, query, loanID)
 	if err != nil {
 		return nil, fmt.Errorf("mendaftar agunan kredit: %w", err)
