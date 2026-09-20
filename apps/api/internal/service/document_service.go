@@ -129,7 +129,8 @@ func (s *documentService) bankIdentity(ctx context.Context) (bankIdentity, error
 
 // loadJournalEntry menelusuri jurnal dari nomor referensi. Tidak ada fallback
 // mock: nomor yang tidak ditemukan adalah error, bukan alasan mencetak data palsu.
-func (s *documentService) loadJournalEntry(ctx context.Context, refNo string) (*domain.JournalEntry, error) {
+// Jurnal di luar cabang aktor ditolak, karena nomor referensi dapat diiterasi.
+func (s *documentService) loadJournalEntry(ctx context.Context, refNo string, actor domain.Actor) (*domain.JournalEntry, error) {
 	if s.ledgerRepo == nil {
 		return nil, errors.New("repositori jurnal tidak tersedia")
 	}
@@ -139,6 +140,9 @@ func (s *documentService) loadJournalEntry(ctx context.Context, refNo string) (*
 	}
 	if entry == nil {
 		return nil, fmt.Errorf("jurnal %s tidak ditemukan", refNo)
+	}
+	if !actor.CanAccessBranch(entry.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
 	}
 	return entry, nil
 }
@@ -186,8 +190,8 @@ func (s *documentService) resolveTransactionData(
 	return "", "", decimal.Zero, fmt.Errorf("jurnal %s %w", entry.ReferenceNumber, errJournalCustomerLine)
 }
 
-func (s *documentService) GenerateDepositSlipHTML(ctx context.Context, refNo string) (string, error) {
-	entry, err := s.loadJournalEntry(ctx, refNo)
+func (s *documentService) GenerateDepositSlipHTML(ctx context.Context, refNo string, actor domain.Actor) (string, error) {
+	entry, err := s.loadJournalEntry(ctx, refNo, actor)
 	if err != nil {
 		return "", err
 	}
@@ -251,8 +255,8 @@ func (s *documentService) GenerateDepositSlipHTML(ctx context.Context, refNo str
 	return htmlDoc, nil
 }
 
-func (s *documentService) GenerateWithdrawalSlipHTML(ctx context.Context, refNo string) (string, error) {
-	entry, err := s.loadJournalEntry(ctx, refNo)
+func (s *documentService) GenerateWithdrawalSlipHTML(ctx context.Context, refNo string, actor domain.Actor) (string, error) {
+	entry, err := s.loadJournalEntry(ctx, refNo, actor)
 	if err != nil {
 		return "", err
 	}
@@ -316,13 +320,19 @@ func (s *documentService) GenerateWithdrawalSlipHTML(ctx context.Context, refNo 
 	return htmlDoc, nil
 }
 
-func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID uuid.UUID) (string, error) {
+func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID uuid.UUID, actor domain.Actor) (string, error) {
 	if s.loanRepo == nil {
 		return "", errors.New("repositori kredit tidak tersedia")
 	}
 	loan, err := s.loanRepo.GetByID(ctx, loanID)
 	if err != nil {
 		return "", err
+	}
+	if loan == nil {
+		return "", errors.New("kredit tidak ditemukan")
+	}
+	if !actor.CanAccessBranch(loan.BranchCode) {
+		return "", domain.ErrCrossBranchAccess
 	}
 
 	customerName, err := s.decryptCustomerName(ctx, loan.CustomerID)
@@ -442,8 +452,8 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
 // struk kolektor bisa dicetak, collection_service perlu menyimpan pemetaan
 // nomor struk -> referensi jurnal. Tanpa pemetaan itu, mencetak struk berisi data
 // karangan lebih berbahaya daripada gagal dengan jujur.
-func (s *documentService) GenerateThermalReceiptText(ctx context.Context, receiptNo string) (string, error) {
-	entry, err := s.loadJournalEntry(ctx, receiptNo)
+func (s *documentService) GenerateThermalReceiptText(ctx context.Context, receiptNo string, actor domain.Actor) (string, error) {
+	entry, err := s.loadJournalEntry(ctx, receiptNo, actor)
 	if err != nil {
 		return "", fmt.Errorf("struk thermal %s: %w", receiptNo, err)
 	}

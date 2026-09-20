@@ -68,9 +68,12 @@ type PassbookLine struct {
 	TellerID      string          `json:"teller_id"`
 }
 
+// DocumentService membuat dokumen cetak. Setiap metode menerima aktor dan wajib
+// menegakkan cakupan cabang: nomor referensi dapat ditebak/diiterasi, sehingga tanpa
+// pemeriksaan cabang siapa pun dapat memanen nama dan nomor rekening seluruh bank.
 type DocumentService interface {
-	GenerateDepositSlipHTML(ctx context.Context, refNo string) (string, error)
-	GenerateWithdrawalSlipHTML(ctx context.Context, refNo string) (string, error)
-	GenerateLoanAgreementHTML(ctx context.Context, loanID uuid.UUID) (string, error)
-	GenerateThermalReceiptText(ctx context.Context, receiptNo string) (string, error)
+	GenerateDepositSlipHTML(ctx context.Context, refNo string, actor Actor) (string, error)
+	GenerateWithdrawalSlipHTML(ctx context.Context, refNo string, actor Actor) (string, error)
+	GenerateLoanAgreementHTML(ctx context.Context, loanID uuid.UUID, actor Actor) (string, error)
+	GenerateThermalReceiptText(ctx context.Context, receiptNo string, actor Actor) (string, error)
 }

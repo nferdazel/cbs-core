@@ -21,3 +21,14 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// DocumentCSP menggantikan CSP ketat untuk respons dokumen cetak berbentuk HTML.
+// Dokumen memuat gaya inline, sedangkan default-src 'none' memblokir <style> sehingga
+// slip tercetak tanpa gaya. Selain style-src, batasannya tetap sama ketat: dokumen
+// tidak boleh memuat skrip, gambar, atau koneksi ke mana pun.
+//
+// Handler dokumen memasang <body onload="window.print()">; atribut itu ikut diblokir
+// kebijakan ini karena halaman memuat nama dan nomor rekening nasabah. Cetak otomatis
+// harus dipicu pemanggil (tombol cetak), bukan skrip di dalam dokumen. Membuka skrip
+// inline di sini hanya aman selama setiap nilai yang disisipkan tetap di-escape.
+const DocumentCSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"

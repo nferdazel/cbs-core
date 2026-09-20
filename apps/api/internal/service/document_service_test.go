@@ -222,7 +222,7 @@ func TestDocumentService_HTMLGenerators(t *testing.T) {
 	fixture := newDocumentFixture(t)
 
 	// 1. Test Deposit Slip HTML
-	depHTML, err := fixture.svc.GenerateDepositSlipHTML(context.Background(), fixture.depRef)
+	depHTML, err := fixture.svc.GenerateDepositSlipHTML(context.Background(), fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("unexpected error generating deposit slip: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestDocumentService_HTMLGenerators(t *testing.T) {
 	}
 
 	// 2. Test Withdrawal Slip HTML
-	wthHTML, err := fixture.svc.GenerateWithdrawalSlipHTML(context.Background(), fixture.wthRef)
+	wthHTML, err := fixture.svc.GenerateWithdrawalSlipHTML(context.Background(), fixture.wthRef, docActor)
 	if err != nil {
 		t.Fatalf("unexpected error generating withdrawal slip: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestDocumentService_HTMLGenerators(t *testing.T) {
 
 	// 3. Test Loan Agreement HTML
 	loanSvc := service.NewDocumentService(nil, nil, repo, nil, fixture.bankRepo, newTestCipher(t))
-	loanHTML, err := loanSvc.GenerateLoanAgreementHTML(context.Background(), loanID)
+	loanHTML, err := loanSvc.GenerateLoanAgreementHTML(context.Background(), loanID, docActor)
 	if err != nil {
 		t.Fatalf("unexpected error generating loan agreement: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestDocumentService_HTMLGenerators(t *testing.T) {
 	}
 
 	// 4. Test Thermal Receipt Text
-	receiptText, err := fixture.svc.GenerateThermalReceiptText(context.Background(), fixture.depRef)
+	receiptText, err := fixture.svc.GenerateThermalReceiptText(context.Background(), fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("unexpected error generating thermal receipt: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestDocumentService_HTMLGenerators(t *testing.T) {
 func TestDocumentService_DepositSlipUsesRealCustomerData(t *testing.T) {
 	fixture := newDocumentFixture(t)
 
-	html, err := fixture.svc.GenerateDepositSlipHTML(context.Background(), fixture.depRef)
+	html, err := fixture.svc.GenerateDepositSlipHTML(context.Background(), fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("generate deposit slip: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestDocumentService_DepositSlipUsesRealCustomerData(t *testing.T) {
 func TestDocumentService_WithdrawalSlipUsesRealCustomerData(t *testing.T) {
 	fixture := newDocumentFixture(t)
 
-	html, err := fixture.svc.GenerateWithdrawalSlipHTML(context.Background(), fixture.wthRef)
+	html, err := fixture.svc.GenerateWithdrawalSlipHTML(context.Background(), fixture.wthRef, docActor)
 	if err != nil {
 		t.Fatalf("generate withdrawal slip: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestDocumentService_WithdrawalSlipUsesRealCustomerData(t *testing.T) {
 func TestDocumentService_ThermalReceiptUsesRealCustomerData(t *testing.T) {
 	fixture := newDocumentFixture(t)
 
-	text, err := fixture.svc.GenerateThermalReceiptText(context.Background(), fixture.depRef)
+	text, err := fixture.svc.GenerateThermalReceiptText(context.Background(), fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("generate thermal receipt: %v", err)
 	}
@@ -329,15 +329,15 @@ func TestDocumentService_DocumentsContainNoDemoData(t *testing.T) {
 	fixture := newDocumentFixture(t)
 	ctx := context.Background()
 
-	depHTML, err := fixture.svc.GenerateDepositSlipHTML(ctx, fixture.depRef)
+	depHTML, err := fixture.svc.GenerateDepositSlipHTML(ctx, fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("generate deposit slip: %v", err)
 	}
-	wthHTML, err := fixture.svc.GenerateWithdrawalSlipHTML(ctx, fixture.wthRef)
+	wthHTML, err := fixture.svc.GenerateWithdrawalSlipHTML(ctx, fixture.wthRef, docActor)
 	if err != nil {
 		t.Fatalf("generate withdrawal slip: %v", err)
 	}
-	thermal, err := fixture.svc.GenerateThermalReceiptText(ctx, fixture.depRef)
+	thermal, err := fixture.svc.GenerateThermalReceiptText(ctx, fixture.depRef, docActor)
 	if err != nil {
 		t.Fatalf("generate thermal receipt: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestDocumentService_ThermalReceiptRejectsUnknownNumber(t *testing.T) {
 	ledgerRepo := &stubLedgerRepo{err: errors.New("journal entry not found")}
 	docSvc := service.NewDocumentService(ledgerRepo, nil, nil, nil, fixture.bankRepo, newTestCipher(t))
 
-	if _, err := docSvc.GenerateThermalReceiptText(context.Background(), "MBL-20260919-00001"); err == nil {
+	if _, err := docSvc.GenerateThermalReceiptText(context.Background(), "MBL-20260919-00001", docActor); err == nil {
 		t.Fatal("diharapkan error saat nomor struk tidak tertaut ke jurnal")
 	}
 }
@@ -378,7 +378,7 @@ func TestDocumentService_DepositSlipRejectsMissingJournal(t *testing.T) {
 	ledgerRepo := &stubLedgerRepo{err: errors.New("journal entry not found")}
 	docSvc := service.NewDocumentService(ledgerRepo, nil, nil, nil, fixture.bankRepo, newTestCipher(t))
 
-	if _, err := docSvc.GenerateDepositSlipHTML(context.Background(), "DEP-TIDAK-ADA"); err == nil {
+	if _, err := docSvc.GenerateDepositSlipHTML(context.Background(), "DEP-TIDAK-ADA", docActor); err == nil {
 		t.Fatal("diharapkan error saat jurnal tidak ditemukan")
 	}
 }
@@ -414,7 +414,7 @@ func TestDocumentService_DepositSlipRejectsJournalWithoutCustomerLine(t *testing
 	}}
 	docSvc := service.NewDocumentService(ledgerRepo, accRepo, nil, custRepo, fixture.bankRepo, c)
 
-	if _, err := docSvc.GenerateDepositSlipHTML(context.Background(), ref); err == nil {
+	if _, err := docSvc.GenerateDepositSlipHTML(context.Background(), ref, docActor); err == nil {
 		t.Fatal("diharapkan error saat jurnal tidak punya kaki rekening nasabah")
 	}
 }
@@ -436,7 +436,7 @@ func TestDocumentService_LoanAgreementMarksMissingBankProfile(t *testing.T) {
 	}}
 	docSvc := service.NewDocumentService(nil, nil, loanRepo, nil, &stubBankProfileRepo{}, newTestCipher(t))
 
-	html, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID)
+	html, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID, docActor)
 	if err != nil {
 		t.Fatalf("generate loan agreement: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestDocumentService_LoanAgreementMarksMissingBankProfile(t *testing.T) {
 // Kredit yang tidak ada harus menghasilkan error, bukan dokumen berisi data palsu.
 func TestDocumentService_LoanAgreementRejectsMissingLoan(t *testing.T) {
 	docSvc := service.NewDocumentService(nil, nil, &stubLoanRepo{}, nil, nil, newTestCipher(t))
-	if _, err := docSvc.GenerateLoanAgreementHTML(context.Background(), uuid.New()); err == nil {
+	if _, err := docSvc.GenerateLoanAgreementHTML(context.Background(), uuid.New(), docActor); err == nil {
 		t.Fatal("diharapkan error saat kredit tidak ditemukan")
 	}
 }
@@ -480,11 +480,56 @@ func TestDocumentService_LoanAgreementUsesDecryptedCustomerName(t *testing.T) {
 	custRepo := &stubCustomerRepo{record: &domain.CustomerRecord{ID: customerID, FullNameEnc: encName}}
 
 	docSvc := service.NewDocumentService(nil, nil, loanRepo, custRepo, nil, c)
-	loanHTML, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID)
+	loanHTML, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID, docActor)
 	if err != nil {
 		t.Fatalf("generate loan agreement: %v", err)
 	}
 	if !strings.Contains(loanHTML, "Siti Aminah") {
 		t.Fatal("nama debitur hasil dekripsi tidak muncul di surat perjanjian")
+	}
+}
+
+// docActor adalah teller cabang 001. Fixture dokumen memakai jurnal tanpa kode
+// cabang (data pra-migrasi) yang tetap boleh dibaca semua cabang; uji cakupan
+// cabang di bawah memakai jurnal dan kredit berkode cabang.
+var docActor = domain.Actor{UserID: uuid.New(), Username: "teller.uji", Role: domain.RoleTeller, BranchCode: "001"}
+
+// Nomor referensi dapat diiterasi, jadi slip cabang lain harus ditolak sebelum data
+// nasabah apa pun diambil; kalau tidak, seluruh bank dapat dipanen satu per satu.
+func TestDocumentService_DepositSlipRejectsCrossBranchJournal(t *testing.T) {
+	fixture := newDocumentFixture(t)
+	ref := "DEP-20260919-00003"
+	entry := &domain.JournalEntry{ReferenceNumber: ref, BranchCode: "002", TransactionType: domain.TxTypeDeposit}
+	docSvc := service.NewDocumentService(
+		&stubLedgerRepo{entries: map[string]*domain.JournalEntry{ref: entry}},
+		nil, nil, nil, fixture.bankRepo, newTestCipher(t))
+
+	_, err := docSvc.GenerateDepositSlipHTML(context.Background(), ref, docActor)
+	if !errors.Is(err, domain.ErrCrossBranchAccess) {
+		t.Fatalf("slip cabang lain harus ditolak, dapat: %v", err)
+	}
+
+	// Cabang yang sama harus lolos gerbang cabang; kegagalan berikutnya (rekening
+	// nasabah tidak ditemukan) bukan penolakan lintas cabang.
+	entry.BranchCode = docActor.BranchCode
+	if _, err := docSvc.GenerateDepositSlipHTML(context.Background(), ref, docActor); errors.Is(err, domain.ErrCrossBranchAccess) {
+		t.Fatalf("slip cabang sendiri ditolak: %v", err)
+	}
+}
+
+// Surat perjanjian kredit cabang lain juga tidak boleh dicetak.
+func TestDocumentService_LoanAgreementRejectsCrossBranchLoan(t *testing.T) {
+	loanID := uuid.New()
+	loanRepo := &stubLoanRepo{loan: &domain.Loan{
+		ID:         loanID,
+		LoanNumber: "KRD-2026-00088",
+		BranchCode: "002",
+		Status:     domain.LoanStatusApproved,
+	}}
+	docSvc := service.NewDocumentService(nil, nil, loanRepo, nil, nil, newTestCipher(t))
+
+	_, err := docSvc.GenerateLoanAgreementHTML(context.Background(), loanID, docActor)
+	if !errors.Is(err, domain.ErrCrossBranchAccess) {
+		t.Fatalf("perjanjian kredit cabang lain harus ditolak, dapat: %v", err)
 	}
 }
