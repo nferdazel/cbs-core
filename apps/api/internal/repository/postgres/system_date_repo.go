@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -23,20 +25,31 @@ func (r *BusinessDateRepository) GetCurrentDate(ctx context.Context) (*domain.Sy
 
 	err := r.db.QueryRowContext(ctx,
 		"SELECT value, description FROM system_config WHERE key = 'system.business_date'").Scan(&dateStr, &updatedByStr)
-	if err != nil {
-		// Fallback to today UTC if not configured
-		dateStr = time.Now().Format("2006-01-02")
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// Tanggal bisnis belum pernah disetel (pemasangan baru): hari ini UTC dipakai
+		// sebagai titik awal.
+		dateStr = time.Now().UTC().Format("2006-01-02")
+	case err != nil:
+		// Kegagalan membaca tidak boleh berbuntut tanggal karangan: seluruh proses
+		// tutup buku memakai tanggal ini sebagai periode posting.
+		return nil, fmt.Errorf("membaca tanggal bisnis: %w", err)
 	}
 
-	_ = r.db.QueryRowContext(ctx,
+	err = r.db.QueryRowContext(ctx,
 		"SELECT value FROM system_config WHERE key = 'system.business_date_status'").Scan(&statusStr)
-	if statusStr == "" {
+	switch {
+	case errors.Is(err, sql.ErrNoRows), statusStr == "":
 		statusStr = string(domain.BusinessDateStatusOpen)
+	case err != nil:
+		return nil, fmt.Errorf("membaca status tanggal bisnis: %w", err)
 	}
 
 	parsedDate, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		parsedDate = time.Now().UTC()
+		// Tanggal tersimpan yang rusak harus terlihat, bukan diganti tanggal hari ini:
+		// posting ke periode yang salah lebih sulit diperbaiki daripada gagal jelas.
+		return nil, fmt.Errorf("tanggal bisnis tersimpan tidak valid (%q): %w", dateStr, err)
 	}
 
 	var updatedBy *uuid.UUID
