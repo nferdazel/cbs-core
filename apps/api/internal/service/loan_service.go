@@ -943,12 +943,12 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 
 	switch normalizeAction(actionType) {
 	case ActionLoanWriteOff:
-		product, amount, err := s.writeOffTarget(ctx, loan)
+		product, terms, err := s.writeOffTarget(ctx, loan)
 		if err != nil {
 			return err
 		}
 		reason, _ := payload["reason"].(string)
-		return s.writeOffTx(ctx, tx, loan, product, amount, reason, maker)
+		return s.writeOffTx(ctx, tx, loan, product, terms, reason, maker)
 	case ActionLoanRecovery:
 		amount, err := decimalFromPayload(payload["recovery_amount"])
 		if err != nil {
@@ -967,24 +967,87 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 	}
 }
 
+// writeOffTerms adalah nominal yang dilepas dari neraca saat hapus buku: pokok,
+// bunga yang sudah diakui tetapi belum tertagih, dan denda yang masih tercatat.
+type writeOffTerms struct {
+	Principal     decimal.Decimal
+	AccruedProfit decimal.Decimal
+	Penalty       decimal.Decimal
+}
+
+func (t writeOffTerms) Total() decimal.Decimal {
+	return t.Principal.Add(t.AccruedProfit).Add(t.Penalty)
+}
+
+// accruedProfitFor menghitung piutang bunga yang masih tercatat untuk satu kredit:
+// jumlah akruan yang sudah diakui dan belum diselesaikan pembayaran. Nilainya harus
+// dilepas saat hapus buku; kalau tidak, piutangnya tetap di neraca tanpa kredit yang
+// menopangnya, dan bank terus melaporkan aset yang tidak mungkin tertagih.
+func (s *loanService) accruedProfitFor(ctx context.Context, loanID uuid.UUID) (decimal.Decimal, error) {
+	schedules, err := s.loanRepo.GetSchedules(ctx, loanID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	total := decimal.Zero
+	for _, schedule := range schedules {
+		if schedule.ProfitAccruedAmount.IsPositive() {
+			total = total.Add(schedule.ProfitAccruedAmount)
+		}
+	}
+	return total, nil
+}
+
+// requireWriteOffLegs menolak hapus buku yang pemetaan produknya belum memuat kaki
+// untuk nominal yang dilepas. Poster hanya melewati nominal yang tidak punya kaki,
+// sehingga tanpa pemeriksaan ini piutang bunga atau denda tetap tercatat di neraca
+// tanpa satu pun peringatan.
+func requireWriteOffLegs(rules []domain.JournalMappingRule, terms writeOffTerms) error {
+	declared := func(source domain.AmountSource) bool {
+		if source == "" {
+			return true
+		}
+		for _, rule := range rules {
+			if rule.AmountSource == source {
+				return true
+			}
+		}
+		return false
+	}
+	if terms.AccruedProfit.IsPositive() && !declared(domain.AmountProfit) {
+		return errors.New("pemetaan hapus buku produk belum memuat kaki piutang bunga (PROFIT); piutang bunga kredit tidak dapat dilepas")
+	}
+	if terms.Penalty.IsPositive() && !declared(domain.AmountPenalty) {
+		return errors.New("pemetaan hapus buku produk belum memuat kaki piutang denda (PENALTY); piutang denda kredit tidak dapat dilepas")
+	}
+	return nil
+}
+
 // writeOffTarget memvalidasi kredit yang akan dihapus buku dan menghitung nominal yang
 // dilepas dari neraca.
-func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, decimal.Decimal, error) {
+func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, writeOffTerms, error) {
 	if loan.Status != domain.LoanStatusDisbursed {
-		return nil, decimal.Zero, errors.New("hanya kredit aktif yang dapat dihapus buku")
+		return nil, writeOffTerms{}, errors.New("hanya kredit aktif yang dapat dihapus buku")
 	}
 	if loan.ProductID == nil {
-		return nil, decimal.Zero, errors.New("kredit tidak terhubung ke produk")
+		return nil, writeOffTerms{}, errors.New("kredit tidak terhubung ke produk")
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
-		return nil, decimal.Zero, err
+		return nil, writeOffTerms{}, err
 	}
-	amount := loan.OutstandingPrincipal
-	if !amount.IsPositive() {
-		amount = loan.PrincipalAmount
+	principal := loan.OutstandingPrincipal
+	if !principal.IsPositive() {
+		principal = loan.PrincipalAmount
 	}
-	return product, amount, nil
+	accruedProfit, err := s.accruedProfitFor(ctx, loan.ID)
+	if err != nil {
+		return nil, writeOffTerms{}, err
+	}
+	penalty := loan.PenaltyAccrued
+	if penalty.IsNegative() {
+		penalty = decimal.Zero
+	}
+	return product, writeOffTerms{Principal: principal, AccruedProfit: accruedProfit, Penalty: penalty}, nil
 }
 
 // recoveryTarget memvalidasi kredit hapus buku dan menyiapkan rekening penerimaannya.
@@ -1011,10 +1074,22 @@ func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*d
 }
 
 // writeOffTx menjalankan hapus buku di dalam transaksi pemanggil: jurnal, status, sisa
-// pokok, dan jejak auditnya commit bersama.
-func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, reason string, actor domain.Actor) error {
+// pokok, dan jejak auditnya commit bersama. Selain pokok, piutang bunga dan denda yang
+// masih tercatat ikut dilepas supaya tidak ada aset tanpa penopang yang tertinggal.
+func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, terms writeOffTerms, reason string, actor domain.Actor) error {
+	rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanWriteOff)
+	if err != nil {
+		return fmt.Errorf("membaca pemetaan hapus buku: %w", err)
+	}
+	if err := requireWriteOffLegs(rules, terms); err != nil {
+		return err
+	}
+
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanWriteOff, Amounts{
-		Principal: amount, Total: amount,
+		Principal: terms.Principal,
+		Profit:    terms.AccruedProfit,
+		Penalty:   terms.Penalty,
+		Total:     terms.Total(),
 	}, PostingMeta{
 		TransactionType: domain.TxTypeAdjustment,
 		Description:     fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, reason),
@@ -1027,13 +1102,16 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loan.ID, domain.LoanStatusWrittenOff, &actor.UserID); err != nil {
 		return err
 	}
-	if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, loan.PenaltyAccrued); err != nil {
+	if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, decimal.Zero); err != nil {
 		return err
 	}
 	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":           loan.LoanNumber,
 		"reason":                reason,
-		"amount":                amount.StringFixed(2),
+		"principal":             terms.Principal.StringFixed(2),
+		"accrued_profit":        terms.AccruedProfit.StringFixed(2),
+		"penalty":               terms.Penalty.StringFixed(2),
+		"amount":                terms.Total().StringFixed(2),
 		"outstanding_principal": loan.OutstandingPrincipal.StringFixed(2),
 		"penalty_outstanding":   loan.PenaltyAccrued.StringFixed(2),
 	})
@@ -1070,12 +1148,12 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
-	product, amount, err := s.writeOffTarget(ctx, loan)
+	product, terms, err := s.writeOffTarget(ctx, loan)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.guardLoanApproval(ctx, actor, ActionLoanWriteOff, amount, map[string]any{
+	if err := s.guardLoanApproval(ctx, actor, ActionLoanWriteOff, terms.Total(), map[string]any{
 		"loan_id":     loan.ID.String(),
 		"loan_number": loan.LoanNumber,
 		"reason":      input.Reason,
@@ -1086,7 +1164,7 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	// Transaksi dibuka lewat txRunner yang sama dengan pembayaran angsuran: isolasi
 	// ReadCommitted dan jalur uji tanpa database tetap satu pintu.
 	if err := s.txRunner.Run(ctx, func(tx any) error {
-		return s.writeOffTx(ctx, tx, loan, product, amount, input.Reason, actor)
+		return s.writeOffTx(ctx, tx, loan, product, terms, input.Reason, actor)
 	}); err != nil {
 		return nil, err
 	}

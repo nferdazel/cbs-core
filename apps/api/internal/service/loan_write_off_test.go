@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -10,7 +11,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// writeOffFixture menyiapkan satu kredit aktif beserta pemetaan jurnal hapus buku.
+// writeOffFixture menyiapkan satu kredit aktif beserta pemetaan jurnal hapus buku,
+// termasuk kaki pelepasan piutang bunga (10400) dan piutang denda (10305).
 // Ambang persetujuan disetel 0 agar seluruh hapus buku wajib disetujui pejabat kedua.
 func writeOffFixture() (interestFixture, *loanService) {
 	f := newInterestFixture()
@@ -21,10 +23,25 @@ func writeOffFixture() (interestFixture, *loanService) {
 		ProductID:             &f.productID,
 		DisbursementAccountID: f.accountID,
 		OutstandingPrincipal:  decimal.NewFromInt(2_500_000),
+		PenaltyAccrued:        decimal.NewFromInt(50_000),
 	}
+	// Satu angsuran dengan bunga yang sudah diakui tetapi belum tertagih.
+	f.repo.schedules = []domain.LoanSchedule{{
+		ID:                  uuid.New(),
+		LoanID:              f.loanID,
+		InstallmentNo:       1,
+		PrincipalAmount:     decimal.NewFromInt(2_500_000),
+		ProfitAmount:        decimal.NewFromInt(60_000),
+		ProfitAccruedAmount: decimal.NewFromInt(60_000),
+		Status:              domain.InstallmentStatusPending,
+	}}
 	f.products.rules[domain.EventLoanWriteOff] = []domain.JournalMappingRule{
-		{Direction: domain.DirectionDebit, COACode: "50100", AmountSource: domain.AmountPrincipal},
+		{Direction: domain.DirectionDebit, COACode: "10900", AmountSource: domain.AmountPrincipal},
 		{Direction: domain.DirectionCredit, COACode: "10301", AmountSource: domain.AmountPrincipal},
+		{Direction: domain.DirectionDebit, COACode: "40100", AmountSource: domain.AmountProfit},
+		{Direction: domain.DirectionCredit, COACode: "10400", AmountSource: domain.AmountProfit},
+		{Direction: domain.DirectionDebit, COACode: "40500", AmountSource: domain.AmountPenalty},
+		{Direction: domain.DirectionCredit, COACode: "10305", AmountSource: domain.AmountPenalty},
 	}
 	f.products.rules[domain.EventLoanRecovery] = []domain.JournalMappingRule{
 		{Direction: domain.DirectionDebit, COACode: "20100", AmountSource: domain.AmountPrincipal},
@@ -73,8 +90,9 @@ func TestWriteOffLoan_RequiresApprovalBeforePosting(t *testing.T) {
 		t.Fatalf("permintaan persetujuan %d, ingin 1", len(approvals.created))
 	}
 	created := approvals.created[0]
-	if !created.Amount.Equal(decimal.NewFromInt(2_500_000)) {
-		t.Fatalf("nominal permintaan %s, ingin 2500000", created.Amount)
+	// Nominal persetujuan adalah seluruh yang dilepas: pokok + bunga akru + denda.
+	if !created.Amount.Equal(decimal.NewFromInt(2_610_000)) {
+		t.Fatalf("nominal permintaan %s, ingin 2610000", created.Amount)
 	}
 	if created.Payload["loan_id"] != f.loanID.String() {
 		t.Fatalf("payload tanpa id kredit: %+v", created.Payload)
@@ -112,6 +130,38 @@ func TestWriteOffLoan_ExecuteApprovedPostsAndMarksLoan(t *testing.T) {
 	if got := f.posting.requests[0].IdempotencyKey; got != "WOFF-"+f.repo.loan.LoanNumber {
 		t.Fatalf("kunci idempotensi %q, ingin WOFF-%s", got, f.repo.loan.LoanNumber)
 	}
+
+	// Piutang bunga dan denda ikut dilepas: tanpa ini keduanya tetap tercatat di
+	// neraca padahal kreditnya sudah tidak ada.
+	lines := f.posting.requests[0].Lines
+	if len(lines) != 6 {
+		t.Fatalf("jurnal %d baris, ingin 6: %+v", len(lines), lines)
+	}
+	creditOf := func(coa string) decimal.Decimal {
+		for _, line := range lines {
+			if line.AccountNumber == coa && line.Direction == domain.DirectionCredit {
+				return line.Amount
+			}
+		}
+		return decimal.Zero
+	}
+	if got := creditOf("10301"); !got.Equal(decimal.NewFromInt(2_500_000)) {
+		t.Fatalf("pokok dilepas %s, ingin 2500000", got)
+	}
+	if got := creditOf("10400"); !got.Equal(decimal.NewFromInt(60_000)) {
+		t.Fatalf("piutang bunga dilepas %s, ingin 60000", got)
+	}
+	if got := creditOf("10305"); !got.Equal(decimal.NewFromInt(50_000)) {
+		t.Fatalf("piutang denda dilepas %s, ingin 50000", got)
+	}
+	debit := sumDirection(lines, domain.DirectionDebit)
+	if credit := sumDirection(lines, domain.DirectionCredit); !debit.Equal(credit) {
+		t.Fatalf("jurnal tidak seimbang: debit %s != kredit %s", debit, credit)
+	}
+	if !f.repo.penalty.IsZero() {
+		t.Fatalf("denda kredit masih %s setelah hapus buku", f.repo.penalty)
+	}
+
 	if f.repo.loan.Status != domain.LoanStatusWrittenOff {
 		t.Fatalf("status kredit %s, ingin WRITTEN_OFF", f.repo.loan.Status)
 	}
@@ -195,5 +245,27 @@ func TestWriteOffLoan_BelowThresholdExecutesDirectly(t *testing.T) {
 	}
 	if len(f.posting.requests) != 1 {
 		t.Fatalf("jurnal %d, ingin 1", len(f.posting.requests))
+	}
+}
+
+// Pemetaan produk yang belum memuat kaki piutang bunga harus menolak hapus buku,
+// bukan melewati nominalnya diam-diam dan meninggalkan piutang di neraca.
+func TestWriteOffLoan_RejectsUnmappedAccruedProfit(t *testing.T) {
+	f, svc := writeOffFixture()
+	svc.approvals = nil
+	// Pemetaan gaya lama: hanya pokok yang punya kaki jurnal.
+	f.products.rules[domain.EventLoanWriteOff] = f.products.rules[domain.EventLoanWriteOff][:2]
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit",
+	}, writeOffActor())
+	if err == nil || !strings.Contains(err.Error(), "piutang bunga") {
+		t.Fatalf("hapus buku tanpa kaki piutang bunga harus ditolak, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0 saat pemetaan tidak lengkap", len(f.posting.requests))
+	}
+	if f.repo.loan.Status != domain.LoanStatusDisbursed {
+		t.Fatalf("status kredit berubah meski hapus buku ditolak: %s", f.repo.loan.Status)
 	}
 }

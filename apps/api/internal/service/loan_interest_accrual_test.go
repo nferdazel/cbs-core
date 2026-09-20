@@ -25,6 +25,10 @@ type interestLoanRepo struct {
 	paidPrincipal decimal.Decimal
 	paidProfit    decimal.Decimal
 	settled       decimal.Decimal
+
+	// Saldo yang disimpan kembali lewat UpdateOutstanding (mis. saat hapus buku).
+	outstanding decimal.Decimal
+	penalty     decimal.Decimal
 }
 
 func (r *interestLoanRepo) ListInterestAccrualCandidates(context.Context, time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
@@ -65,7 +69,9 @@ func (r *interestLoanRepo) UpdateOutstandingTx(ctx context.Context, _ any, id uu
 	return r.UpdateOutstanding(ctx, id, outstanding, penalty)
 }
 
-func (r *interestLoanRepo) UpdateOutstanding(context.Context, uuid.UUID, decimal.Decimal, decimal.Decimal) error {
+func (r *interestLoanRepo) UpdateOutstanding(_ context.Context, _ uuid.UUID, outstanding, penalty decimal.Decimal) error {
+	r.outstanding = outstanding
+	r.penalty = penalty
 	return nil
 }
 
