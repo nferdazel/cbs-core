@@ -13,12 +13,12 @@ import (
 // --- Stub ---
 
 type stubPPAPRepo struct {
-	snapshots  []domain.PPAPLoanSnapshot
-	reserve    decimal.Decimal
-	updated    []domain.PPAPLoanUpdate
-	collect    []domain.Collectibility
-	updateErr  error
-	listErr    error
+	snapshots []domain.PPAPLoanSnapshot
+	reserve   decimal.Decimal
+	updated   []domain.PPAPLoanUpdate
+	collect   []domain.Collectibility
+	updateErr error
+	listErr   error
 }
 
 func (s *stubPPAPRepo) ListDueLoans(context.Context, time.Time) ([]domain.PPAPLoanSnapshot, error) {
@@ -114,11 +114,11 @@ func newTestPPAPService(repo *stubPPAPRepo, products *stubProductRepo, posting *
 	}
 }
 
-// Kredit dengan DPD 40 (golongan 3, tarif 15%) yang sebelumnya diakui 0,5% harus
-// memposting selisih target - cadangan lama, bukan target penuh.
+// Kredit dengan DPD 100 (Kurang Lancar, tarif 10%) yang sebelumnya diakui 0,5%
+// harus memposting selisih target - cadangan lama, bukan target penuh.
 func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
-	due := asOf.AddDate(0, 0, -40)
+	due := asOf.AddDate(0, 0, -100)
 	loanID := uuid.New()
 
 	repo := &stubPPAPRepo{
@@ -144,7 +144,7 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	if summary.Processed != 1 || summary.Failed != 0 {
 		t.Fatalf("ringkasan: processed=%d failed=%d", summary.Processed, summary.Failed)
 	}
-	// Tunggakan 40 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
+	// Tunggakan 100 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
 	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
 		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
 	}
@@ -171,7 +171,7 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	if upd.Collectibility != domain.KolKurangLancar {
 		t.Errorf("kolektibilitas %s, ingin Kurang Lancar", upd.Collectibility.Label())
 	}
-	// Kurang Lancar 10% x 10.000.000 = 1.000.000 (POJK 33/2018 Pasal 16).
+	// Kurang Lancar 10% x 10.000.000 = 1.000.000 (POJK 1/2024 Pasal 19).
 	if !upd.RequiredPPAP.Equal(decimal.NewFromInt(1_000_000)) {
 		t.Errorf("required_ppap %s, ingin 1.000.000", upd.RequiredPPAP)
 	}
@@ -182,7 +182,7 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 
 func TestPPAPRunDaily_MacetTriggersStopAccrual(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
-	due := asOf.AddDate(0, 0, -200)
+	due := asOf.AddDate(0, 0, -400)
 	loanID := uuid.New()
 
 	repo := &stubPPAPRepo{
@@ -191,7 +191,7 @@ func TestPPAPRunDaily_MacetTriggersStopAccrual(t *testing.T) {
 			LoanNumber:     "KRD-2026-0002",
 			Outstanding:    decimal.NewFromInt(2_000_000),
 			Collectibility: domain.KolDPK,
-			DPD:            45,
+			DPD:            400,
 			AccrualStatus:  domain.AccrualStatusAccrual,
 			RequiredPPAP:   decimal.Zero,
 			LastDueDate:    &due,
@@ -304,7 +304,7 @@ func TestPPAPRunDaily_UsesProductMappingWhenPresent(t *testing.T) {
 // Preview hanya menghitung, tidak memposting dan tidak mengubah state.
 func TestPPAPPreview_DoesNotPostOrUpdate(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
-	due := asOf.AddDate(0, 0, -40)
+	due := asOf.AddDate(0, 0, -100)
 	loanID := uuid.New()
 
 	repo := &stubPPAPRepo{
@@ -330,7 +330,7 @@ func TestPPAPPreview_DoesNotPostOrUpdate(t *testing.T) {
 	if len(posting.requests) != 0 || len(repo.updated) != 0 {
 		t.Fatalf("preview tidak boleh memposting/mengubah: jurnal=%d update=%d", len(posting.requests), len(repo.updated))
 	}
-	// Tunggakan 40 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
+	// Tunggakan 100 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
 	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
 		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
 	}

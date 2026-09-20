@@ -162,8 +162,8 @@ func (s *stubLoanProductRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.B
 var _ domain.ProductRepository = (*stubLoanProductRepo)(nil)
 
 // Restrukturisasi memakai ambang DPD dan tarif dari konfigurasi yang sama dengan
-// PPAP harian. DPD 45 masuk rentang 31-90 (Kurang Lancar), bukan lagi DPK seperti
-// aturan lama yang memakai DPK 1-90.
+// PPAP harian. DPD 100 masuk rentang 91-180 (Kurang Lancar, NPL), sedangkan DPD 45
+// kini DPK (31-90); contoh digeser ke 100 agar tetap menguji penghentian akrual.
 func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	loanID := uuid.New()
 	productID := uuid.New()
@@ -171,7 +171,7 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 		ID:                   loanID,
 		Status:               domain.LoanStatusDisbursed,
 		ProductID:            &productID,
-		DPD:                  45,
+		DPD:                  100,
 		PrincipalAmount:      decimal.NewFromInt(10_000_000),
 		OutstandingPrincipal: decimal.NewFromInt(10_000_000),
 		TermMonths:           12,
@@ -184,7 +184,8 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 		ScheduleMethod: domain.ScheduleFlat,
 		RateAnnual:     decimal.NewFromInt(12),
 	}}
-	// Konfigurasi kosong memakai fallback POJK: DPK 30, Kurang Lancar 90, Diragukan 180.
+	// Konfigurasi kosong memakai fallback POJK: Lancar 30, DPK 90, Kurang Lancar 180,
+	// Diragukan 360.
 	config := &stubLimitConfig{values: map[string]decimal.Decimal{}}
 	svc := service.NewLoanService(nil, repo, products, nil, nil, nil, nil, nil, config)
 
@@ -196,7 +197,7 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 		t.Fatalf("RestructureLoan: %v", err)
 	}
 	if loan.Collectibility != domain.CollectibilityKol3 {
-		t.Fatalf("DPD 45 harus Kurang Lancar, dapat %s", loan.Collectibility)
+		t.Fatalf("DPD 100 harus Kurang Lancar, dapat %s", loan.Collectibility)
 	}
 	if loan.AccrualStatus != domain.AccrualStatusCash {
 		t.Fatalf("NPL harus cash basis, dapat %s", loan.AccrualStatus)

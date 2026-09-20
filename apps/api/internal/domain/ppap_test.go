@@ -7,40 +7,142 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Batas DPD sesuai POJK 40/2019: 0 lancar; 1-30 DPK; 31-90 kurang lancar;
-// 91-180 diragukan; >180 macet.
-func TestCollectibilityFromDPD_Boundaries(t *testing.T) {
+// Pita kolektibilitas mengikuti POJK No. 1 Tahun 2024 (Kualitas Aset Bank
+// Perekonomian Rakyat) Lampiran II, baris "Kredit dengan angsuran 1 bulan atau
+// lebih". Tunggakan 1-30 hari yang belum jatuh tempo MASIH Lancar; itu bagian dari
+// definisi Lancar, bukan kelonggaran.
+func TestCollectibilityFromDPD_MonthlyBands(t *testing.T) {
 	thresholds := domain.DefaultCollectibilityThresholds()
+
+	tests := []struct {
+		name string
+		dpd  int
+		want domain.Collectibility
+	}{
+		{"tepat waktu", 0, domain.KolLancar},
+		{"tunggakan 1 hari masih Lancar", 1, domain.KolLancar},
+		{"tunggakan 30 hari batas atas Lancar", 30, domain.KolLancar},
+		{"tunggakan 31 hari masuk DPK", 31, domain.KolDPK},
+		{"tunggakan 90 hari batas atas DPK", 90, domain.KolDPK},
+		{"tunggakan 91 hari masuk Kurang Lancar", 91, domain.KolKurangLancar},
+		{"tunggakan 180 hari batas atas Kurang Lancar", 180, domain.KolKurangLancar},
+		{"tunggakan 181 hari masuk Diragukan", 181, domain.KolDiragukan},
+		{"tunggakan 360 hari batas atas Diragukan", 360, domain.KolDiragukan},
+		{"tunggakan 361 hari masuk Macet", 361, domain.KolMacet},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := domain.CollectibilityFromDPD(tt.dpd, thresholds); got != tt.want {
+				t.Fatalf("DPD %d: got %s, want %s", tt.dpd, got.Label(), tt.want.Label())
+			}
+		})
+	}
+}
+
+// Pita angsuran kurang dari 1 bulan (Lancar 15 / DPK 30 / Kurang Lancar 90 /
+// Diragukan 180) disediakan lebih dulu meski jadwal produksi masih bulanan.
+func TestCollectibilityFromDPD_SubMonthlyBands(t *testing.T) {
+	thresholds := domain.SubMonthlyCollectibilityThresholds()
 
 	tests := []struct {
 		dpd  int
 		want domain.Collectibility
 	}{
 		{0, domain.KolLancar},
-		{1, domain.KolDPK},
+		{15, domain.KolLancar},
+		{16, domain.KolDPK},
 		{30, domain.KolDPK},
 		{31, domain.KolKurangLancar},
 		{90, domain.KolKurangLancar},
 		{91, domain.KolDiragukan},
 		{180, domain.KolDiragukan},
 		{181, domain.KolMacet},
-		{999, domain.KolMacet},
 	}
 
 	for _, tt := range tests {
-		got := domain.CollectibilityFromDPD(tt.dpd, thresholds)
-		if got != tt.want {
-			t.Errorf("DPD %d: got %s (%d), want %s (%d)",
-				tt.dpd, got.Label(), got, tt.want.Label(), tt.want)
+		if got := domain.CollectibilityFromDPD(tt.dpd, thresholds); got != tt.want {
+			t.Errorf("angsuran <1 bulan DPD %d: got %s, want %s", tt.dpd, got.Label(), tt.want.Label())
 		}
 	}
 }
 
-// Konfigurasi rusak (ambang tidak menaik) tidak boleh menghasilkan golongan lebih baik.
+// Dimensi "Kredit telah jatuh tempo" (15/30/60 hari) dinilai terpisah dari
+// tunggakan angsuran; yang berlaku adalah golongan terburuk di antara keduanya.
+func TestCollectibilityFromPosition_TakesWorseOfArrearsAndMaturity(t *testing.T) {
+	thresholds := domain.DefaultCollectibilityThresholds()
+
+	tests := []struct {
+		name             string
+		dpd              int
+		daysPastMaturity int
+		want             domain.Collectibility
+	}{
+		{"lancar dan belum jatuh tempo", 0, 0, domain.KolLancar},
+		{"tunggakan 20 hari, belum jatuh tempo", 20, 0, domain.KolLancar},
+		{"tunggakan 0 hari tetapi jatuh tempo 10 hari", 0, 10, domain.KolDPK},
+		{"tunggakan 200 hari tetapi belum jatuh tempo", 200, 0, domain.KolDiragukan},
+		{"tunggakan 0 hari tetapi jatuh tempo 45 hari", 0, 45, domain.KolDiragukan},
+		{"tunggakan 0 hari tetapi jatuh tempo 90 hari", 0, 90, domain.KolMacet},
+		{"jatuh tempo 20 hari menang atas tunggakan 0", 0, 20, domain.KolKurangLancar},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.CollectibilityFromPosition(tt.dpd, tt.daysPastMaturity, thresholds)
+			if got != tt.want {
+				t.Fatalf("dpd=%d jatuh tempo=%d: got %s, want %s",
+					tt.dpd, tt.daysPastMaturity, got.Label(), tt.want.Label())
+			}
+		})
+	}
+}
+
+// Konfigurasi rusak tidak boleh menghasilkan golongan lebih baik daripada yang
+// dimaksud konfigurasi.
 func TestCollectibilityFromDPD_InvalidThresholdsFallBack(t *testing.T) {
-	got := domain.CollectibilityFromDPD(100, domain.CollectibilityThresholds{DPK: 0, KurangLancar: 5, Diragukan: 0})
+	// Batas Kurang Lancar (120) tidak menaik di atas DPK (200): dikembalikan ke
+	// default 180, sehingga DPD 100 tetap Kurang Lancar.
+	got := domain.CollectibilityFromDPD(100, domain.CollectibilityThresholds{Lancar: 30, DPK: 200, KurangLancar: 120, Diragukan: 360})
+	if got != domain.KolKurangLancar {
+		t.Fatalf("ambang tidak menaik: got %s, want Kurang Lancar", got.Label())
+	}
+
+	// Ambang kosong memakai default POJK.
+	got = domain.CollectibilityFromDPD(0, domain.CollectibilityThresholds{})
+	if got != domain.KolLancar {
+		t.Fatalf("ambang kosong: got %s, want Lancar", got.Label())
+	}
+
+	// Toleransi Lancar bawaan (30) lebih longgar daripada batas DPK yang ketat (10):
+	// toleransi dipersempit, ambang ketat operator tetap berlaku.
+	got = domain.CollectibilityFromDPD(25, domain.CollectibilityThresholds{DPK: 10, KurangLancar: 20, Diragukan: 30})
 	if got != domain.KolDiragukan {
-		t.Fatalf("ambang rusak: got %s, want Diragukan", got.Label())
+		t.Fatalf("ambang ketat: got %s, want Diragukan", got.Label())
+	}
+}
+
+// Invarian inti: konfigurasi apa pun tidak boleh menggolongkan Kredit lebih ringan
+// daripada default POJK. Bank boleh lebih konservatif, tidak boleh lebih longgar.
+func TestCollectibilityFromDPD_NeverLighterThanDefault(t *testing.T) {
+	configs := []domain.CollectibilityThresholds{
+		{},                                      // tidak dikonfigurasi
+		{DPK: 0, KurangLancar: 5, Diragukan: 0}, // ambang tidak menaik
+		{Lancar: 30, DPK: 30, KurangLancar: 90, Diragukan: 180},   // nilai seed lama
+		{Lancar: 30, DPK: 200, KurangLancar: 120, Diragukan: 360}, // lebih longgar dari POJK
+		{DPK: 10, KurangLancar: 20, Diragukan: 30},                // sengaja lebih ketat
+	}
+	def := domain.DefaultCollectibilityThresholds()
+
+	for _, cfg := range configs {
+		for dpd := 0; dpd <= 400; dpd += 7 {
+			got := domain.CollectibilityFromDPD(dpd, cfg)
+			want := domain.CollectibilityFromDPD(dpd, def)
+			if got < want {
+				t.Fatalf("konfigurasi %+v pada DPD %d memberi %s, lebih ringan dari default %s",
+					cfg, dpd, got.Label(), want.Label())
+			}
+		}
 	}
 }
 

@@ -92,37 +92,96 @@ func CollectibilityFromOJK(o OJKCollectibility) Collectibility {
 	}
 }
 
-// CollectibilityThresholds adalah batas atas DPD (hari) per kolektibilitas, dari
-// konfigurasi. Batas lancar selalu DPD 0; yang dikonfigurasi adalah batas atas
-// golongan 2, 3, dan 4.
+// CollectibilityThresholds adalah batas atas jumlah hari tunggakan angsuran (DPD)
+// per golongan. Regulasi menyambung dimensi tunggakan dengan dimensi jatuh tempo
+// memakai "dan/atau", sehingga golongan akhir adalah yang TERBURUK di antara
+// keduanya - lihat CollectibilityFromPosition.
 type CollectibilityThresholds struct {
+	// Lancar adalah batas atas tunggakan yang masih digolongkan Lancar selama
+	// Kredit belum jatuh tempo. Ini bagian dari definisi Lancar di Lampiran II,
+	// bukan kelonggaran opsional.
+	Lancar       int
 	DPK          int
 	KurangLancar int
 	Diragukan    int
 }
 
-// DefaultCollectibilityThresholds mengikuti POJK 40/2019 (kualitas aset BPR).
+// DefaultCollectibilityThresholds adalah pita DPD untuk Kredit dengan angsuran
+// 1 (satu) bulan atau lebih menurut POJK No. 1 Tahun 2024 tentang Kualitas Aset
+// Bank Perekonomian Rakyat, Lampiran II:
+//
+//	Lancar       : tanpa tunggakan, atau tunggakan <= 30 hari dan Kredit belum jatuh tempo
+//	DPK          : tunggakan > 30 s/d 90 hari, dan/atau telah jatuh tempo <= 15 hari
+//	Kurang Lancar: tunggakan > 90 s/d 180 hari, dan/atau telah jatuh tempo > 15 s/d 30 hari
+//	Diragukan    : tunggakan > 180 s/d 360 hari, dan/atau telah jatuh tempo > 30 s/d 60 hari
+//	Macet        : tunggakan > 360 hari, dan/atau telah jatuh tempo > 60 hari, dan/atau
+//	               diserahkan kepada DJKN, dan/atau diajukan klaim asuransi Kredit
+//
+// POJK 33/POJK.03/2018 yang dulu dirujuk sudah dicabut oleh POJK 1/2024. Pitanya
+// kebetulan sama, tetapi dasar hukum yang berlaku sekarang adalah POJK 1/2024.
 func DefaultCollectibilityThresholds() CollectibilityThresholds {
-	return CollectibilityThresholds{DPK: 30, KurangLancar: 90, Diragukan: 180}
+	return CollectibilityThresholds{Lancar: 30, DPK: 90, KurangLancar: 180, Diragukan: 360}
 }
 
-// CollectibilityFromDPD menentukan golongan dari jumlah hari keterlambatan.
-// Ambang yang tidak wajar (<= batas sebelumnya) dikoreksi ke default agar
-// konfigurasi rusak tidak pernah menghasilkan golongan yang lebih baik.
-func CollectibilityFromDPD(dpd int, t CollectibilityThresholds) Collectibility {
-	def := DefaultCollectibilityThresholds()
-	if t.DPK <= 0 {
-		t.DPK = def.DPK
-	}
-	if t.KurangLancar <= t.DPK {
-		t.KurangLancar = def.KurangLancar
-	}
-	if t.Diragukan <= t.KurangLancar {
-		t.Diragukan = def.Diragukan
-	}
+// SubMonthlyCollectibilityThresholds adalah pita DPD untuk Kredit dengan angsuran
+// kurang dari 1 (satu) bulan (POJK 1/2024 Lampiran II): Lancar <= 15 hari,
+// DPK > 15 s/d 30, Kurang Lancar > 30 s/d 90, Diragukan > 90 s/d 180, Macet > 180.
+// Batas jatuh tempo (15/30/60 hari) sama dengan tabel bulanan.
+//
+// Belum dipakai jalur produksi: seluruh jadwal angsuran sistem ini masih bulanan
+// (loans.monthly_installment), sehingga pita bulanan yang berlaku. Nilai ini
+// disiapkan dan diuji lebih dulu agar aturannya sudah benar saat produk dengan
+// angsuran mingguan/harian diperkenalkan.
+func SubMonthlyCollectibilityThresholds() CollectibilityThresholds {
+	return CollectibilityThresholds{Lancar: 15, DPK: 30, KurangLancar: 90, Diragukan: 180}
+}
 
+// Batas umur jatuh tempo Kredit dalam hari (POJK 1/2024 Lampiran II, kolom
+// kemampuan membayar). Berlaku sama untuk kedua tabel frekuensi angsuran.
+const (
+	maturityDPKDays          = 15
+	maturityKurangLancarDays = 30
+	maturityDiragukanDays    = 60
+)
+
+// CollectibilityFromMaturity menggolongkan Kredit dari umurnya sejak tanggal jatuh
+// tempo. daysPastMaturity <= 0 berarti Kredit belum jatuh tempo.
+func CollectibilityFromMaturity(daysPastMaturity int) Collectibility {
 	switch {
-	case dpd <= 0:
+	case daysPastMaturity <= 0:
+		return KolLancar
+	case daysPastMaturity <= maturityDPKDays:
+		return KolDPK
+	case daysPastMaturity <= maturityKurangLancarDays:
+		return KolKurangLancar
+	case daysPastMaturity <= maturityDiragukanDays:
+		return KolDiragukan
+	default:
+		return KolMacet
+	}
+}
+
+// CollectibilityFromPosition menentukan golongan dari dua dimensi sekaligus:
+// tunggakan angsuran (dpd) dan umur jatuh tempo Kredit (daysPastMaturity, <= 0
+// berarti belum jatuh tempo). Regulasi menyambung keduanya dengan "dan/atau",
+// sehingga golongan yang berlaku adalah yang TERBURUK dari kedua perhitungan.
+func CollectibilityFromPosition(dpd, daysPastMaturity int, t CollectibilityThresholds) Collectibility {
+	byArrears := collectibilityFromArrears(dpd, sanitizeThresholds(t))
+	if byMaturity := CollectibilityFromMaturity(daysPastMaturity); byMaturity > byArrears {
+		return byMaturity
+	}
+	return byArrears
+}
+
+// CollectibilityFromDPD hanya memakai dimensi tunggakan; dipakai pemanggil yang
+// tidak punya informasi tanggal jatuh tempo Kredit.
+func CollectibilityFromDPD(dpd int, t CollectibilityThresholds) Collectibility {
+	return collectibilityFromArrears(dpd, sanitizeThresholds(t))
+}
+
+func collectibilityFromArrears(dpd int, t CollectibilityThresholds) Collectibility {
+	switch {
+	case dpd <= t.Lancar: // mencakup dpd <= 0; sanitize menjamin Lancar > 0
 		return KolLancar
 	case dpd <= t.DPK:
 		return KolDPK
@@ -135,6 +194,44 @@ func CollectibilityFromDPD(dpd int, t CollectibilityThresholds) Collectibility {
 	}
 }
 
+// sanitizeThresholds menjaga ambang tetap menaik dan tidak pernah lebih longgar
+// dari default POJK: POJK menetapkan standar MINIMUM, sehingga bank boleh
+// menggolongkan Kredit lebih buruk dari standar, tetapi tidak boleh lebih baik.
+// Ambang yang lebih longgar dari default dipulihkan ke default; urutan yang
+// terbalik dipersempit dari batas yang lebih ringan, bukan dilonggarkan dari yang
+// lebih berat, agar hasilnya tidak pernah lebih ringan dari default.
+func sanitizeThresholds(t CollectibilityThresholds) CollectibilityThresholds {
+	def := DefaultCollectibilityThresholds()
+	out := CollectibilityThresholds{
+		Diragukan:    tighten(t.Diragukan, def.Diragukan),
+		KurangLancar: tighten(t.KurangLancar, def.KurangLancar),
+		DPK:          tighten(t.DPK, def.DPK),
+		Lancar:       tighten(t.Lancar, def.Lancar),
+	}
+	if out.KurangLancar > out.Diragukan {
+		out.KurangLancar = out.Diragukan
+	}
+	if out.DPK > out.KurangLancar {
+		out.DPK = out.KurangLancar
+	}
+	if out.Lancar >= out.DPK {
+		out.Lancar = out.DPK - 1
+	}
+	if out.Lancar < 0 {
+		out.Lancar = 0
+	}
+	return out
+}
+
+// tighten memakai ambang konfigurasi hanya bila lebih ketat dari default. Nilai
+// kosong (tidak dikonfigurasi) atau lebih longgar dari default berarti default.
+func tighten(configured, def int) int {
+	if configured <= 0 || configured > def {
+		return def
+	}
+	return configured
+}
+
 // PPAPRate adalah tarif penyisihan minimum atas pokok terutang, dalam fraksi
 // (0.005 = 0,5%). Disimpan sebagai decimal agar tidak ada galat pembulatan biner.
 type PPAPRate decimal.Decimal
@@ -142,13 +239,14 @@ type PPAPRate decimal.Decimal
 // PPAPRates memetakan kolektibilitas ke tarif minimumnya.
 type PPAPRates map[Collectibility]PPAPRate
 
-// DefaultPPAPRates mengikuti PPAP minimum BPR menurut POJK 33/POJK.03/2018
-// Pasal 16: PPAP umum atas aset produktif lancar 0,5% (ayat 2), dan PPAP khusus
-// atas pokok terutang 3% (Dalam Perhatian Khusus), 10% (Kurang Lancar),
-// 50% (Diragukan), 100% (Macet) — Pasal 16 ayat (3).
+// DefaultPPAPRates mengikuti PPAP minimum BPR menurut POJK No. 1 Tahun 2024
+// tentang Kualitas Aset Bank Perekonomian Rakyat, Pasal 19 ayat (2) dan (3)
+// (rumusan sama dengan POJK 33/POJK.03/2018 Pasal 16 yang sudah dicabut):
+// PPAP umum atas aset produktif lancar 0,5%, dan PPAP khusus atas pokok terutang
+// 3% (Dalam Perhatian Khusus), 10% (Kurang Lancar), 50% (Diragukan), 100% (Macet).
 //
-// PENTING: ketentuan menghitung PPAP khusus SETELAH dikurangi nilai agunan
-// pengurang (Pasal 17). Sistem ini belum punya modul agunan, sehingga tarif di
+// PENTING: PPAP khusus dihitung SETELAH dikurangi nilai agunan pengurang
+// (POJK 1/2024 Pasal 20). Sistem ini belum punya modul agunan, sehingga tarif di
 // bawah dikenakan atas pokok penuh dan hasilnya cenderung LEBIH BESAR daripada
 // kewajiban untuk kredit beragunan. Angka ini belum boleh dipakai sebagai laporan
 // kepatuhan final sampai pengurang agunan tersedia.

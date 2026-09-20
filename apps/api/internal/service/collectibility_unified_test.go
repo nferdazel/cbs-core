@@ -70,8 +70,9 @@ func TestCollectibility_SatuAturanPPAPDanRestrukturisasi(t *testing.T) {
 		cfg  domain.SystemConfigService
 		want domain.Collectibility
 	}{
-		{"DPD 45 default POJK", 45, nil, domain.KolKurangLancar},
-		{"DPD 100 default POJK", 100, nil, domain.KolDiragukan},
+		{"DPD 45 default POJK", 45, nil, domain.KolDPK},
+		{"DPD 100 default POJK", 100, nil, domain.KolKurangLancar},
+		{"DPD 400 default POJK", 400, nil, domain.KolMacet},
 		{"DPD 25 ambang konfigurasi khusus", 25, &collectTestConfig{
 			ints: map[string]int{cfgCollectDPKDays: 10, cfgCollectKurangLancarDays: 20, cfgCollectDiragukanDays: 30},
 		}, domain.KolDiragukan},

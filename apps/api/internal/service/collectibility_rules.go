@@ -14,17 +14,20 @@ import (
 // Nilai fallback diambil dari domain.DefaultCollectibilityThresholds/DefaultPPAPRates
 // agar proses tetap berjalan di lingkungan yang belum di-provision.
 const (
+	cfgCollectLancarDays       = "ppap.dpd.lancar"
 	cfgCollectDPKDays          = "ppap.dpd.dpk"
 	cfgCollectKurangLancarDays = "ppap.dpd.kurang_lancar"
 	cfgCollectDiragukanDays    = "ppap.dpd.diragukan"
 	cfgCollectRatePrefix       = "ppap.rate." // ppap.rate.1 .. ppap.rate.5
 )
 
-// collectibilityThresholds membaca ambang DPD dari konfigurasi. Fallback POJK:
-// DPK 30, Kurang Lancar 90, Diragukan 180.
+// collectibilityThresholds membaca ambang DPD dari konfigurasi. Fallback POJK
+// 1/2024 Lampiran II (angsuran bulanan): Lancar 30, DPK 90, Kurang Lancar 180,
+// Diragukan 360.
 func collectibilityThresholds(ctx context.Context, config domain.SystemConfigService) domain.CollectibilityThresholds {
 	def := domain.DefaultCollectibilityThresholds()
 	return domain.CollectibilityThresholds{
+		Lancar:       configIntOr(ctx, config, cfgCollectLancarDays, def.Lancar),
 		DPK:          configIntOr(ctx, config, cfgCollectDPKDays, def.DPK),
 		KurangLancar: configIntOr(ctx, config, cfgCollectKurangLancarDays, def.KurangLancar),
 		Diragukan:    configIntOr(ctx, config, cfgCollectDiragukanDays, def.Diragukan),
@@ -32,7 +35,7 @@ func collectibilityThresholds(ctx context.Context, config domain.SystemConfigSer
 }
 
 // collectibilityRates membaca tarif PPAP per golongan dari konfigurasi. Fallback
-// adalah tarif minimum BPR: 0,5% / 10% / 15% / 50% / 100%.
+// adalah tarif minimum BPR (POJK 1/2024 Pasal 19): 0,5% / 3% / 10% / 50% / 100%.
 func collectibilityRates(ctx context.Context, config domain.SystemConfigService) domain.PPAPRates {
 	def := domain.DefaultPPAPRates()
 	out := make(domain.PPAPRates, len(def))
