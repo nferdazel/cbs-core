@@ -23,6 +23,10 @@ var (
 	ErrLoanHasInstallmentPayments = errors.New("kredit sudah memiliki angsuran dibayar, pembatalan pencairan tidak dapat dilakukan")
 	ErrInvalidLoanAmount    = errors.New("nominal pokok harus positif")
 	ErrInvalidLoanTerm      = errors.New("jangka waktu minimal 1 bulan")
+	// ErrLoanAmountUnchanged menolak koreksi nominal yang tidak mengubah apa pun:
+	// tanpa perubahan, jurnal selisih nol dan penulisan ulang jadwal hanya menghapus
+	// jejak tanpa manfaat.
+	ErrLoanAmountUnchanged = errors.New("nominal baru sama dengan nominal lama")
 )
 
 type LoanStatus string
@@ -246,6 +250,16 @@ type CancelLoanInput struct {
 	Reason string    `json:"reason"`
 }
 
+// CorrectLoanAmountInput mengoreksi nominal pokok kredit yang sudah dicairkan tanpa
+// membatalkan pencairan. Berbeda dari pembatalan, angsuran yang sudah dibayar tetap
+// apa adanya: uang yang sudah masuk bukan objek koreksi ini. Reason wajib diisi
+// karena perubahannya mengubah tagihan nasabah yang sedang berjalan.
+type CorrectLoanAmountInput struct {
+	LoanID    uuid.UUID       `json:"loan_id"`
+	NewAmount decimal.Decimal `json:"new_amount"`
+	Reason    string          `json:"reason"`
+}
+
 // ProfitSchemeLabel menurunkan label skema imbal hasil untuk keperluan dokumen.
 func (l *Loan) ProfitSchemeLabel() string {
 	if l.ProfitSharingRatio.IsPositive() {
@@ -312,6 +326,14 @@ type LoanRepository interface {
 	// Jurnal pencairan tidak menyimpan nomor kredit, jadi pencariannya lewat
 	// idempotency_key yang dibentuk DisburseLoan ("DISB-"+nomor kredit).
 	GetDisbursementJournalRefTx(ctx context.Context, tx any, loanNumber string) (string, error)
+	// GetSchedulesTx membaca jadwal angsuran di dalam transaksi pemanggil. Koreksi
+	// nominal harus menghitung dari jadwal yang sama dengan yang akan ditulis, tanpa
+	// celah bagi pembayaran yang menyelinap di antara baca dan tulis.
+	GetSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) ([]LoanSchedule, error)
+	// CorrectLoanAmountTx memperbarui nominal, total tagihan, angsuran bulanan, dan
+	// sisa pokok lalu mengganti seluruh jadwal angsuran di dalam transaksi pemanggil.
+	// Pola ganti jadwalnya sama dengan UpdateRestructure.
+	CorrectLoanAmountTx(ctx context.Context, tx any, loan *Loan, schedules []LoanSchedule) error
 }
 
 type LoanService interface {
@@ -333,6 +355,10 @@ type LoanService interface {
 	// angsuran dibayar: jurnal pencairan dibalik, jadwal dihapus, status CANCELLED,
 	// dan sisa pokok nol. Seluruh efeknya berada dalam satu transaksi.
 	CancelDisbursementLoan(ctx context.Context, input CancelLoanInput, actor Actor) (*Loan, error)
+	// CorrectLoanAmount mengoreksi nominal pokok kredit DISBURSED tanpa membatalkan
+	// pencairan: jadwal yang belum dibayar dihitung ulang, jurnal selisih diposting,
+	// dan audit ditulis. Wajib lewat persetujuan pejabat kedua.
+	CorrectLoanAmount(ctx context.Context, input CorrectLoanAmountInput, actor Actor) (*Loan, error)
 	// ExecuteApproved menjalankan hapus buku atau recovery yang sudah disetujui
 	// maker-checker, di dalam transaksi milik pemanggil.
 	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error

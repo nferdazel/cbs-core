@@ -101,9 +101,11 @@ func main() {
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
 	staffSvc := service.NewStaffService(staffRepo, auditRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, dateRepo, auditRepo)
-	// Hapus buku dan recovery kredit dieksekusi setelah disetujui pejabat kedua.
+	// Hapus buku, recovery, dan koreksi nominal kredit dieksekusi setelah disetujui
+	// pejabat kedua.
 	executors.Register(service.ActionLoanWriteOff, loanSvc)
 	executors.Register(service.ActionLoanRecovery, loanSvc)
+	executors.Register(service.ActionLoanCorrection, loanSvc)
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)

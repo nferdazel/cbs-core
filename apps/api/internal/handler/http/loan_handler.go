@@ -353,3 +353,55 @@ func (h *LoanHandler) CancelDisbursement(w http.ResponseWriter, r *http.Request)
 
 	Success(w, http.StatusOK, "loan disbursement cancelled successfully", loan)
 }
+
+// CorrectAmount handles POST /api/v1/loans/{id}/correct-amount
+// (Admin / Superadmin). Mengoreksi nominal pokok kredit yang sudah berjalan tanpa
+// membatalkan pencairan; angsuran yang sudah dibayar tetap apa adanya.
+func (h *LoanHandler) CorrectAmount(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid loan id")
+		return
+	}
+
+	var body struct {
+		NewAmount decimal.Decimal `json:"new_amount"`
+		Reason    string          `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Reason) == "" {
+		Error(w, http.StatusBadRequest, "alasan koreksi wajib diisi")
+		return
+	}
+	if body.NewAmount.LessThanOrEqual(decimal.Zero) {
+		Error(w, http.StatusBadRequest, "nominal baru harus positif")
+		return
+	}
+
+	loan, err := h.loanSvc.CorrectLoanAmount(r.Context(), domain.CorrectLoanAmountInput{
+		LoanID:    id,
+		NewAmount: body.NewAmount,
+		Reason:    body.Reason,
+	}, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		// Kredit tidak ditemukan (termasuk cabang lain yang disamarkan) adalah 404,
+		// konsisten dengan endpoint baca kredit.
+		if errors.Is(err, domain.ErrLoanNotFound) {
+			Fail(w, r, http.StatusNotFound, err)
+			return
+		}
+		writeTransactionError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, "loan amount corrected successfully", loan)
+}

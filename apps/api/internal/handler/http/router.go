@@ -221,6 +221,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// tertinggi (Superadmin/Admin) yang memegang loans:cancel.
 				r.With(middleware.RequirePermission(domain.PermLoansCancel)).
 					Post("/{id}/cancel-disbursement", p.LoanHandler.CancelDisbursement)
+				// Koreksi nominal mengubah tagihan yang sudah berjalan: sama sensitifnya
+				// dengan pembatalan, jadi hanya peran tertinggi (loans:correct).
+				r.With(middleware.RequirePermission(domain.PermLoansCorrect)).
+					Post("/{id}/correct-amount", p.LoanHandler.CorrectAmount)
 				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
 					Post("/{id}/pay-installment", p.LoanHandler.PayInstallment)
 				r.With(middleware.RequirePermission(domain.PermLoansApprove)).

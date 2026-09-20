@@ -238,13 +238,32 @@ func markLoanDisbursed(ctx context.Context, exec execer, id uuid.UUID, outstandi
 	return err
 }
 
-func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
-	q := `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
-		total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at,
-		profit_accrued_at, profit_accrued_amount
-		FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
+// queryer adalah sumber baris yang bisa berupa *sql.DB (di luar transaksi) atau
+// *sql.Tx (di dalam transaksi pemanggil).
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
 
-	rows, err := r.db.QueryContext(ctx, q, loanID)
+const schedulesQuery = `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
+	total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at,
+	profit_accrued_at, profit_accrued_amount
+	FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
+
+func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
+	return getSchedules(ctx, r.db, loanID)
+}
+
+// GetSchedulesTx membaca jadwal di dalam transaksi pemanggil, sama seperti GetSchedules.
+func (r *LoanRepository) GetSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return nil, errors.New("loan: transaksi tidak valid")
+	}
+	return getSchedules(ctx, sqlTx, loanID)
+}
+
+func getSchedules(ctx context.Context, q queryer, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
+	rows, err := q.QueryContext(ctx, schedulesQuery, loanID)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +289,7 @@ func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]
 		}
 		list = append(list, s)
 	}
-	return list, nil
+	return list, rows.Err()
 }
 
 // UpdateSchedulePayment mencatat pembayaran angsuran dan mengurangi sisa akruan bunga
@@ -349,6 +368,47 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 	}
 
 	return tx.Commit()
+}
+
+// CorrectLoanAmountTx memperbarui nominal kredit beserta sisa pokok dan mengganti
+// seluruh jadwal angsuran di dalam transaksi pemanggil. Pola ganti jadwalnya sama
+// dengan UpdateRestructure, tetapi baris jadwal yang sudah dibayar ikut disimpan
+// ulang apa adanya — termasuk akruan bunga dan tanggal bayarnya — karena koreksi
+// nominal tidak boleh menghapus riwayat yang sudah berjalan.
+func (r *LoanRepository) CorrectLoanAmountTx(ctx context.Context, tx any, l *domain.Loan, schedules []domain.LoanSchedule) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+
+	q := `UPDATE loans SET
+		principal_amount=$1, total_payable=$2, monthly_installment=$3, outstanding_principal=$4, updated_at=NOW()
+		WHERE id=$5`
+	if _, err := sqlTx.ExecContext(ctx, q,
+		l.PrincipalAmount, l.TotalPayable, l.MonthlyInstallment, l.OutstandingPrincipal, l.ID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := sqlTx.ExecContext(ctx, `DELETE FROM loan_schedules WHERE loan_id = $1`, l.ID); err != nil {
+		return err
+	}
+
+	sq := `INSERT INTO loan_schedules
+		(id, loan_id, installment_no, due_date, principal_amount, profit_amount, total_installment,
+		 paid_principal, paid_profit, profit_type, outstanding_principal, status, paid_at, created_at,
+		 profit_accrued_at, profit_accrued_amount)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`
+	for _, s := range schedules {
+		if _, err := sqlTx.ExecContext(ctx, sq,
+			s.ID, s.LoanID, s.InstallmentNo, s.DueDate, s.PrincipalAmount, s.ProfitAmount, s.TotalInstallment,
+			s.PaidPrincipal, s.PaidProfit, s.ProfitType, s.OutstandingPrincipal, s.Status, s.PaidAt, s.CreatedAt,
+			s.ProfitAccruedAt, s.ProfitAccruedAmount,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID, col domain.OJKCollectibility, dpd int, accrual domain.AccrualStatus, ppap decimal.Decimal) error {

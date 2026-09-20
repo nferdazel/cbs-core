@@ -99,6 +99,10 @@ const (
 	// PermLoansCancel membatalkan pencairan kredit sebelum ada angsuran dibayar.
 	// Lebih sensitif daripada pencairan, jadi hanya peran tertinggi yang memegangnya.
 	PermLoansCancel Permission = "loans:cancel"
+	// PermLoansCorrect mengoreksi nominal pokok kredit yang sudah berjalan tanpa
+	// membatalkan pencairan. Mengubah tagihan nasabah, jadi sama sensitifnya dengan
+	// pembatalan dan hanya dipegang peran tertinggi.
+	PermLoansCorrect Permission = "loans:correct"
 
 	// Field Collections
 	PermCollectionsInput Permission = "collections:input"
@@ -134,7 +138,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
-		PermLoansCancel,
+		PermLoansCancel, PermLoansCorrect,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
@@ -148,7 +152,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
-		PermLoansCancel,
+		PermLoansCancel, PermLoansCorrect,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,

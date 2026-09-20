@@ -135,4 +135,14 @@ func (s *stubLoanRepo) GetDisbursementJournalRefTx(ctx context.Context, tx any, 
 	return "REF-DISB", nil
 }
 
+func (s *stubLoanRepo) GetSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
+	return s.schedules, nil
+}
+
+func (s *stubLoanRepo) CorrectLoanAmountTx(ctx context.Context, tx any, loan *domain.Loan, schedules []domain.LoanSchedule) error {
+	s.loan = loan
+	s.schedules = schedules
+	return nil
+}
+
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

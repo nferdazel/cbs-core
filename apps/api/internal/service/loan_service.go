@@ -944,6 +944,10 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 const (
 	ActionLoanWriteOff = "LOAN_WRITE_OFF"
 	ActionLoanRecovery = "LOAN_RECOVERY"
+	// ActionLoanCorrection mengoreksi nominal pokok kredit yang sudah berjalan.
+	// Perubahannya menyentuh tagihan nasabah, jadi tidak boleh langsung berlaku
+	// tanpa persetujuan pejabat kedua.
+	ActionLoanCorrection = "LOAN_CORRECTION"
 )
 
 // guardLoanApproval menahan operasi kredit yang wajib disetujui pejabat kedua.
@@ -1046,6 +1050,17 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 			return err
 		}
 		return s.recoveryTx(ctx, tx, loan, product, amount, overrides, maker)
+	case ActionLoanCorrection:
+		amount, err := decimalFromPayload(payload["new_amount"])
+		if err != nil {
+			return err
+		}
+		reason, _ := payload["reason"].(string)
+		return s.correctLoanAmountTx(ctx, tx, loan, domain.CorrectLoanAmountInput{
+			LoanID:    loan.ID,
+			NewAmount: amount,
+			Reason:    reason,
+		}, maker)
 	default:
 		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
 	}
@@ -1367,6 +1382,256 @@ func (s *loanService) CancelDisbursementLoan(ctx context.Context, input domain.C
 	loan.PenaltyAccrued = decimal.Zero
 	loan.Schedules = nil
 	return loan, nil
+}
+
+// CorrectLoanAmount mengoreksi nominal pokok kredit yang sudah dicairkan tanpa
+// membatalkan pencairan. Berbeda dari pembatalan, angsuran yang sudah dibayar tetap
+// apa adanya; hanya angsuran yang belum dibayar yang pokoknya dihitung ulang. Karena
+// perubahannya mengubah tagihan nasabah yang sedang berjalan, operasinya wajib lewat
+// persetujuan pejabat kedua: efeknya baru terjadi saat ExecuteApproved dipanggil.
+func (s *loanService) CorrectLoanAmount(ctx context.Context, input domain.CorrectLoanAmountInput, actor domain.Actor) (*domain.Loan, error) {
+	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	// Sama seperti pembatalan: kredit cabang lain disamarkan sebagai tidak ditemukan
+	// agar keberadaannya tidak terbocor.
+	if !canAccessLoan(actor, loan) {
+		return nil, domain.ErrLoanNotFound
+	}
+	if loan.Status != domain.LoanStatusDisbursed {
+		return nil, domain.ErrLoanNotCancellable
+	}
+	if input.NewAmount.LessThanOrEqual(decimal.Zero) {
+		return nil, domain.ErrInvalidLoanAmount
+	}
+	if input.NewAmount.Equal(loan.PrincipalAmount) {
+		return nil, domain.ErrLoanAmountUnchanged
+	}
+	if input.Reason == "" {
+		return nil, errors.New("alasan koreksi nominal wajib diisi")
+	}
+
+	// Koreksi tidak boleh dijalankan langsung tanpa layanan persetujuan: tidak ada
+	// pejabat yang bisa memeriksanya. Dikembalikan sebagai menunggu persetujuan,
+	// bukan sebagai keberhasilan, agar pemanggil tidak mengira tagihan sudah berubah.
+	if s.approvals == nil {
+		return nil, &domain.PendingApprovalError{ActionType: ActionLoanCorrection}
+	}
+	if err := s.guardLoanApproval(ctx, actor, ActionLoanCorrection, input.NewAmount, map[string]any{
+		"loan_id":     loan.ID.String(),
+		"loan_number": loan.LoanNumber,
+		"new_amount":  input.NewAmount.String(),
+		"reason":      input.Reason,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := s.txRunner.Run(ctx, func(tx any) error {
+		return s.correctLoanAmountTx(ctx, tx, loan, input, actor)
+	}); err != nil {
+		return nil, err
+	}
+	return loan, nil
+}
+
+// correctLoanAmountTx menjalankan koreksi di dalam transaksi pemanggil: membaca
+// jadwal, menghitung ulang angsuran yang belum dibayar, memposting jurnal selisih,
+// memperbarui nominal, dan menulis audit. Tanggal bisnis dibaca paling awal agar
+// koreksi ditolak sebelum satu pun baris berubah bila tanggal tidak tersedia.
+func (s *loanService) correctLoanAmountTx(ctx context.Context, tx any, loan *domain.Loan, input domain.CorrectLoanAmountInput, actor domain.Actor) error {
+	entryDate, err := s.businessDate(ctx)
+	if err != nil {
+		return err
+	}
+
+	schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, loan.ID)
+	if err != nil {
+		return fmt.Errorf("membaca jadwal angsuran: %w", err)
+	}
+
+	oldAmount := loan.PrincipalAmount
+	updated, outstanding, totalPayable, monthly, err := recalculateSchedules(schedules, input.NewAmount)
+	if err != nil {
+		return err
+	}
+
+	diff := input.NewAmount.Sub(oldAmount)
+	journalRef := ""
+	if !diff.IsZero() {
+		ref, err := s.loanRepo.GetDisbursementJournalRefTx(ctx, tx, loan.LoanNumber)
+		if err != nil {
+			return err
+		}
+		original, err := s.ledgerRepo.GetJournalByRef(ctx, ref)
+		if err != nil {
+			return fmt.Errorf("membaca jurnal pencairan %s: %w", ref, err)
+		}
+		journalRef, err = s.postLoanCorrectionTx(ctx, tx, original, loan, input, diff, entryDate, actor)
+		if err != nil {
+			return err
+		}
+	}
+
+	loan.PrincipalAmount = input.NewAmount
+	loan.TotalPayable = totalPayable
+	loan.MonthlyInstallment = monthly
+	loan.OutstandingPrincipal = outstanding
+	loan.Schedules = updated
+	if err := s.loanRepo.CorrectLoanAmountTx(ctx, tx, loan, updated); err != nil {
+		return fmt.Errorf("menyimpan koreksi nominal: %w", err)
+	}
+
+	return writeAudit(ctx, s.auditRepo, tx, actor, "CORRECT_LOAN_AMOUNT", "loan", loan.ID.String(), map[string]any{
+		"loan_number":       loan.LoanNumber,
+		"old_amount":        oldAmount.StringFixed(2),
+		"new_amount":        input.NewAmount.StringFixed(2),
+		"difference":        diff.StringFixed(2),
+		"journal_reference": journalRef,
+		"reason":            input.Reason,
+	})
+}
+
+// postLoanCorrectionTx memposting jurnal selisih koreksi lewat posting engine.
+// Akunnya tidak diambil dari COA keras melainkan dari jurnal pencairan asli: kaki
+// kas/rekening adalah sisi debit jurnal asal dan lawannya adalah sisi kredit (akun
+// pokok), sehingga uang kembali ke/keluar dari tempat yang sama seperti pencairan
+// awal. Koreksi naik mengikuti arah pencairan, koreksi turun membalik arahnya.
+func (s *loanService) postLoanCorrectionTx(ctx context.Context, tx any, original *domain.JournalEntry, loan *domain.Loan, input domain.CorrectLoanAmountInput, diff decimal.Decimal, entryDate time.Time, actor domain.Actor) (string, error) {
+	debitLeg, creditLeg, err := disbursementLegs(original)
+	if err != nil {
+		return "", err
+	}
+	posted, err := s.posting.PostTx(ctx, tx, domain.PostingRequest{
+		TransactionType: domain.TxTypeAdjustment,
+		EntryDate:       entryDate,
+		Description:     fmt.Sprintf("Koreksi nominal kredit %s — %s", loan.LoanNumber, input.Reason),
+		// Kunci tetap per kredit dan nominal baru: pengulangan permintaan yang sama
+		// mengembalikan jurnal yang sama, bukan menggandakan selisihnya.
+		IdempotencyKey: "CORR-" + loan.LoanNumber + "-" + input.NewAmount.String(),
+		CreatedBy:      actor.DisplayName(),
+		// Cabang mewarisi jurnal pencairan asal agar laporan per cabang tetap benar.
+		BranchCode: original.BranchCode,
+		Source:     domain.SourceLoan,
+		Lines:      correctionLines(debitLeg, creditLeg, diff.Abs(), diff.IsPositive(), loan.LoanNumber),
+	})
+	if err != nil {
+		return "", fmt.Errorf("jurnal koreksi nominal: %w", err)
+	}
+	return posted.ReferenceNumber, nil
+}
+
+// disbursementAccounts memisahkan kaki kas/rekening dan kaki pokok pada jurnal
+// pencairan asli. Sisi debit adalah tempat dana keluar (kas/rekening nasabah), sisi
+// kredit adalah lawannya (akun pokok kredit). Koreksi harus bergerak di antara dua
+// akun yang sama supaya dana kembali ke/keluar dari tempat yang sama.
+// disbursementLegs memisahkan jurnal pencairan menjadi kaki debit dan kaki kredit.
+// Nama "kas" dan "pokok" sengaja tidak dipakai: pada pencairan kredit, kaki DEBIT adalah
+// piutang kredit (aset bertambah) dan kaki KREDIT adalah rekening nasabah (kewajiban
+// bertambah) — kebalikan dari dugaan yang paling mudah dibuat, dan penamaan yang keliru
+// di sini akan menyesatkan orang berikutnya yang menyentuh kode ini. Koreksi hanya perlu
+// mempertahankan arah ASLI jurnal (saat nominal naik) atau membalikkannya (saat turun),
+// sehingga tidak perlu tahu akun mana yang mana.
+//
+// Jumlah baris diperiksa ketat. Bila jurnal pencairan memuat lebih dari satu baris per
+// arah (mis. biaya administrasi atau akrual ikut tercatat di jurnal yang sama), mengambil
+// baris pertama akan mengarahkan koreksi ke akun yang salah tanpa peringatan apa pun —
+// lebih baik menolak dan meminta mata manusia melihat jurnalnya.
+func disbursementLegs(original *domain.JournalEntry) (debit, credit domain.JournalLine, err error) {
+	for _, line := range original.Lines {
+		if line.AccountNumber == "" {
+			return debit, credit, fmt.Errorf("baris jurnal %s tidak memiliki nomor rekening", line.ID)
+		}
+		switch line.Direction {
+		case domain.DirectionDebit:
+			if debit.AccountNumber != "" {
+				return debit, credit, fmt.Errorf("jurnal pencairan %s memiliki lebih dari satu kaki debit", original.ReferenceNumber)
+			}
+			debit = line
+		case domain.DirectionCredit:
+			if credit.AccountNumber != "" {
+				return debit, credit, fmt.Errorf("jurnal pencairan %s memiliki lebih dari satu kaki kredit", original.ReferenceNumber)
+			}
+			credit = line
+		}
+	}
+	if debit.AccountNumber == "" || credit.AccountNumber == "" {
+		return debit, credit, fmt.Errorf("jurnal pencairan %s tidak memiliki kaki debit dan kredit yang lengkap", original.ReferenceNumber)
+	}
+	return debit, credit, nil
+}
+
+func correctionLines(debit, credit domain.JournalLine, amount decimal.Decimal, increase bool, loanNumber string) []domain.PostingLine {
+	debitDirection := domain.DirectionDebit
+	creditDirection := domain.DirectionCredit
+	if !increase {
+		debitDirection = domain.DirectionCredit
+		creditDirection = domain.DirectionDebit
+	}
+	description := "Koreksi nominal kredit " + loanNumber
+	return []domain.PostingLine{
+		{AccountNumber: debit.AccountNumber, Direction: debitDirection, Amount: amount, Description: description},
+		{AccountNumber: credit.AccountNumber, Direction: creditDirection, Amount: amount, Description: description},
+	}
+}
+
+// recalculateSchedules menghitung ulang hanya angsuran yang belum dibayar. Jumlah
+// angsuran dan tanggal jatuh tempo tetap sama; pokok angsuran yang belum dibayar
+// disesuaikan agar total pokok seluruh jadwal sama dengan nominal baru, dan selisih
+// pembulatan diserap angsuran belum dibayar terakhir. Angsuran yang sudah dibayar
+// disalin apa adanya.
+//
+// Margin/bunga per angsuran TIDAK diubah. Untuk produk syariah, margin adalah bagian
+// akad yang melekat pada harga jual; mengubahnya berarti mengubah akad, sedangkan
+// koreksi ini hanya mengoreksi nominal pokok.
+func recalculateSchedules(schedules []domain.LoanSchedule, newAmount decimal.Decimal) ([]domain.LoanSchedule, decimal.Decimal, decimal.Decimal, decimal.Decimal, error) {
+	updated := make([]domain.LoanSchedule, len(schedules))
+	copy(updated, schedules)
+
+	paidPrincipal := decimal.Zero
+	frozenPrincipal := decimal.Zero
+	unpaid := make([]int, 0, len(updated))
+	for i := range updated {
+		s := &updated[i]
+		if s.PaidPrincipal.IsZero() && s.PaidProfit.IsZero() && s.Status == domain.InstallmentStatusPending {
+			unpaid = append(unpaid, i)
+			continue
+		}
+		paidPrincipal = paidPrincipal.Add(s.PaidPrincipal)
+		frozenPrincipal = frozenPrincipal.Add(s.PrincipalAmount)
+	}
+	if len(unpaid) == 0 {
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("tidak ada angsuran belum dibayar yang dapat disesuaikan")
+	}
+	// Sisa pokok baru adalah nominal baru dikurangi pokok yang sudah dibayar.
+	outstanding := newAmount.Sub(paidPrincipal)
+	if outstanding.IsNegative() {
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("nominal baru lebih kecil daripada pokok yang sudah dibayar")
+	}
+	// Pokok yang dibagi ke angsuran belum dibayar adalah nominal baru dikurangi
+	// pokok jadwal yang dibekukan, supaya total pokok seluruh jadwal tepat nominal baru.
+	distributable := newAmount.Sub(frozenPrincipal)
+	if distributable.IsNegative() {
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("nominal baru lebih kecil daripada pokok jadwal yang sudah dibayar")
+	}
+	base := domain.RoundToRupiah(distributable.Div(decimal.NewFromInt(int64(len(unpaid)))))
+	allocated := decimal.Zero
+	for pos, i := range unpaid {
+		s := &updated[i]
+		principalPart := base
+		if pos == len(unpaid)-1 {
+			principalPart = distributable.Sub(allocated)
+		}
+		allocated = allocated.Add(principalPart)
+		s.PrincipalAmount = principalPart
+		s.TotalInstallment = principalPart.Add(s.ProfitAmount)
+	}
+
+	totalPayable := decimal.Zero
+	for _, s := range updated {
+		totalPayable = totalPayable.Add(s.TotalInstallment)
+	}
+	return updated, outstanding, totalPayable, updated[unpaid[0]].TotalInstallment, nil
 }
 
 // businessDate membaca tanggal bisnis berjalan dari repositori tanggal, bukan dari
