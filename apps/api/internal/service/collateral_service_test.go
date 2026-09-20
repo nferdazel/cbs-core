@@ -15,12 +15,14 @@ import (
 // bound_amount dihitung dari taksasi dan haircut, sama seperti database.
 type collateralRepoStub struct {
 	domain.CollateralRepository
-	created     []domain.LoanCollateral
-	branchCodes []string
-	existing    []domain.LoanCollateral
-	sums        map[uuid.UUID]decimal.Decimal
-	sumErr      error
-	sumCalled   bool
+	created       []domain.LoanCollateral
+	branchCodes   []string
+	existing      []domain.LoanCollateral
+	sums          map[uuid.UUID]decimal.Decimal
+	sumErr        error
+	sumCalled     bool
+	summaryBranch string
+	summary       []domain.CollateralSummary
 }
 
 func (r *collateralRepoStub) Create(ctx context.Context, c *domain.LoanCollateral, branchCode string) error {
@@ -48,6 +50,12 @@ func (r *collateralRepoStub) SumActiveBoundByLoan(ctx context.Context, loanIDs [
 		return nil, r.sumErr
 	}
 	return r.sums, nil
+}
+
+// SummaryActive mencatat kode cabang yang diterima agar pemetaan dari aktor dapat diuji.
+func (r *collateralRepoStub) SummaryActive(ctx context.Context, branchCode string) ([]domain.CollateralSummary, error) {
+	r.summaryBranch = branchCode
+	return r.summary, nil
 }
 
 func (r *collateralRepoStub) ListByLoan(ctx context.Context, loanID uuid.UUID) ([]domain.LoanCollateral, error) {
@@ -243,5 +251,37 @@ func TestCollateralListByLoan_MenyaringCabangLain(t *testing.T) {
 	}
 	if len(list) != 1 || list[0].BranchCode != "001" {
 		t.Fatalf("agunan cabang lain ikut terkirim: %+v", list)
+	}
+}
+
+// Kode cabang untuk rekap tidak pernah datang dari permintaan: aktor cabang selalu
+// diarahkan ke cabangnya sendiri, dan hanya aktor lintas cabang (Superadmin/Auditor/
+// System) yang melihat seluruh bank. Tanpa kunci ini, pegawai cabang dapat meminta rekap
+// cabang lain hanya dengan mengubah parameter.
+func TestCollateralSummary_MengambilCabangDariAktor(t *testing.T) {
+	cases := []struct {
+		name       string
+		role       domain.StaffRole
+		branchCode string
+		want       string
+	}{
+		{name: "aktor cabang", role: domain.RoleSupervisor, branchCode: "001", want: "001"},
+		{name: "aktor lintas cabang", role: domain.RoleSuperAdmin, branchCode: "001", want: ""},
+		{name: "auditor lintas cabang", role: domain.RoleAuditor, branchCode: "", want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &collateralRepoStub{}
+			svc := NewCollateralService(repo, &collateralConfigStub{}, &reversalAuditRepo{})
+			actor := domain.Actor{UserID: uuid.New(), Username: "pegawai", Role: tc.role, BranchCode: tc.branchCode}
+
+			if _, err := svc.Summary(context.Background(), actor); err != nil {
+				t.Fatalf("rekap agunan gagal: %v", err)
+			}
+			if repo.summaryBranch != tc.want {
+				t.Fatalf("cabang rekap %q, mau %q", repo.summaryBranch, tc.want)
+			}
+		})
 	}
 }

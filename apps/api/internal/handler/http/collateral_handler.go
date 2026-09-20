@@ -31,6 +31,8 @@ func (h *CollateralHandler) RegisterRoutes(r chi.Router) {
 	r.With(middleware.RequirePermission(domain.PermCollateralRead)).
 		Get("/loans/{loanId}/collaterals", h.ListByLoan)
 	r.With(middleware.RequirePermission(domain.PermCollateralRead)).
+		Get("/collateral/summary", h.Summary)
+	r.With(middleware.RequirePermission(domain.PermCollateralRead)).
 		Get("/collaterals/{id}", h.GetByID)
 }
 
@@ -112,6 +114,22 @@ func (h *CollateralHandler) ListByLoan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, http.StatusOK, "daftar agunan kredit", list)
+}
+
+// Summary handles GET /api/v1/collateral/summary
+// Rekap agunan AKTIF per jenis untuk cabang aktor (seluruh bank bila aktor lintas cabang).
+func (h *CollateralHandler) Summary(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
+	list, err := h.svc.Summary(r.Context(), actor)
+	if err != nil {
+		writeCollateralError(w, err)
+		return
+	}
+	Success(w, http.StatusOK, "rekap agunan aktif", list)
 }
 
 // GetByID handles GET /api/v1/collaterals/{id}

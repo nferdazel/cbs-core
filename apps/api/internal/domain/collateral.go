@@ -87,12 +87,25 @@ type CollateralInput struct {
 	Notes          string
 }
 
+// CollateralSummary adalah rekap agunan aktif per jenis. Dipakai manajemen untuk melihat
+// sebaran jaminan dan berapa nilai pengurang yang tersedia, bukan untuk perhitungan PPAP
+// (perhitungan itu per kredit).
+type CollateralSummary struct {
+	CollateralType CollateralType  `json:"collateral_type"`
+	Count          int             `json:"count"`
+	AppraisalValue decimal.Decimal `json:"appraisal_value"`
+	BoundAmount    decimal.Decimal `json:"bound_amount"`
+}
+
 // CollateralService mengelola agunan kredit. Fase ini hanya pencatatan dan pembacaan;
 // pengurangan PPAP masih dimatikan lewat ppap.collateral.enabled.
 type CollateralService interface {
 	Create(ctx context.Context, input CollateralInput, actor Actor) (*LoanCollateral, error)
 	GetByID(ctx context.Context, id uuid.UUID, actor Actor) (*LoanCollateral, error)
 	ListByLoan(ctx context.Context, loanID uuid.UUID, actor Actor) ([]LoanCollateral, error)
+	// Summary merekap agunan berstatus ACTIVE per jenis. branchCode kosong berarti
+	// seluruh cabang (hanya untuk aktor lintas cabang).
+	Summary(ctx context.Context, actor Actor) ([]CollateralSummary, error)
 }
 
 // CollateralRepository menyimpan agunan kredit. Ringkas dengan sengaja: yang dibutuhkan
@@ -106,6 +119,11 @@ type CollateralRepository interface {
 	// SumActiveBoundByLoan menjumlahkan bound_amount agunan berstatus ACTIVE untuk
 	// sekumpulan kredit dalam SATU query, agar perhitungan PPAP tidak menjadi N+1.
 	SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error)
+	// SummaryActive merekap agunan ACTIVE per jenis, disaring cabang bila branchCode
+	// tidak kosong. Hanya ACTIVE yang dihitung: agunan yang sudah dilepas atau dieksekusi
+	// tidak lagi menjamin apa pun, dan menampilkannya pada rekap jaminan akan melebihkan
+	// nilai jaminan bank.
+	SummaryActive(ctx context.Context, branchCode string) ([]CollateralSummary, error)
 }
 
 // LoanCollateral adalah satu agunan yang terikat pada satu kredit.

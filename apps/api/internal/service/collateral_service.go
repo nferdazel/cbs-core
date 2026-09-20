@@ -119,6 +119,17 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 	return collateral, nil
 }
 
+// Summary merekap agunan aktif. Aktor lintas cabang menerima rekap seluruh bank; aktor
+// cabang menerima rekap cabangnya saja, dan kode cabangnya diambil dari aktor — bukan dari
+// parameter permintaan, supaya pegawai cabang tidak dapat meminta rekap cabang lain.
+func (s *collateralService) Summary(ctx context.Context, actor domain.Actor) ([]domain.CollateralSummary, error) {
+	branchCode := actor.BranchCode
+	if actor.IsCrossBranch() {
+		branchCode = ""
+	}
+	return s.repo.SummaryActive(ctx, branchCode)
+}
+
 // GetByID membaca satu agunan dengan pemeriksaan cabang.
 func (s *collateralService) GetByID(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.LoanCollateral, error) {
 	collateral, err := s.repo.GetByID(ctx, id)

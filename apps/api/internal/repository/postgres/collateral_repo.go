@@ -146,6 +146,36 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 	return nil
 }
 
+func (r *CollateralRepository) SummaryActive(ctx context.Context, branchCode string) ([]domain.CollateralSummary, error) {
+	// Satu kondisi untuk dua keadaan: aktor lintas cabang mengirim kode kosong dan
+	// melihat seluruh cabang, aktor cabang mengirim kodenya sendiri. Agunan tanpa cabang
+	// (data lama) hanya terhitung bagi aktor lintas cabang.
+	query := `SELECT lc.collateral_type, COUNT(*), COALESCE(SUM(lc.appraisal_value), 0),
+		       COALESCE(SUM(lc.bound_amount), 0)
+		FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id
+		WHERE lc.status = 'ACTIVE' AND ($1 = '' OR b.code = $1)
+		GROUP BY lc.collateral_type ORDER BY lc.collateral_type`
+
+	rows, err := r.db.QueryContext(ctx, query, branchCode)
+	if err != nil {
+		return nil, fmt.Errorf("merekap agunan aktif: %w", err)
+	}
+	defer rows.Close()
+
+	list := make([]domain.CollateralSummary, 0)
+	for rows.Next() {
+		var item domain.CollateralSummary
+		if err := rows.Scan(&item.CollateralType, &item.Count, &item.AppraisalValue, &item.BoundAmount); err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (r *CollateralRepository) SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error) {
 	total := make(map[uuid.UUID]decimal.Decimal, len(loanIDs))
 	if len(loanIDs) == 0 {
