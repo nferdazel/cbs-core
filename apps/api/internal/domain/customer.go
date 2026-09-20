@@ -73,6 +73,38 @@ type CreateCustomerInput struct {
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
+// IDCardDigits adalah panjang NIK yang sah.
+const IDCardDigits = 16
+
+// ErrInvalidIDCard menandai NIK yang bentuknya tidak sah.
+var ErrInvalidIDCard = errors.New("NIK harus 16 digit angka")
+
+// NormalizeIDCardNumber membuang pemisah yang biasa dituliskan petugas (spasi,
+// titik, tanda hubung) lalu memastikan NIK tepat 16 digit.
+//
+// Normalisasi ini wajib sebelum NIK dienkripsi dan diindeks: blind index dihitung
+// dari nilai apa adanya, sehingga NIK yang ditulis dengan spasi akan menghasilkan
+// indeks berbeda. Akibatnya nasabah yang sama lolos dari pemeriksaan duplikat dan
+// tidak ditemukan saat dicari.
+func NormalizeIDCardNumber(raw string) (string, error) {
+	out := make([]byte, 0, IDCardDigits)
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c >= '0' && c <= '9':
+			out = append(out, c)
+		case c == ' ' || c == '.' || c == '-':
+			// pemisah yang wajar ditulis petugas; diabaikan
+		default:
+			return "", ErrInvalidIDCard
+		}
+	}
+	if len(out) != IDCardDigits {
+		return "", ErrInvalidIDCard
+	}
+	return string(out), nil
+}
+
 // CustomerQuery membatasi daftar nasabah. Field kosong berarti tidak menyaring.
 //
 // NIK tidak dapat dicari sebagai teks karena kolomnya terenkripsi; pencocokannya

@@ -76,9 +76,13 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 	if strings.TrimSpace(input.FullName) == "" {
 		return nil, fmt.Errorf("nama lengkap wajib diisi")
 	}
-	if strings.TrimSpace(input.IDCardNumber) == "" {
-		return nil, fmt.Errorf("NIK wajib diisi")
+	// NIK dinormalisasi SEBELUM dienkripsi dan diindeks, agar blind index-nya
+	// konsisten dengan yang dipakai saat pencarian.
+	normalizedIDCard, err := domain.NormalizeIDCardNumber(input.IDCardNumber)
+	if err != nil {
+		return nil, err
 	}
+	input.IDCardNumber = normalizedIDCard
 
 	record, err := s.encryptInput(input)
 	if err != nil {
@@ -215,20 +219,19 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 	return customers, total, nil
 }
 
-// searchQuery menerjemahkan satu kata kunci menjadi filter repo. Nomor CIF
-// dicocokkan sebagai awalan. NIK tidak dapat dicari sebagai teks karena kolomnya
-// terenkripsi, sehingga hanya dihitung blind index-nya bila kata kunci memang
-// berbentuk NIK; bentuk lain berarti filter NIK tidak dipakai, bukan gagal.
+// searchQuery menerjemahkan satu kata kunci menjadi filter repo. Kata kunci yang
+// berbentuk NIK (tepat 16 digit) dicari lewat blind index NIK SAJA: nomor CIF tidak
+// pernah berbentuk 16 digit, sehingga menggabungkan keduanya dengan AND akan
+// menyaring habis hasilnya. Bentuk lain dicari sebagai awalan nomor CIF.
 func (s *customerService) searchQuery(term string) domain.CustomerQuery {
 	term = strings.TrimSpace(term)
 	if term == "" {
 		return domain.CustomerQuery{}
 	}
-	q := domain.CustomerQuery{CIF: term}
 	if isNIK(term) && s.cipher != nil {
-		q.IDCardIndex = s.cipher.BlindIndex(term)
+		return domain.CustomerQuery{IDCardIndex: s.cipher.BlindIndex(term)}
 	}
-	return q
+	return domain.CustomerQuery{CIF: term}
 }
 
 // isNIK melaporkan apakah kata kunci berbentuk NIK: tepat 16 digit angka.
