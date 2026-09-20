@@ -239,6 +239,25 @@ type StaffSession struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
+// SessionIdentity adalah keadaan sesi dan akun saat sebuah permintaan diverifikasi.
+// Nilainya dibaca dari basis data, bukan dari klaim token: token dibuat sekali dan tidak
+// dapat mencerminkan logout, penguncian akun, penonaktifan pengguna, pencabutan sesi,
+// atau perubahan peran yang terjadi setelahnya.
+type SessionIdentity struct {
+	SessionID   uuid.UUID
+	UserID      uuid.UUID
+	Username    string
+	Role        StaffRole
+	BranchCode  string
+	IsActive    bool
+	LockedUntil *time.Time
+}
+
+// IsLocked menandai akun yang sedang terkunci karena percobaan masuk gagal berulang.
+func (i *SessionIdentity) IsLocked() bool {
+	return i.LockedUntil != nil && i.LockedUntil.After(time.Now())
+}
+
 // IsValid returns true if the session is not expired and not revoked.
 func (s *StaffSession) IsValid() bool {
 	return s.RevokedAt == nil && s.ExpiresAt.After(time.Now())
@@ -346,6 +365,9 @@ type StaffRepository interface {
 type SessionRepository interface {
 	Create(ctx context.Context, session *StaffSession) error
 	GetByTokenHash(ctx context.Context, hash string) (*StaffSession, error)
+	// GetIdentity mengambil sesi yang masih berlaku beserta pengguna pemiliknya.
+	// Mengembalikan ErrSessionExpired bila sesi tidak ada, sudah dicabut, atau kedaluwarsa.
+	GetIdentity(ctx context.Context, sessionID uuid.UUID) (*SessionIdentity, error)
 	RevokeByID(ctx context.Context, sessionID uuid.UUID) error
 	RevokeAllForUser(ctx context.Context, userID uuid.UUID) error
 	DeleteExpired(ctx context.Context) error

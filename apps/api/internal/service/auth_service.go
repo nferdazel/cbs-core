@@ -185,7 +185,16 @@ func (s *authService) Logout(ctx context.Context, sessionID uuid.UUID) error {
 	return s.sessionRepo.RevokeByID(ctx, sessionID)
 }
 
-func (s *authService) ValidateAccessToken(_ context.Context, tokenString string) (*domain.JWTClaims, error) {
+// ValidateAccessToken memverifikasi tanda tangan dan masa berlaku token, lalu
+// mencocokkannya dengan keadaan sesi dan akun di basis data.
+//
+// Tanda tangan saja tidak cukup. Token dibuat sekali dan tetap sah sampai kedaluwarsa,
+// sedangkan sesinya dapat dicabut kapan saja: keluar, penguncian akun karena percobaan
+// masuk gagal, penonaktifan pengguna, atau pencabutan seluruh sesi karena token refresh
+// dipakai ulang. Tanpa pencocokan ini, token lama tetap dapat dipakai sampai masa
+// berlakunya habis. Peran dan cabang juga dibaca dari basis data, sehingga perubahan
+// wewenang berlaku pada permintaan berikutnya, bukan setelah token ditukar.
+func (s *authService) ValidateAccessToken(ctx context.Context, tokenString string) (*domain.JWTClaims, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -207,13 +216,32 @@ func (s *authService) ValidateAccessToken(_ context.Context, tokenString string)
 
 	userID, _ := uuid.Parse(mc["uid"].(string))
 	sessionID, _ := uuid.Parse(mc["sid"].(string))
+	if userID == uuid.Nil || sessionID == uuid.Nil {
+		return nil, domain.ErrInvalidToken
+	}
+
+	identity, err := s.sessionRepo.GetIdentity(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	// Token yang sesinya sudah dicabut atau kedaluwarsa tidak boleh menjadi jalan masuk
+	// ke akun yang dinonaktifkan atau dikunci.
+	if identity.UserID != userID {
+		return nil, domain.ErrInvalidToken
+	}
+	if !identity.IsActive {
+		return nil, domain.ErrAccountInactiveUser
+	}
+	if identity.IsLocked() {
+		return nil, domain.ErrAccountLocked
+	}
 
 	return &domain.JWTClaims{
-		UserID:     userID,
-		Username:   mc["username"].(string),
-		Role:       domain.StaffRole(mc["role"].(string)),
-		BranchCode: mc["branch"].(string),
-		SessionID:  sessionID,
+		UserID:     identity.UserID,
+		Username:   identity.Username,
+		Role:       identity.Role,
+		BranchCode: identity.BranchCode,
+		SessionID:  identity.SessionID,
 	}, nil
 }
 

@@ -56,6 +56,33 @@ func (r *SessionRepository) GetByTokenHash(ctx context.Context, hash string) (*d
 	return &s, nil
 }
 
+// GetIdentity mengambil sesi yang masih berlaku beserta pengguna pemiliknya dalam satu
+// query. Sesi yang dicabut, kedaluwarsa, atau tidak ada diperlakukan sama: tidak ada
+// identitas, sehingga token yang mengacu padanya ditolak.
+func (r *SessionRepository) GetIdentity(ctx context.Context, sessionID uuid.UUID) (*domain.SessionIdentity, error) {
+	q := `SELECT s.id, s.user_id, u.username, u.role, u.branch_code, u.is_active, u.locked_until
+		FROM staff_sessions s
+		JOIN staff_users u ON u.id = s.user_id
+		WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()`
+
+	var identity domain.SessionIdentity
+	var lockedUntil sql.NullTime
+	err := r.db.QueryRowContext(ctx, q, sessionID).Scan(
+		&identity.SessionID, &identity.UserID, &identity.Username, &identity.Role,
+		&identity.BranchCode, &identity.IsActive, &lockedUntil,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrSessionExpired
+	}
+	if err != nil {
+		return nil, fmt.Errorf("mengambil identitas sesi: %w", err)
+	}
+	if lockedUntil.Valid {
+		identity.LockedUntil = &lockedUntil.Time
+	}
+	return &identity, nil
+}
+
 func (r *SessionRepository) RevokeByID(ctx context.Context, sessionID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,
 		"UPDATE staff_sessions SET revoked_at=NOW() WHERE id=$1", sessionID)

@@ -47,11 +47,33 @@ func (s *stubStaffRepo) UpdatePassword(ctx context.Context, id uuid.UUID, hash s
 
 type stubSessionRepo struct {
 	session *domain.StaffSession
+	// user adalah pemilik sesi. Identitas sesi disusun darinya, meniru join ke
+	// staff_users pada implementasi sebenarnya.
+	user     *domain.StaffUser
+	identity *domain.SessionIdentity
+	err      error
 }
 
 func (s *stubSessionRepo) Create(ctx context.Context, sess *domain.StaffSession) error {
 	s.session = sess
 	return nil
+}
+
+func (s *stubSessionRepo) GetIdentity(ctx context.Context, sessionID uuid.UUID) (*domain.SessionIdentity, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.identity != nil {
+		return s.identity, nil
+	}
+	if s.session == nil || s.session.ID != sessionID {
+		return nil, domain.ErrSessionExpired
+	}
+	id := &domain.SessionIdentity{SessionID: s.session.ID, UserID: s.session.UserID, IsActive: true}
+	if s.user != nil {
+		id.Username, id.Role, id.BranchCode = s.user.Username, s.user.Role, s.user.BranchCode
+	}
+	return id, nil
 }
 func (s *stubSessionRepo) GetByTokenHash(ctx context.Context, hash string) (*domain.StaffSession, error) {
 	if s.session != nil && s.session.RefreshTokenHash == hash {
@@ -189,7 +211,8 @@ func TestAuthService_Login_LockedAccount(t *testing.T) {
 func TestAuthService_ValidateAccessToken(t *testing.T) {
 	password := "Valid@Token1!"
 	user := makeTestUser(password)
-	svc := service.NewAuthService(&stubStaffRepo{user: user}, &stubSessionRepo{}, &stubConfigRepo{}, testJWTSecret)
+	sessions := &stubSessionRepo{user: user}
+	svc := service.NewAuthService(&stubStaffRepo{user: user}, sessions, &stubConfigRepo{}, testJWTSecret)
 
 	resp, err := svc.Login(context.Background(), domain.LoginInput{
 		Username: user.Username,
@@ -238,5 +261,103 @@ func TestStaffRole_HasPermission(t *testing.T) {
 		if got != tc.allowed {
 			t.Errorf("role %s, perm %s: expected allowed=%v, got %v", tc.role, tc.perm, tc.allowed, got)
 		}
+	}
+}
+
+// Token yang tanda tangannya sah tetap harus ditolak bila sesinya sudah tidak berlaku,
+// akunnya tidak aktif lagi, atau akunnya sedang dikunci. Tanpa ini, keluar dari aplikasi
+// hanya menghapus token di sisi klien: token lama masih dapat dipakai sampai kedaluwarsa.
+func TestAuthService_ValidateAccessToken_MenolakSesiYangTidakBerlaku(t *testing.T) {
+	password := "Valid@Token1!"
+	user := makeTestUser(password)
+	sessions := &stubSessionRepo{user: user}
+	svc := service.NewAuthService(&stubStaffRepo{user: user}, sessions, &stubConfigRepo{}, testJWTSecret)
+
+	resp, err := svc.Login(context.Background(), domain.LoginInput{Username: user.Username, Password: password})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	// Disimpan lebih dulu: subtest berikutnya mengubah keadaan stub tanpa memulihkannya.
+	sessionID := sessions.session.ID
+
+	cases := []struct {
+		name string
+		// atur mengubah keadaan sesi/pengguna di basis data setelah token diterbitkan.
+		atur func()
+		want error
+	}{
+		{
+			name: "sesi dicabut (keluar aplikasi)",
+			atur: func() { sessions.session = nil },
+			want: domain.ErrSessionExpired,
+		},
+		{
+			name: "penyimpanan sesi melaporkan kedaluwarsa",
+			atur: func() { sessions.session = nil; sessions.err = domain.ErrSessionExpired },
+			want: domain.ErrSessionExpired,
+		},
+		{
+			name: "akun dinonaktifkan",
+			atur: func() {
+				sessions.err = nil
+				sessions.identity = &domain.SessionIdentity{
+					SessionID: sessionID, UserID: user.ID,
+					Username: user.Username, Role: user.Role, BranchCode: user.BranchCode,
+				}
+			},
+			want: domain.ErrAccountInactiveUser,
+		},
+		{
+			name: "akun dikunci karena percobaan masuk gagal",
+			atur: func() {
+				terkunci := time.Now().Add(time.Hour)
+				sessions.identity = &domain.SessionIdentity{
+					SessionID: sessionID, UserID: user.ID,
+					Username: user.Username, Role: user.Role, BranchCode: user.BranchCode,
+					IsActive: true, LockedUntil: &terkunci,
+				}
+			},
+			want: domain.ErrAccountLocked,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.atur()
+			_, err := svc.ValidateAccessToken(context.Background(), resp.AccessToken)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("kesalahan %v, ingin %v", err, tc.want)
+			}
+		})
+	}
+}
+
+// Wewenang dibaca dari basis data, bukan dari klaim token: sesi yang masih berlaku
+// dengan peran yang sudah diubah tidak boleh terus memakai wewenang lama.
+func TestAuthService_ValidateAccessToken_MemakaiPeranTerbaru(t *testing.T) {
+	password := "Valid@Token1!"
+	user := makeTestUser(password)
+	sessions := &stubSessionRepo{user: user}
+	svc := service.NewAuthService(&stubStaffRepo{user: user}, sessions, &stubConfigRepo{}, testJWTSecret)
+
+	resp, err := svc.Login(context.Background(), domain.LoginInput{Username: user.Username, Password: password})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	sessions.identity = &domain.SessionIdentity{
+		SessionID: sessions.session.ID, UserID: user.ID,
+		Username: user.Username, Role: domain.RoleSupervisor, BranchCode: "KC002", IsActive: true,
+	}
+
+	claims, err := svc.ValidateAccessToken(context.Background(), resp.AccessToken)
+	if err != nil {
+		t.Fatalf("expected valid token, got: %v", err)
+	}
+	if claims.Role != domain.RoleSupervisor {
+		t.Fatalf("peran %v, ingin peran terbaru Supervisor", claims.Role)
+	}
+	if claims.BranchCode != "KC002" {
+		t.Fatalf("cabang %q, ingin cabang terbaru KC002", claims.BranchCode)
 	}
 }
