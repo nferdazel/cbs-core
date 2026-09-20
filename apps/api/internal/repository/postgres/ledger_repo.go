@@ -179,7 +179,7 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	// branch_id diambil lewat join: pemeriksaan cabang di handler bergantung padanya,
 	// dan tanpa kolom ini nilai BranchCode kosong membuat pemeriksaan lolos diam-diam.
 	entryQuery := `
-		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.created_by, je.created_at,
+		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.entry_date, je.created_by, je.created_at,
 		       COALESCE(b.code, '')
 		FROM journal_entries je
 		LEFT JOIN branches b ON b.id = je.branch_id
@@ -187,7 +187,7 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	`
 	var entry domain.JournalEntry
 	err := r.db.QueryRowContext(ctx, entryQuery, ref).Scan(
-		&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.CreatedBy, &entry.CreatedAt,
+		&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.EntryDate, &entry.CreatedBy, &entry.CreatedAt,
 		&entry.BranchCode,
 	)
 	if err != nil {
@@ -263,7 +263,7 @@ func buildJournalListQuery(actor domain.Actor) (countQuery, listQuery string, wh
 
 	countQuery = "SELECT COUNT(*) FROM journal_entries"
 	listQuery = `
-		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.created_by, je.created_at,
+		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.entry_date, je.created_by, je.created_at,
 		       COALESCE(b.code, '')
 		FROM journal_entries je
 		LEFT JOIN branches b ON b.id = je.branch_id`
@@ -294,7 +294,7 @@ func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int, 
 	for rows.Next() {
 		var entry domain.JournalEntry
 		if err := rows.Scan(
-			&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.CreatedBy, &entry.CreatedAt,
+			&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.EntryDate, &entry.CreatedBy, &entry.CreatedAt,
 			&entry.BranchCode,
 		); err != nil {
 			return nil, 0, err
