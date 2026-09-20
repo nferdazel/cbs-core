@@ -538,6 +538,22 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 				return fmt.Errorf("mencatat pembayaran angsuran: %w", err)
 			}
 		}
+		// Jejak audit ditulis di dalam transaksi yang sama: pembayaran angsuran adalah
+		// bukti penerimaan kas, jadi catatan yang gagal ditulis harus membatalkan
+		// pembayarannya, bukan tertinggal diam-diam.
+		if err := writeAudit(ctx, s.auditRepo, tx, actor, "PAY_INSTALLMENT", "loan", loan.ID.String(), map[string]any{
+			"loan_number":           loan.LoanNumber,
+			"installment_no":        input.InstallmentNo,
+			"amount":                amount.StringFixed(2),
+			"penalty":               allocation.Penalty.StringFixed(2),
+			"profit":                allocation.Profit.StringFixed(2),
+			"principal":             allocation.Principal.StringFixed(2),
+			"installment_status":    string(installmentStatus),
+			"outstanding_principal": newOutstanding.StringFixed(2),
+			"penalty_remaining":     newPenalty.StringFixed(2),
+		}); err != nil {
+			return fmt.Errorf("audit pembayaran angsuran: %w", err)
+		}
 		return s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, newOutstanding, newPenalty)
 	})
 	if err != nil {
@@ -816,6 +832,20 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	if err := s.loanRepo.UpdateRestructure(ctx, loan, schedules); err != nil {
 		return nil, fmt.Errorf("menyimpan restrukturisasi: %w", err)
 	}
+	// Restrukturisasi mengubah jadwal angsuran sekaligus menahan kualitas kredit pada
+	// batas Pasal 23. Tanpa jejak audit, perubahan yang berimplikasi pada PPAP dan
+	// kualitas aset tidak dapat direkonstruksi.
+	if err := writeAudit(ctx, s.auditRepo, nil, actor, "RESTRUCTURE_LOAN", "loan", loan.ID.String(), map[string]any{
+		"loan_number":           loan.LoanNumber,
+		"reason":                input.Reason,
+		"collectibility_before": before.OJKCode(),
+		"collectibility_after":  loan.Collectibility,
+		"term_months":           input.NewTermMonths,
+		"total_payable":         loan.TotalPayable.StringFixed(2),
+		"monthly_installment":   loan.MonthlyInstallment.StringFixed(2),
+	}); err != nil {
+		return nil, fmt.Errorf("audit restrukturisasi: %w", err)
+	}
 	return loan, nil
 }
 
@@ -860,11 +890,23 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 		return nil, fmt.Errorf("jurnal hapus buku: %w", err)
 	}
 
-	if err := s.loanRepo.UpdateStatus(ctx, loan.ID, domain.LoanStatusWrittenOff, &actor.UserID); err != nil {
+	// Status, sisa pokok, dan jejak audit ikut transaksi yang sama. Sebelumnya dua
+	// pembaruan ini berjalan di luar transaksi, sehingga jurnal hapus buku bisa
+	// tergulung sementara kreditnya tetap berstatus aktif.
+	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loan.ID, domain.LoanStatusWrittenOff, &actor.UserID); err != nil {
 		return nil, err
 	}
-	if err := s.loanRepo.UpdateOutstanding(ctx, loan.ID, decimal.Zero, loan.PenaltyAccrued); err != nil {
+	if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, loan.PenaltyAccrued); err != nil {
 		return nil, err
+	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
+		"loan_number":           loan.LoanNumber,
+		"reason":                input.Reason,
+		"amount":                amount.StringFixed(2),
+		"outstanding_principal": loan.OutstandingPrincipal.StringFixed(2),
+		"penalty_outstanding":   loan.PenaltyAccrued.StringFixed(2),
+	}); err != nil {
+		return nil, fmt.Errorf("audit hapus buku: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -922,6 +964,13 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		AccountOverrides: overrides,
 	}); err != nil {
 		return nil, fmt.Errorf("jurnal recovery: %w", err)
+	}
+
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "RECOVER_WRITTEN_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
+		"loan_number":     loan.LoanNumber,
+		"recovery_amount": input.RecoveryAmount.StringFixed(2),
+	}); err != nil {
+		return nil, fmt.Errorf("audit recovery: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

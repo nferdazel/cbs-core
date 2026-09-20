@@ -525,3 +525,50 @@ func TestPayInstallment_KelebihanPembayaranDitolak(t *testing.T) {
 		t.Fatalf("tidak boleh ada jurnal saat pembayaran ditolak, dapat %d", len(f.posting.requests))
 	}
 }
+
+// stubAuditRepo merekam event audit agar test dapat memeriksa jejaknya.
+type stubAuditRepo struct {
+	events []domain.AuditEvent
+}
+
+func (s *stubAuditRepo) Write(_ context.Context, _ any, event domain.AuditEvent) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *stubAuditRepo) List(context.Context, string, string, int) ([]domain.AuditEvent, error) {
+	return s.events, nil
+}
+
+// Angsuran wajib meninggalkan jejak audit. Tanpa catatan ini penerimaan kas teller
+// hanya bisa direkonstruksi dari jurnal, bukan dari aksi siapa pun yang melakukannya.
+func TestPayInstallment_WritesAuditEvent(t *testing.T) {
+	f := paymentFixture(60, 100)
+	audit := &stubAuditRepo{}
+	svc := newInterestTestService(f)
+	svc.auditRepo = audit
+
+	actor := domain.Actor{UserID: uuid.New(), Username: "teller.uji", Role: domain.RoleTeller, BranchCode: "001"}
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1,
+	}, actor); err != nil {
+		t.Fatalf("PayInstallment: %v", err)
+	}
+
+	if len(audit.events) != 1 {
+		t.Fatalf("event audit %d, ingin 1", len(audit.events))
+	}
+	event := audit.events[0]
+	if event.Action != "PAY_INSTALLMENT" || event.ResourceType != "loan" || event.ResourceID != f.loanID.String() {
+		t.Fatalf("event audit tidak sesuai: %+v", event)
+	}
+	if event.ActorUsername != "teller.uji" || event.ActorRole != string(domain.RoleTeller) {
+		t.Fatalf("identitas pelaku tidak tercatat: %+v", event)
+	}
+	if got := event.Changes["amount"]; got != "1100.00" {
+		t.Fatalf("nominal audit %v, ingin 1100.00", got)
+	}
+	if got := event.Changes["installment_status"]; got != string(domain.InstallmentStatusPaid) {
+		t.Fatalf("status angsuran audit %v, ingin %s", got, domain.InstallmentStatusPaid)
+	}
+}
