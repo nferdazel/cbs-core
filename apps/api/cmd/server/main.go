@@ -166,6 +166,7 @@ func main() {
 		DocumentHandler:     docHandler,
 		DepositHandler:      depositHandler,
 		PPAPHandler:         ppapHandler,
+		AuditHandler:        httpHandler.NewAuditHandler(postgres.NewAuditRepository(db)),
 		AuthService:         authSvc,
 		Cookies:             cookies,
 		Logger:              logger,

@@ -55,6 +55,21 @@ func AuditEventFromActor(actor Actor, action, resourceType, resourceID string, c
 	}
 }
 
+// AuditLogFilter membatasi pembacaan audit log. Semua kolom opsional: kosong berarti
+// tanpa batas pada kolom itu, dan hasil tetap dibatasi Limit (maksimum 200).
+type AuditLogFilter struct {
+	ResourceType string
+	ResourceID   string
+	// Actor menerima nama pengguna (kolom tampilan actor_id) maupun uuid pelakunya.
+	Actor  string
+	Action string
+	// From inklusif, To eksklusif.
+	From   *time.Time
+	To     *time.Time
+	Limit  int
+	Offset int
+}
+
 // AuditRepository menyimpan dan membaca audit log. Tidak ada operasi ubah atau hapus:
 // audit log bersifat append-only.
 type AuditRepository interface {

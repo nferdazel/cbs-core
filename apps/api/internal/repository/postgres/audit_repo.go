@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 )
@@ -79,6 +80,90 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 }
 
 // List mengambil audit log untuk satu objek, terbaru lebih dahulu.
+// AuditLogPageSize membatasi jumlah baris yang dapat diminta dari audit log dalam satu
+// permintaan. Batas atas ini menjaga agar laporan audit tidak menarik seluruh tabel.
+const (
+	AuditLogDefaultPageSize = 50
+	AuditLogMaxPageSize     = 200
+)
+
+// Query membaca audit log dengan filter opsional, terbaru lebih dulu. Semua nilai filter
+// dikirim sebagai parameter; tidak ada nilai yang dirangkai ke dalam SQL.
+func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilter) ([]domain.AuditEvent, error) {
+	limit := filter.Limit
+	if limit < 1 || limit > AuditLogMaxPageSize {
+		limit = AuditLogDefaultPageSize
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	var conditions []string
+	var args []any
+	// "\$?" diisi nomor parameter, sehingga satu nilai dapat dipakai di beberapa kolom.
+	add := func(condition string, value any) {
+		args = append(args, value)
+		conditions = append(conditions, strings.ReplaceAll(condition, "$?", fmt.Sprintf("$%d", len(args))))
+	}
+
+	if filter.ResourceType != "" {
+		add("resource_type = $?", filter.ResourceType)
+	}
+	if filter.ResourceID != "" {
+		add("resource_id = $?", filter.ResourceID)
+	}
+	if filter.Actor != "" {
+		add("(actor_id = $? OR staff_user_id::text = $?)", filter.Actor)
+	}
+	if filter.Action != "" {
+		add("action = $?", filter.Action)
+	}
+	if filter.From != nil {
+		add("created_at >= $?", *filter.From)
+	}
+	if filter.To != nil {
+		add("created_at < $?", *filter.To)
+	}
+
+	query := `SELECT actor_id, COALESCE(actor_role, ''), action, resource_type, resource_id,
+		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb),
+		       COALESCE(request_id, ''), COALESCE(user_agent, ''), created_at
+		FROM audit_logs`
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	// id ikut diurutkan agar urutan stabil untuk aksi yang tercatat pada detik yang sama.
+	query += fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, limit, offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := make([]domain.AuditEvent, 0, limit)
+	for rows.Next() {
+		var e domain.AuditEvent
+		var changes []byte
+		if err := rows.Scan(
+			&e.ActorID, &e.ActorRole, &e.Action, &e.ResourceType, &e.ResourceID,
+			&e.IPAddress, &changes, &e.RequestID, &e.UserAgent, &e.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if len(changes) > 0 {
+			_ = json.Unmarshal(changes, &e.Changes)
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
 func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID string, limit int) ([]domain.AuditEvent, error) {
 	if limit < 1 || limit > 500 {
 		limit = 100

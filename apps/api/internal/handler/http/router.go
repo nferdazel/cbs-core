@@ -49,6 +49,7 @@ type RouterParams struct {
 	DocumentHandler     *DocumentHandler
 	DepositHandler      *DepositHandler
 	PPAPHandler         *PPAPHandler
+	AuditHandler        *AuditHandler
 	AuthService         domain.AuthService
 	// Cookies menentukan nama/atribut cookie sesi & CSRF.
 	Cookies middleware.CookieConfig
@@ -288,6 +289,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// ── PPAP & kolektibilitas harian ──
 			if p.PPAPHandler != nil {
 				p.PPAPHandler.RegisterRoutes(r)
+			}
+
+			// ── Audit log (baca saja, untuk pengawas) ──
+			if p.AuditHandler != nil {
+				p.AuditHandler.RegisterRoutes(r)
 			}
 
 			// ── Chart of Accounts (Admin & above) ──
