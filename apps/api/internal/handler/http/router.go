@@ -9,7 +9,6 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/middleware"
 	"github.com/go-chi/chi/v5"
-	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
 
@@ -72,7 +71,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 	// AccessLog memakai logger terstruktur agar data sensitif tersaring.
 	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.RequestID)
-	r.Use(chiMiddleware.RealIP)
+	// ProxyIP menggantikan chiMiddleware.RealIP: RealIP memakai entri X-Forwarded-For
+	// paling kiri yang dapat dipalsukan klien, sedangkan jejak audit dan pembatasan
+	// login harus memakai alamat yang dicatat proxy tepercaya.
+	r.Use(middleware.ProxyIP)
+	r.Use(middleware.LimitBodySize(middleware.MaxBodyBytes))
 	r.Use(middleware.AccessLog(logger))
 	r.Use(middleware.Recoverer(logger))
 
