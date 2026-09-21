@@ -22,6 +22,9 @@ type correctionLoanRepo struct {
 
 	corrected   []domain.LoanSchedule
 	outstanding decimal.Decimal
+	// correctionCount meniru kenaikan penghitung koreksi di transaksi yang sama;
+	// nilainya masuk ke kunci idempotensi jurnal koreksi.
+	correctionCount int
 }
 
 func (r *correctionLoanRepo) GetByID(context.Context, uuid.UUID) (*domain.Loan, error) {
@@ -48,6 +51,11 @@ func (r *correctionLoanRepo) CorrectLoanAmountTx(_ context.Context, _ any, l *do
 	r.schedules = schedules
 	r.outstanding = l.OutstandingPrincipal
 	return nil
+}
+
+func (r *correctionLoanRepo) NextCorrectionCountTx(context.Context, any, uuid.UUID) (int, error) {
+	r.correctionCount++
+	return r.correctionCount, nil
 }
 
 var _ domain.LoanRepository = (*correctionLoanRepo)(nil)
@@ -204,7 +212,7 @@ func TestCorrectLoanAmount_MenaikkanNominal(t *testing.T) {
 	if req.TransactionType != domain.TxTypeAdjustment {
 		t.Fatalf("jenis transaksi %q, ingin ADJUSTMENT", req.TransactionType)
 	}
-	if req.IdempotencyKey != "CORR-KRD-2026-0008-12000000" {
+	if req.IdempotencyKey != "CORR-KRD-2026-0008-12000000-1" {
 		t.Fatalf("kunci idempotency %q", req.IdempotencyKey)
 	}
 	if req.BranchCode != "001" || req.Source != domain.SourceLoan {
@@ -265,7 +273,7 @@ func TestCorrectLoanAmount_MenurunkanNominalMembalikArah(t *testing.T) {
 		t.Fatalf("jurnal koreksi %d, ingin 1", len(posting.requests))
 	}
 	req := posting.requests[0]
-	if req.IdempotencyKey != "CORR-KRD-2026-0008-8000000" {
+	if req.IdempotencyKey != "CORR-KRD-2026-0008-8000000-1" {
 		t.Fatalf("kunci idempotency %q", req.IdempotencyKey)
 	}
 	if req.Lines[0].Direction != domain.DirectionCredit || req.Lines[1].Direction != domain.DirectionDebit {

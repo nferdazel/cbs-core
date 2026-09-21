@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -1474,7 +1475,13 @@ func (s *loanService) correctLoanAmountTx(ctx context.Context, tx any, loan *dom
 		if err != nil {
 			return fmt.Errorf("membaca jurnal pencairan %s: %w", ref, err)
 		}
-		journalRef, err = s.postLoanCorrectionTx(ctx, tx, original, loan, input, diff, entryDate, actor)
+		// Nomor koreksi dinaikkan di dalam transaksi ini, bukan sebelumnya: bila
+		// transaksi gagal, kenaikannya ikut ter-rollback dan nomor tidak terpakai.
+		sequence, err := s.loanRepo.NextCorrectionCountTx(ctx, tx, loan.ID)
+		if err != nil {
+			return fmt.Errorf("menaikkan penghitung koreksi nominal: %w", err)
+		}
+		journalRef, err = s.postLoanCorrectionTx(ctx, tx, original, loan, input, diff, sequence, entryDate, actor)
 		if err != nil {
 			return err
 		}
@@ -1504,7 +1511,7 @@ func (s *loanService) correctLoanAmountTx(ctx context.Context, tx any, loan *dom
 // kas/rekening adalah sisi debit jurnal asal dan lawannya adalah sisi kredit (akun
 // pokok), sehingga uang kembali ke/keluar dari tempat yang sama seperti pencairan
 // awal. Koreksi naik mengikuti arah pencairan, koreksi turun membalik arahnya.
-func (s *loanService) postLoanCorrectionTx(ctx context.Context, tx any, original *domain.JournalEntry, loan *domain.Loan, input domain.CorrectLoanAmountInput, diff decimal.Decimal, entryDate time.Time, actor domain.Actor) (string, error) {
+func (s *loanService) postLoanCorrectionTx(ctx context.Context, tx any, original *domain.JournalEntry, loan *domain.Loan, input domain.CorrectLoanAmountInput, diff decimal.Decimal, sequence int, entryDate time.Time, actor domain.Actor) (string, error) {
 	debitLeg, creditLeg, err := disbursementLegs(original)
 	if err != nil {
 		return "", err
@@ -1513,9 +1520,20 @@ func (s *loanService) postLoanCorrectionTx(ctx context.Context, tx any, original
 		TransactionType: domain.TxTypeAdjustment,
 		EntryDate:       entryDate,
 		Description:     fmt.Sprintf("Koreksi nominal kredit %s — %s", loan.LoanNumber, input.Reason),
-		// Kunci tetap per kredit dan nominal baru: pengulangan permintaan yang sama
-		// mengembalikan jurnal yang sama, bukan menggandakan selisihnya.
-		IdempotencyKey: "CORR-" + loan.LoanNumber + "-" + input.NewAmount.String(),
+		// Kunci memuat urutan koreksi per kredit, bukan hanya nominal baru. Rangkaian
+		// 10jt -> 12jt -> 10jt -> 12jt memakai kembali kunci "-12000000" pada langkah
+		// terakhir bila urutannya tidak disertakan; posting engine lalu mengembalikan
+		// jurnal lama tanpa menulis selisih, padahal state kredit tetap berubah.
+		// Penghitung dinaikkan di dalam transaksi yang sama (correctLoanAmountTx) agar
+		// transaksi gagal tidak menghabiskan nomor.
+		//
+		// Batas jaminan: penghitung ini membedakan peristiwa koreksi yang berbeda, bukan
+		// mengenali ulangan permintaan yang sama. Pengulangan permintaan yang sama
+		// setelah transaksi sukses tetap dapat menghasilkan jurnal kedua; jaminan penuh
+		// butuh kunci idempotensi dari pemanggil (mis. ID permintaan API), yang saat ini
+		// belum diteruskan ke sini. Validasi ErrLoanAmountUnchanged hanya menolak ulangan
+		// selama pokok kredit belum berubah.
+		IdempotencyKey: "CORR-" + loan.LoanNumber + "-" + input.NewAmount.String() + "-" + strconv.Itoa(sequence),
 		CreatedBy:      actor.DisplayName(),
 		// Cabang mewarisi jurnal pencairan asal agar laporan per cabang tetap benar.
 		BranchCode: original.BranchCode,

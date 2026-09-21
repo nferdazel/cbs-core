@@ -179,13 +179,10 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 		t.Fatalf("pembatalan kedua: %v, mau ErrJournalAlreadyReversed", err)
 	}
 
-	// Jalur lintas hari: tanggal bisnis dimajukan, jurnal hari ini menjadi jurnal kemarin.
-	if _, err := db.ExecContext(ctx,
-		`UPDATE system_config SET value = $1 WHERE key = 'system.business_date'`,
-		time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")); err != nil {
-		t.Fatalf("memajukan tanggal bisnis: %v", err)
-	}
-
+	// Jalur lintas hari yang sesungguhnya: jurnal kedua dibuat LEBIH DULU pada tanggal
+	// bisnis lama, baru tanggal bisnis dimajukan. Bila jurnalnya dibuat setelah tanggal
+	// dimajukan, posting engine memakai tanggal bisnis yang baru sehingga pembatalannya
+	// sah sebagai same-day dan jalur lintas hari tidak pernah benar-benar teruji.
 	deposit2, err := ledgerSvc.Deposit(ctx, domain.DepositRequest{
 		AccountNumber: accountNumber,
 		Amount:        decimal.NewFromInt(150000),
@@ -195,6 +192,14 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("setoran uji kedua gagal: %v", err)
+	}
+
+	// Setelah jurnal kedua terposting pada tanggal bisnis lama, tanggal bisnis
+	// dimajukan: jurnal kedua kini menjadi jurnal kemarin.
+	if _, err := db.ExecContext(ctx,
+		`UPDATE system_config SET value = $1 WHERE key = 'system.business_date'`,
+		time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")); err != nil {
+		t.Fatalf("memajukan tanggal bisnis: %v", err)
 	}
 
 	var pending *domain.PendingApprovalError
@@ -217,6 +222,17 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	}
 	if statusDeposit2 != string(domain.JournalStatusPosted) {
 		t.Fatalf("status jurnal kedua %q, mau masih POSTED sebelum disetujui", statusDeposit2)
+	}
+	// Permintaan persetujuan tidak boleh menulis jurnal kontra apa pun; kunci jurnal
+	// kontra adalah "REV-" + referensi jurnal asal.
+	var kontraLintasHari int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM journal_entries WHERE idempotency_key = $1`,
+		"REV-"+deposit2.ReferenceNumber).Scan(&kontraLintasHari); err != nil {
+		t.Fatalf("menghitung jurnal kontra lintas hari: %v", err)
+	}
+	if kontraLintasHari != 0 {
+		t.Fatalf("jurnal kontra ditulis sebelum disetujui: %d baris", kontraLintasHari)
 	}
 }
 

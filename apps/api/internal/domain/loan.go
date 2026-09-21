@@ -335,6 +335,11 @@ type LoanRepository interface {
 	// sisa pokok lalu mengganti seluruh jadwal angsuran di dalam transaksi pemanggil.
 	// Pola ganti jadwalnya sama dengan UpdateRestructure.
 	CorrectLoanAmountTx(ctx context.Context, tx any, loan *Loan, schedules []LoanSchedule) error
+	// NextCorrectionCountTx menaikkan penghitung koreksi nominal kredit dan
+	// mengembalikan nilai barunya di dalam transaksi pemanggil. Kenaikan harus satu
+	// transaksi dengan jurnalnya agar transaksi yang gagal tidak meninggalkan nomor
+	// koreksi yang terpakai; nilainya menjadi bagian kunci idempotensi jurnal koreksi.
+	NextCorrectionCountTx(ctx context.Context, tx any, loanID uuid.UUID) (int, error)
 }
 
 type LoanService interface {

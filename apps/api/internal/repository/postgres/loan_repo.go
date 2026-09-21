@@ -411,6 +411,25 @@ func (r *LoanRepository) CorrectLoanAmountTx(ctx context.Context, tx any, l *dom
 	return nil
 }
 
+// NextCorrectionCountTx menaikkan penghitung koreksi nominal kredit dan mengembalikan
+// nilai barunya di dalam transaksi pemanggil. Kenaikan berada di transaksi yang sama
+// dengan jurnalnya: bila transaksi gagal, kenaikan ikut ter-rollback sehingga nomor
+// koreksi tidak terpakai percuma. Nilai ini masuk ke kunci idempotensi jurnal koreksi
+// agar rangkaian 10jt -> 12jt -> 10jt -> 12jt tidak bertabrakan dengan kunci lama.
+func (r *LoanRepository) NextCorrectionCountTx(ctx context.Context, tx any, loanID uuid.UUID) (int, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return 0, errors.New("loan: transaksi tidak valid")
+	}
+	var count int
+	if err := sqlTx.QueryRowContext(ctx,
+		`UPDATE loans SET correction_count = correction_count + 1, updated_at = NOW()
+		 WHERE id = $1 RETURNING correction_count`, loanID).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID, col domain.OJKCollectibility, dpd int, accrual domain.AccrualStatus, ppap decimal.Decimal) error {
 	q := `UPDATE loans SET collectibility=$1, dpd=$2, accrual_status=$3, required_ppap=$4, updated_at=NOW() WHERE id=$5`
 	_, err := r.db.ExecContext(ctx, q, col, dpd, accrual, ppap, id)

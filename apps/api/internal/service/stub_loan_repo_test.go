@@ -145,4 +145,10 @@ func (s *stubLoanRepo) CorrectLoanAmountTx(ctx context.Context, tx any, loan *do
 	return nil
 }
 
+// NextCorrectionCountTx memenuhi kontrak repo; test yang benar-benar mengoreksi
+// nominal memakai correctionLoanRepo yang menaikkan penghitungnya.
+func (s *stubLoanRepo) NextCorrectionCountTx(ctx context.Context, tx any, loanID uuid.UUID) (int, error) {
+	return 1, nil
+}
+
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

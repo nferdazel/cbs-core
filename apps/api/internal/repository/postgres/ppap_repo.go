@@ -159,9 +159,14 @@ func (r *PPAPRepository) UpdateCollectibility(ctx context.Context, tx any, loanI
 // pernah ditimpa agar penurunan pengurang agunan Pasal 20(3)/(5) tetap dihitung sejak
 // saat kredit benar-benar macet, bukan sejak perhitungan terakhir.
 func (r *PPAPRepository) UpdateLoanState(ctx context.Context, tx any, u domain.PPAPLoanUpdate) error {
+	// $1 dipakai di dua konteks: nilai kolom collectibility VARCHAR(32) dan pembanding
+	// CASE. Tanpa cast, PostgreSQL menyimpulkan tipe yang berbeda (varchar vs text) dan
+	// menolak seluruh query dengan SQLSTATE 42P08 "inconsistent types deduced for
+	// parameter $1". Cast eksplisit ke varchar menyamakan tipe di kedua pemakaian; ini
+	// baru diperlukan sejak parameter dipakai lebih dari sekali.
 	q := `UPDATE loans
-		SET collectibility=$1, dpd=$2, accrual_status=$3, stop_accrual=$4, required_ppap=$5,
-		    macet_at = CASE WHEN $1 = '5_MACET' THEN COALESCE(macet_at, NOW()) ELSE macet_at END,
+		SET collectibility=$1::varchar, dpd=$2, accrual_status=$3, stop_accrual=$4, required_ppap=$5,
+		    macet_at = CASE WHEN $1::varchar = '5_MACET' THEN COALESCE(macet_at, NOW()) ELSE macet_at END,
 		    updated_at=NOW()
 		WHERE id=$6`
 	exec, err := r.ppapExec(tx)
