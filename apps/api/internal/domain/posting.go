@@ -88,4 +88,7 @@ type ReferenceGenerator interface {
 	// NextTx mengambil nomor di dalam transaksi pemanggil agar kegagalan membaca
 	// sequence ikut membatalkan jurnal, bukan meninggalkan jurnal tanpa nomor.
 	NextTx(ctx context.Context, tx any, txType TransactionType, at time.Time) (string, error)
+	// NextLoanNumber membangkitkan nomor kredit dari sequence tersendiri, terpisah
+	// dari sequence referensi transaksi. Prefix mengikuti buku produk.
+	NextLoanNumber(ctx context.Context, product *BankingProduct, at time.Time) (string, error)
 }

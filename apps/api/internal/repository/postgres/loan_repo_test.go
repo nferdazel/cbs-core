@@ -65,3 +65,53 @@ func TestMarkLoanDisbursed_GuardStatus(t *testing.T) {
 		}
 	})
 }
+
+// P3: penolakan kredit dibatasi status PENDING_APPROVAL di dalam query, sehingga
+// penolakan yang membaca status basi tidak dapat menimpa kredit yang sudah
+// APPROVED/DISBURSED. Tanpa baris yang berubah, galat domain dikembalikan.
+func TestRejectLoan_GuardStatus(t *testing.T) {
+	ctx := context.Background()
+	id := uuid.New()
+
+	t.Run("dari PENDING_APPROVAL berhasil", func(t *testing.T) {
+		exec := &fakeExec{result: fakeResult{rows: 1}}
+		if err := rejectLoan(ctx, exec, id, "agunan tidak layak"); err != nil {
+			t.Fatalf("rejectLoan: %v", err)
+		}
+		if !strings.Contains(exec.query, "status=$4") {
+			t.Fatalf("query harus memuat guard status: %q", exec.query)
+		}
+		if len(exec.args) != 4 {
+			t.Fatalf("args %v, ingin 4 argumen", exec.args)
+		}
+		if exec.args[0] != domain.LoanStatusRejected || exec.args[3] != domain.LoanStatusPendingApproval {
+			t.Fatalf("args %v, ingin status REJECTED dan syarat PENDING_APPROVAL", exec.args)
+		}
+		if exec.args[2] != id {
+			t.Fatalf("argumen id %v, ingin %v", exec.args[2], id)
+		}
+	})
+
+	t.Run("status basi tidak menimpa", func(t *testing.T) {
+		exec := &fakeExec{result: fakeResult{rows: 0}}
+		err := rejectLoan(ctx, exec, id, "agunan tidak layak")
+		if !errors.Is(err, domain.ErrLoanAlreadyApproved) {
+			t.Fatalf("mau ErrLoanAlreadyApproved, dapat %v", err)
+		}
+	})
+}
+
+// P4: penolakan TIDAK boleh mengisi kolom persetujuan; kredit yang ditolak bukan
+// kredit yang disetujui. Jejak penolakan ada di rejection_reason, maker-checker, audit.
+func TestRejectLoan_TidakMengisiKolomPersetujuan(t *testing.T) {
+	exec := &fakeExec{result: fakeResult{rows: 1}}
+	if err := rejectLoan(context.Background(), exec, uuid.New(), "ditolak"); err != nil {
+		t.Fatalf("rejectLoan: %v", err)
+	}
+	if strings.Contains(exec.query, "approved_by") || strings.Contains(exec.query, "approved_at") {
+		t.Fatalf("penolakan tidak boleh menyentuh kolom persetujuan: %q", exec.query)
+	}
+	if !strings.Contains(exec.query, "rejection_reason") {
+		t.Fatalf("penolakan harus menyimpan alasan: %q", exec.query)
+	}
+}

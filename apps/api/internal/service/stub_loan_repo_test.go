@@ -53,6 +53,14 @@ func (s *stubLoanRepo) UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID,
 	return s.UpdateStatus(ctx, id, status, approvedBy)
 }
 
+func (s *stubLoanRepo) RejectLoanTx(ctx context.Context, tx any, id uuid.UUID, reason string) error {
+	if s.loan != nil {
+		s.loan.Status = domain.LoanStatusRejected
+		s.loan.RejectionReason = reason
+	}
+	return nil
+}
+
 func (s *stubLoanRepo) MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error {
 	if s.loan != nil {
 		s.loan.Status = domain.LoanStatusDisbursed

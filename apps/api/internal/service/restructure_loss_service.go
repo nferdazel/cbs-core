@@ -244,7 +244,10 @@ func (s *loanService) restructureLoanWithLoss(ctx context.Context, input domain.
 		fresh.Collectibility = col.OJKCode()
 		fresh.AccrualStatus = AccrualForCollectibility(col)
 
-		method, profitType, margin := scheduleTermsFor(product, fresh.MarginAmount)
+		method, profitType, margin, err := scheduleTermsFor(product, fresh.MarginAmount, fresh.OutstandingPrincipal, fresh.TermMonths)
+		if err != nil {
+			return err
+		}
 		schedules, totalPayable, monthly := domain.BuildSchedule(fresh.ID, domain.ScheduleParams{
 			Principal:  fresh.OutstandingPrincipal,
 			AnnualRate: fresh.InterestRateAnnual,

@@ -33,7 +33,7 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	created_at, updated_at,
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), ''),
 	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id),
-	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance`
+	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance, rejection_reason`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -43,6 +43,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var preRestructure sql.NullString
 	var finalDue, eirCalculatedAt sql.NullTime
 	var eirMethod, eirBasis sql.NullString
+	var rejectionReason sql.NullString
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -58,6 +59,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.BranchCode,
 		&finalDue,
 		&l.OriginalEIRMonthly, &eirMethod, &eirBasis, &eirCalculatedAt, &l.RestructureLossBalance,
+		&rejectionReason,
 	)
 	if err != nil {
 		return nil, err
@@ -105,6 +107,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	}
 	if finalDue.Valid {
 		l.FinalDueDate = &finalDue.Time
+	}
+	if rejectionReason.Valid {
+		l.RejectionReason = rejectionReason.String
 	}
 	return &l, nil
 }
@@ -253,6 +258,38 @@ func updateLoanStatus(ctx context.Context, exec execer, id uuid.UUID, status dom
 	q := `UPDATE loans SET status=$1, approved_by=$2, approved_at=NOW(), updated_at=NOW() WHERE id=$3`
 	_, err := exec.ExecContext(ctx, q, status, approvedBy, id)
 	return err
+}
+
+// RejectLoanTx menandai kredit REJECTED dan menyimpan alasannya dalam satu pernyataan,
+// sehingga status tanpa alasan (atau sebaliknya) tidak mungkin tersimpan terpisah.
+// Penjaga status ada di query, bukan hanya di service: penolakan yang membaca status
+// basi (TOCTOU) tidak boleh menimpa kredit yang sudah APPROVED/DISBURSED. Kolom
+// persetujuan (approved_by/approved_at) sengaja TIDAK diisi saat penolakan — kredit
+// yang ditolak bukan kredit yang disetujui; jejaknya ada di rejection_reason,
+// maker_checker_requests, dan audit log.
+func (r *LoanRepository) RejectLoanTx(ctx context.Context, tx any, id uuid.UUID, reason string) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return rejectLoan(ctx, sqlTx, id, reason)
+}
+
+func rejectLoan(ctx context.Context, exec execer, id uuid.UUID, reason string) error {
+	q := `UPDATE loans SET status=$1, rejection_reason=$2, updated_at=NOW()
+		WHERE id=$3 AND status=$4`
+	res, err := exec.ExecContext(ctx, q, domain.LoanStatusRejected, reason, id, domain.LoanStatusPendingApproval)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrLoanAlreadyApproved
+	}
+	return nil
 }
 
 func (r *LoanRepository) MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error {

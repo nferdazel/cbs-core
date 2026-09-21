@@ -20,7 +20,8 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 // productColumns memakai cast ::text untuk kolom bertipe enum kustom. Tanpa cast,
 // driver tidak bisa memindai enum PostgreSQL ke string Go dan query gagal saat runtime.
 const productColumns = `id, code, name, family::text, book::text, profit_scheme::text,
-	schedule_method::text, rate_annual, profit_sharing_ratio, min_amount, max_amount,
+	schedule_method::text, rate_annual, profit_sharing_ratio, projected_revenue_rate_annual,
+	min_amount, max_amount,
 	min_term_months, max_term_months, allow_partial_payment, early_withdrawal_penalty_rate,
 	admin_fee, tax_rate, is_active`
 
@@ -28,7 +29,7 @@ func scanProduct(row interface{ Scan(...any) error }) (*domain.BankingProduct, e
 	var p domain.BankingProduct
 	err := row.Scan(
 		&p.ID, &p.Code, &p.Name, &p.Family, &p.Book, &p.ProfitScheme, &p.ScheduleMethod,
-		&p.RateAnnual, &p.ProfitSharingRatio, &p.MinAmount, &p.MaxAmount, &p.MinTermMonths, &p.MaxTermMonths,
+		&p.RateAnnual, &p.ProfitSharingRatio, &p.ProjectedRevenueRateAnnual, &p.MinAmount, &p.MaxAmount, &p.MinTermMonths, &p.MaxTermMonths,
 		&p.AllowPartialPayment, &p.EarlyWithdrawalPenaltyRate, &p.AdminFee, &p.TaxRate, &p.IsActive,
 	)
 	if err != nil {

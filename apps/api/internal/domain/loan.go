@@ -29,6 +29,13 @@ var (
 	ErrLoanHasAccrualPostings = errors.New("kredit sudah memiliki akrual bunga/denda/PPAP terposting; selesaikan atau balik akrualnya lebih dulu sebelum membatalkan pencairan")
 	ErrInvalidLoanAmount      = errors.New("nominal pokok harus positif")
 	ErrInvalidLoanTerm        = errors.New("jangka waktu minimal 1 bulan")
+	// Penolakan kredit wajib punya alasan yang bisa dipertanggungjawabkan. Alasan
+	// kosong atau kepanjangan ditolak dengan pesan yang jelas, bukan disimpan apa adanya.
+	ErrLoanRejectionReasonRequired = errors.New("alasan penolakan kredit wajib diisi")
+	ErrLoanRejectionReasonTooLong  = errors.New("alasan penolakan kredit maksimal 500 karakter")
+	// MaxLoanRejectionReasonLen membatasi panjang alasan; constraint database
+	// (migrasi 000055) memakai angka yang sama.
+	MaxLoanRejectionReasonLen = 500
 	// ErrLoanAmountUnchanged menolak koreksi nominal yang tidak mengubah apa pun:
 	// tanpa perubahan, jurnal selisih nol dan penulisan ulang jadwal hanya menghapus
 	// jejak tanpa manfaat.
@@ -92,6 +99,17 @@ func LoanTypeFor(product *BankingProduct) LoanType {
 		return LoanTypeConventionalAnnuity
 	}
 	return LoanTypeConventionalFlat
+}
+
+// LoanNumberPrefix menentukan prefix nomor kredit menurut buku produk: KRD untuk
+// konvensional, PMB untuk pembiayaan syariah. Buku kosong (produk lama) diperlakukan
+// konvensional, sama seperti perilaku jalur kredit sebelum nomor kredit dipisahkan
+// dari referensi transaksi.
+func LoanNumberPrefix(product *BankingProduct) string {
+	if product != nil && product.Book == BookSyariah {
+		return "PMB"
+	}
+	return "KRD"
 }
 
 type InstallmentStatus string
@@ -207,6 +225,9 @@ type Loan struct {
 	AkadNumber string     `json:"akad_number,omitempty"`
 	AkadDate   *time.Time `json:"akad_date,omitempty"`
 	Purpose    string     `json:"purpose,omitempty"`
+	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
+	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
+	RejectionReason string `json:"rejection_reason,omitempty"`
 
 	AOID        *uuid.UUID `json:"ao_id,omitempty"`
 	ApprovedBy  *uuid.UUID `json:"approved_by,omitempty"`
@@ -340,6 +361,11 @@ type LoanRepository interface {
 	List(ctx context.Context, limit, offset int, actor Actor) ([]Loan, int, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
+	// RejectLoanTx menandai kredit REJECTED sekaligus menyimpan alasan penolakan di
+	// dalam transaksi pemanggil, agar status dan alasan tidak pernah terpisah. Hanya
+	// baris berstatus PENDING_APPROVAL yang berubah: penolakan yang membaca status basi
+	// tidak boleh menimpa kredit yang sudah disetujui/dicairkan.
+	RejectLoanTx(ctx context.Context, tx any, id uuid.UUID, reason string) error
 	MarkDisbursed(ctx context.Context, id uuid.UUID, outstanding decimal.Decimal) error
 	MarkDisbursedTx(ctx context.Context, tx any, id uuid.UUID, outstanding decimal.Decimal) error
 	GetSchedules(ctx context.Context, loanID uuid.UUID) ([]LoanSchedule, error)
@@ -416,7 +442,9 @@ type LoanRepository interface {
 type LoanService interface {
 	ApplyLoan(ctx context.Context, input ApplyLoanInput, actor Actor) (*Loan, error)
 	ApproveLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
-	RejectLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
+	// RejectLoan menolak pengajuan dan menyimpan alasan yang diberikan pejabat;
+	// alasan kosong atau terlalu panjang ditolak dengan error yang jelas.
+	RejectLoan(ctx context.Context, loanID uuid.UUID, reason string, actor Actor) (*Loan, error)
 	DisburseLoan(ctx context.Context, loanID uuid.UUID, actor Actor) (*Loan, error)
 	// GetLoan menolak kredit cabang lain dengan ErrCrossBranchAccess.
 	GetLoan(ctx context.Context, id uuid.UUID, actor Actor) (*Loan, error)

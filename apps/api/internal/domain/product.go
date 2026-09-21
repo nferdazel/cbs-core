@@ -10,7 +10,28 @@ import (
 
 var (
 	ErrProductNotFound = errors.New("produk tidak ditemukan")
+	// ErrBagiHasilNisbahMissing menolak pembentukan jadwal bagi hasil tanpa nisbah.
+	// Bagi hasil tidak bisa dihitung tanpa porsi yang disepakati, dan menebak nisbah
+	// berarti menagih angka yang tidak pernah disepakati nasabah.
+	ErrBagiHasilNisbahMissing = errors.New("nisbah bagi hasil produk (profit_sharing_ratio) belum diisi; bank harus mengisi nisbah bagi hasil produk terlebih dahulu")
+	// ErrBagiHasilProjectionMissing menolak pembentukan jadwal bagi hasil tanpa
+	// proyeksi pendapatan usaha. Nilai nol bukan "bagi hasil nol yang sah", melainkan
+	// parameter yang belum diisi; membiarkannya menghasilkan jadwal ber-profit nol
+	// yang menyesatkan.
+	ErrBagiHasilProjectionMissing = errors.New("proyeksi pendapatan usaha produk (projected_revenue_rate_annual) belum diisi; bank harus mengisi proyeksi pendapatan tahunan pembiayaan bagi hasil terlebih dahulu")
+	// ErrBagiHasilNisbahOutOfRange menolak nisbah yang lolos dari rentang (0,1].
+	// Nilai seperti 40 hampir pasti salah satuan (maksudnya 40%, yaitu 0,4) dan
+	// akan melipatgandakan proyeksi imbal hasil seratus kali.
+	ErrBagiHasilNisbahOutOfRange = errors.New("nisbah bagi hasil produk (profit_sharing_ratio) harus lebih dari 0 dan maksimal 1; nisbah dinyatakan sebagai pecahan, mis. 0,4 untuk 40%")
+	// ErrBagiHasilProjectionOutOfRange menolak proyeksi pendapatan tahunan di atas
+	// batas wajar. Nilai seperti 1200 (maksudnya 12%) adalah salah satuan dan
+	// menghasilkan proyeksi imbal hasil yang tidak masuk akal.
+	ErrBagiHasilProjectionOutOfRange = errors.New("proyeksi pendapatan usaha produk (projected_revenue_rate_annual) harus lebih dari 0 dan maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%")
 )
+
+// MaxProjectedRevenueRateAnnual adalah batas atas proyeksi pendapatan tahunan usaha
+// yang dibiayai, dalam persen. Di atas 100% per tahun bukan proyeksi yang wajar.
+var MaxProjectedRevenueRateAnnual = decimal.NewFromInt(100)
 
 type COABook string
 
@@ -115,6 +136,14 @@ type BankingProduct struct {
 	RateAnnual decimal.Decimal `json:"rate_annual"`
 	// ProfitSharingRatio nisbah bagi hasil pemilik dana (0-1) untuk produk syariah.
 	ProfitSharingRatio decimal.Decimal `json:"profit_sharing_ratio"`
+	// ProjectedRevenueRateAnnual adalah PROYEKSI pendapatan usaha yang dibiayai,
+	// dalam persen per tahun, yang menjadi dasar tarif ekuivalen jadwal angsuran akad
+	// bagi hasil (mudharabah/musyarakah): tarif ekuivalen = nisbah x nilai ini.
+	//
+	// Ini bukan angka pasti: pendapatan/laba usaha baru diketahui saat realisasi,
+	// sehingga jadwal hanya proyeksi dan WAJIB disesuaikan saat bagi hasil aktual
+	// dihitung. Nilai 0 berarti parameter belum diisi dan jadwal bagi hasil ditolak.
+	ProjectedRevenueRateAnnual decimal.Decimal `json:"projected_revenue_rate_annual"`
 
 	MinAmount                  decimal.Decimal `json:"min_amount"`
 	MaxAmount                  decimal.Decimal `json:"max_amount"`

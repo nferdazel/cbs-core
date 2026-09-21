@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -134,7 +135,17 @@ func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loan, err := h.loanSvc.RejectLoan(r.Context(), id, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	// Body memuat alasan penolakan. Body kosong diteruskan sebagai alasan kosong agar
+	// service menolaknya dengan pesan domain yang jelas, bukan galat parsing JSON.
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	loan, err := h.loanSvc.RejectLoan(r.Context(), id, input.Reason, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return

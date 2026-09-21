@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -125,7 +127,10 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	loanID := uuid.New()
 	start := time.Now().UTC()
 
-	method, profitType, margin := scheduleTermsFor(product, input.MarginAmount)
+	method, profitType, margin, err := scheduleTermsFor(product, input.MarginAmount, input.PrincipalAmount, input.TermMonths)
+	if err != nil {
+		return nil, err
+	}
 	schedules, totalPayable, monthly := domain.BuildSchedule(loanID, domain.ScheduleParams{
 		Principal:  input.PrincipalAmount,
 		AnnualRate: product.RateAnnual,
@@ -137,7 +142,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	})
 
 	now := time.Now().UTC()
-	loanNumber, err := s.references.Next(domain.TxTypeTransferInternal, now)
+	loanNumber, err := s.references.NextLoanNumber(ctx, product, now)
 	if err != nil {
 		return nil, fmt.Errorf("membuat nomor kredit: %w", err)
 	}
@@ -208,17 +213,27 @@ func customerAccountOverrides(product *domain.BankingProduct, acc *domain.Accoun
 }
 
 // scheduleTermsFor menentukan metode jadwal dan jenis imbal hasil dari produk.
-func scheduleTermsFor(product *domain.BankingProduct, requestedMargin decimal.Decimal) (domain.ScheduleMethod, domain.ProfitType, decimal.Decimal) {
+// margin nominal yang dikirim pemanggil dipakai apa adanya untuk murabahah/ijarah.
+// Untuk akad bagi hasil (mudharabah/musyarakah), margin nominal hanya dipakai bila
+// diisi eksplisit; selain itu proyeksi dihitung dari nisbah x proyeksi pendapatan
+// usaha produk (angka PROYEKSI, disesuaikan saat realisasi bagi hasil aktual).
+func scheduleTermsFor(product *domain.BankingProduct, requestedMargin, principal decimal.Decimal, termMonths int) (domain.ScheduleMethod, domain.ProfitType, decimal.Decimal, error) {
 	switch product.ProfitScheme {
 	case domain.SchemeMurabahah:
-		return domain.ScheduleFlat, domain.ProfitTypeMargin, requestedMargin
+		return domain.ScheduleFlat, domain.ProfitTypeMargin, requestedMargin, nil
 	case domain.SchemeMudharabah, domain.SchemeMusyarakah:
-		// Bagi hasil: margin diproyeksikan dari nisbah bila tidak diberikan eksplisit.
-		return domain.ScheduleBagiHasil, domain.ProfitTypeBagiHasil, requestedMargin
+		if requestedMargin.IsPositive() {
+			return domain.ScheduleBagiHasil, domain.ProfitTypeBagiHasil, requestedMargin, nil
+		}
+		margin, err := domain.ProjectBagiHasilMargin(principal, product.ProfitSharingRatio, product.ProjectedRevenueRateAnnual, termMonths)
+		if err != nil {
+			return "", "", decimal.Zero, err
+		}
+		return domain.ScheduleBagiHasil, domain.ProfitTypeBagiHasil, margin, nil
 	case domain.SchemeIjarah:
-		return domain.ScheduleFlat, domain.ProfitTypeMargin, requestedMargin
+		return domain.ScheduleFlat, domain.ProfitTypeMargin, requestedMargin, nil
 	default:
-		return product.ScheduleMethod, domain.ProfitTypeInterest, requestedMargin
+		return product.ScheduleMethod, domain.ProfitTypeInterest, requestedMargin, nil
 	}
 }
 
@@ -267,7 +282,17 @@ func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, actor d
 	return loan, nil
 }
 
-func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, actor domain.Actor) (*domain.Loan, error) {
+func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, reason string, actor domain.Actor) (*domain.Loan, error) {
+	// Alasan adalah bagian dari keputusan, bukan pelengkap: penolakan tanpa alasan
+	// tidak dapat dipertanggungjawabkan, jadi ditolak sebelum menyentuh database.
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, domain.ErrLoanRejectionReasonRequired
+	}
+	if utf8.RuneCountInString(reason) > domain.MaxLoanRejectionReasonLen {
+		return nil, domain.ErrLoanRejectionReasonTooLong
+	}
+
 	loan, err := s.loanRepo.GetByID(ctx, loanID)
 	if err != nil {
 		return nil, err
@@ -279,26 +304,23 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, actor do
 		return nil, domain.ErrLoanAlreadyApproved
 	}
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	// Status dan alasan disimpan dalam satu transaksi bersama jejak audit: penolakan
+	// tanpa alasan (atau alasan tanpa status) tidak boleh pernah commit terpisah.
+	err = s.txRunner.Run(ctx, func(tx any) error {
+		if err := s.loanRepo.RejectLoanTx(ctx, tx, loanID, reason); err != nil {
+			return fmt.Errorf("menolak kredit: %w", err)
+		}
+		return writeAudit(ctx, s.auditRepo, tx, actor, "REJECT_LOAN", "loan", loan.ID.String(), map[string]any{
+			"status": domain.LoanStatusRejected,
+			"amount": loan.PrincipalAmount.String(),
+			"reason": reason,
+		})
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
-
-	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loanID, domain.LoanStatusRejected, &actor.UserID); err != nil {
-		return nil, fmt.Errorf("menolak kredit: %w", err)
-	}
-	if err := writeAudit(ctx, s.auditRepo, tx, actor, "REJECT_LOAN", "loan", loan.ID.String(), map[string]any{
-		"status": domain.LoanStatusRejected,
-		"amount": loan.PrincipalAmount.String(),
-	}); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
 	loan.Status = domain.LoanStatusRejected
+	loan.RejectionReason = reason
 	return loan, nil
 }
 
@@ -990,7 +1012,10 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	loan.Collectibility = col.OJKCode()
 	loan.AccrualStatus = AccrualForCollectibility(col)
 
-	method, profitType, margin := scheduleTermsFor(product, loan.MarginAmount)
+	method, profitType, margin, err := scheduleTermsFor(product, loan.MarginAmount, loan.OutstandingPrincipal, loan.TermMonths)
+	if err != nil {
+		return nil, err
+	}
 	schedules, totalPayable, monthly := domain.BuildSchedule(loan.ID, domain.ScheduleParams{
 		Principal:  loan.OutstandingPrincipal,
 		AnnualRate: loan.InterestRateAnnual,

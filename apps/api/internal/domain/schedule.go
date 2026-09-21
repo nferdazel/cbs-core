@@ -163,6 +163,35 @@ func buildBagiHasil(loanID uuid.UUID, p ScheduleParams, term int) ([]LoanSchedul
 	return schedules, totalPayable, first
 }
 
+// ProjectBagiHasilMargin menghitung PROYEKSI imbal hasil (Rp) untuk jadwal
+// angsuran akad bagi hasil (mudharabah/musyarakah).
+//
+// Angka ini adalah PROYEKSI, bukan bagi hasil yang pasti. Bagi hasil sejatinya
+// bergantung pada laba/pendapatan usaha yang dibiayai dan baru diketahui saat
+// realisasi. Jadwal memakai tarif ekuivalen = nisbah x proyeksi pendapatan tahunan
+// usaha sebagai dasar tagihan, dan angka itu WAJIB disesuaikan saat bagi hasil
+// aktual dihitung. Jangan memperlakukan profit_amount pada jadwal ini sebagai laba
+// final nasabah.
+//
+// Bila nisbah atau proyeksi pendapatan produk kosong/nol, fungsi menolak agar tidak
+// mengarang angka (ErrBagiHasilNisbahMissing / ErrBagiHasilProjectionMissing).
+func ProjectBagiHasilMargin(principal, nisbah, projectedRevenueRateAnnual decimal.Decimal, termMonths int) (decimal.Decimal, error) {
+	if !nisbah.IsPositive() {
+		return decimal.Zero, ErrBagiHasilNisbahMissing
+	}
+	if nisbah.GreaterThan(decimal.NewFromInt(1)) {
+		return decimal.Zero, ErrBagiHasilNisbahOutOfRange
+	}
+	if !projectedRevenueRateAnnual.IsPositive() {
+		return decimal.Zero, ErrBagiHasilProjectionMissing
+	}
+	if projectedRevenueRateAnnual.GreaterThan(MaxProjectedRevenueRateAnnual) {
+		return decimal.Zero, ErrBagiHasilProjectionOutOfRange
+	}
+	equivalentRate := nisbah.Mul(projectedRevenueRateAnnual)
+	return RoundToRupiah(interestForTerm(principal, equivalentRate, termMonths)), nil
+}
+
 // interestForTerm menghitung bunga sederhana untuk tenor tertentu.
 func interestForTerm(principal, annualRate decimal.Decimal, termMonths int) decimal.Decimal {
 	rateFraction := annualRate.Div(decimal.NewFromInt(100))

@@ -27,6 +27,9 @@ var refPrefix = map[domain.TransactionType]string{
 	domain.TxTypeInterestAccrual:  "ACR",
 	domain.TxTypeReversal:         "REV",
 	domain.TxTypeAdjustment:       "ADJ",
+	// Penempatan deposito punya prefix sendiri agar tidak tertukar dengan setoran
+	// tunai teller (DEP) di daftar referensi maupun rekonsiliasi.
+	domain.TxTypeDepositPlacement: "DPL",
 }
 
 // Next mengembalikan nomor referensi berformat PREFIX-YYYYMMDD-NNNNNN di luar
@@ -55,6 +58,24 @@ func (g *ReferenceGenerator) NextTx(ctx context.Context, tx any, txType domain.T
 		return "", fmt.Errorf("membaca sequence referensi jurnal: %w", err)
 	}
 	return fmt.Sprintf("%s-%s-%06d", prefix, at.Format("20060102"), seq), nil
+}
+
+// NextLoanNumber membangkitkan nomor kredit berformat PREFIX-YYYYMMDD-NNNNNN.
+// Prefix mengikuti buku produk (KRD konvensional, PMB syariah). Nomor diambil dari
+// loan_number_seq yang TERPISAH dari journal_reference_seq, sehingga pencairan kredit
+// tidak lagi memakan urutan referensi transaksi. Kegagalan sequence dikembalikan
+// sebagai error, bukan nomor cadangan: nomor kredit ganda membuat dua kredit berbeda
+// tampak sebagai satu.
+//
+// ctx diteruskan ke kueri sequence, bukan context.Background(): pembatalan atau timeout
+// permintaan HTTP harus menyebar ke pembacaan sequence. Tanpa itu, permintaan yang sudah
+// dibatalkan klien tetap menunggu koneksi database dan dapat membakar nomor.
+func (g *ReferenceGenerator) NextLoanNumber(ctx context.Context, product *domain.BankingProduct, at time.Time) (string, error) {
+	var seq int64
+	if err := g.db.QueryRowContext(ctx, `SELECT nextval('loan_number_seq')`).Scan(&seq); err != nil {
+		return "", fmt.Errorf("membaca sequence nomor kredit: %w", err)
+	}
+	return fmt.Sprintf("%s-%s-%06d", domain.LoanNumberPrefix(product), at.Format("20060102"), seq), nil
 }
 
 // NextCIF mengembalikan nomor CIF berurutan. CIF dipakai sebagai identitas nasabah
