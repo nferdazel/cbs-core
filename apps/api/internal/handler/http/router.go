@@ -165,6 +165,8 @@ func NewRouter(p RouterParams) *chi.Mux {
 			r.Route("/branches", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermUsersRead)).
 					Get("/", p.BranchHandler.List)
+				r.With(middleware.RequirePermission(domain.PermBranchesCreate)).
+					Post("/", p.BranchHandler.Create)
 			})
 			r.Route("/products", func(r chi.Router) {
 				// Data referensi produk dipakai layar rekening, deposito, dan kredit.
@@ -249,17 +251,22 @@ func NewRouter(p RouterParams) *chi.Mux {
 			})
 
 			// ── Financial Statement Reports (dihitung dari jurnal) ──
+			// Keempat laporan keuangan bersifat bank-wide, jadi dijaga izin
+			// tersendiri (reports:financial:read) yang tidak dipegang peran cabang.
+			// ledger:read tetap cukup untuk membaca mutasi/statement rekening.
 			r.Route("/reports", func(r chi.Router) {
-				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+				r.With(middleware.RequirePermission(domain.PermReportsFinancialRead)).
 					Get("/trial-balance", p.ReportHandler.TrialBalance)
-				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+				r.With(middleware.RequirePermission(domain.PermReportsFinancialRead)).
 					Get("/balance-sheet", p.ReportHandler.BalanceSheet)
-				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+				r.With(middleware.RequirePermission(domain.PermReportsFinancialRead)).
 					Get("/income-statement", p.ReportHandler.IncomeStatement)
-				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+				r.With(middleware.RequirePermission(domain.PermReportsFinancialRead)).
 					Get("/cash-flow", p.ReportHandler.CashFlow)
 				// Daftar jatuh tempo operasional untuk teller: angsuran kredit dan
-				// deposito berjangka. Baca saja, cabang dibatasi oleh service.
+				// deposito berjangka. Baca saja, cabang dibatasi oleh service. Ini
+				// bukan laporan keuangan bank-wide, jadi tetap cukup ledger:read
+				// agar TELLER/CS/AO tidak kehilangan pekerjaannya.
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/due-obligations", p.ReportHandler.DueObligations)
 				// Fondasi ekspor laporan OJK (APOLO): definisi/tenggat dan berkas

@@ -71,6 +71,10 @@ const (
 	PermUsersUpdate Permission = "users:update"
 	PermUsersDelete Permission = "users:delete"
 
+	// Master data cabang. Pembuatan cabang adalah fungsi administratif kantor
+	// pusat, jadi hanya SUPERADMIN yang memegangnya.
+	PermBranchesCreate Permission = "branches:create"
+
 	// Customer (CIF)
 	PermCustomersCreate Permission = "customers:create"
 	PermCustomersRead   Permission = "customers:read"
@@ -124,9 +128,21 @@ const (
 	// Audit & Reports
 	PermAuditLogsRead Permission = "audit_logs:read"
 	PermReportsExport Permission = "reports:export"
+	// PermReportsFinancialRead memberi akses ke laporan keuangan bank-wide
+	// (neraca saldo, neraca, laba rugi, arus kas). Dipisahkan dari PermLedgerRead
+	// karena laporan ini mencakup seluruh bank: peran cabang (AO/TELLER/CS) memang
+	// perlu membaca mutasi rekening, tetapi tidak berhak melihat posisi keuangan
+	// bank secara keseluruhan. Laporan operasional seperti due-obligations tetap
+	// memakai PermLedgerRead.
+	PermReportsFinancialRead Permission = "reports:financial:read"
 
 	// System
 	PermSystemConfig Permission = "system:config"
+	// PermSystemConfigRead hanya membaca konfigurasi sistem (mis. batas transaksi
+	// per peran) tanpa mengubahnya. Dipisahkan dari PermSystemConfig supaya peran
+	// pengawas dapat meninjau kebijakan batas tanpa ikut mendapat wewenang menulis
+	// konfigurasi, menjalankan EOD/EOM/EOY, atau mengubah state sistem.
+	PermSystemConfigRead Permission = "system:config:read"
 )
 
 // RolePermissions is the canonical permission map — configurable via DB overrides.
@@ -134,6 +150,7 @@ var RolePermissions = map[StaffRole][]Permission{
 	RoleSuperAdmin: {
 		PermProductsRead,
 		PermUsersCreate, PermUsersRead, PermUsersUpdate, PermUsersDelete,
+		PermBranchesCreate,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
@@ -142,8 +159,8 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
-		PermAuditLogsRead, PermReportsExport,
-		PermSystemConfig,
+		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermSystemConfig, PermSystemConfigRead,
 	},
 	RoleAdmin: {
 		PermProductsRead,
@@ -156,7 +173,8 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
-		PermAuditLogsRead, PermReportsExport,
+		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermSystemConfigRead,
 	},
 	RoleSupervisor: {
 		PermProductsRead,
@@ -168,7 +186,8 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead,
-		PermAuditLogsRead, PermReportsExport,
+		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermSystemConfigRead,
 	},
 	RoleTeller: {
 		PermProductsRead,
@@ -188,8 +207,10 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermProductsRead,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead,
+		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
 		PermLoansApply, PermLoansRead,
 		PermCollectionsInput,
+		PermLedgerRead,
 	},
 	RoleAuditor: {
 		PermProductsRead,
@@ -198,7 +219,8 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsRead,
 		PermLoansRead,
 		PermLedgerRead,
-		PermAuditLogsRead, PermReportsExport,
+		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermSystemConfigRead,
 	},
 }
 

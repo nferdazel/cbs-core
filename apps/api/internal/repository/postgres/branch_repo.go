@@ -45,6 +45,28 @@ func (r *BranchRepository) GetByCode(ctx context.Context, code string) (*domain.
 	return r.scanOne(ctx, `SELECT `+branchColumns+` FROM branches WHERE code = $1`, code)
 }
 
+// Create menyimpan cabang baru. Keunikan kode ditegakkan unique constraint
+// branches.code; pemanggil menerjemahkan pelanggarannya menjadi error bisnis.
+func (r *BranchRepository) Create(ctx context.Context, b *domain.Branch) error {
+	return r.CreateTx(ctx, r.db, b)
+}
+
+// CreateTx menyimpan cabang di dalam transaksi pemanggil. Dipakai agar penulisan
+// cabang dan audit log commit bersama.
+func (r *BranchRepository) CreateTx(ctx context.Context, tx any, b *domain.Branch) error {
+	exec, ok := tx.(interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	})
+	if !ok {
+		return errors.New("branch: transaksi tidak valid")
+	}
+	_, err := exec.ExecContext(ctx, `
+		INSERT INTO branches (id, code, name, address, phone, is_head_office, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		b.ID, b.Code, b.Name, b.Address, b.Phone, b.IsHeadOffice, b.IsActive)
+	return err
+}
+
 func (r *BranchRepository) scanOne(ctx context.Context, query string, arg any) (*domain.Branch, error) {
 	var b domain.Branch
 	err := r.db.QueryRowContext(ctx, query, arg).Scan(

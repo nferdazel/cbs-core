@@ -201,11 +201,11 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 		return nil, domain.ErrAccountInactive
 	}
 
-	branchCode := actor.BranchCode
-	if branchCode == "" {
-		return nil, errors.New("kode cabang aktor wajib diisi")
-	}
-	actorBranch, err := s.branchRepo.GetByCode(ctx, branchCode)
+	// Identitas cabang HANYA dari JWT; branch_code pada body request diabaikan. Aktor
+	// lintas cabang boleh memakai kode kantor pusat yang tidak terdaftar dan
+	// diatribusikan ke kantor pusat, sedangkan peran bercabang biasa tetap wajib punya
+	// cabang terdaftar.
+	actorBranch, err := resolveActorBranch(ctx, s.branchRepo, actor)
 	if err != nil {
 		return nil, fmt.Errorf("cabang tidak valid: %w", err)
 	}
@@ -217,12 +217,15 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 	// Deposito mengikuti cabang nasabah. Aktor lintas cabang yang melayani nasabah
 	// cabang lain memakai cabang nasabah itu, bukan cabang aktornya.
 	branch := actorBranch
-	if customer.BranchID != nil && *customer.BranchID != actorBranch.ID {
+	if customer.BranchID != nil && (actorBranch == nil || *customer.BranchID != actorBranch.ID) {
 		customerBranch, err := s.branchRepo.GetByID(ctx, *customer.BranchID)
 		if err != nil {
 			return nil, fmt.Errorf("cabang nasabah tidak valid: %w", err)
 		}
 		branch = customerBranch
+	}
+	if branch == nil {
+		return nil, fmt.Errorf("cabang tidak valid: %w", domain.ErrBranchNotFound)
 	}
 	if !branch.IsActive {
 		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branch.Code)
@@ -351,7 +354,12 @@ func (s *depositService) persistPlacement(ctx context.Context, tx *sql.Tx, input
 		Description:     fmt.Sprintf("Penempatan deposito %s %s", prep.product.Name, accountNumber),
 		IdempotencyKey:  idemKey,
 		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		// Cabang diambil dari cabang yang sudah diselesaikan preparePlacement
+		// (resolveActorBranch), bukan dari kode mentah aktor. Aktor lintas cabang
+		// berkode 'HO' yang tidak terdaftar sebelumnya menghasilkan jurnal
+		// branch_id NULL; kini diatribusikan ke kantor pusat yang sama dengan
+		// rekening dan kontrak depositonya.
+		BranchCode: prep.branch.Code,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jurnal penempatan deposito: %w", err)

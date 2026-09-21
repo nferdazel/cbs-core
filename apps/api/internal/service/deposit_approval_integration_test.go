@@ -58,7 +58,7 @@ func newDepositApprovalEnv(t *testing.T) *depositApprovalEnv {
 	limitSvc := service.NewTransactionLimitService(money.configSvc, ledgerRepo, postgres.NewBusinessDateRepository(money.db))
 
 	executors := service.NewExecutorRegistry()
-	mcSvc := service.NewMakerCheckerService(money.db, postgres.NewMakerCheckerRepository(money.db), auditRepo, money.configSvc, executors, postgres.NewBusinessDateRepository(money.db))
+	mcSvc := service.NewMakerCheckerService(money.db, postgres.NewMakerCheckerRepository(money.db), auditRepo, money.configSvc, executors, postgres.NewBusinessDateRepository(money.db), branchRepo)
 	depositSvc := service.NewDepositService(
 		money.db, depositRepo, money.productRepo, accountRepo, ledgerRepo, customerRepo,
 		branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, money.configSvc,

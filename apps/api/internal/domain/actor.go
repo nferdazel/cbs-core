@@ -48,6 +48,17 @@ func (a Actor) IsCrossBranch() bool {
 	}
 }
 
+// RequiresRegisteredBranch melaporkan apakah kode cabang aktor wajib terdaftar di
+// tabel branches saat aktor menulis data baru. Aktor lintas cabang (SUPERADMIN,
+// AUDITOR, SYSTEM) bertindak atas nama kantor pusat dan tidak terikat satu cabang
+// operasional: kode bawaan 'HO' milik akun kantor pusat bukan baris di tabel
+// branches, sehingga cabangnya tidak wajib terdaftar. Peran bercabang biasa
+// (ADMIN, SUPERVISOR, TELLER, CS, AO) tetap wajib punya cabang sah agar nasabah
+// dan rekening tidak tercatat di cabang yang tidak ditemukan.
+func (a Actor) RequiresRegisteredBranch() bool {
+	return !a.IsCrossBranch()
+}
+
 // CanAccessBranch melaporkan apakah aktor berwenang atas data pada cabang
 // branchCode. Aktor lintas cabang selalu boleh. Bila cabang objek kosong, akses
 // diizinkan karena baris tersebut adalah data pra-migrasi yang cabangnya belum

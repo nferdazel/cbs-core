@@ -49,20 +49,50 @@ func (s *customerService) nextCIF() (string, error) {
 	return s.cifSource.NextCIF()
 }
 
-// resolveBranchID memetakan kode cabang aktor ke id cabang. Kode kosong atau
-// database yang tidak tersedia (mis. unit test tanpa DB) menghasilkan nil:
-// kolom branch_id nullable dan migrasi backfill yang mengisi data lama. Kode
-// cabang yang tidak dikenal ditolak agar nasabah tidak tersimpan tanpa cabang
-// yang sah.
-func (s *customerService) resolveBranchID(ctx context.Context, branchCode string) (*uuid.UUID, error) {
-	if branchCode == "" || s.db == nil {
+// resolveBranchID memetakan cabang efektif aktor ke id cabang. Database yang
+// tidak tersedia (mis. unit test tanpa DB) menghasilkan nil.
+//
+// Aktor lintas cabang (SUPERADMIN/AUDITOR/SYSTEM) bertindak atas nama kantor
+// pusat: kode cabangnya tidak wajib terdaftar, karena kode 'HO' pada akun kantor
+// pusat bukan cabang operasional. Bila kodenya kosong atau tidak terdaftar,
+// nasabah diatribusikan ke cabang kantor pusat (is_head_office) bila ada, agar
+// tidak tersimpan tanpa cabang; bila kantor pusat tidak ada, branch_id NULL tetap
+// sah karena kolomnya nullable. Peran bercabang biasa tetap ditolak bila kode
+// cabangnya tidak terdaftar (lihat Actor.RequiresRegisteredBranch): nasabah tidak
+// boleh tersimpan di cabang yang tidak sah.
+func (s *customerService) resolveBranchID(ctx context.Context, actor domain.Actor) (*uuid.UUID, error) {
+	if s.db == nil {
 		return nil, nil
 	}
+	code := strings.TrimSpace(actor.BranchCode)
+	if code != "" {
+		var id uuid.UUID
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM branches WHERE code = $1`, code).Scan(&id)
+		if err == nil {
+			return &id, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if actor.RequiresRegisteredBranch() {
+			return nil, domain.ErrBranchNotFound
+		}
+	}
+	if !actor.IsCrossBranch() {
+		return nil, nil
+	}
+	return s.headOfficeBranchID(ctx)
+}
+
+// headOfficeBranchID mengembalikan id cabang kantor pusat (is_head_office), atau
+// nil bila belum ada. Dipakai untuk diatribusikan ke aktor lintas cabang yang
+// tidak punya cabang operasional terdaftar.
+func (s *customerService) headOfficeBranchID(ctx context.Context) (*uuid.UUID, error) {
 	var id uuid.UUID
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM branches WHERE code = $1`, branchCode).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM branches WHERE is_head_office = TRUE ORDER BY code LIMIT 1`).Scan(&id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, domain.ErrBranchNotFound
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -91,7 +121,7 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 	// Cabang nasabah HANYA dari JWT; branch_code pada body diabaikan. Service ini
 	// tidak memegang BranchRepository (konstruktornya dipakai main.go yang tidak
 	// boleh diubah), jadi pemetaan kode->id dibaca langsung dari tabel branches.
-	branchID, err := s.resolveBranchID(ctx, actor.BranchCode)
+	branchID, err := s.resolveBranchID(ctx, actor)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +217,7 @@ func (s *customerService) canReadRecord(ctx context.Context, actor domain.Actor,
 	if actor.BranchCode == "" {
 		return false, nil
 	}
-	branchID, err := s.resolveBranchID(ctx, actor.BranchCode)
+	branchID, err := s.resolveBranchID(ctx, actor)
 	if err != nil {
 		return false, err
 	}

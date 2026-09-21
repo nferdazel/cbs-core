@@ -27,6 +27,10 @@ type makerCheckerService struct {
 	// dengan business_date agar akumulasi batas harian mengaitkannya ke hari bisnis
 	// yang benar, bukan tanggal kalender UTC created_at.
 	dates domain.BusinessDateProvider
+	// branchRepo menyelesaikan kode cabang pembuat menjadi cabang nyata (satu sumber
+	// dengan resolveActorBranch), supaya pengajuan oleh pelaku lintas cabang berkode
+	// 'HO' tidak tersimpan dengan branch_id NULL.
+	branchRepo domain.BranchRepository
 }
 
 func NewMakerCheckerService(
@@ -36,8 +40,29 @@ func NewMakerCheckerService(
 	config domain.SystemConfigService,
 	executors domain.MakerCheckerExecutor,
 	dates domain.BusinessDateProvider,
+	branchRepo domain.BranchRepository,
 ) domain.MakerCheckerService {
-	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config, executors: executors, dates: dates}
+	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config, executors: executors, dates: dates, branchRepo: branchRepo}
+}
+
+// resolveRequestBranchCode menyelesaikan cabang pelaku lewat resolveActorBranch
+// sehingga kode 'HO' yang tidak terdaftar jatuh ke kantor pusat, bukan NULL. Kode
+// cabang yang memang kosong tetap diteruskan apa adanya (data pra-migrasi / batch):
+// memaksakan kantor pusat untuk pelaku tanpa cabang mengubah makna lama. Bila repo
+// belum dipasang (test unit tanpa database), kode aktor diteruskan apa adanya.
+func (s *makerCheckerService) resolveRequestBranchCode(ctx context.Context, actor domain.Actor) (string, error) {
+	code := strings.TrimSpace(actor.BranchCode)
+	if s.branchRepo == nil || code == "" {
+		return actor.BranchCode, nil
+	}
+	branch, err := resolveActorBranch(ctx, s.branchRepo, actor)
+	if err != nil {
+		return "", err
+	}
+	if branch == nil {
+		return actor.BranchCode, nil
+	}
+	return branch.Code, nil
 }
 
 // Threshold membaca ambang persetujuan untuk satu jenis aksi dari system_config.
@@ -76,7 +101,14 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 	payload["maker_id"] = actor.UserID.String()
 	payload["maker_username"] = actor.DisplayName()
 	payload["maker_role"] = string(actor.Role)
-	payload["maker_branch"] = actor.BranchCode
+
+	// Cabang pembuat diselesaikan lewat satu sumber (resolveActorBranch): pelaku
+	// lintas cabang berkode 'HO' diatribusikan ke kantor pusat, bukan NULL.
+	branchCode, err := s.resolveRequestBranchCode(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	payload["maker_branch"] = branchCode
 
 	// Tanggal bisnis ditandai pada pengajuan agar akumulasi batas harian dapat
 	// mengaitkannya ke hari bisnis yang benar tanpa menebak dari tanggal kalender.
@@ -99,7 +131,7 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 		Status:       domain.MakerCheckerPending,
 		MakerID:      actor.UserID.String(),
 		MakerNotes:   input.Notes,
-		BranchCode:   actor.BranchCode,
+		BranchCode:   branchCode,
 		BusinessDate: businessDate,
 		CreatedAt:    now,
 		UpdatedAt:    now,

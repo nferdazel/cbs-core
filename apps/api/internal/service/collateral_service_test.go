@@ -116,12 +116,21 @@ func collateralActor(branch string) domain.Actor {
 	return domain.Actor{UserID: uuid.New(), Username: "ao1", Role: domain.RoleSupervisor, BranchCode: branch}
 }
 
+// collateralBranchRepo menyelesaikan cabang aktor pada test agunan: kode "001"
+// terdaftar, dan kantor pusat (kode "001") menjadi tujuan pelaku lintas cabang.
+func collateralBranchRepo() *stubActorBranchRepo {
+	return &stubActorBranchRepo{
+		byCode: map[string]*domain.Branch{"001": {ID: uuid.New(), Code: "001", IsActive: true}},
+		list:   []domain.Branch{{ID: uuid.New(), Code: "001", Name: "Kantor Pusat", IsHeadOffice: true, IsActive: true}},
+	}
+}
+
 // Tanpa kebijakan di konfigurasi, haircut bawaan 100 dipakai: agunan belum mengurangi
 // eksposur. Ini mengunci janji bahwa rilis modul agunan tidak menggeser angka PPAP.
 func TestCollateralCreate_HaircutBawaanTanpaPengurangan(t *testing.T) {
 	repo := &collateralRepoStub{}
 	audit := &reversalAuditRepo{}
-	svc := NewCollateralService(repo, &collateralConfigStub{}, audit)
+	svc := NewCollateralService(repo, &collateralConfigStub{}, collateralBranchRepo(), audit)
 
 	c, err := svc.Create(context.Background(), collateralInput(), collateralActor("001"))
 	if err != nil {
@@ -148,7 +157,7 @@ func TestCollateralCreate_MemakaiKebijakanHaircutDariKonfigurasi(t *testing.T) {
 	repo := &collateralRepoStub{}
 	audit := &reversalAuditRepo{}
 	config := &collateralConfigStub{values: map[string]string{"collateral.haircut.tanah_bangunan": "80"}}
-	svc := NewCollateralService(repo, config, audit)
+	svc := NewCollateralService(repo, config, collateralBranchRepo(), audit)
 
 	c, err := svc.Create(context.Background(), collateralInput(), collateralActor("001"))
 	if err != nil {
@@ -184,7 +193,7 @@ func TestCollateralCreate_MenolakHaircutDanKebijakanTidakSah(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewCollateralService(&collateralRepoStub{}, &collateralConfigStub{values: tc.config}, &reversalAuditRepo{})
+			svc := NewCollateralService(&collateralRepoStub{}, &collateralConfigStub{values: tc.config}, collateralBranchRepo(), &reversalAuditRepo{})
 			input := collateralInput()
 			input.HaircutPercent = tc.haircut
 
@@ -221,7 +230,7 @@ func TestCollateralCreate_MenolakDataTidakLengkap(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewCollateralService(&collateralRepoStub{}, &collateralConfigStub{}, &reversalAuditRepo{})
+			svc := NewCollateralService(&collateralRepoStub{}, &collateralConfigStub{}, collateralBranchRepo(), &reversalAuditRepo{})
 			input := collateralInput()
 			if tc.ubah != nil {
 				tc.ubah(&input)
@@ -249,7 +258,7 @@ func TestCollateralGetByID_MenyamarkanCabangLain(t *testing.T) {
 	repo := &collateralRepoStub{existing: []domain.LoanCollateral{{
 		ID: id, LoanID: uuid.New(), BranchCode: "999", Status: domain.CollateralActive,
 	}}}
-	svc := NewCollateralService(repo, &collateralConfigStub{}, &reversalAuditRepo{})
+	svc := NewCollateralService(repo, &collateralConfigStub{}, collateralBranchRepo(), &reversalAuditRepo{})
 
 	_, err := svc.GetByID(context.Background(), id, collateralActor("001"))
 	if !errors.Is(err, domain.ErrCollateralNotFound) {
@@ -263,7 +272,7 @@ func TestCollateralListByLoan_MenyaringCabangLain(t *testing.T) {
 		{ID: uuid.New(), LoanID: loanID, BranchCode: "001"},
 		{ID: uuid.New(), LoanID: loanID, BranchCode: "999"},
 	}}
-	svc := NewCollateralService(repo, &collateralConfigStub{}, &reversalAuditRepo{})
+	svc := NewCollateralService(repo, &collateralConfigStub{}, collateralBranchRepo(), &reversalAuditRepo{})
 
 	list, err := svc.ListByLoan(context.Background(), loanID, collateralActor("001"))
 	if err != nil {
@@ -293,7 +302,7 @@ func TestCollateralSummary_MengambilCabangDariAktor(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &collateralRepoStub{}
-			svc := NewCollateralService(repo, &collateralConfigStub{}, &reversalAuditRepo{})
+			svc := NewCollateralService(repo, &collateralConfigStub{}, collateralBranchRepo(), &reversalAuditRepo{})
 			actor := domain.Actor{UserID: uuid.New(), Username: "pegawai", Role: tc.role, BranchCode: tc.branchCode}
 
 			if _, err := svc.Summary(context.Background(), actor); err != nil {

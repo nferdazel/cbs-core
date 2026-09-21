@@ -21,18 +21,22 @@ type collateralService struct {
 	repo      domain.CollateralRepository
 	config    domain.SystemConfigService
 	auditRepo domain.AuditRepository
+	// branchRepo menyelesaikan cabang aktor lewat satu sumber (resolveActorBranch)
+	// agar agunan pelaku lintas cabang tidak tersimpan tanpa branch_id.
+	branchRepo domain.BranchRepository
 }
 
 func NewCollateralService(
 	repo domain.CollateralRepository,
 	config domain.SystemConfigService,
+	branchRepo domain.BranchRepository,
 	auditSinks ...domain.AuditRepository,
 ) domain.CollateralService {
 	var auditRepo domain.AuditRepository
 	if len(auditSinks) > 0 {
 		auditRepo = auditSinks[0]
 	}
-	return &collateralService{repo: repo, config: config, auditRepo: auditRepo}
+	return &collateralService{repo: repo, config: config, auditRepo: auditRepo, branchRepo: branchRepo}
 }
 
 // haircutFor memilih kebijakan haircut: permintaan operator bila diisi, kalau tidak
@@ -126,13 +130,18 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 	if err := collateral.Validate(time.Now().UTC()); err != nil {
 		return nil, err
 	}
-	// Agunan tanpa cabang tidak dapat diatribusikan ke laporan cabang mana pun, jadi
-	// pegawai yang cabangnya tidak diketahui tidak boleh mencatat agunan.
-	if !actor.IsCrossBranch() && strings.TrimSpace(actor.BranchCode) == "" {
+	// Agunan tanpa cabang tidak dapat diatribusikan ke laporan cabang mana pun.
+	// Cabang diselesaikan lewat satu sumber (resolveActorBranch): pelaku lintas
+	// cabang berkode 'HO' jatuh ke kantor pusat, bukan menghasilkan branch_id NULL.
+	branch, err := resolveActorBranch(ctx, s.branchRepo, actor)
+	if err != nil {
+		return nil, fmt.Errorf("cabang aktor tidak valid: %w", err)
+	}
+	if branch == nil {
 		return nil, fmt.Errorf("cabang aktor tidak diketahui, agunan tidak dapat diatribusikan")
 	}
 
-	if err := s.repo.Create(ctx, collateral, actor.BranchCode); err != nil {
+	if err := s.repo.Create(ctx, collateral, branch.Code); err != nil {
 		return nil, err
 	}
 

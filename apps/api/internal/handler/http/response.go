@@ -90,7 +90,17 @@ var businessErrors = []error{
 	domain.ErrDuplicateIdempotencyKey,
 	domain.ErrLedgerUnbalanced,
 	domain.ErrProductNotFound,
+	// Parameter produk bagi hasil yang belum diisi adalah aturan bisnis: pesannya
+	// menyebut apa yang harus dilengkapi bank, bukan detail internal.
+	domain.ErrBagiHasilNisbahMissing,
+	domain.ErrBagiHasilProjectionMissing,
+	domain.ErrBagiHasilNisbahOutOfRange,
+	domain.ErrBagiHasilProjectionOutOfRange,
 	domain.ErrBranchNotFound,
+	domain.ErrBranchCodeExists,
+	domain.ErrBranchNameRequired,
+	domain.ErrBranchHeadOfficeNotAllowed,
+	domain.ErrInvalidBranchCode,
 	domain.ErrLoanNotFound,
 	domain.ErrLoanAlreadyApproved,
 	domain.ErrInvalidBusinessDate,

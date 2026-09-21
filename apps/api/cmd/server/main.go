@@ -93,12 +93,12 @@ func main() {
 	// maker-checker mengeksekusi lewat registry, bukan memegang ledger secara langsung.
 	executors := service.NewExecutorRegistry()
 	mcRepo := postgres.NewMakerCheckerRepository(db)
-	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors, dateRepo)
+	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors, dateRepo, branchRepo)
 	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, dateRepo)
 
 	customerSvc := service.NewCustomerService(db, customerRepo, cipher, referenceGen, auditRepo)
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, configSvc, auditRepo)
-	branchSvc := service.NewBranchService(branchRepo)
+	branchSvc := service.NewBranchService(db, branchRepo, auditRepo)
 	productSvc := service.NewProductService(productRepo)
 	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc, dateRepo, auditRepo)
 
@@ -193,7 +193,7 @@ func main() {
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
-	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, auditRepo)
+	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{

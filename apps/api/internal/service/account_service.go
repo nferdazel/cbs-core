@@ -97,12 +97,6 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	if input.Currency == "" {
 		input.Currency = "IDR"
 	}
-	// Identitas cabang HANYA dari JWT. branch_code pada body request diabaikan
-	// agar pemanggil tidak dapat menulis rekening di cabang lain.
-	if actor.BranchCode == "" {
-		return nil, fmt.Errorf("kode cabang aktor wajib diisi")
-	}
-
 	customer, err := s.customerRepo.GetByID(ctx, input.CustomerID)
 	if err != nil {
 		return nil, fmt.Errorf("nasabah tidak valid: %w", err)
@@ -119,7 +113,11 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 		return nil, fmt.Errorf("produk %s sedang tidak aktif", product.Code)
 	}
 
-	actorBranch, err := s.branchRepo.GetByCode(ctx, actor.BranchCode)
+	// Identitas cabang HANYA dari JWT; branch_code pada body request diabaikan. Aktor
+	// lintas cabang boleh memakai kode kantor pusat yang tidak terdaftar dan
+	// diatribusikan ke kantor pusat, sedangkan peran bercabang biasa tetap wajib punya
+	// cabang terdaftar.
+	actorBranch, err := resolveActorBranch(ctx, s.branchRepo, actor)
 	if err != nil {
 		return nil, fmt.Errorf("cabang tidak valid: %w", err)
 	}
@@ -131,12 +129,15 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	// Rekening mengikuti cabang nasabah. Aktor lintas cabang yang melayani nasabah
 	// cabang lain memakai cabang nasabah itu, bukan cabang aktornya.
 	branch := actorBranch
-	if customer.BranchID != nil && *customer.BranchID != actorBranch.ID {
+	if customer.BranchID != nil && (actorBranch == nil || *customer.BranchID != actorBranch.ID) {
 		customerBranch, err := s.branchRepo.GetByID(ctx, *customer.BranchID)
 		if err != nil {
 			return nil, fmt.Errorf("cabang nasabah tidak valid: %w", err)
 		}
 		branch = customerBranch
+	}
+	if branch == nil {
+		return nil, fmt.Errorf("cabang tidak valid: %w", domain.ErrBranchNotFound)
 	}
 	if !branch.IsActive {
 		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branch.Code)

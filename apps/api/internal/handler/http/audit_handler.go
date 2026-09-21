@@ -44,10 +44,14 @@ const (
 func (h *AuditHandler) RegisterRoutes(r chi.Router) {
 	r.With(middleware.RequirePermission(domain.PermAuditLogsRead)).
 		Get("/audit-logs", h.List)
-	// Batas transaksi adalah konfigurasi sistem, bukan transaksi: izinnya system:config
-	// (hanya Superadmin), bukan izin transaksi. Rute ditempelkan pada RegisterRoutes yang
-	// sudah dipanggil router.go agar berkas itu tidak perlu disentuh.
-	r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+	// Batas transaksi adalah konfigurasi sistem yang hanya dibaca; izinnya
+	// system:config:read (Superadmin, Admin, Supervisor, Auditor), bukan
+	// system:config yang juga membuka penulisan konfigurasi dan menjalankan
+	// EOD/EOM/EOY. Melihat batas tidak berbahaya dan diperlukan pengawas, tetapi
+	// teller/CS/AO tidak berkepentingan dan tetap ditolak. Rute ditempelkan pada
+	// RegisterRoutes yang sudah dipanggil router.go agar berkas itu tidak perlu
+	// disentuh.
+	r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
 		Get("/system/limits", h.ListTransactionLimits)
 }
 
