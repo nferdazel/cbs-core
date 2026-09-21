@@ -163,6 +163,34 @@ func buildBagiHasil(loanID uuid.UUID, p ScheduleParams, term int) ([]LoanSchedul
 	return schedules, totalPayable, first
 }
 
+// ValidateProfitSharingRatio memeriksa nisbah bagi hasil berada pada rentang yang
+// diizinkan skema, yaitu 0 <= n <= 1. Satu sumber kebenaran yang sama dipakai jalur
+// pembentukan jadwal (ProjectBagiHasilMargin) dan jalur pengubahan parameter produk,
+// supaya ambang batasnya tidak pernah bercabang.
+//
+// Nilai 0 berarti parameter belum diisi dan tetap sah disimpan untuk produk
+// non-bagi-hasil; yang menolak nisbah nol adalah ProjectBagiHasilMargin, bukan fungsi
+// ini, karena jadwal bagi hasil tidak boleh dibentuk tanpa nisbah.
+func ValidateProfitSharingRatio(nisbah decimal.Decimal) error {
+	if nisbah.IsNegative() || nisbah.GreaterThan(decimal.NewFromInt(1)) {
+		return ErrBagiHasilNisbahOutOfRange
+	}
+	return nil
+}
+
+// ValidateProjectedRevenueRateAnnual memeriksa proyeksi pendapatan tahunan berada
+// pada rentang yang diizinkan skema, yaitu 0 <= p <= 100 (persen per tahun). Dipakai
+// bersama oleh pembentukan jadwal dan pengubahan parameter produk.
+//
+// Nilai 0 berarti parameter belum diisi dan tetap sah disimpan; ProjectBagiHasilMargin
+// yang menolak proyeksi nol bila jadwal bagi hasil akan dibentuk.
+func ValidateProjectedRevenueRateAnnual(projectedRevenueRateAnnual decimal.Decimal) error {
+	if projectedRevenueRateAnnual.IsNegative() || projectedRevenueRateAnnual.GreaterThan(MaxProjectedRevenueRateAnnual) {
+		return ErrBagiHasilProjectionOutOfRange
+	}
+	return nil
+}
+
 // ProjectBagiHasilMargin menghitung PROYEKSI imbal hasil (Rp) untuk jadwal
 // angsuran akad bagi hasil (mudharabah/musyarakah).
 //
@@ -179,14 +207,14 @@ func ProjectBagiHasilMargin(principal, nisbah, projectedRevenueRateAnnual decima
 	if !nisbah.IsPositive() {
 		return decimal.Zero, ErrBagiHasilNisbahMissing
 	}
-	if nisbah.GreaterThan(decimal.NewFromInt(1)) {
-		return decimal.Zero, ErrBagiHasilNisbahOutOfRange
+	if err := ValidateProfitSharingRatio(nisbah); err != nil {
+		return decimal.Zero, err
 	}
 	if !projectedRevenueRateAnnual.IsPositive() {
 		return decimal.Zero, ErrBagiHasilProjectionMissing
 	}
-	if projectedRevenueRateAnnual.GreaterThan(MaxProjectedRevenueRateAnnual) {
-		return decimal.Zero, ErrBagiHasilProjectionOutOfRange
+	if err := ValidateProjectedRevenueRateAnnual(projectedRevenueRateAnnual); err != nil {
+		return decimal.Zero, err
 	}
 	equivalentRate := nisbah.Mul(projectedRevenueRateAnnual)
 	return RoundToRupiah(interestForTerm(principal, equivalentRate, termMonths)), nil

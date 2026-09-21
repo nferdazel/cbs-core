@@ -27,11 +27,106 @@ var (
 	// batas wajar. Nilai seperti 1200 (maksudnya 12%) adalah salah satuan dan
 	// menghasilkan proyeksi imbal hasil yang tidak masuk akal.
 	ErrBagiHasilProjectionOutOfRange = errors.New("proyeksi pendapatan usaha produk (projected_revenue_rate_annual) harus lebih dari 0 dan maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%")
+
+	// ErrProductParamsEmpty menolak permintaan ubah parameter produk yang tidak
+	// menyertakan satu bidang parameter pun. Payload kosong bukan perubahan yang sah.
+	ErrProductParamsEmpty = errors.New("tidak ada parameter produk yang diubah; sertakan minimal satu parameter")
+	// ErrProductRateNegative menolak suku bunga/margin negatif. Tarif adalah persen
+	// per tahun; nilai negatif tidak punya makna pada kontrak kredit maupun simpanan.
+	ErrProductRateNegative = errors.New("suku bunga/margin tahunan (rate_annual) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
+	// ErrProductAdminFeeNegative menolak biaya administrasi negatif (rupiah).
+	ErrProductAdminFeeNegative = errors.New("biaya administrasi (admin_fee) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	// ErrProductTaxRateNegative menolak tarif pajak negatif (persen).
+	ErrProductTaxRateNegative = errors.New("tarif pajak (tax_rate) tidak boleh negatif; nilai dinyatakan dalam persen")
+	// ErrProductPenaltyRateNegative menolak penalti penarikan dini negatif (persen).
+	ErrProductPenaltyRateNegative = errors.New("tarif penalti penarikan dini (early_withdrawal_penalty_rate) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
+	// ErrProductMinAmountNegative dan ErrProductMaxAmountNegative menolak batas
+	// plafon negatif (rupiah).
+	ErrProductMinAmountNegative = errors.New("batas plafon minimum (min_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	ErrProductMaxAmountNegative = errors.New("batas plafon maksimum (max_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	// ErrProductAmountRange menjaga hubungan min/max: 0 pada max_amount berarti tanpa
+	// batas; selain itu maksimum harus >= minimum. Ini cermin constraint database
+	// chk_min_max_amount, ditegakkan lebih dulu agar pesannya jelas dan bukan galat SQL.
+	ErrProductAmountRange = errors.New("batas plafon maksimum (max_amount) harus 0 (tanpa batas) atau lebih besar/sama dengan minimum (min_amount); nilai dalam rupiah")
+	// ErrProductTermNegative menolak tenor negatif (bulan).
+	ErrProductTermNegative = errors.New("tenor minimum/maksimum (min_term_months/max_term_months) tidak boleh negatif; nilai dinyatakan dalam bulan")
+	// ErrProductTermRange menolak tenor minimum yang melebihi maksimumnya.
+	ErrProductTermRange = errors.New("tenor minimum (min_term_months) tidak boleh melebihi tenor maksimum (max_term_months); nilai dinyatakan dalam bulan")
+
+	// ErrProductRateOutOfRange/ErrProductTaxRateOutOfRange/ErrProductPenaltyRateOutOfRange
+	// menolak tarif berbasis persen di atas batas wajar. Nilai seperti 1e9 (maksudnya
+	// 1%) adalah salah satuan dan langsung masuk perhitungan bunga/pajak/penalti.
+	ErrProductRateOutOfRange    = errors.New("suku bunga/margin tahunan (rate_annual) maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%")
+	ErrProductTaxRateOutOfRange = errors.New("tarif pajak (tax_rate) maksimal 100; nilai dinyatakan dalam persen, mis. 20 untuk 20%")
+	// ErrProductPenaltyRateOutOfRange: penalti penarikan dini dinyatakan persen per tahun.
+	ErrProductPenaltyRateOutOfRange = errors.New("tarif penalti penarikan dini (early_withdrawal_penalty_rate) maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 1,5 untuk 1,5%")
+	// ErrProductAdminFeeOutOfRange menolak biaya administrasi yang jelas salah satuan.
+	// Batasnya sengaja longgar (rupiah); ini jaring pengaman, bukan penentu harga.
+	ErrProductAdminFeeOutOfRange = errors.New("biaya administrasi (admin_fee) melebihi batas wajar; nilai dinyatakan dalam rupiah")
 )
 
 // MaxProjectedRevenueRateAnnual adalah batas atas proyeksi pendapatan tahunan usaha
 // yang dibiayai, dalam persen. Di atas 100% per tahun bukan proyeksi yang wajar.
 var MaxProjectedRevenueRateAnnual = decimal.NewFromInt(100)
+
+// MaxProductPercentRate adalah batas atas tarif produk berbasis persen
+// (rate_annual, tax_rate, early_withdrawal_penalty_rate), sejalan dengan batas
+// proyeksi pendapatan usaha. Di atas 100% bukan tarif yang wajar dan hampir pasti
+// salah satuan.
+var MaxProductPercentRate = decimal.NewFromInt(100)
+
+// MaxProductAdminFee adalah batas atas biaya administrasi (rupiah). Sengaja longgar:
+// hanya jaring pengaman terhadap nilai yang jelas salah satuan, bukan penentu harga
+// jasa, agar parameter produk yang sah tidak ikut tertolak.
+var MaxProductAdminFee = decimal.NewFromInt(1_000_000_000_000)
+
+// ValidateProductRateAnnual memeriksa suku bunga/margin tahunan berada pada 0..100
+// (persen per tahun). Nilai negatif tetap memakai sentinel lama agar pesannya tidak
+// berubah; batas atas baru mencegah nilai tak masuk akal seperti 1e9.
+func ValidateProductRateAnnual(v decimal.Decimal) error {
+	if v.IsNegative() {
+		return ErrProductRateNegative
+	}
+	if v.GreaterThan(MaxProductPercentRate) {
+		return ErrProductRateOutOfRange
+	}
+	return nil
+}
+
+// ValidateProductTaxRate memeriksa tarif pajak berada pada 0..100 (persen).
+func ValidateProductTaxRate(v decimal.Decimal) error {
+	if v.IsNegative() {
+		return ErrProductTaxRateNegative
+	}
+	if v.GreaterThan(MaxProductPercentRate) {
+		return ErrProductTaxRateOutOfRange
+	}
+	return nil
+}
+
+// ValidateProductEarlyWithdrawalPenaltyRate memeriksa penalti penarikan dini berada
+// pada 0..100 (persen per tahun).
+func ValidateProductEarlyWithdrawalPenaltyRate(v decimal.Decimal) error {
+	if v.IsNegative() {
+		return ErrProductPenaltyRateNegative
+	}
+	if v.GreaterThan(MaxProductPercentRate) {
+		return ErrProductPenaltyRateOutOfRange
+	}
+	return nil
+}
+
+// ValidateProductAdminFee memeriksa biaya administrasi tidak negatif dan tidak
+// melewati batas wajar (rupiah).
+func ValidateProductAdminFee(v decimal.Decimal) error {
+	if v.IsNegative() {
+		return ErrProductAdminFeeNegative
+	}
+	if v.GreaterThan(MaxProductAdminFee) {
+		return ErrProductAdminFeeOutOfRange
+	}
+	return nil
+}
 
 type COABook string
 
@@ -158,6 +253,43 @@ type BankingProduct struct {
 	IsActive bool `json:"is_active"`
 }
 
+// UpdateProductParamsInput memuat parameter produk yang boleh diubah lewat API.
+//
+// Sengaja TIDAK memuat identitas produk (id, code, name, family, book) maupun jenis
+// perhitungannya (profit_scheme, schedule_method) dan lifecycle (is_active): bidang
+// itu menentukan "produk apa ini" dan tidak boleh bergeser di bawah kaki transaksi
+// yang sudah ada. allow_partial_payment juga tidak diubah di sini karena mengubah
+// perilaku pembayaran yang sudah berjalan, bukan parameter tarif.
+//
+// Semua bidang memakai pointer agar "tidak dikirim" (nil) berbeda dari "diisi nol",
+// sehingga payload parsing tidak menimpa nilai yang tidak disebut pemanggil.
+type UpdateProductParamsInput struct {
+	RateAnnual                 *decimal.Decimal `json:"rate_annual,omitempty"`
+	ProfitSharingRatio         *decimal.Decimal `json:"profit_sharing_ratio,omitempty"`
+	ProjectedRevenueRateAnnual *decimal.Decimal `json:"projected_revenue_rate_annual,omitempty"`
+	MinAmount                  *decimal.Decimal `json:"min_amount,omitempty"`
+	MaxAmount                  *decimal.Decimal `json:"max_amount,omitempty"`
+	MinTermMonths              *int             `json:"min_term_months,omitempty"`
+	MaxTermMonths              *int             `json:"max_term_months,omitempty"`
+	AdminFee                   *decimal.Decimal `json:"admin_fee,omitempty"`
+	TaxRate                    *decimal.Decimal `json:"tax_rate,omitempty"`
+	EarlyWithdrawalPenaltyRate *decimal.Decimal `json:"early_withdrawal_penalty_rate,omitempty"`
+}
+
+// IsEmpty melaporkan tidak ada satu parameter pun yang disertakan.
+func (in UpdateProductParamsInput) IsEmpty() bool {
+	return in.RateAnnual == nil &&
+		in.ProfitSharingRatio == nil &&
+		in.ProjectedRevenueRateAnnual == nil &&
+		in.MinAmount == nil &&
+		in.MaxAmount == nil &&
+		in.MinTermMonths == nil &&
+		in.MaxTermMonths == nil &&
+		in.AdminFee == nil &&
+		in.TaxRate == nil &&
+		in.EarlyWithdrawalPenaltyRate == nil
+}
+
 // JournalMappingRule adalah satu sisi jurnal untuk sebuah peristiwa produk.
 type JournalMappingRule struct {
 	Event        PostingEvent   `json:"event"`
@@ -178,8 +310,25 @@ type ProductRepository interface {
 	GetMapping(ctx context.Context, productID uuid.UUID, event PostingEvent) ([]JournalMappingRule, error)
 }
 
+// ProductParamRepository adalah jalur tulis parameter produk. Dipisahkan dari
+// ProductRepository yang murni baca agar layanan lain yang hanya membaca produk
+// tidak ikut terpaksa menyediakan operasi tulis pada test gandanya.
+type ProductParamRepository interface {
+	ProductRepository
+	// GetByCodeTx membaca produk di dalam transaksi penulisan dan mengunci barisnya
+	// (SELECT ... FOR UPDATE), sehingga nilai before yang dibandingkan dan diaudit
+	// mencerminkan baris yang benar-benar ditimpa, bukan potret di luar transaksi.
+	GetByCodeTx(ctx context.Context, tx any, code string) (*BankingProduct, error)
+	// UpdateParamsTx menyimpan parameter produk. Bila tx diberikan, penulisan ikut
+	// transaksi bisnis sehingga perubahan dan auditnya sukses/gagal bersama-sama.
+	UpdateParamsTx(ctx context.Context, tx any, p *BankingProduct) error
+}
+
 type ProductService interface {
 	ListProducts(ctx context.Context) ([]BankingProduct, error)
 	GetProduct(ctx context.Context, id uuid.UUID) (*BankingProduct, error)
 	GetMapping(ctx context.Context, productID uuid.UUID, event PostingEvent) ([]JournalMappingRule, error)
+	// UpdateParams mengubah parameter produk berdasarkan kode. Identitas produk tidak
+	// dapat diubah dan produk tidak dapat dihapus lewat jalur ini.
+	UpdateParams(ctx context.Context, code string, input UpdateProductParamsInput, actor Actor) (*BankingProduct, error)
 }

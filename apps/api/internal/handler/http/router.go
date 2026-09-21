@@ -176,6 +176,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.ProductHandler.List)
 				r.With(middleware.RequirePermission(domain.PermProductsRead)).
 					Get("/{id}", p.ProductHandler.GetByID)
+				// Perubahan parameter produk (suku bunga, nisbah, proyeksi pendapatan,
+				// batas plafon/tenor, biaya) adalah fungsi administratif. Dijaga izin
+				// pengelolaan data master yang hanya dipegang ADMIN dan SUPERADMIN;
+				// identitas produk tidak diubah lewat rute ini.
+				r.With(middleware.RequirePermission(domain.PermCOAManage)).
+					Put("/{code}", p.ProductHandler.UpdateParams)
 			})
 
 			// ── Accounts ──

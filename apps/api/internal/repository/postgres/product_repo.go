@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -72,6 +73,88 @@ func (r *ProductRepository) GetByCode(ctx context.Context, code string) (*domain
 		return nil, domain.ErrProductNotFound
 	}
 	return p, err
+}
+
+// queryRower menyatukan *sql.DB dan *sql.Tx agar pembacaan produk bisa mengikuti
+// transaksi penulisan.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// GetByCodeTx membaca produk DI DALAM transaksi penulisan dengan row lock
+// (SELECT ... FOR UPDATE). Nilai yang dikembalikan adalah keadaan baris yang
+// benar-benar ditimpa, sehingga perbandingan before->after pada audit tidak basi
+// saat dua permintaan datang bersamaan.
+func (r *ProductRepository) GetByCodeTx(ctx context.Context, tx any, code string) (*domain.BankingProduct, error) {
+	var q queryRower = r.db
+	if tx != nil {
+		sqlTx, ok := tx.(*sql.Tx)
+		if !ok {
+			return nil, fmt.Errorf("konteks transaksi produk tidak valid")
+		}
+		q = sqlTx
+	}
+	row := q.QueryRowContext(ctx, `SELECT `+productColumns+` FROM banking_products WHERE code = $1 FOR UPDATE`, code)
+	p, err := scanProduct(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrProductNotFound
+	}
+	return p, err
+}
+
+// UpdateParamsTx menyimpan parameter produk yang boleh diubah. Kolom identitas
+// (code, name, family, book, profit_scheme, schedule_method) dan is_active sengaja
+// tidak ikut di-SET sehingga tidak ada jalur yang mengubahnya dari sini.
+//
+// Bila tx diberikan, UPDATE ikut transaksi bisnis yang dibuka service, sehingga
+// perubahan dan audit log-nya berhasil atau gagal bersama-sama.
+func (r *ProductRepository) UpdateParamsTx(ctx context.Context, tx any, p *domain.BankingProduct) error {
+	var exec execer = r.db
+	if tx != nil {
+		sqlTx, ok := tx.(*sql.Tx)
+		if !ok {
+			return fmt.Errorf("konteks transaksi produk tidak valid")
+		}
+		exec = sqlTx
+	}
+
+	res, err := exec.ExecContext(ctx, `
+		UPDATE banking_products SET
+			rate_annual = $1,
+			profit_sharing_ratio = $2,
+			projected_revenue_rate_annual = $3,
+			min_amount = $4,
+			max_amount = $5,
+			min_term_months = $6,
+			max_term_months = $7,
+			admin_fee = $8,
+			tax_rate = $9,
+			early_withdrawal_penalty_rate = $10,
+			updated_at = NOW()
+		WHERE code = $11`,
+		p.RateAnnual,
+		p.ProfitSharingRatio,
+		p.ProjectedRevenueRateAnnual,
+		p.MinAmount,
+		p.MaxAmount,
+		p.MinTermMonths,
+		p.MaxTermMonths,
+		p.AdminFee,
+		p.TaxRate,
+		p.EarlyWithdrawalPenaltyRate,
+		p.Code,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrProductNotFound
+	}
+	return nil
 }
 
 func (r *ProductRepository) GetMapping(ctx context.Context, productID uuid.UUID, event domain.PostingEvent) ([]domain.JournalMappingRule, error) {

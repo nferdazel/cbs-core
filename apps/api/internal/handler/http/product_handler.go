@@ -1,9 +1,13 @@
 package http
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -38,4 +42,45 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, http.StatusOK, "detail produk", product)
+}
+
+// UpdateParams mengubah parameter produk (tarif, nisbah, batas, biaya) berdasarkan
+// kode produk. Otorisasi ada di rute; handler hanya merapikan masukan dan memetakan
+// error bisnis ke status HTTP.
+//
+// Decoder menolak bidang tak dikenal, sehingga payload yang mencoba mengubah
+// identitas produk (mis. code, family, book, profit_scheme) ditolak 422 alih-alih
+// diam-diam diabaikan.
+func (h *ProductHandler) UpdateParams(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	code := strings.TrimSpace(chi.URLParam(r, "code"))
+	if code == "" {
+		Error(w, http.StatusUnprocessableEntity, "kode produk wajib diisi")
+		return
+	}
+
+	var input domain.UpdateProductParamsInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		Error(w, http.StatusUnprocessableEntity, "payload parameter produk tidak valid: "+err.Error())
+		return
+	}
+
+	product, err := h.service.UpdateParams(r.Context(), code, input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, domain.ErrProductNotFound) {
+			status = http.StatusNotFound
+		}
+		Fail(w, r, status, err)
+		return
+	}
+	Success(w, http.StatusOK, "parameter produk diperbarui", product)
 }

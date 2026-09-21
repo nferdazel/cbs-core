@@ -70,6 +70,32 @@ func TestProjectBagiHasilMarginMenolakNilaiDiLuarRentang(t *testing.T) {
 	}
 }
 
+// Validator rentang dipakai bersama jalur jadwal dan jalur ubah parameter produk.
+// Nilai nol sah pada tingkat skema (berarti belum diisi); yang menolak nol saat
+// membentuk jadwal adalah ProjectBagiHasilMargin, bukan validator ini.
+func TestValidateParameterBagiHasil(t *testing.T) {
+	for _, n := range []decimal.Decimal{decimal.Zero, decimal.RequireFromString("0.4"), decimal.NewFromInt(1)} {
+		if err := ValidateProfitSharingRatio(n); err != nil {
+			t.Fatalf("nisbah %s harus sah: %v", n, err)
+		}
+	}
+	for _, n := range []decimal.Decimal{decimal.RequireFromString("-0.1"), decimal.NewFromInt(40)} {
+		if err := ValidateProfitSharingRatio(n); !errors.Is(err, ErrBagiHasilNisbahOutOfRange) {
+			t.Fatalf("nisbah %s: err = %v, ingin ErrBagiHasilNisbahOutOfRange", n, err)
+		}
+	}
+	for _, p := range []decimal.Decimal{decimal.Zero, decimal.NewFromInt(12), decimal.NewFromInt(100)} {
+		if err := ValidateProjectedRevenueRateAnnual(p); err != nil {
+			t.Fatalf("proyeksi %s harus sah: %v", p, err)
+		}
+	}
+	for _, p := range []decimal.Decimal{decimal.RequireFromString("-1"), decimal.NewFromInt(1200)} {
+		if err := ValidateProjectedRevenueRateAnnual(p); !errors.Is(err, ErrBagiHasilProjectionOutOfRange) {
+			t.Fatalf("proyeksi %s: err = %v, ingin ErrBagiHasilProjectionOutOfRange", p, err)
+		}
+	}
+}
+
 // Produk konvensional (bunga tetap) dan murabahah (margin nominal) tidak boleh
 // berubah karena kolom proyeksi hanya dibaca jalur bagi hasil.
 func TestBuildScheduleKonvensionalDanMurabahahTidakBerubah(t *testing.T) {
