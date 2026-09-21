@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,38 @@ var (
 	ErrDuplicateIDCard     = errors.New("NIK sudah terdaftar")
 	ErrDuplicateEmail      = errors.New("email sudah terdaftar")
 	ErrCipherNotConfigured = errors.New("kunci enkripsi data nasabah belum dikonfigurasi")
+	// ErrInvalidEmail menandai email yang formatnya tidak wajar. Email opsional, jadi
+	// error ini hanya muncul bila field memang diisi.
+	ErrInvalidEmail = errors.New("format email tidak valid")
 )
+
+// ValidateEmail memeriksa format email yang DIISI. Email nasabah bersifat opsional,
+// sehingga string kosong (atau hanya spasi) dianggap sah dan tidak diproses lebih lanjut.
+//
+// Pemeriksaannya sengaja sederhana dan bukan RFC 5322 penuh: tujuannya menangkap salah
+// ketik yang jelas (tanpa "@", domain tanpa titik, ada spasi), bukan memutuskan alamat
+// eksotis yang jarang dipakai. Menolak terlalu banyak alamat sah lebih merugikan teller.
+func ValidateEmail(email string) error {
+	trimmed := strings.TrimSpace(email)
+	if trimmed == "" {
+		return nil
+	}
+	if strings.ContainsAny(trimmed, " \t\r\n") {
+		return ErrInvalidEmail
+	}
+	at := strings.LastIndex(trimmed, "@")
+	if at <= 0 || at == len(trimmed)-1 {
+		return ErrInvalidEmail
+	}
+	local, domainPart := trimmed[:at], trimmed[at+1:]
+	if strings.Contains(local, "@") || strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") {
+		return ErrInvalidEmail
+	}
+	if !strings.Contains(domainPart, ".") {
+		return ErrInvalidEmail
+	}
+	return nil
+}
 
 // Customer menyatukan data pribadi. Nilai pribadi (nama, NIK, email, telepon, alamat)
 // disimpan terenkripsi di database; struct ini membawa nilai yang sudah didekripsi

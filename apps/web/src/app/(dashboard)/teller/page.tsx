@@ -19,6 +19,7 @@ import { DataTable, Column } from "@/components/ui/DataTable";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PrintButton } from "@/components/ui/PrintButton";
 
 type TrxType = "deposit" | "withdraw" | "transfer";
 
@@ -273,6 +274,21 @@ export default function TellerPage() {
                     },
                   ]}
                 />
+                {/* Transfer tidak punya dokumen slip; hanya setoran/penarikan. */}
+                {type !== "transfer" && result.reference_number && (
+                  <div className="mt-3">
+                    <PrintButton
+                      url={`/documents/${
+                        type === "deposit" ? "deposit-slip" : "withdrawal-slip"
+                      }/${encodeURIComponent(result.reference_number)}`}
+                      label={
+                        type === "deposit"
+                          ? "Cetak Slip Setoran"
+                          : "Cetak Slip Penarikan"
+                      }
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

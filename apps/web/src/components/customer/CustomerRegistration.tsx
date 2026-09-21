@@ -25,6 +25,12 @@ type FieldKey = "full_name" | "id_card_number" | "email";
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 /**
+ * Email nasabah opsional. Pemeriksaan bentuk hanya dilakukan bila field diisi,
+ * supaya form tidak memaksa teller melengkapi data yang belum ada.
+ */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
  * Memetakan pesan galat API ke field formulir. API mengirim satu pesan teks, bukan
  * galat per field, jadi pencocokan dilakukan dari kata kunci yang memang dipakai
  * service: "NIK sudah terdaftar", "email sudah terdaftar", "nama lengkap wajib diisi".
@@ -81,10 +87,13 @@ export function CustomerRegistration({
     .filter(Boolean)
     .join(" ");
 
-  const validate = (): FieldErrors => {    const errors: FieldErrors = {};
+  const validate = (): FieldErrors => {
+    const errors: FieldErrors = {};
     if (!fullName.trim()) errors.full_name = t.customerRegistration.requiredFullName;
     if (!idCardNumber.trim()) errors.id_card_number = t.customerRegistration.requiredIdCard;
-    if (!email.trim()) errors.email = t.customerRegistration.requiredEmail;
+    if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
+      errors.email = t.customerRegistration.invalidEmail;
+    }
     return errors;
   };
 
@@ -93,7 +102,8 @@ export function CustomerRegistration({
     const errors = validate();
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setFormError("Lengkapi field wajib sebelum melanjutkan.");
+      // Bisa berupa field wajib yang kosong atau format email yang salah.
+      setFormError("Periksa kembali data yang ditandai.");
       return;
     }
     setFormError(null);
@@ -207,7 +217,7 @@ export function CustomerRegistration({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label={t.customerRegistration.email}
+              label={`${t.customerRegistration.email} (${t.customerRegistration.optionalSuffix})`}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -259,7 +269,7 @@ export function CustomerRegistration({
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-600">{t.customerRegistration.email}</dt>
-                <dd className="text-right text-ink-900">{email.trim()}</dd>
+                <dd className="text-right text-ink-900">{email.trim() || "-"}</dd>
               </div>
             </dl>
           </>

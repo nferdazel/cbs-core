@@ -52,9 +52,15 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
+	// Blind index kosong disimpan sebagai NULL, bukan string kosong. Indeks unik
+	// email_index bersifat parsial (WHERE email_index IS NOT NULL); menyimpan ""
+	// akan membuat nasabah kedua tanpa email bertabrakan. Email opsional, jadi kolom
+	// ini harus benar-benar kosong saat tidak ada.
+	idCardIndex := sql.NullString{String: c.IDCardIndex, Valid: c.IDCardIndex != ""}
+	emailIndex := sql.NullString{String: c.EmailIndex, Valid: c.EmailIndex != ""}
 	_, err = exec.ExecContext(ctx, query,
 		c.ID, c.CIFNumber, c.FullNameEnc, c.IDCardNumberEnc, c.EmailEnc,
-		c.PhoneNumberEnc, c.AddressEnc, c.IDCardIndex, c.EmailIndex,
+		c.PhoneNumberEnc, c.AddressEnc, idCardIndex, emailIndex,
 		c.Status, c.BranchID, metaJSON, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {

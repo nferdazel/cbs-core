@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -163,6 +164,38 @@ func (s *reportService) GetBalanceSheet(ctx context.Context, asOf time.Time, boo
 		return nil, err
 	}
 	return &report, nil
+}
+
+// ListDueObligations menggabungkan angsuran kredit dan deposito berjangka yang
+// jatuh tempo dalam withinDays hari ke depan, termasuk yang sudah lewat, lalu
+// mengurutkannya dari tanggal terdekat. Pengurutan dilakukan di sini agar kedua
+// sumber data tampil dalam satu urutan yang konsisten.
+func (s *reportService) ListDueObligations(ctx context.Context, asOf time.Time, withinDays int, actor domain.Actor) ([]domain.DueObligation, error) {
+	if withinDays < 0 {
+		withinDays = 0
+	}
+	base := time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC)
+	until := base.AddDate(0, 0, withinDays)
+
+	installments, err := s.reportRepo.ListDueLoanInstallments(ctx, base, until, actor)
+	if err != nil {
+		return nil, err
+	}
+	deposits, err := s.reportRepo.ListDueDeposits(ctx, base, until, actor)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]domain.DueObligation, 0, len(installments)+len(deposits))
+	items = append(items, installments...)
+	items = append(items, deposits...)
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].DueDate.Equal(items[j].DueDate) {
+			return items[i].Kind < items[j].Kind
+		}
+		return items[i].DueDate.Before(items[j].DueDate)
+	})
+	return items, nil
 }
 
 // GetCashFlow menyusun arus kas periode dari jurnal pada akun kas/bank.

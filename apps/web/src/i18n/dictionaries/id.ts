@@ -35,6 +35,7 @@ export const dictionaryID = {
     kredit: "Kredit",
     pembiayaan: "Pembiayaan",
     deposito: "Deposito",
+    jatuhTempo: "Jatuh Tempo",
     ppap: "PPAP",
     tutupHari: "Tutup Hari",
     nasabah: "Nasabah",
@@ -98,7 +99,7 @@ export const dictionaryID = {
     closeButton: "Tutup",
     requiredFullName: "Nama lengkap wajib diisi.",
     requiredIdCard: "NIK wajib diisi.",
-    requiredEmail: "Email wajib diisi.",
+    invalidEmail: "Format email tidak valid. Contoh: nama@contoh.co.id.",
   },
   accountOpening: {
     openButton: "Buka Rekening",

@@ -10,7 +10,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type stubReportRepo struct{}
+type stubReportRepo struct {
+	// dueInstallments & dueDeposits dipakai test daftar jatuh tempo.
+	dueInstallments []domain.DueObligation
+	dueDeposits     []domain.DueObligation
+}
 
 func (s *stubReportRepo) GetTrialBalance(ctx context.Context) ([]domain.TrialBalanceItem, error) {
 	return []domain.TrialBalanceItem{
@@ -60,6 +64,14 @@ func (s *stubReportRepo) CashFlow(ctx context.Context, from, to time.Time, book 
 	return domain.CashFlow{}, nil
 }
 
+func (s *stubReportRepo) ListDueLoanInstallments(ctx context.Context, asOf, until time.Time, actor domain.Actor) ([]domain.DueObligation, error) {
+	return s.dueInstallments, nil
+}
+
+func (s *stubReportRepo) ListDueDeposits(ctx context.Context, asOf, until time.Time, actor domain.Actor) ([]domain.DueObligation, error) {
+	return s.dueDeposits, nil
+}
+
 func TestGenerateTrialBalance(t *testing.T) {
 	svc := service.NewReportService(&stubReportRepo{})
 	report, err := svc.GenerateTrialBalance(context.Background())
@@ -99,5 +111,38 @@ func TestGenerateIncomeStatement(t *testing.T) {
 	expectedNet := decimal.NewFromInt(15000000)
 	if !report.NetIncome.Equal(expectedNet) {
 		t.Fatalf("expected Net Income 15M, got %s", report.NetIncome.String())
+	}
+}
+
+// Daftar jatuh tempo menggabungkan angsuran kredit dan deposito lalu mengurutkan
+// dari tanggal terdekat, termasuk yang sudah lewat.
+func TestListDueObligationsMergesAndSorts(t *testing.T) {
+	base := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	repo := &stubReportRepo{
+		dueInstallments: []domain.DueObligation{
+			{Kind: domain.DueObligationLoanInstallment, Reference: "L-1", DueDate: base.AddDate(0, 0, 5)},
+			{Kind: domain.DueObligationLoanInstallment, Reference: "L-2", DueDate: base.AddDate(0, 0, -3), Overdue: true},
+		},
+		dueDeposits: []domain.DueObligation{
+			{Kind: domain.DueObligationDepositMaturity, Reference: "D-1", DueDate: base.AddDate(0, 0, 1)},
+		},
+	}
+	svc := service.NewReportService(repo)
+
+	items, err := svc.ListDueObligations(context.Background(), base, 30, domain.Actor{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("ingin 3 kewajiban, dapat %d", len(items))
+	}
+	wantOrder := []string{"L-2", "D-1", "L-1"}
+	for i, want := range wantOrder {
+		if items[i].Reference != want {
+			t.Fatalf("urutan ke-%d = %s, ingin %s", i, items[i].Reference, want)
+		}
+	}
+	if !items[0].Overdue {
+		t.Fatal("kewajiban yang sudah lewat harus ditandai overdue")
 	}
 }

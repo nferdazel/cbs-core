@@ -33,8 +33,14 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.FullName == "" || input.IDCardNumber == "" || input.Email == "" {
-		Error(w, http.StatusBadRequest, "full_name, id_card_number, and email are required")
+	// Email opsional: nasabah tanpa email tetap boleh didaftarkan. Bila diisi,
+	// formatnya diperiksa di sini sebelum masuk ke service.
+	if input.FullName == "" || input.IDCardNumber == "" {
+		Error(w, http.StatusBadRequest, "full_name and id_card_number are required")
+		return
+	}
+	if err := domain.ValidateEmail(input.Email); err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
 		return
 	}
 

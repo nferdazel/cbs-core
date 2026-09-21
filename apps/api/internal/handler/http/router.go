@@ -251,6 +251,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/income-statement", p.ReportHandler.IncomeStatement)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/cash-flow", p.ReportHandler.CashFlow)
+				// Daftar jatuh tempo operasional untuk teller: angsuran kredit dan
+				// deposito berjangka. Baca saja, cabang dibatasi oleh service.
+				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
+					Get("/due-obligations", p.ReportHandler.DueObligations)
 			})
 
 			// ── Third-Party Integration Gateway (OJK SLIK / CBAS & Dukcapil) ──

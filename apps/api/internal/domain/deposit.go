@@ -98,6 +98,23 @@ type PlaceDepositInput struct {
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 }
 
+// DepositPreview adalah hasil perhitungan sebelum penempatan benar-benar disimpan.
+// Angkanya berasal dari jalur perhitungan yang sama dengan akrual harian, sehingga
+// teller melihat proyeksi yang konsisten dengan yang nanti diposting.
+type DepositPreview struct {
+	PlacementAmount  decimal.Decimal `json:"placement_amount"`
+	TermMonths       int             `json:"term_months"`
+	StartDate        time.Time       `json:"start_date"`
+	MaturityDate     time.Time       `json:"maturity_date"`
+	ProfitType       ProfitType      `json:"profit_type"`
+	ProfitRate       decimal.Decimal `json:"profit_rate"`
+	YieldRate        decimal.Decimal `json:"yield_rate"`
+	TaxRate          decimal.Decimal `json:"tax_rate"`
+	EstimatedProfit  decimal.Decimal `json:"estimated_profit"`
+	EstimatedTax     decimal.Decimal `json:"estimated_tax"`
+	MaturityProceeds decimal.Decimal `json:"maturity_proceeds"`
+}
+
 // WithdrawDepositInput adalah body permintaan pencairan. DepositID opsional bila
 // identitas deposito diambil dari path.
 type WithdrawDepositInput struct {
@@ -126,6 +143,9 @@ type DepositRepository interface {
 
 type DepositService interface {
 	Place(ctx context.Context, input PlaceDepositInput, actor Actor) (*Deposit, error)
+	// Preview menghitung proyeksi tanpa menyimpan apa pun, untuk diperiksa teller
+	// sebelum menekan simpan. Memakai fungsi perhitungan yang sama dengan akrual.
+	Preview(ctx context.Context, input PlaceDepositInput, actor Actor) (*DepositPreview, error)
 	Accrue(ctx context.Context, depositID uuid.UUID, asOf time.Time, actor Actor) (*Deposit, error)
 	MatureOrWithdraw(ctx context.Context, depositID uuid.UUID, actor Actor) (*Deposit, error)
 	RunARO(ctx context.Context, asOf time.Time, actor Actor) (int, error)

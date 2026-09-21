@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -126,6 +127,33 @@ func NatureOf(t COAType) BalanceType {
 	}
 }
 
+// --- Daftar jatuh tempo operasional ---
+
+// DueObligationKind membedakan sumber kewajiban pada daftar jatuh tempo.
+type DueObligationKind string
+
+const (
+	DueObligationLoanInstallment DueObligationKind = "LOAN_INSTALLMENT"
+	DueObligationDepositMaturity DueObligationKind = "DEPOSIT_MATURITY"
+)
+
+// DueObligation adalah satu kewajiban yang akan atau sudah jatuh tempo: angsuran
+// kredit yang belum dibayar atau deposito berjangka yang mendekati jatuh tempo.
+// Diurutkan dari tanggal terdekat oleh service sehingga teller melihat prioritas.
+type DueObligation struct {
+	Kind       DueObligationKind `json:"kind"`
+	Reference  string            `json:"reference"` // nomor kredit atau nomor rekening deposito
+	CustomerID uuid.UUID         `json:"customer_id"`
+	DueDate    time.Time         `json:"due_date"`
+	Amount     decimal.Decimal   `json:"amount"`
+	Overdue    bool              `json:"overdue"`
+	// DaysRemaining negatif bila tanggalnya sudah lewat.
+	DaysRemaining int `json:"days_remaining"`
+	// InstallmentNo hanya terisi untuk angsuran kredit.
+	InstallmentNo int    `json:"installment_no,omitempty"`
+	Status        string `json:"status"`
+}
+
 // --- Interfaces ---
 
 type ReportRepository interface {
@@ -137,6 +165,10 @@ type ReportRepository interface {
 	IncomeStatement(ctx context.Context, from, to time.Time, book string) (IncomeStatement, error)
 	BalanceSheet(ctx context.Context, asOf time.Time, book string) (BalanceSheet, error)
 	CashFlow(ctx context.Context, from, to time.Time, book string) (CashFlow, error)
+
+	// Daftar jatuh tempo operasional; dibatasi cabang aktor lewat Actor.
+	ListDueLoanInstallments(ctx context.Context, asOf, until time.Time, actor Actor) ([]DueObligation, error)
+	ListDueDeposits(ctx context.Context, asOf, until time.Time, actor Actor) ([]DueObligation, error)
 }
 
 type ReportService interface {
@@ -149,4 +181,8 @@ type ReportService interface {
 	GetIncomeStatement(ctx context.Context, from, to time.Time, book string) (*IncomeStatement, error)
 	GetBalanceSheet(ctx context.Context, asOf time.Time, book string) (*BalanceSheet, error)
 	GetCashFlow(ctx context.Context, from, to time.Time, book string) (*CashFlow, error)
+
+	// ListDueObligations menggabungkan angsuran kredit dan deposito yang jatuh
+	// tempo dalam withinDays hari (termasuk yang sudah lewat), terdekat lebih dulu.
+	ListDueObligations(ctx context.Context, asOf time.Time, withinDays int, actor Actor) ([]DueObligation, error)
 }

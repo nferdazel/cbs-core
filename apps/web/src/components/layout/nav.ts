@@ -5,6 +5,7 @@ import {
   Briefcase,
   Building2,
   CalendarCheck,
+  CalendarClock,
   CheckSquare,
   CreditCard,
   HandCoins,
@@ -44,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/teller", labelKey: "teller", icon: Wallet },
       { href: "/transaksi", labelKey: "transaksi", icon: CreditCard },
       { href: "/deposito", labelKey: "deposito", icon: PiggyBank },
+      { href: "/jatuh-tempo", labelKey: "jatuhTempo", icon: CalendarClock },
       { href: "/ppap", labelKey: "ppap", icon: ShieldCheck },
       {
         href: "/tutup-hari",

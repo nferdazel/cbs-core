@@ -3,10 +3,12 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 )
 
 type ReportHandler struct {
@@ -143,4 +145,37 @@ func (h *ReportHandler) CashFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, http.StatusOK, "Cash Flow report generated", report)
+}
+
+// DueObligations handles GET /api/v1/reports/due-obligations.
+// Query opsional: days (default 30). Daftar mencakup kewajiban yang sudah lewat
+// tanggal sehingga penandanya tetap terlihat walau horizons-nya pendek.
+func (h *ReportHandler) DueObligations(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	withinDays := 30
+	if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			Error(w, http.StatusBadRequest, "days tidak valid")
+			return
+		}
+		withinDays = parsed
+	}
+
+	items, err := h.reportSvc.ListDueObligations(
+		r.Context(),
+		time.Now().UTC(),
+		withinDays,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())),
+	)
+	if err != nil {
+		InternalError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, "due obligations listed", items)
 }

@@ -8,6 +8,7 @@ import type {
   AROInstruction,
   BankingProduct,
   Deposit,
+  DepositPreview,
   DepositStatus,
   ProfitType,
 } from "@/lib/operations-types";
@@ -97,6 +98,8 @@ function DepositPlaceForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<DepositPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const selectedProduct = products.find((p) => p.id === productId);
 
@@ -108,7 +111,10 @@ function DepositPlaceForm({
     return null;
   };
 
-  const openConfirm = (event: React.FormEvent) => {
+  // Pratinjau dihitung backend lewat /deposits/preview, memakai fungsi yang sama
+  // dengan akrual. Frontend sengaja TIDAK menghitung bunga/pajak sendiri agar angka
+  // yang diperiksa teller identik dengan yang nanti diposting.
+  const openConfirm = async (event: React.FormEvent) => {
     event.preventDefault();
     const error = validate();
     if (error) {
@@ -116,7 +122,30 @@ function DepositPlaceForm({
       return;
     }
     setFormError(null);
-    setConfirmOpen(true);
+    setPreviewLoading(true);
+    try {
+      const response = await request<DepositPreview>("/deposits/preview", {
+        method: "POST",
+        body: {
+          customer_id: customerId,
+          product_id: productId,
+          placement_amount: String(amount),
+          term_months: termMonths,
+          currency: "IDR",
+          aro,
+          aro_instruction: aro ? instruction : "NONE",
+        },
+      });
+      setPreview(unwrap(response));
+      setConfirmOpen(true);
+    } catch (err) {
+      setPreview(null);
+      setFormError(
+        err instanceof ApiError ? err.message : "Pratinjau deposito gagal dihitung."
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const submit = async () => {
@@ -248,7 +277,9 @@ function DepositPlaceForm({
             </p>
           )}
 
-          <Button type="submit">Lanjut Konfirmasi</Button>
+          <Button type="submit" loading={previewLoading}>
+            {previewLoading ? "Menghitung pratinjau..." : "Lanjut Konfirmasi"}
+          </Button>
         </form>
       </CardContent>
 
@@ -260,28 +291,72 @@ function DepositPlaceForm({
         onCancel={() => setConfirmOpen(false)}
         onConfirm={submit}
         description={
-          <>
-            <p>
-              Penempatan akan membuka rekening deposito dan memposting jurnal
-              penerimaan dana.
-            </p>
-            <dl className="mt-2 space-y-1">
-              <div className="flex justify-between">
-                <dt className="text-ink-600">Produk</dt>
-                <dd>{selectedProduct?.name ?? "-"}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-ink-600">Pokok</dt>
-                <dd>
-                  <MoneyText value={amount} />
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-ink-600">Jangka waktu</dt>
-                <dd className="font-mono">{termMonths} bulan</dd>
-              </div>
-            </dl>
-          </>
+          preview ? (
+            <>
+              <p>
+                Periksa proyeksi perhitungan di bawah. Jurnal penempatan baru
+                dibuat setelah Anda menekan simpan.
+              </p>
+              <dl className="mt-2 space-y-1">
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Produk</dt>
+                  <dd>{selectedProduct?.name ?? "-"}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Nominal</dt>
+                  <dd>
+                    <MoneyText value={preview.placement_amount} />
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Jangka waktu</dt>
+                  <dd className="font-mono">{preview.term_months} bulan</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Jatuh tempo</dt>
+                  <dd className="font-mono">
+                    {formatDate(preview.maturity_date)}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">
+                    {preview.profit_type === "MARGIN"
+                      ? "Margin"
+                      : preview.profit_type === "BAGI_HASIL"
+                        ? "Nisbah Pemilik Dana"
+                        : "Bunga per Tahun"}
+                  </dt>
+                  <dd className="font-mono">
+                    {preview.profit_type === "BAGI_HASIL"
+                      ? rateLabel(String(Number(preview.profit_rate) * 100))
+                      : rateLabel(preview.profit_rate)}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">
+                    Estimasi {profitTypeLabel(preview.profit_type)}
+                  </dt>
+                  <dd>
+                    <MoneyText value={preview.estimated_profit} />
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink-600">Estimasi Pajak (PPh)</dt>
+                  <dd>
+                    <MoneyText value={preview.estimated_tax} />
+                  </dd>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <dt>Nilai Jatuh Tempo</dt>
+                  <dd>
+                    <MoneyText value={preview.maturity_proceeds} />
+                  </dd>
+                </div>
+              </dl>
+            </>
+          ) : (
+            <p>Rincian pratinjau tidak tersedia.</p>
+          )
         }
       />
     </Card>

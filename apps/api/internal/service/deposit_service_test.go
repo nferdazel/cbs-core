@@ -527,6 +527,58 @@ func TestDepositDailyAccrualBebasPajakDiBawahAmbang(t *testing.T) {
 	}
 }
 
+// Pratinjau menampilkan proyeksi dari jalur perhitungan akrual yang sama tanpa
+// menyimpan apa pun: nominal, tenor, tanggal jatuh tempo, estimasi bunga & pajak,
+// serta nilai jatuh tempo.
+func TestDepositPreviewMenghitungProyeksi(t *testing.T) {
+	productID := uuid.New()
+	customerID := uuid.New()
+	product := &domain.BankingProduct{
+		ID:         productID,
+		Code:       "DEP-CONV",
+		Family:     domain.FamilyTimeDeposit,
+		Book:       domain.BookConventional,
+		IsActive:   true,
+		MinAmount:  decimal.NewFromInt(1_000_000),
+		RateAnnual: decimal.NewFromInt(12),
+		TaxRate:    decimal.NewFromInt(20),
+	}
+	svc := &depositService{
+		productRepo: &stubDepositProductRepo{product: product},
+		customerRepo: &stubPlaceCustomerRepo{customer: &domain.CustomerRecord{
+			ID:     customerID,
+			Status: domain.CustomerStatusActive,
+		}},
+		configSvc: &stubDepositConfig{values: map[string]decimal.Decimal{}},
+	}
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	preview, err := svc.Preview(context.Background(), domain.PlaceDepositInput{
+		CustomerID:      customerID,
+		ProductID:       productID,
+		PlacementAmount: decimal.NewFromInt(12_000_000),
+		TermMonths:      3,
+		StartDate:       &start,
+	}, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
+	if err != nil {
+		t.Fatalf("Preview tak terduga: %v", err)
+	}
+	if got := preview.MaturityDate.Format("2006-01-02"); got != "2026-04-01" {
+		t.Fatalf("jatuh tempo = %s, ingin 2026-04-01", got)
+	}
+	// Bunga harian = 12.000.000 * 12% / 365 = 3.945 (dibulatkan bank).
+	// 90 hari tenor: bunga 355.050 dan pajak 71.010; hak nasabah 12.284.040.
+	if !preview.EstimatedProfit.Equal(decimal.NewFromInt(355_050)) {
+		t.Fatalf("estimasi bunga = %s, ingin 355050", preview.EstimatedProfit)
+	}
+	if !preview.EstimatedTax.Equal(decimal.NewFromInt(71_010)) {
+		t.Fatalf("estimasi pajak = %s, ingin 71010", preview.EstimatedTax)
+	}
+	if !preview.MaturityProceeds.Equal(decimal.NewFromInt(12_284_040)) {
+		t.Fatalf("nilai jatuh tempo = %s, ingin 12284040", preview.MaturityProceeds)
+	}
+}
+
 // Ambang 0 mematikan pembebasan: seluruh deposito dikenakan tarif produk.
 func TestDepositDailyAccrualTanpaAmbangPembebasan(t *testing.T) {
 	dep := &domain.Deposit{

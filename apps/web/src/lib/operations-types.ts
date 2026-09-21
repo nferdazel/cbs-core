@@ -208,6 +208,40 @@ export interface Deposit {
 }
 
 /**
+ * domain.DepositPreview (deposit.go). Hasil perhitungan sebelum penempatan disimpan;
+ * dipakai teller untuk memeriksa angka sebelum menekan simpan.
+ */
+export interface DepositPreview {
+  placement_amount: string;
+  term_months: number;
+  start_date: string;
+  maturity_date: string;
+  profit_type: ProfitType;
+  profit_rate: string;
+  yield_rate: string;
+  tax_rate: string;
+  estimated_profit: string;
+  estimated_tax: string;
+  maturity_proceeds: string;
+}
+
+/** domain.DueObligationKind (report.go) */
+export type DueObligationKind = "LOAN_INSTALLMENT" | "DEPOSIT_MATURITY";
+
+/** domain.DueObligation (report.go). days_remaining negatif bila sudah lewat. */
+export interface DueObligation {
+  kind: DueObligationKind;
+  reference: string;
+  customer_id: string;
+  due_date: string;
+  amount: string;
+  overdue: boolean;
+  days_remaining: number;
+  installment_no?: number;
+  status: string;
+}
+
+/**
  * domain.Collectibility (ppap.go): kualitas aset versi numerik, 1 Lancar s.d.
  * 5 Macet. JSON mengirimnya sebagai angka karena tipe dasarnya int.
  */

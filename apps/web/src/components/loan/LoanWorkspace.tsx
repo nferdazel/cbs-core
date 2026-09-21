@@ -24,6 +24,7 @@ import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { ErrorState } from "@/components/ui/States";
+import { PrintButton } from "@/components/ui/PrintButton";
 
 const PAGE_SIZE = 20;
 
@@ -649,6 +650,11 @@ function LoanDetailPanel({
               Cairkan
             </Button>
           )}
+          {/* Perjanjian kredit dapat dicetak kapan pun selama kredit ada di sistem. */}
+          <PrintButton
+            url={`/documents/loan-agreement/${encodeURIComponent(loan.id)}`}
+            label="Cetak Perjanjian"
+          />
           {canPay && (
             <>
               <div className="w-72">

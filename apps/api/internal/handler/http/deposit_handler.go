@@ -38,6 +38,10 @@ func (h *DepositHandler) RegisterRoutes(r chi.Router, perms ...func(http.Handler
 		}
 		r.With(middleware.RequirePermission(domain.PermAccountsOpen)).
 			Post("/place", h.Place)
+		// Pratinjau memakai kewenangan yang sama dengan penempatan karena hanya
+		// menghitung, tidak menyimpan.
+		r.With(middleware.RequirePermission(domain.PermAccountsOpen)).
+			Post("/preview", h.Preview)
 		r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
 			Post("/{id}/accrue", h.Accrue)
 		r.With(middleware.RequirePermission(domain.PermTransactionsDeposit)).
@@ -84,6 +88,40 @@ func (h *DepositHandler) Place(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, http.StatusCreated, "deposit placed successfully", deposit)
+}
+
+// Preview menghitung proyeksi deposito tanpa menyimpan. Dipakai layar penempatan
+// untuk menampilkan rincian sebelum teller menekan simpan.
+func (h *DepositHandler) Preview(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var input domain.PlaceDepositInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if input.CustomerID == uuid.Nil {
+		Error(w, http.StatusBadRequest, "customer_id is required")
+		return
+	}
+	if input.ProductID == uuid.Nil {
+		Error(w, http.StatusBadRequest, "product_id is required")
+		return
+	}
+	if input.BranchCode == "" {
+		input.BranchCode = claims.BranchCode
+	}
+
+	preview, err := h.service.Preview(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+	Success(w, http.StatusOK, "deposit preview calculated", preview)
 }
 
 func (h *DepositHandler) Accrue(w http.ResponseWriter, r *http.Request) {

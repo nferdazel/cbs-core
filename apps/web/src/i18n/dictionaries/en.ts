@@ -37,6 +37,7 @@ export const dictionaryEN: Dictionary = {
     kredit: "Loans",
     pembiayaan: "Financing",
     deposito: "Time Deposits",
+    jatuhTempo: "Due Dates",
     ppap: "PPAP",
     tutupHari: "Day Close",
     nasabah: "Customers",
@@ -100,7 +101,7 @@ export const dictionaryEN: Dictionary = {
     closeButton: "Close",
     requiredFullName: "Full name is required.",
     requiredIdCard: "National ID is required.",
-    requiredEmail: "Email is required.",
+    invalidEmail: "Invalid email format. Example: name@example.com.",
   },
   accountOpening: {
     openButton: "Open Account",

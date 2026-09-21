@@ -276,6 +276,90 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 	return deposit, nil
 }
 
+// Preview menghitung proyeksi deposito tanpa menyimpan apa pun, agar teller dapat
+// memeriksa nominal, bunga/bagi hasil, pajak, dan nilai jatuh tempo sebelum menekan
+// simpan. Validasi produk dan nasabah disamakan dengan Place supaya kesalahan
+// ketahuan lebih awal; cabang tidak diuji ulang karena tidak ada yang ditulis.
+//
+// Proyeksi memakai akrual harian yang sama dengan Accrue lalu dikalikan jumlah hari
+// tenor, sehingga angkanya konsisten dengan posting riil. Tidak ada rumus baru yang
+// diduplikasi di frontend.
+func (s *depositService) Preview(ctx context.Context, input domain.PlaceDepositInput, actor domain.Actor) (*domain.DepositPreview, error) {
+	if input.PlacementAmount.LessThanOrEqual(decimal.Zero) {
+		return nil, domain.ErrInvalidDepositAmount
+	}
+	if input.TermMonths <= 0 {
+		return nil, domain.ErrInvalidDepositTerm
+	}
+	if input.Currency == "" {
+		input.Currency = "IDR"
+	}
+
+	product, err := s.productRepo.GetByID(ctx, input.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	if product.Family != domain.FamilyTimeDeposit || !product.IsActive {
+		return nil, domain.ErrDepositProductInvalid
+	}
+	if input.PlacementAmount.LessThan(product.MinAmount) {
+		return nil, fmt.Errorf("nominal di bawah minimum produk %s (%s)", product.Code, product.MinAmount.String())
+	}
+	if product.MaxAmount.IsPositive() && input.PlacementAmount.GreaterThan(product.MaxAmount) {
+		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
+	}
+	if input.TermMonths < product.MinTermMonths || (product.MaxTermMonths > 0 && input.TermMonths > product.MaxTermMonths) {
+		return nil, fmt.Errorf("jangka waktu di luar rentang produk %s (%d-%d bulan)", product.Code, product.MinTermMonths, product.MaxTermMonths)
+	}
+
+	customer, err := s.customerRepo.GetByID(ctx, input.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("nasabah tidak valid: %w", err)
+	}
+	if customer.Status != domain.CustomerStatusActive {
+		return nil, domain.ErrAccountInactive
+	}
+
+	start := time.Now().UTC()
+	if input.StartDate != nil && !input.StartDate.IsZero() {
+		start = input.StartDate.UTC()
+	}
+	start = depositDateOnly(start)
+	maturity := domain.DepositMaturityDate(start, input.TermMonths)
+
+	profitType, profitRate, yieldRate, taxRate := depositTerms(ctx, s.configSvc, product, input)
+
+	exempt := defaultDepositTaxExemptAmount
+	if s.configSvc != nil {
+		exempt = s.configSvc.GetDecimal(ctx, taxExemptAmountConfigKey, defaultDepositTaxExemptAmount)
+	}
+	probe := &domain.Deposit{
+		PlacementAmount: input.PlacementAmount,
+		ProfitRate:      profitRate,
+		YieldRate:       yieldRate,
+		ProfitType:      profitType,
+		TaxRate:         taxRate,
+	}
+	dailyProfit, dailyTax := depositDailyAccrual(probe, exempt)
+	days := decimal.NewFromInt(int64(maturity.Sub(start).Hours() / 24))
+	estimatedProfit := dailyProfit.Mul(days)
+	estimatedTax := dailyTax.Mul(days)
+
+	return &domain.DepositPreview{
+		PlacementAmount:  input.PlacementAmount,
+		TermMonths:       input.TermMonths,
+		StartDate:        start,
+		MaturityDate:     maturity,
+		ProfitType:       profitType,
+		ProfitRate:       profitRate,
+		YieldRate:        yieldRate,
+		TaxRate:          taxRate,
+		EstimatedProfit:  estimatedProfit,
+		EstimatedTax:     estimatedTax,
+		MaturityProceeds: domain.DepositMaturityProceeds(input.PlacementAmount, estimatedProfit, estimatedTax),
+	}, nil
+}
+
 // depositTerms menentukan jenis imbal hasil, tarif/nisbah, proyeksi yield syariah,
 // dan tarif pajak. Pajak hanya berlaku untuk buku konvensional dan diambil dari
 // produk bila diisi, jika tidak dari konfigurasi database (default 20%).
