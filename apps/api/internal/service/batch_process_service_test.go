@@ -173,6 +173,12 @@ func (s stubInterestAccrualRunner) AccrueInterest(context.Context, time.Time, do
 	}, s.err
 }
 
+// AmortizeRestructureLoss tidak diuji di sini (cakupannya diuji terpisah); runner ini
+// hanya memenuhi interface batch agar ringkasan EOD tetap dapat dibangun tanpa database.
+func (s stubInterestAccrualRunner) AmortizeRestructureLoss(context.Context, time.Time, domain.Actor) (domain.RestructureLossAmortizationSummary, error) {
+	return domain.RestructureLossAmortizationSummary{}, nil
+}
+
 func TestRunEODReportsLoanInterestAccrual(t *testing.T) {
 	dateRepo := &stubBusinessDateRepo{
 		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),

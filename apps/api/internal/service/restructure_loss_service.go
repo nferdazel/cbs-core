@@ -26,6 +26,11 @@ const (
 	cfgRestructureLossDiscountRate = "loan.restructure.loss.discount_rate_annual"
 	cfgRestructureLossExpenseCOA   = "loan.restructure.loss.coa.expense"
 	cfgRestructureLossLoanCOA      = "loan.restructure.loss.coa.loan"
+	// cfgRestructureLossAmortIncomeCOA adalah sisi KREDIT jurnal amortisasi
+	// (pendapatan bunga). Dipisah dari COA beban karena jurnal amortisasi adalah
+	// Db. Kredit yang diberikan / Kr. Pendapatan bunga (PA BPR hlm. 61), bukan jurnal
+	// pembentukan kerugian.
+	cfgRestructureLossAmortIncomeCOA = "loan.restructure.loss.amortization.coa.income"
 )
 
 // COA bawaan (di-seed migrasi 000043). Beban kerugian restrukturisasi sengaja TERPISAH
@@ -38,6 +43,11 @@ const (
 	fallbackRestructureLossExpenseSyariah      = "15902"
 	fallbackRestructureLossLoanConventional    = "10301"
 	fallbackRestructureLossLoanSyariah         = "11400"
+	// Pendapatan bunga/bagi hasil untuk amortisasi. Konvensional memakai 40100
+	// (Pendapatan Bunga Kredit); syariah memakai 14100 (Pendapatan Margin Murabahah).
+	// Produk syariah lain dapat menggantinya lewat kunci konfigurasi di atas.
+	fallbackRestructureLossAmortIncomeConventional = "40100"
+	fallbackRestructureLossAmortIncomeSyariah      = "14100"
 )
 
 // restructureLossPolicy adalah parameter kebijakan yang dibaca dari system_config.

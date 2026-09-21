@@ -192,6 +192,19 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		// Produk tanpa pemetaan INTEREST_ACCRUAL bukan kegagalan teknis, tetapi harus
 		// terlihat: tanpa peringatan, batch tampak mengakru padahal tidak.
 		summary.Warnings = append(summary.Warnings, accrual.Warnings...)
+
+		// Amortisasi saldo kerugian restrukturisasi berjalan SETELAH akrual
+		// kontraktual pada tanggal bisnis yang sama, sehingga selisih bunga efektif
+		// dihitung di atas pendapatan jadwal yang sudah diakui periode itu. Seluruh
+		// perhitungannya di balik loan.restructure.loss.enabled.
+		loss, err := s.accrualSvc.AmortizeRestructureLoss(ctx, businessDate, actor)
+		summary.LoanLossAmortized = loss.Amortized
+		summary.LoanLossAmortizedAmount = loss.TotalAmortized
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi gagal: %v", err))
+			logger.ErrorContext(ctx, "amortisasi saldo kerugian restrukturisasi gagal saat EOD", "error", err)
+		}
+		summary.Warnings = append(summary.Warnings, loss.Warnings...)
 	}
 
 	if s.dormantSvc != nil {

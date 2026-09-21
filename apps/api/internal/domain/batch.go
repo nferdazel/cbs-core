@@ -52,8 +52,20 @@ type DormantRunner interface {
 // LoanInterestAccrualRunner mengakru pendapatan bunga kredit konvensional berbasis
 // jadwal angsuran. Mengikuti pola ARORunner/PPAPRunner/DormantRunner: interface sempit
 // agar batch tidak bergantung pada seluruh permukaan LoanService.
+//
+// Amortisasi saldo kerugian restrukturisasi ikut di sini karena ia berjalan pada batch
+// yang sama dan menyentuh kredit yang sama; pemisahan field baru hanya akan menambah
+// parameter konstruktor tanpa manfaat.
 type LoanInterestAccrualRunner interface {
 	AccrueInterest(ctx context.Context, asOf time.Time, actor Actor) (LoanInterestAccrualSummary, error)
+	RestructureLossAmortizationRunner
+}
+
+// RestructureLossAmortizationRunner memulihkan saldo kerugian restrukturisasi ke
+// pendapatan bunga memakai metode suku bunga efektif (PA BPR Bab 5.2). Dipisah agar
+// pemanggil yang hanya butuh amortisasi tidak bergantung pada akrual.
+type RestructureLossAmortizationRunner interface {
+	AmortizeRestructureLoss(ctx context.Context, asOf time.Time, actor Actor) (RestructureLossAmortizationSummary, error)
 }
 
 // SystemActor membangun identitas pelaku untuk pekerjaan batch yang tidak berasal

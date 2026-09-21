@@ -240,6 +240,14 @@ type LoanSchedule struct {
 	// pernah negatif dan pendapatan diakui maksimal sebesar porsi bunga jadwal.
 	ProfitAccruedAt     *time.Time      `json:"profit_accrued_at,omitempty"`
 	ProfitAccruedAmount decimal.Decimal `json:"profit_accrued_amount"`
+
+	// RestructureLossAmortizedAt menandai angsuran ini sudah diamortisasi saldo
+	// kerugian restrukturisasinya; RestructureLossAmortizedAmount menyimpan nominal
+	// kumulatif yang diamortisasi (audit). Penanda ini hanya agar batch berikutnya
+	// tidak memproses ulang angsuran yang sama; idempotensi sesungguhnya dijaga
+	// keberadaan jurnal dengan kunci LOSSAMORT-<nomor kredit>-<angsuran>.
+	RestructureLossAmortizedAt     *time.Time      `json:"restructure_loss_amortized_at,omitempty"`
+	RestructureLossAmortizedAmount decimal.Decimal `json:"restructure_loss_amortized_amount"`
 }
 
 type ApplyLoanInput struct {
@@ -435,4 +443,8 @@ type LoanService interface {
 	// AccrueInterest mengakru pendapatan bunga kredit konvensional berbasis jadwal
 	// angsuran; kredit tidak lancar dan produk syariah dilewati.
 	AccrueInterest(ctx context.Context, asOf time.Time, actor Actor) (LoanInterestAccrualSummary, error)
+	// AmortizeRestructureLoss memulihkan saldo kerugian restrukturisasi ke pendapatan
+	// bunga memakai EIR orisinal (PA BPR Bab 5.2 hlm. 61). Berada di balik saklar
+	// loan.restructure.loss.enabled; saklar mati berarti tidak ada perubahan apa pun.
+	AmortizeRestructureLoss(ctx context.Context, asOf time.Time, actor Actor) (RestructureLossAmortizationSummary, error)
 }

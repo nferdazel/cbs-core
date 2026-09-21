@@ -51,6 +51,7 @@ type RouterParams struct {
 	DepositHandler      *DepositHandler
 	PPAPHandler         *PPAPHandler
 	CKPNHandler         *CKPNHandler
+	LPSPlacementHandler *LPSPlacementHandler
 	AuditHandler        *AuditHandler
 	CollateralHandler   *CollateralHandler
 	AuthService         domain.AuthService
@@ -319,6 +320,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// ── CKPN (SAK EP) dan perbandingannya dengan PPKA ──
 			if p.CKPNHandler != nil {
 				p.CKPNHandler.RegisterRoutes(r)
+			}
+
+			// ── PPKA penempatan yang dijamin LPS (Pasal 23 POJK 1/2024) ──
+			if p.LPSPlacementHandler != nil {
+				p.LPSPlacementHandler.RegisterRoutes(r)
 			}
 
 			// ── Audit log (baca saja, untuk pengawas) ──

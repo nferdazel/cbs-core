@@ -139,3 +139,168 @@ func TestIntegrasiRestrukturisasiPelepasanCadanganSaatLunas(t *testing.T) {
 			bc, branchCode, e.actor.BranchCode)
 	}
 }
+
+// coaBalanceForLoan menghitung saldo satu akun COA dari jurnal yang kunci idempotensinya
+// memuat nomor kredit, LANGSUNG dari journal_lines (bukan state di memori). Dipakai untuk
+// membuktikan akun piutang kredit tepat nol setelah lunas, dan negatif tanpa amortisasi.
+func coaBalanceForLoan(t *testing.T, e *moneyEnv, coaCode, loanNumber string) decimal.Decimal {
+	t.Helper()
+	var saldo decimal.Decimal
+	if err := e.db.QueryRowContext(e.ctx, `
+		SELECT COALESCE(SUM(CASE WHEN jl.direction = 'DEBIT' THEN jl.amount ELSE -jl.amount END), 0)
+		FROM journal_lines jl
+		JOIN journal_entries je ON je.id = jl.journal_entry_id
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts coa ON coa.id = a.coa_id
+		WHERE coa.code = $1 AND je.idempotency_key LIKE '%' || $2 || '%'`,
+		coaCode, loanNumber).Scan(&saldo); err != nil {
+		t.Fatalf("membaca saldo %s kredit %s: %v", coaCode, loanNumber, err)
+	}
+	return saldo
+}
+
+// TestIntegrasiAmortisasiSaldoKerugianLunasNol membuktikan cacat piutang negatif benar
+// tertutup: restrukturisasi dengan kerugian, amortisasi EIR berjalan sepanjang tenor,
+// kredit lunas, lalu saldo akun piutang kredit (10301) tepat nol dan saldo kerugian nol,
+// diperiksa langsung lewat jurnal di database.
+func TestIntegrasiAmortisasiSaldoKerugianLunasNol(t *testing.T) {
+	e := newMoneyEnv(t)
+	// Saklar hidup SEBELUM pencairan agar EIR orisinal dicatat saat disbursement.
+	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "true")
+	t.Cleanup(func() { setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false") })
+
+	branchCode := ckpnTestBranchCode("A")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji Amortisasi Kerugian")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujiamort", Role: domain.RoleAdmin, BranchCode: branchCode}
+
+	cust := e.newCustomer(t, "Nasabah Amortisasi Kerugian", fmt.Sprintf("amort-%d@uji.local", time.Now().UnixNano()))
+	acc := e.newAccountInBranch(t, cust.ID, branchID)
+	loan := e.disburseAs(t, actor, cust.ID, acc, decimal.NewFromInt(10_000_000), 12)
+
+	if eir := e.loanDecimal(t, loan.ID, "original_eir_monthly"); !eir.IsPositive() {
+		t.Fatalf("EIR orisinal tidak tersimpan: %s", eir)
+	}
+	if _, err := e.loanSvc.RestructureLoan(e.ctx, domain.RestructureLoanInput{
+		LoanID:                loan.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+		Reason:                "uji integrasi amortisasi kerugian",
+	}, actor); err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+	loss := e.loanDecimal(t, loan.ID, "restructure_loss_balance")
+	if !loss.IsPositive() {
+		t.Fatalf("saldo kerugian restrukturisasi %s, mau positif", loss)
+	}
+
+	schedules := e.schedules(t, loan.ID)
+	if len(schedules) == 0 {
+		t.Fatal("jadwal hasil restrukturisasi kosong")
+	}
+
+	// Amortisasi dan pembayaran berjalan sepanjang tenor. Aktor sengaja dari cabang
+	// lain (e.actor, 001) agar atribusi cabang jurnal amortisasi ke cabang KREDIT
+	// teruji.
+	for _, sc := range schedules {
+		asOf := sc.DueDate.Add(24 * time.Hour)
+		if _, err := e.loanSvc.AmortizeRestructureLoss(e.ctx, asOf, e.actor); err != nil {
+			t.Fatalf("amortisasi angsuran ke-%d: %v", sc.InstallmentNo, err)
+		}
+		afterFirst := e.loanDecimal(t, loan.ID, "restructure_loss_balance")
+		if afterFirst.IsNegative() {
+			t.Fatalf("saldo kerugian negatif setelah angsuran ke-%d: %s", sc.InstallmentNo, afterFirst)
+		}
+		// Pengulangan pada tanggal bisnis yang sama tidak menggandakan jurnal maupun
+		// pengurangan saldo (idempotensi lewat kunci jurnal di repository).
+		if _, err := e.loanSvc.AmortizeRestructureLoss(e.ctx, asOf, e.actor); err != nil {
+			t.Fatalf("amortisasi ulang angsuran ke-%d: %v", sc.InstallmentNo, err)
+		}
+		if again := e.loanDecimal(t, loan.ID, "restructure_loss_balance"); !again.Equal(afterFirst) {
+			t.Fatalf("pengulangan tanggal sama mengubah saldo kerugian angsuran ke-%d: %s -> %s",
+				sc.InstallmentNo, afterFirst, again)
+		}
+		if n := countJournals(t, e, fmt.Sprintf("LOSSAMORT-%s-%d", loan.LoanNumber, sc.InstallmentNo)); n > 1 {
+			t.Fatalf("jurnal amortisasi angsuran ke-%d terbit %d kali, mau paling banyak 1 (idempoten)", sc.InstallmentNo, n)
+		}
+		if _, err := e.loanSvc.PayInstallment(e.ctx, domain.PayInstallmentInput{
+			LoanID: loan.ID, InstallmentNo: sc.InstallmentNo, Method: domain.LoanPaymentCash,
+		}, e.actor); err != nil {
+			t.Fatalf("membayar angsuran ke-%d: %v", sc.InstallmentNo, err)
+		}
+	}
+
+	if got := e.loanStatus(t, loan.ID); got != string(domain.LoanStatusPaidOff) {
+		t.Fatalf("status kredit %q, mau PAID_OFF", got)
+	}
+	if got := e.loanDecimal(t, loan.ID, "restructure_loss_balance"); !got.IsZero() {
+		t.Fatalf("saldo kerugian setelah lunas %s, mau tepat nol", got)
+	}
+	// Saldo akun piutang kredit dari jurnal harus tepat nol: debit pencairan + debit
+	// amortisasi = kredit kerugian + kredit pelunasan pokok.
+	if got := coaBalanceForLoan(t, e, "10301", loan.LoanNumber); !got.IsZero() {
+		t.Fatalf("saldo akun piutang 10301 kredit %s = %s, mau tepat nol", loan.LoanNumber, got)
+	}
+
+	// Cabang jurnal amortisasi = cabang kredit, bukan cabang aktor.
+	firstKey := fmt.Sprintf("LOSSAMORT-%s-1", loan.LoanNumber)
+	if bc := e.ckpnJournalBranch(t, firstKey); bc != branchCode {
+		t.Fatalf("cabang jurnal amortisasi %q, mau cabang kredit %q (bukan cabang aktor %q)",
+			bc, branchCode, e.actor.BranchCode)
+	}
+}
+
+// TestIntegrasiAmortisasiSaklarMatiPiutangNegatif mendokumentasikan perilaku LAMA saat
+// saklar mati: kerugian sudah dijurnal sebagai kredit akun piutang, tetapi amortisasi
+// tidak berjalan. Setelah kredit lunas, saldo akun piutang menjadi negatif sebesar
+// kerugian. Uji ini pembanding (bukan asersi yang dilonggarkan).
+func TestIntegrasiAmortisasiSaklarMatiPiutangNegatif(t *testing.T) {
+	e := newMoneyEnv(t)
+	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "true")
+	t.Cleanup(func() { setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false") })
+
+	branchCode := ckpnTestBranchCode("N")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji Tanpa Amortisasi")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujitanpa", Role: domain.RoleAdmin, BranchCode: branchCode}
+
+	cust := e.newCustomer(t, "Nasabah Tanpa Amortisasi", fmt.Sprintf("tanpa-%d@uji.local", time.Now().UnixNano()))
+	acc := e.newAccountInBranch(t, cust.ID, branchID)
+	loan := e.disburseAs(t, actor, cust.ID, acc, decimal.NewFromInt(10_000_000), 12)
+
+	if _, err := e.loanSvc.RestructureLoan(e.ctx, domain.RestructureLoanInput{
+		LoanID:                loan.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+		Reason:                "uji integrasi saklar mati",
+	}, actor); err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+	loss := e.loanDecimal(t, loan.ID, "restructure_loss_balance")
+	if !loss.IsPositive() {
+		t.Fatalf("saldo kerugian %s, mau positif", loss)
+	}
+
+	// Matikan amortisasi, lalu bayar seluruh tenor.
+	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
+	for _, sc := range e.schedules(t, loan.ID) {
+		if _, err := e.loanSvc.AmortizeRestructureLoss(e.ctx, sc.DueDate.Add(24*time.Hour), actor); err != nil {
+			t.Fatalf("amortisasi saklar mati: %v", err)
+		}
+		if _, err := e.loanSvc.PayInstallment(e.ctx, domain.PayInstallmentInput{
+			LoanID: loan.ID, InstallmentNo: sc.InstallmentNo, Method: domain.LoanPaymentCash,
+		}, actor); err != nil {
+			t.Fatalf("membayar angsuran ke-%d: %v", sc.InstallmentNo, err)
+		}
+	}
+
+	if got := e.loanStatus(t, loan.ID); got != string(domain.LoanStatusPaidOff) {
+		t.Fatalf("status kredit %q, mau PAID_OFF", got)
+	}
+	// Tanpa amortisasi, akun piutang tertinggal negatif sebesar kerugian.
+	if got := e.loanDecimal(t, loan.ID, "restructure_loss_balance"); !got.Equal(loss) {
+		t.Fatalf("saldo kerugian tanpa amortisasi %s, mau tetap %s", got, loss)
+	}
+	got := coaBalanceForLoan(t, e, "10301", loan.LoanNumber)
+	if !got.Equal(loss.Neg()) {
+		t.Fatalf("saldo akun piutang 10301 tanpa amortisasi %s, mau %s (negatif sebesar kerugian)", got, loss.Neg())
+	}
+}

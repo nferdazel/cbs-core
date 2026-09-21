@@ -297,7 +297,7 @@ type queryer interface {
 
 const schedulesQuery = `SELECT id, loan_id, installment_no, due_date, principal_amount, profit_amount,
 	total_installment, paid_principal, paid_profit, profit_type, outstanding_principal, status::text, paid_at, created_at,
-	profit_accrued_at, profit_accrued_amount
+	profit_accrued_at, profit_accrued_amount, restructure_loss_amortized_at, restructure_loss_amortized_amount
 	FROM loan_schedules WHERE loan_id = $1 ORDER BY installment_no ASC`
 
 func (r *LoanRepository) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]domain.LoanSchedule, error) {
@@ -323,12 +323,13 @@ func getSchedules(ctx context.Context, q queryer, loanID uuid.UUID) ([]domain.Lo
 	var list []domain.LoanSchedule
 	for rows.Next() {
 		var s domain.LoanSchedule
-		var paidAt, profitAccruedAt sql.NullTime
+		var paidAt, profitAccruedAt, lossAmortizedAt sql.NullTime
 		if err := rows.Scan(
 			&s.ID, &s.LoanID, &s.InstallmentNo, &s.DueDate, &s.PrincipalAmount,
 			&s.ProfitAmount, &s.TotalInstallment, &s.PaidPrincipal, &s.PaidProfit,
 			&s.ProfitType, &s.OutstandingPrincipal, &s.Status, &paidAt, &s.CreatedAt,
 			&profitAccruedAt, &s.ProfitAccruedAmount,
+			&lossAmortizedAt, &s.RestructureLossAmortizedAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -337,6 +338,9 @@ func getSchedules(ctx context.Context, q queryer, loanID uuid.UUID) ([]domain.Lo
 		}
 		if profitAccruedAt.Valid {
 			s.ProfitAccruedAt = &profitAccruedAt.Time
+		}
+		if lossAmortizedAt.Valid {
+			s.RestructureLossAmortizedAt = &lossAmortizedAt.Time
 		}
 		list = append(list, s)
 	}
@@ -817,5 +821,85 @@ func (r *LoanRepository) GetDisbursementJournalRefTx(ctx context.Context, tx any
 	}
 	return ref, nil
 }
+
+// listRestructureLossAmortizationCandidatesQuery mengambil kredit yang saldo kerugian
+// restrukturisasinya belum nol dan masih perlu diamortisasi pada tanggal bisnis:
+// kredit aktif yang punya angsuran jatuh tempo dan belum ditandai diamortisasi, atau
+// kredit yang sudah lunas/dihapusbukukan tetapi saldonya belum nol (penutupan sisa).
+// Kredit bersaldo nol tidak pernah masuk, sehingga batch tidak menyentuhnya lagi.
+const listRestructureLossAmortizationCandidatesQuery = `
+	SELECT l.id, l.loan_number
+	FROM loans l
+	WHERE l.restructure_loss_balance <> 0
+	  AND (
+	       (l.status IN ('DISBURSED', 'DEFAULTED') AND EXISTS (
+	            SELECT 1 FROM loan_schedules s
+	            WHERE s.loan_id = l.id
+	              AND s.restructure_loss_amortized_at IS NULL
+	              AND s.due_date <= $1))
+	    OR l.status IN ('PAID_OFF', 'WRITTEN_OFF')
+	  )
+	ORDER BY l.loan_number`
+
+func (r *LoanRepository) ListRestructureLossAmortizationCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanRestructureLossAmortizationCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, listRestructureLossAmortizationCandidatesQuery, asOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []domain.LoanRestructureLossAmortizationCandidate
+	for rows.Next() {
+		var c domain.LoanRestructureLossAmortizationCandidate
+		if err := rows.Scan(&c.LoanID, &c.LoanNumber); err != nil {
+			return nil, err
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+// ApplyRestructureLossAmortizationTx mengurangi restructure_loss_balance dan menandai
+// angsuran (bila scheduleID diisi) sudah diamortisasi, tetapi hanya bila jurnal dengan
+// idempotencyKey tersebut belum ada. Polanya sama dengan AddScheduleProfitAccruedTx:
+// UPDATE baris loans mengunci baris kredit sehingga dua batch paralel terserialkan, dan
+// pengulangan pada tanggal bisnis yang sama tidak menggandakan pengurangan saldo.
+// Syarat restructure_loss_balance >= amount menolak pengurangan yang akan membuat saldo
+// negatif; pemanggil menghitung amount dari state tersimpan, bukan dari asumsi urutan.
+func (r *LoanRepository) ApplyRestructureLossAmortizationTx(ctx context.Context, tx any, loanID uuid.UUID, scheduleID *uuid.UUID, amount decimal.Decimal, idempotencyKey string, amortizedAt time.Time) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("loan: transaksi tidak valid")
+	}
+	q := `UPDATE loans
+		SET restructure_loss_balance = restructure_loss_balance - $1,
+		    updated_at = NOW()
+		WHERE id = $2
+		  AND restructure_loss_balance >= $1
+		  AND NOT EXISTS (SELECT 1 FROM journal_entries WHERE idempotency_key = $3)`
+	res, err := sqlTx.ExecContext(ctx, q, amount, loanID, idempotencyKey)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if scheduleID != nil {
+		if _, err := sqlTx.ExecContext(ctx, `
+			UPDATE loan_schedules
+			SET restructure_loss_amortized_at = $1,
+			    restructure_loss_amortized_amount = restructure_loss_amortized_amount + $2
+			WHERE id = $3`, amortizedAt, amount, *scheduleID); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+var _ domain.RestructureLossAmortizationRepository = (*LoanRepository)(nil)
 
 var _ domain.LoanRepository = (*LoanRepository)(nil)

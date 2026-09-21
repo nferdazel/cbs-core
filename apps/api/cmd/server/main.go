@@ -117,6 +117,10 @@ func main() {
 	// target PPKA yang sudah disimpan (loans.required_ppap) untuk membandingkannya,
 	// bukan menghitung ulang PPKA. Kredit dikunci lewat LoanRepository saat menulis.
 	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo)
+	// Pasal 23 POJK No. 1 Tahun 2024: pengurang PPKA umum dan khusus untuk bagian
+	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
+	// bawaan false sehingga belum mengubah angka PPKA mana pun.
+	lpsPlacementSvc := service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(db), configSvc)
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
@@ -161,6 +165,7 @@ func main() {
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
+	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, auditRepo)
 
 	// 6. Router
@@ -183,6 +188,7 @@ func main() {
 		DepositHandler:      depositHandler,
 		PPAPHandler:         ppapHandler,
 		CKPNHandler:         ckpnHandler,
+		LPSPlacementHandler: lpsPlacementHandler,
 		AuditHandler:        httpHandler.NewAuditHandler(auditRepo),
 		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
 		AuthService:         authSvc,

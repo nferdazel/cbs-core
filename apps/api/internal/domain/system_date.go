@@ -41,17 +41,21 @@ type EODSummaryResult struct {
 	// Pekerjaan harian berikut bersifat best-effort: kegagalannya tidak
 	// menggagalkan tutup hari, tetapi selalu tampil di Warnings agar tidak
 	// terlihat sukses padahal tidak berjalan.
-	DepositsRolledOver    int             `json:"deposits_rolled_over"`
-	PPAPProcessed         int             `json:"ppap_processed"`
-	LoanPenaltiesAccrued  int             `json:"loan_penalties_accrued"`
-	LoanPenaltyAmount     decimal.Decimal `json:"loan_penalty_amount"`
+	DepositsRolledOver   int             `json:"deposits_rolled_over"`
+	PPAPProcessed        int             `json:"ppap_processed"`
+	LoanPenaltiesAccrued int             `json:"loan_penalties_accrued"`
+	LoanPenaltyAmount    decimal.Decimal `json:"loan_penalty_amount"`
 	// Akrual pendapatan bunga kredit berbasis jadwal angsuran (peristiwa EOD kelima).
 	LoanInterestAccrued       int             `json:"loan_interest_accrued"`
 	LoanInterestAccruedAmount decimal.Decimal `json:"loan_interest_accrued_amount"`
-	AccountsMarkedDormant int             `json:"accounts_marked_dormant"`
-	Warnings              []string        `json:"warnings,omitempty"`
-	ExecutedBy            uuid.UUID       `json:"executed_by"`
-	CompletedAt           time.Time       `json:"completed_at"`
+	// Amortisasi saldo kerugian restrukturisasi ke pendapatan bunga (peristiwa EOD
+	// keenam, di balik loan.restructure.loss.enabled).
+	LoanLossAmortized       int             `json:"loan_loss_amortized"`
+	LoanLossAmortizedAmount decimal.Decimal `json:"loan_loss_amortized_amount"`
+	AccountsMarkedDormant   int             `json:"accounts_marked_dormant"`
+	Warnings                []string        `json:"warnings,omitempty"`
+	ExecutedBy              uuid.UUID       `json:"executed_by"`
+	CompletedAt             time.Time       `json:"completed_at"`
 }
 
 type EOMSummaryResult struct {

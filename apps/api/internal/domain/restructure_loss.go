@@ -47,6 +47,9 @@ var (
 	// COA yang tidak dapat diresolusi; jurnal tidak boleh diposting sebagian.
 	ErrRestructureLossExpenseNotFound     = errors.New("akun beban kerugian restrukturisasi tidak ditemukan")
 	ErrRestructureLossLoanAccountNotFound = errors.New("akun kredit yang diberikan tidak ditemukan")
+	// ErrRestructureLossIncomeAccountNotFound menandai akun pendapatan bunga untuk
+	// amortisasi tidak dapat diresolusi; jurnal tidak boleh diposting sebagian.
+	ErrRestructureLossIncomeAccountNotFound = errors.New("akun pendapatan bunga amortisasi saldo kerugian tidak ditemukan")
 )
 
 // RestructureLossEIRMethod adalah metode yang dicatat pada dasar audit EIR: suku bunga
