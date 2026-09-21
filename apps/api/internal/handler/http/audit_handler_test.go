@@ -42,7 +42,7 @@ func TestAuditHandler_ListMeneruskanFilter(t *testing.T) {
 	reader := &stubAuditReader{events: []domain.AuditEvent{{
 		ActorID: "teller1", Action: "PAY_INSTALLMENT", ResourceType: "LOAN", ResourceID: "L-1",
 	}}}
-	handler := httpHandler.NewAuditHandler(reader)
+	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet,
@@ -84,7 +84,7 @@ func TestAuditHandler_ListMeneruskanFilter(t *testing.T) {
 
 func TestAuditHandler_ListMembatasiPermintaanBerlebihan(t *testing.T) {
 	reader := &stubAuditReader{}
-	handler := httpHandler.NewAuditHandler(reader)
+	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?limit=99999&offset=-5", nil)
@@ -103,7 +103,7 @@ func TestAuditHandler_ListMembatasiPermintaanBerlebihan(t *testing.T) {
 }
 
 func TestAuditHandler_ListMenolakWaktuDanRentangTidakSah(t *testing.T) {
-	handler := httpHandler.NewAuditHandler(&stubAuditReader{})
+	handler := httpHandler.NewAuditHandler(&stubAuditReader{}, nil)
 
 	cases := []struct {
 		name  string
@@ -130,7 +130,7 @@ func TestAuditHandler_ListMenolakWaktuDanRentangTidakSah(t *testing.T) {
 
 func TestAuditHandler_ListMenerimaBatasWaktuRFC3339(t *testing.T) {
 	reader := &stubAuditReader{}
-	handler := httpHandler.NewAuditHandler(reader)
+	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?from=2026-09-20T07:30:00Z", nil)

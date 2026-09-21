@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -730,6 +731,16 @@ func (s *savingsInterestService) savingsAccrualTax(ctx context.Context, rec doma
 func (s *savingsInterestService) configDecimal(ctx context.Context, key string, fallback decimal.Decimal) decimal.Decimal {
 	if s.configSvc == nil {
 		return fallback
+	}
+	// Kunci yang sengaja di-seed kosong (mis. savings.interest.rate_annual,
+	// fee.admin.monthly) berarti "pakai nilai produk", bukan angka nol. GetDecimal
+	// gagal mengurai string kosong dan mencatat peringatan; keadaan itu normal di sini,
+	// jadi kekosongan diperiksa lewat pembaca mentah bila service menyediakannya.
+	// Stub test yang hanya mengimplementasikan GetDecimal tetap berjalan seperti semula.
+	if rawReader, ok := s.configSvc.(domain.ConfigRawValueReader); ok {
+		if raw, exists := rawReader.RawValue(ctx, key); exists && strings.TrimSpace(raw) == "" {
+			return fallback
+		}
 	}
 	return s.configSvc.GetDecimal(ctx, key, fallback)
 }

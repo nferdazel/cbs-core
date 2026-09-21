@@ -64,6 +64,9 @@ type ppapService struct {
 	poster         *ProductPoster
 	posting        domain.PostingService
 	config         domain.SystemConfigService
+	// runMarker mencatat tanggal bisnis run yang berhasil. Boleh nil (lingkungan uji
+	// tanpa database); bila nil tidak ada penanda yang ditulis.
+	runMarker domain.PPAPRunMarker
 }
 
 func NewPPAPService(
@@ -74,6 +77,7 @@ func NewPPAPService(
 	poster *ProductPoster,
 	posting domain.PostingService,
 	config domain.SystemConfigService,
+	runMarker domain.PPAPRunMarker,
 	collateralSinks ...domain.CollateralRepository,
 ) domain.PPAPService {
 	var collateralRepo domain.CollateralRepository
@@ -89,6 +93,7 @@ func NewPPAPService(
 		poster:         poster,
 		posting:        posting,
 		config:         config,
+		runMarker:      runMarker,
 	}
 }
 
@@ -151,6 +156,16 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 
 	if !preview {
 		summary.ReserveAfter = s.totalReserve(ctx)
+		// Penanda ditulis SETELAH seluruh kredit diproses, bukan sebelum: bila run
+		// berhenti di tengah, required_ppap sebagian kredit belum berasal dari tanggal
+		// bisnis ini dan CKPN harus tetap menolak memakainya.
+		if s.runMarker != nil {
+			// updatedBy dari actor: kolom system_config.updated_by ber-FK ke
+			// staff_users dan menolak uuid.Nil, sedangkan run ini sudah selesai.
+			if err := s.runMarker.RecordRun(ctx, asOf, actor.UserID); err != nil {
+				return summary, err
+			}
+		}
 	}
 	return summary, nil
 }

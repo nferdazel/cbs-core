@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -691,5 +692,67 @@ func TestCKPN_AktorDiteruskanKeRepo(t *testing.T) {
 	}
 	if repo.listActor != actor {
 		t.Fatalf("aktor diteruskan ke repo %+v, mau %+v", repo.listActor, actor)
+	}
+}
+
+// ckpnRunMarkerStub menyimulasikan penanda tanggal bisnis run PPAP terakhir.
+type ckpnRunMarkerStub struct {
+	last time.Time
+	ok   bool
+	err  error
+}
+
+func (ckpnRunMarkerStub) RecordRun(context.Context, time.Time, uuid.UUID) error { return nil }
+
+func (s ckpnRunMarkerStub) LastRunBusinessDate(context.Context) (time.Time, bool, error) {
+	return s.last, s.ok, s.err
+}
+
+var _ domain.PPAPRunMarker = ckpnRunMarkerStub{}
+
+// Perbandingan CKPN tidak boleh memakai required_ppap run PPAP tanggal bisnis lain,
+// termasuk saat dipanggil manual di luar tutup hari. Tanpa gerbang ini, angka kemarin
+// disajikan seolah angka tanggal bisnis berjalan.
+func TestCKPN_MenolakPPAPBasi(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.enabled": "true",
+		"ckpn.pd.3":    "0.10",
+		"ckpn.lgd":     "0.50",
+	}}
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
+	svc, _, _ := newTestCKPNService(repo, cfg)
+
+	// Belum pernah ada run PPAP yang berhasil.
+	svc.runMarker = ckpnRunMarkerStub{}
+	if _, err := svc.Compare(context.Background(), asOf, domain.Actor{}); !errors.Is(err, domain.ErrCKPNStalePPAP) {
+		t.Fatalf("Compare tanpa run PPAP: %v, mau ErrCKPNStalePPAP", err)
+	}
+	if repo.listCalled {
+		t.Fatal("kredit tidak boleh dibaca saat PPAP belum berjalan")
+	}
+
+	// Run PPAP terakhir tanggal bisnis lain: ditolak, dan pesan menyebut tanggal itu.
+	lastDay := asOf.AddDate(0, 0, -1)
+	svc.runMarker = ckpnRunMarkerStub{last: lastDay, ok: true}
+	_, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if !errors.Is(err, domain.ErrCKPNStalePPAP) {
+		t.Fatalf("Compare PPAP basi: %v, mau ErrCKPNStalePPAP", err)
+	}
+	if !strings.Contains(err.Error(), lastDay.Format("2006-01-02")) {
+		t.Fatalf("pesan %q harus menyebut tanggal bisnis PPAP terakhir %s", err, lastDay.Format("2006-01-02"))
+	}
+	// Run juga ditolak: summary perbandingannya akan memakai PPKA basi.
+	if _, err := svc.Run(context.Background(), asOf, domain.Actor{}); !errors.Is(err, domain.ErrCKPNStalePPAP) {
+		t.Fatalf("Run PPAP basi: %v, mau ErrCKPNStalePPAP", err)
+	}
+
+	// Tanggal bisnis PPAP sama dengan tanggal perbandingan: gerbang lolos.
+	svc.runMarker = ckpnRunMarkerStub{last: asOf, ok: true}
+	if _, err := svc.Compare(context.Background(), asOf, domain.Actor{}); err != nil {
+		t.Fatalf("Compare dengan PPAP tanggal sama: %v", err)
+	}
+	if !repo.listCalled {
+		t.Fatal("kredit harus dibaca setelah gerbang tanggal terpenuhi")
 	}
 }

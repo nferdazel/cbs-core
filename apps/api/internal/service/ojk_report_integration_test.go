@@ -110,16 +110,31 @@ func insertOJKeCustomer(t *testing.T, e *moneyEnv, label string) uuid.UUID {
 func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 	e := newMoneyEnv(t)
 
+	// Rasio NPL Form 00.08 bersifat BANK-WIDE dan tidak dapat di-scope ke satu cabang
+	// oleh penyaji. Karena database yang sama juga diisi uji integrasi lain, angka
+	// eksaknya tidak boleh diasumsikan 40/36 dari data uji ini saja. Yang dilakukan:
+	// ekspektasi bank-wide dihitung dari baris kredit yang benar-benar ada (jalur data
+	// yang sama dengan builder), lalu rasio 40% gross / 36% neto dibuktikan sebagai
+	// KONTRIBUSI data uji ini terhadap agregat (selisih sebelum vs sesudah), sehingga
+	// asersi tetap bermakna walau ada kredit uji lain.
+	base := ojkNPLBankWide(t, e)
+
+	// Data uji ditempatkan pada cabang unik agar Form 06.00 per kredit dapat ditemukan
+	// tanpa bentrok nomor kredit uji lain.
+	branchID := e.ensureBranch(t, ckpnTestBranchCode("J"), "Cabang Uji OJK")
+
 	// Dua kredit pada cabang yang sama: satu lancar, satu kurang lancar.
 	custA := insertOJKeCustomer(t, e, "Debitur OJK Lancar")
-	acctA := e.newAccount(t, custA)
+	acctA := e.newAccountInBranch(t, custA, branchID)
 	loanA := e.disburse(t, custA, acctA, decimal.NewFromInt(1_000_000), 12)
 	setKreditOJK(t, e, loanA.ID, "1_LANCAR", 0, 600_000, 0)
 
 	custB := insertOJKeCustomer(t, e, "Debitur OJK Kurang Lancar")
-	acctB := e.newAccount(t, custB)
+	acctB := e.newAccountInBranch(t, custB, branchID)
 	loanB := e.disburse(t, custB, acctB, decimal.NewFromInt(1_000_000), 12)
 	setKreditOJK(t, e, loanB.ID, "3_KURANG_LANCAR", 45, 400_000, 40_000)
+
+	full := ojkNPLBankWide(t, e)
 
 	// Profil bank (Form 00.00) dan kunci konfigurasi identitas.
 	if _, err := e.db.ExecContext(e.ctx, `
@@ -185,16 +200,66 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 		t.Errorf("Form 00.00 nama = %s", got)
 	}
 
-	// Form 00.08: NPL gross = 400.000/1.000.000 = 40%; neto = (400.000-40.000)/1.000.000 = 36%.
+	// Form 00.08: NPL dihitung bank-wide oleh builder. Ekspektasi dihitung dari baris
+	// kredit yang sama dengan yang dibaca builder, bukan angka tetap: dengan begitu
+	// asersi tetap sah ketika database juga memuat kredit uji lain.
+	wantGross, ok := ojkreport.RumusNPLGross(full.KurangLancar, full.Diragukan, full.Macet, full.TotalKredit)
+	if !ok {
+		t.Fatal("total kredit bank-wide nol; ekspektasi NPL tidak dapat dihitung")
+	}
+	wantNet, ok := ojkreport.RumusNPLNeto(full.KurangLancar, full.Diragukan, full.Macet, full.CKPNNPL, full.TotalKredit)
+	if !ok {
+		t.Fatal("total kredit bank-wide nol; ekspektasi NPL neto tidak dapat dihitung")
+	}
 	gross := ojkFindLine(b, "00.08", "0204")
 	if gross.UnavailableReason != "" {
 		t.Fatalf("NPL gross belum tersedia: %s", gross.UnavailableReason)
 	}
-	if !gross.Amount.Equal(decimal.NewFromInt(40)) {
-		t.Errorf("NPL gross = %s, ingin 40", gross.Amount)
+	if !gross.Amount.Equal(wantGross) {
+		t.Errorf("NPL gross = %s, ingin %s (dihitung dari baris kredit bank-wide)", gross.Amount, wantGross)
 	}
 	neto := ojkFindLine(b, "00.08", "0203")
-	if !neto.Amount.Equal(decimal.NewFromInt(36)) {
-		t.Errorf("NPL neto = %s, ingin 36", neto.Amount)
+	if !neto.Amount.Equal(wantNet) {
+		t.Errorf("NPL neto = %s, ingin %s (dihitung dari baris kredit bank-wide)", neto.Amount, wantNet)
 	}
+
+	// Tetap buktikan angka yang dimaksud: kontribusi data uji ini adalah kredit kurang
+	// lancar 400.000 dari tambahan total kredit 1.000.000, yaitu NPL gross 40% dan neto
+	// (400.000 - CKPN 40.000)/1.000.000 = 36%. Selisih dihitung dari data yang benar
+	// ada, sehingga tidak bergantung pada isi database di luar data uji.
+	deltaKurangLancar := full.KurangLancar.Sub(base.KurangLancar)
+	deltaDiragukan := full.Diragukan.Sub(base.Diragukan)
+	deltaMacet := full.Macet.Sub(base.Macet)
+	deltaCKPN := full.CKPNNPL.Sub(base.CKPNNPL)
+	deltaTotal := full.TotalKredit.Sub(base.TotalKredit)
+	if !deltaTotal.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("kontribusi total kredit data uji %s, ingin 1000000", deltaTotal)
+	}
+	nplDelta := deltaKurangLancar.Add(deltaDiragukan).Add(deltaMacet)
+	if !nplDelta.Equal(decimal.NewFromInt(400_000)) {
+		t.Fatalf("kontribusi NPL data uji %s, ingin 400000", nplDelta)
+	}
+	if !deltaCKPN.Equal(decimal.NewFromInt(40_000)) {
+		t.Fatalf("kontribusi CKPN NPL data uji %s, ingin 40000", deltaCKPN)
+	}
+	deltaGross, ok := ojkreport.RumusNPLGross(deltaKurangLancar, deltaDiragukan, deltaMacet, deltaTotal)
+	if !ok || !deltaGross.Equal(decimal.NewFromInt(40)) {
+		t.Fatalf("kontribusi NPL gross data uji %s, ingin 40", deltaGross)
+	}
+	deltaNet, ok := ojkreport.RumusNPLNeto(deltaKurangLancar, deltaDiragukan, deltaMacet, deltaCKPN, deltaTotal)
+	if !ok || !deltaNet.Equal(decimal.NewFromInt(36)) {
+		t.Fatalf("kontribusi NPL neto data uji %s, ingin 36", deltaNet)
+	}
+}
+
+// ojkNPLBankWide membaca komponen NPL bank-wide lewat jalur data yang sama dengan
+// builder (RepoSource.ListLoansForOJK), sehingga ekspektasi uji selalu mengikuti isi
+// database yang sebenarnya. Aktor lintas cabang diperlukan kebijakan bank-wide.
+func ojkNPLBankWide(t *testing.T, e *moneyEnv) ojkreport.KomponenKreditNPL {
+	t.Helper()
+	rows, err := (ojkreport.RepoSource{Loans: e.loanRepo}).ListLoansForOJK(e.ctx, time.Now().UTC(), e.actor)
+	if err != nil {
+		t.Fatalf("membaca baris kredit bank-wide untuk OJK: %v", err)
+	}
+	return ojkreport.NPLDariLoanRows(rows)
 }

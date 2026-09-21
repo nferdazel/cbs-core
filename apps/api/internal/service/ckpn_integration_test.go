@@ -67,6 +67,9 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 
 	ckpnSvc := newCKPNSvcForTest(e)
 	asOf := time.Now().UTC()
+	// Gerbang tanggal bisnis CKPN menuntut penanda run PPAP pada tanggal yang sama.
+	// Uji ini menyuntik required_ppap langsung, jadi penandanya ditulis langsung.
+	e.recordPPAPRun(t, asOf)
 
 	// Compare lebih dulu: sebagai baca-saja ia harus menghormati cabang aktor, jadi
 	// kredit cabang 001 dari uji lain tidak boleh muncul.
@@ -128,6 +131,7 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 	// Selisihnya harus diposting sebagai pemulihan (debit CKPN, kredit beban).
 	setConfig("ckpn.pd.3", "0.05", "uji integrasi CKPN")
 	asOf2 := asOf.Add(24 * time.Hour)
+	e.recordPPAPRun(t, asOf2)
 	if _, err := ckpnSvc.Run(e.ctx, asOf2, actor); err != nil {
 		t.Fatalf("Run CKPN pemulihan: %v", err)
 	}
@@ -171,6 +175,7 @@ func TestIntegrasiCKPNPelepasanCadanganKreditLunas(t *testing.T) {
 
 	ckpnSvc := newCKPNSvcForTest(e)
 	asOf := time.Now().UTC()
+	e.recordPPAPRun(t, asOf)
 	summary, err := ckpnSvc.Run(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("Run CKPN: %v", err)
@@ -238,6 +243,7 @@ func TestIntegrasiCKPNSnapshotBasiTidakDipakai(t *testing.T) {
 
 	svc := newCKPNSvcWithRepo(e, &staleCKPNRepo{CKPNRepository: realRepo, stale: stale})
 	asOf := time.Now().UTC()
+	e.recordPPAPRun(t, asOf)
 	if _, err := svc.Run(e.ctx, asOf, e.actor); err != nil {
 		t.Fatalf("Run CKPN: %v", err)
 	}
@@ -261,6 +267,20 @@ type staleCKPNRepo struct {
 
 func (r *staleCKPNRepo) ListActiveLoans(context.Context, domain.Actor) ([]domain.CKPNLoanSnapshot, error) {
 	return r.stale, nil
+}
+
+// recordPPAPRun menulis penanda tanggal bisnis run PPAP agar gerbang tanggal CKPN
+// lolos. Uji CKPN menyuntik required_ppap langsung, jadi penandanya pun ditulis
+// langsung untuk tanggal bisnis yang sedang diuji.
+func (e *moneyEnv) recordPPAPRun(t *testing.T, asOf time.Time) {
+	t.Helper()
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ('ppap.last_run_business_date', $1, 'penanda run PPAP uji CKPN')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		asOf.UTC().Format("2006-01-02")); err != nil {
+		t.Fatalf("menulis penanda run PPAP: %v", err)
+	}
 }
 
 // setCKPNConfig menyetel satu kunci CKPN sambil membuang cache konfigurasinya.
@@ -368,7 +388,8 @@ func newCKPNSvcWithRepo(e *moneyEnv, repo domain.CKPNRepository) domain.CKPNServ
 	referenceGen := postgres.NewReferenceGenerator(e.db)
 	postingSvc := service.NewPostingService(e.db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(e.productRepo, ledgerRepo, postingSvc)
-	return service.NewCKPNService(e.db, repo, e.productRepo, ledgerRepo, poster, postingSvc, e.configSvc, e.loanRepo)
+	return service.NewCKPNService(e.db, repo, e.productRepo, ledgerRepo, poster, postingSvc, e.configSvc, e.loanRepo,
+		service.NewPPAPRunMarker(postgres.NewSystemConfigRepository(e.db)))
 }
 
 func ckpnIdempotencyKey(loanNumber string, asOf time.Time, adjustment decimal.Decimal) string {

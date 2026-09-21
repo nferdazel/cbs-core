@@ -159,8 +159,8 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 }
 
 // runDailyJobs menjalankan pekerjaan harian yang menyertai tutup hari: perpanjangan
-// otomatis deposito, perhitungan PPAP, perbandingan CKPN, akrual denda kredit, akrual
-// bunga kredit, amortisasi saldo kerugian restrukturisasi, dan penandaan rekening
+// otomatis deposito, akrual bunga kredit, amortisasi saldo kerugian restrukturisasi,
+// perhitungan PPAP, perbandingan CKPN, akrual denda kredit, dan penandaan rekening
 // dormant. Setiap pekerjaan terisolasi — kegagalannya hanya menghasilkan peringatan
 // dan tidak menghentikan pekerjaan berikutnya maupun tutup hari, karena tutup hari
 // yang gagal akan menghentikan seluruh operasional bank. Layanan yang belum
@@ -172,6 +172,11 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 // itu dicatat di EODSummaryResult.Steps dan dinaikkan menjadi Warnings, sehingga run
 // tidak pernah tampak sah dengan angka dari run sebelumnya. Urutan mengikuti
 // ketergantungan data yang sudah ada; jalur perhitungan tiap langkah tidak diubah.
+//
+// Ketergantungannya berantai dan berurutan: akrual bunga → amortisasi saldo kerugian
+// → PPAP → perbandingan CKPN. Amortisasi berjalan sebelum PPAP agar PPKA dihitung
+// atas nilai tercatat setelah amortisasi periode berjalan; bila amortisasi gagal,
+// PPAP dilewati (lihat komentar pada masing-masing langkah).
 func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
 	logger := observability.FromContext(ctx)
 
@@ -189,27 +194,85 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		}
 	}
 
+	// Akrual bunga kredit berjalan lebih dulu karena amortisasi saldo kerugian
+	// restrukturisasi berdiri di atas pendapatan jadwal periode itu.
+	if s.accrualSvc == nil {
+		recordEODStep(summary, eodStepInterestAccrual, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi")
+	} else {
+		accrual, err := s.accrualSvc.AccrueInterest(ctx, businessDate, actor)
+		summary.LoanInterestAccrued = accrual.Accrued
+		summary.LoanInterestAccruedAmount = accrual.TotalAccrued
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual bunga kredit gagal: %v", err))
+			logger.ErrorContext(ctx, "akrual bunga kredit gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepRan, "")
+		}
+		// Produk tanpa pemetaan INTEREST_ACCRUAL bukan kegagalan teknis, tetapi harus
+		// terlihat: tanpa peringatan, batch tampak mengakru padahal tidak.
+		summary.Warnings = append(summary.Warnings, accrual.Warnings...)
+	}
+
+	// Amortisasi saldo kerugian restrukturisasi berjalan SETELAH akrual kontraktual
+	// pada tanggal bisnis yang sama, sehingga selisih bunga efektif dihitung di atas
+	// pendapatan jadwal yang sudah diakui periode itu. Bila akrual gagal, amortisasi
+	// MENOLAK berjalan: selisih efektifnya akan berdiri di atas pendapatan yang belum
+	// diakui dan angkanya menyesatkan. Seluruh perhitungannya di balik
+	// loan.restructure.loss.enabled.
+	//
+	// Urutan ini juga menempatkan amortisasi SEBELUM PPAP: nilai tercatat yang dipakai
+	// PPKA harus sudah dikurangi amortisasi periode berjalan (Pasal 32 POJK 1/2024 jo.
+	// PA BPR Bab 5.2). Bila PPAP berjalan lebih dulu, ia memakai saldo kerugian bruto
+	// sehingga required_ppap terlalu besar untuk periode itu.
+	if s.accrualSvc == nil {
+		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi", eodStepInterestAccrual)
+	} else if reason := unmetPrerequisite(summary, eodStepInterestAccrual); reason != "" {
+		summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi dilewati: %s", reason))
+		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, reason, eodStepInterestAccrual)
+	} else {
+		loss, err := s.accrualSvc.AmortizeRestructureLoss(ctx, businessDate, actor)
+		summary.LoanLossAmortized = loss.Amortized
+		summary.LoanLossAmortizedAmount = loss.TotalAmortized
+		if err != nil {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi gagal: %v", err))
+			logger.ErrorContext(ctx, "amortisasi saldo kerugian restrukturisasi gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepLossAmortization, domain.EODStepFailed, err.Error(), eodStepInterestAccrual)
+		} else {
+			recordEODStep(summary, eodStepLossAmortization, domain.EODStepRan, "", eodStepInterestAccrual)
+		}
+		summary.Warnings = append(summary.Warnings, loss.Warnings...)
+	}
+
 	// PPAP menyimpan required_ppap dan kolektibilitas. Langkah inilah yang menghasilkan
 	// angka dasar bagi perbandingan CKPN, jadi statusnya menentukan boleh tidaknya CKPN.
+	//
+	// Prasyaratnya adalah amortisasi saldo kerugian: PPKA dihitung atas nilai tercatat
+	// SETELAH amortisasi periode berjalan. Bila amortisasi tidak berstatus RAN — gagal,
+	// tidak dikonfigurasi, atau terlewat karena akrual gagal — PPAP MENOLAK berjalan
+	// agar tidak menghasilkan cadangan di atas saldo kerugian yang belum dimutakhirkan.
 	if s.ppapSvc == nil {
 		recordEODStep(summary, eodStepPPAP, domain.EODStepSkipped, "layanan PPAP tidak dikonfigurasi")
+	} else if reason := unmetPrerequisite(summary, eodStepLossAmortization); reason != "" {
+		summary.Warnings = append(summary.Warnings, fmt.Sprintf("perhitungan PPAP harian dilewati: %s", reason))
+		recordEODStep(summary, eodStepPPAP, domain.EODStepSkipped, reason, eodStepLossAmortization)
 	} else {
 		ppap, err := s.ppapSvc.RunDaily(ctx, businessDate, actor)
 		summary.PPAPProcessed = ppap.Processed
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perhitungan PPAP harian gagal: %v", err))
 			logger.ErrorContext(ctx, "perhitungan PPAP harian gagal saat EOD", "error", err)
-			recordEODStep(summary, eodStepPPAP, domain.EODStepFailed, err.Error())
+			recordEODStep(summary, eodStepPPAP, domain.EODStepFailed, err.Error(), eodStepLossAmortization)
 		} else {
-			recordEODStep(summary, eodStepPPAP, domain.EODStepRan, "")
+			recordEODStep(summary, eodStepPPAP, domain.EODStepRan, "", eodStepLossAmortization)
 		}
 	}
 
 	// Perbandingan CKPN bersandar pada required_ppap yang baru saja disimpan PPAP pada
 	// tanggal bisnis yang sama. Bila PPAP gagal/tidak berjalan, kredit masih menyimpan
 	// required_ppap run sebelumnya; menampilkan perbandingannya berarti melaporkan
-	// dasar kemarin seolah sah. Dijalankan tepat setelah PPAP (sebelum amortisasi) agar
-	// basis saldo kerugiannya identik dengan basis yang dipakai PPAP.
+	// dasar kemarin seolah sah. Karena PPAP kini berjalan setelah amortisasi, basis
+	// saldo kerugian CKPN dan PPKA sama-sama sudah dimutakhirkan periode ini.
 	if s.ckpnSvc == nil {
 		recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, "layanan CKPN tidak dikonfigurasi", eodStepPPAP)
 	} else if reason := unmetPrerequisite(summary, eodStepPPAP); reason != "" {
@@ -255,49 +318,6 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		if penalty.Warning != "" {
 			summary.Warnings = append(summary.Warnings, penalty.Warning)
 		}
-	}
-
-	if s.accrualSvc == nil {
-		recordEODStep(summary, eodStepInterestAccrual, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi")
-	} else {
-		accrual, err := s.accrualSvc.AccrueInterest(ctx, businessDate, actor)
-		summary.LoanInterestAccrued = accrual.Accrued
-		summary.LoanInterestAccruedAmount = accrual.TotalAccrued
-		if err != nil {
-			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual bunga kredit gagal: %v", err))
-			logger.ErrorContext(ctx, "akrual bunga kredit gagal saat EOD", "error", err)
-			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepFailed, err.Error())
-		} else {
-			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepRan, "")
-		}
-		// Produk tanpa pemetaan INTEREST_ACCRUAL bukan kegagalan teknis, tetapi harus
-		// terlihat: tanpa peringatan, batch tampak mengakru padahal tidak.
-		summary.Warnings = append(summary.Warnings, accrual.Warnings...)
-	}
-
-	// Amortisasi saldo kerugian restrukturisasi berjalan SETELAH akrual kontraktual
-	// pada tanggal bisnis yang sama, sehingga selisih bunga efektif dihitung di atas
-	// pendapatan jadwal yang sudah diakui periode itu. Bila akrual gagal, amortisasi
-	// MENOLAK berjalan: selisih efektifnya akan berdiri di atas pendapatan yang belum
-	// diakui dan angkanya menyesatkan. Seluruh perhitungannya di balik
-	// loan.restructure.loss.enabled.
-	if s.accrualSvc == nil {
-		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi", eodStepInterestAccrual)
-	} else if reason := unmetPrerequisite(summary, eodStepInterestAccrual); reason != "" {
-		summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi dilewati: %s", reason))
-		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, reason, eodStepInterestAccrual)
-	} else {
-		loss, err := s.accrualSvc.AmortizeRestructureLoss(ctx, businessDate, actor)
-		summary.LoanLossAmortized = loss.Amortized
-		summary.LoanLossAmortizedAmount = loss.TotalAmortized
-		if err != nil {
-			summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi gagal: %v", err))
-			logger.ErrorContext(ctx, "amortisasi saldo kerugian restrukturisasi gagal saat EOD", "error", err)
-			recordEODStep(summary, eodStepLossAmortization, domain.EODStepFailed, err.Error(), eodStepInterestAccrual)
-		} else {
-			recordEODStep(summary, eodStepLossAmortization, domain.EODStepRan, "", eodStepInterestAccrual)
-		}
-		summary.Warnings = append(summary.Warnings, loss.Warnings...)
 	}
 
 	if s.dormantSvc == nil {

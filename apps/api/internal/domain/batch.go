@@ -33,6 +33,27 @@ type PPAPRunner interface {
 	RunDaily(ctx context.Context, asOf time.Time, actor Actor) (PPAPRunSummary, error)
 }
 
+// PPAPRunMarker mencatat tanggal bisnis run PPAP terakhir yang berhasil dan
+// membacanya kembali. Perbandingan CKPN memakai required_ppap yang disimpan PPAP;
+// tanpa penanda ini perbandingan tidak dapat membedakan angka tanggal bisnis berjalan
+// dari angka run sebelumnya, sehingga pemanggilan manual di luar tutup hari bisa
+// menyajikan dasar kemarin seolah sah.
+//
+// Dipisah dari PPAPService agar CKPN tidak memegang seluruh permukaan layanan PPAP,
+// mengikuti pola ARORunner/PPAPRunner yang sempit.
+type PPAPRunMarker interface {
+	// RecordRun menyimpan tanggal bisnis run PPAP yang berhasil. Dipanggil hanya
+	// pada jalur non-preview setelah seluruh kredit selesai diproses.
+	//
+	// updatedBy wajib staf yang benar-benar ada: system_config.updated_by punya FK
+	// ke staff_users, sehingga uuid.Nil akan ditolak database dan menggagalkan run
+	// PPAP yang sebenarnya sudah selesai menghitung.
+	RecordRun(ctx context.Context, businessDate time.Time, updatedBy uuid.UUID) error
+	// LastRunBusinessDate mengembalikan tanggal bisnis run PPAP terakhir. ok=false
+	// berarti belum pernah ada run PPAP yang berhasil (bukan error).
+	LastRunBusinessDate(ctx context.Context) (time.Time, bool, error)
+}
+
 // DormantRunSummary merangkum satu kali penandaan rekening dormant pada tutup hari.
 // Warning diisi bila konfigurasi ambang tidak valid sehingga fallback terpakai;
 // tanpa itu pekerjaan dapat tampak berjalan padahal memakai asumsi operator.

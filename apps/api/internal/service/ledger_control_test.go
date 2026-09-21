@@ -21,6 +21,10 @@ func (s stubLimits) Check(ctx context.Context, actor domain.Actor, txType string
 	return s.checkErr
 }
 
+func (s stubLimits) List(ctx context.Context) ([]domain.TransactionLimitView, error) {
+	return nil, nil
+}
+
 // stubApprovals mencatat permintaan persetujuan yang diajukan.
 type stubApprovals struct {
 	created []domain.CreateMakerCheckerInput

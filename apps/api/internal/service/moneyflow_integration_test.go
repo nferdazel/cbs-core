@@ -106,7 +106,7 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 	// Koreksi nominal dieksekusi setelah disetujui; daftarkan agar jalur persetujuan
 	// punya eksekutor yang sama seperti produksi.
 	executors.Register(service.ActionLoanCorrection, loanSvc)
-	ppapSvc := service.NewPPAPService(db, postgres.NewPPAPRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, collateralRepo)
+	ppapSvc := service.NewPPAPService(db, postgres.NewPPAPRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, service.NewPPAPRunMarker(configRepo), collateralRepo)
 
 	cipher, err := crypto.NewCipher("e2e", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")), nil)
 	if err != nil {

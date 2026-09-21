@@ -122,11 +122,14 @@ func main() {
 	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
 	// Repositori agunan dipakai dua jalur: pencatatan agunan dan pengurangan eksposur PPAP.
 	collateralRepo := postgres.NewCollateralRepository(db)
-	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc, collateralRepo)
+	// Penanda tanggal bisnis run PPAP terakhir dibagi ke PPAP (penulis) dan CKPN
+	// (pembaca) agar perbandingan CKPN menolak required_ppap dari tanggal bisnis lain.
+	ppapRunMarker := service.NewPPAPRunMarker(configRepo)
+	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc, ppapRunMarker, collateralRepo)
 	// CKPN (SAK EP, SEOJK 21/2024) adalah konsep terpisah dari PPKA. Modul ini membaca
 	// target PPKA yang sudah disimpan (loans.required_ppap) untuk membandingkannya,
 	// bukan menghitung ulang PPKA. Kredit dikunci lewat LoanRepository saat menulis.
-	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo)
+	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, ppapRunMarker)
 	// Pasal 23 POJK No. 1 Tahun 2024: pengurang PPKA umum dan khusus untuk bagian
 	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
 	// bawaan false sehingga belum mengubah angka PPKA mana pun.
@@ -210,7 +213,7 @@ func main() {
 		PPAPHandler:         ppapHandler,
 		CKPNHandler:         ckpnHandler,
 		LPSPlacementHandler: lpsPlacementHandler,
-		AuditHandler:        httpHandler.NewAuditHandler(auditRepo),
+		AuditHandler:        httpHandler.NewAuditHandler(auditRepo, limitSvc),
 		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
 		AuthService:         authSvc,
 		Cookies:             cookies,

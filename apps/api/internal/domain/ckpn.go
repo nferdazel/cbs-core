@@ -22,6 +22,10 @@ var (
 	ErrCKPNParameterInvalid = errors.New("parameter kebijakan CKPN tidak valid")
 	ErrCKPNExpenseNotFound  = errors.New("akun beban kerugian penurunan nilai tidak ditemukan")
 	ErrCKPNReserveNotFound  = errors.New("akun CKPN tidak ditemukan")
+	// ErrCKPNStalePPAP menandai perbandingan CKPN yang tidak boleh memakai PPKA dari
+	// run PPAP tanggal bisnis lain. Bila dibiarkan, laporan membandingkan CKPN
+	// tanggal berjalan dengan required_ppap kemarin dan tetap terlihat sah.
+	ErrCKPNStalePPAP = errors.New("perbandingan CKPN menolak PPKA dari tanggal bisnis yang tidak sama")
 )
 
 // CKPNAsetBaikMaxDPDDefault adalah batas tunggakan hari agar aset keuangan memenuhi

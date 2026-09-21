@@ -21,6 +21,19 @@ type TransactionLimit struct {
 	RequiresApprovalAbove decimal.Decimal
 }
 
+// TransactionLimitView adalah satu baris batas efektif untuk dibaca antarmuka.
+// Nilai uang dikirim sebagai decimal agar antena JSON menulisnya sebagai string
+// (shopspring/decimal mempertahankan presisi dengan mengutip angka), dan Configured
+// menandai apakah nilai berasal dari system_config atau masih bawaan aplikasi.
+type TransactionLimitView struct {
+	Role            StaffRole       `json:"role"`
+	TransactionType string          `json:"transaction_type"`
+	PerTransaction  decimal.Decimal `json:"per_transaction"`
+	DailyLimit      decimal.Decimal `json:"daily_limit"`
+	ApprovalAbove   decimal.Decimal `json:"approval_above"`
+	Configured      bool            `json:"configured"`
+}
+
 // DailyDebitSumReader menjumlahkan sisi debit jurnal milik satu pelaku pada satu
 // tanggal. Dipakai menghitung akumulasi harian tanpa memuat seluruh repository jurnal.
 type DailyDebitSumReader interface {
@@ -33,4 +46,7 @@ type TransactionLimitService interface {
 	// Check memvalidasi nominal terhadap batas per transaksi, akumulasi harian, dan
 	// ambang persetujuan. Pelanggaran dikembalikan sebagai sentinel error di domain.
 	Check(ctx context.Context, actor Actor, txType string, amount decimal.Decimal) error
+	// List mengembalikan batas efektif seluruh peran x jenis transaksi yang dijaga
+	// penjaga batas, beserta penanda configured. Dipakai endpoint baca system/limits.
+	List(ctx context.Context) ([]TransactionLimitView, error)
 }

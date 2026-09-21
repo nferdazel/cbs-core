@@ -208,6 +208,47 @@ export const dictionaryID = {
     emptyFiltered: "Tidak ada baris yang cocok dengan saringan.",
     loadError: "Gagal memuat pemetaan.",
   },
+  limits: {
+    title: "Batas Transaksi & Ambang Persetujuan",
+    description:
+      "Nilai ini dipakai sistem untuk menolak transaksi yang melebihi batas dan mengarahkan transaksi di atas ambang persetujuan ke antrean persetujuan pejabat.",
+    sourceLabel: "Sumber nilai",
+    searchLabel: "Cari peran atau jenis transaksi",
+    searchPlaceholder: "mis. TELLER atau DEPOSIT",
+    statusFilterLabel: "Status penetapan",
+    filterAll: "Semua baris",
+    filterConfigured: "Sudah ditetapkan",
+    filterUnconfigured: "Masih bawaan",
+    configured: "Ditetapkan bank",
+    unconfigured: "Masih bawaan",
+    unconfiguredNotice:
+      "Baris bertanda \u201cMasih bawaan\u201d memakai nilai bawaan aplikasi karena bank belum pernah menetapkannya. Nilai tersebut tetap berlaku saat ini.",
+    allConfigured: "Semua batas sudah ditetapkan bank.",
+    colRole: "Peran",
+    colTransactionType: "Jenis Transaksi",
+    colPerTransaction: "Batas per Transaksi",
+    colDailyLimit: "Batas Harian",
+    colApprovalAbove: "Ambang Persetujuan",
+    colStatus: "Status",
+    empty: "Belum ada batas transaksi yang terdaftar.",
+    emptyFiltered: "Tidak ada batas yang cocok dengan saringan.",
+    loadError: "Gagal memuat batas transaksi.",
+    forbidden:
+      "Anda tidak memiliki izin untuk melihat batas transaksi (403).",
+    unavailable:
+      "Data batas transaksi belum tersedia di server (endpoint belum aktif atau tidak ditemukan).",
+    resultCount: "baris ditampilkan",
+    txType: {
+      DEPOSIT: "Setoran",
+      WITHDRAWAL: "Penarikan",
+      TRANSFER_INTERNAL: "Transfer Internal",
+      REVERSAL: "Pembatalan",
+    },
+    source: {
+      config: "Konfigurasi sistem",
+      default: "Bawaan aplikasi",
+    },
+  },
 };
 
 export type Dictionary = typeof dictionaryID;

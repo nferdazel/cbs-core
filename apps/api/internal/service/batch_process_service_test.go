@@ -169,9 +169,14 @@ type stubInterestAccrualRunner struct {
 	amortized      int
 	amortizeErr    error
 	amortizeCalled *bool
+	// order mencatat urutan pemanggilan lintas langkah bila diisi uji urutan.
+	order *[]string
 }
 
 func (s stubInterestAccrualRunner) AccrueInterest(context.Context, time.Time, domain.Actor) (domain.LoanInterestAccrualSummary, error) {
+	if s.order != nil {
+		*s.order = append(*s.order, "accrual")
+	}
 	return domain.LoanInterestAccrualSummary{
 		Accrued:      s.accrued,
 		TotalAccrued: s.amount,
@@ -183,6 +188,9 @@ func (s stubInterestAccrualRunner) AmortizeRestructureLoss(context.Context, time
 	if s.amortizeCalled != nil {
 		*s.amortizeCalled = true
 	}
+	if s.order != nil {
+		*s.order = append(*s.order, "amortization")
+	}
 	return domain.RestructureLossAmortizationSummary{
 		Amortized:      s.amortized,
 		TotalAmortized: decimal.NewFromInt(int64(s.amortized)),
@@ -193,9 +201,18 @@ func (s stubInterestAccrualRunner) AmortizeRestructureLoss(context.Context, time
 type stubPPAPRunner struct {
 	processed int
 	err       error
+	// called dipakai uji gerbang untuk membuktikan PPAP tidak dipanggil.
+	called *bool
+	order  *[]string
 }
 
 func (s stubPPAPRunner) RunDaily(context.Context, time.Time, domain.Actor) (domain.PPAPRunSummary, error) {
+	if s.called != nil {
+		*s.called = true
+	}
+	if s.order != nil {
+		*s.order = append(*s.order, "ppap")
+	}
 	return domain.PPAPRunSummary{Processed: s.processed}, s.err
 }
 
@@ -360,7 +377,10 @@ func TestRunEODSkipsCKPNComparisonWhenPPAPFails(t *testing.T) {
 	svc := service.NewBatchProcessService(
 		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
 		stubPPAPRunner{err: errors.New("PPAP gagal")},
-		nil, nil, nil,
+		nil, nil,
+		// Amortisasi harus RAN agar PPAP benar-benar dicoba dan gagal; tanpa akrual,
+		// gerbang amortisasi lebih dulu yang melewati PPAP.
+		stubInterestAccrualRunner{},
 		stubCKPNService{called: &ckpnCalled},
 	)
 
@@ -393,7 +413,8 @@ func TestRunEODComparesCKPNWhenPPAPRuns(t *testing.T) {
 	svc := service.NewBatchProcessService(
 		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
 		stubPPAPRunner{processed: 3},
-		nil, nil, nil,
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
 		stubCKPNService{
 			called: &ckpnCalled,
 			summary: domain.CKPNComparisonSummary{
@@ -421,5 +442,126 @@ func TestRunEODComparesCKPNWhenPPAPRuns(t *testing.T) {
 	}
 	if step := eodStepStatus(t, res, "ckpn_comparison"); step.Status != domain.EODStepRan {
 		t.Fatalf("status CKPN = %s, mau RAN", step.Status)
+	}
+}
+
+// Amortisasi saldo kerugian restrukturisasi harus berjalan SEBELUM PPAP: PPKA
+// dihitung atas nilai tercatat setelah amortisasi periode berjalan (Pasal 32 POJK
+// 1/2024 jo. PA BPR Bab 5.2). Bila terbalik, required_ppap berdiri di atas saldo
+// kerugian yang belum dikurangi amortisasi.
+func TestRunEODRunsLossAmortizationBeforePPAP(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	var order []string
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1, order: &order},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1, amortized: 7, order: &order},
+		nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if got := strings.Join(order, "->"); got != "accrual->amortization->ppap" {
+		t.Fatalf("urutan langkah %q, mau %q", got, "accrual->amortization->ppap")
+	}
+	if res.LoanLossAmortized != 7 {
+		t.Fatalf("loan_loss_amortized = %d, mau 7", res.LoanLossAmortized)
+	}
+	if step := eodStepStatus(t, res, "ppap"); step.Status != domain.EODStepRan {
+		t.Fatalf("status PPAP = %s, mau RAN", step.Status)
+	}
+}
+
+// Bila amortisasi gagal, PPAP tidak boleh berjalan: saldo kerugian belum dimutakhirkan
+// sehingga required_ppap akan terlalu besar. Penolakan harus tercatat di ringkasan,
+// bukan senyap.
+func TestRunEODSkipsPPAPWhenLossAmortizationFails(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	ppapCalled := false
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1, called: &ppapCalled},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1, amortizeErr: errors.New("amortisasi gagal di tengah")},
+		nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if ppapCalled {
+		t.Fatal("PPAP tidak boleh berjalan saat amortisasi gagal, tetapi ia dipanggil")
+	}
+	if res.PPAPProcessed != 0 {
+		t.Fatalf("ppap_processed = %d, mau 0 karena dilewati", res.PPAPProcessed)
+	}
+	if step := eodStepStatus(t, res, "restructure_loss_amortization"); step.Status != domain.EODStepFailed {
+		t.Fatalf("status amortisasi = %s, mau FAILED", step.Status)
+	}
+	ppapStep := eodStepStatus(t, res, "ppap")
+	if ppapStep.Status != domain.EODStepSkipped {
+		t.Fatalf("status PPAP = %s, mau SKIPPED", ppapStep.Status)
+	}
+	if ppapStep.Reason == "" {
+		t.Fatal("PPAP yang dilewati karena prasyarat gagal harus mencantumkan alasan")
+	}
+	warned := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "perhitungan PPAP harian dilewati") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("penolakan PPAP harus muncul sebagai peringatan, dapat %v", res.Warnings)
+	}
+}
+
+// Bila akrual gagal, amortisasi dilewati; karena amortisasi tidak RAN, PPAP juga harus
+// dilewati. Keduanya tercatat sebagai langkah SKIPPED beserta alasannya.
+func TestRunEODSkipsAmortizationAndPPAPWhenAccrualFails(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	amortizeCalled := false
+	ppapCalled := false
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{called: &ppapCalled},
+		nil, nil,
+		stubInterestAccrualRunner{
+			err:            errors.New("akrual gagal di tengah"),
+			amortizeCalled: &amortizeCalled,
+		},
+		nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if amortizeCalled {
+		t.Fatal("amortisasi tidak boleh berjalan saat akrual gagal")
+	}
+	if ppapCalled {
+		t.Fatal("PPAP tidak boleh berjalan saat amortisasi dilewati")
+	}
+	amortStep := eodStepStatus(t, res, "restructure_loss_amortization")
+	if amortStep.Status != domain.EODStepSkipped || amortStep.Reason == "" {
+		t.Fatalf("amortisasi harus SKIPPED beralasan, dapat %+v", amortStep)
+	}
+	ppapStep := eodStepStatus(t, res, "ppap")
+	if ppapStep.Status != domain.EODStepSkipped || ppapStep.Reason == "" {
+		t.Fatalf("PPAP harus SKIPPED beralasan, dapat %+v", ppapStep)
 	}
 }

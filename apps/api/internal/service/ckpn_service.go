@@ -71,6 +71,9 @@ type ckpnService struct {
 	posting     domain.PostingService
 	config      domain.SystemConfigService
 	locker      ckpnLoanLocker
+	// runMarker menyimpan/membaca tanggal bisnis run PPAP terakhir. Boleh nil pada
+	// lingkungan uji tanpa database; bila nil gerbang tanggal bisnis dilewati.
+	runMarker domain.PPAPRunMarker
 }
 
 func NewCKPNService(
@@ -82,6 +85,7 @@ func NewCKPNService(
 	posting domain.PostingService,
 	config domain.SystemConfigService,
 	locker ckpnLoanLocker,
+	runMarker domain.PPAPRunMarker,
 ) domain.CKPNService {
 	return &ckpnService{
 		txRunner:    sqlCKPNTxRunner{db: db},
@@ -92,6 +96,7 @@ func NewCKPNService(
 		posting:     posting,
 		config:      config,
 		locker:      locker,
+		runMarker:   runMarker,
 	}
 }
 
@@ -122,6 +127,13 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	// ppap.collateral.enabled.
 	if !policy.Enabled {
 		return summary, nil
+	}
+
+	// required_ppap per kredit diisi jalur PPAP. Bila PPAP terakhir tidak berjalan pada
+	// tanggal bisnis ini, angka itu milik run sebelumnya. Menolak di sini menutup jalur
+	// pemanggilan manual di luar tutup hari, bukan hanya gerbang di dalam tutup hari.
+	if err := s.requireFreshPPAP(ctx, asOf); err != nil {
+		return summary, err
 	}
 
 	// Daftar kredit dibaca di luar transaksi hanya untuk menentukan kredit mana yang
@@ -183,6 +195,30 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	}
 
 	return summary, nil
+}
+
+// requireFreshPPAP menolak perbandingan CKPN bila tidak ada run PPAP yang berhasil
+// pada tanggal bisnis asOf. Tanpa gerbang ini, perbandingan tetap "berhasil" memakai
+// required_ppap run sebelumnya dan laporan tampak sah padahal dasarnya kemarin.
+//
+// Penanda boleh nil pada lingkungan uji tanpa database; di produksi selalu terpasang.
+func (s *ckpnService) requireFreshPPAP(ctx context.Context, asOf time.Time) error {
+	if s.runMarker == nil {
+		return nil
+	}
+	last, ok, err := s.runMarker.LastRunBusinessDate(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: belum ada run PPAP yang berhasil; jalankan PPAP untuk tanggal bisnis %s lebih dulu",
+			domain.ErrCKPNStalePPAP, asOf.Format(layoutTanggalBisnis))
+	}
+	if !sameBusinessDay(last, asOf) {
+		return fmt.Errorf("%w: tanggal bisnis PPAP terakhir %s, tanggal bisnis perbandingan %s; required_ppap masih milik run sebelumnya",
+			domain.ErrCKPNStalePPAP, last.Format(layoutTanggalBisnis), asOf.Format(layoutTanggalBisnis))
+	}
+	return nil
 }
 
 // ckpnCompare menyusun perbandingan satu kredit. Difference = PPKA - CKPN; positif

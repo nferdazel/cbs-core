@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
+import { TransactionLimits } from "@/components/settings/TransactionLimits";
 
 export default function PengaturanPage() {
   const { user } = useAuth();
@@ -45,7 +46,7 @@ export default function PengaturanPage() {
     <>
       <PageHeader
         title="Pengaturan"
-        description="Profil pengguna dan tanggal bisnis sistem."
+        description="Profil pengguna, tanggal bisnis sistem, dan batas transaksi."
       />
 
       <Card className="mb-4">
@@ -108,6 +109,8 @@ export default function PengaturanPage() {
           )}
         </CardContent>
       </Card>
+
+      <TransactionLimits />
     </>
   );
 }

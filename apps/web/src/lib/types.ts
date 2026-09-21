@@ -49,6 +49,27 @@ export interface SystemBusinessDate {
   updated_at: string;
 }
 
+/**
+ * Batas transaksi per peran untuk satu jenis transaksi.
+ * Nilai uang dikirim sebagai string berisi angka agar presisi desimal tidak
+ * hilang saat melewati JSON. `configured: false` berarti nilai masih bawaan
+ * aplikasi dan belum pernah ditetapkan bank.
+ */
+export interface TransactionLimitRow {
+  role: string;
+  transaction_type: string;
+  per_transaction: string;
+  daily_limit: string;
+  approval_above: string;
+  configured: boolean;
+}
+
+/** Respons GET /system/limits. `source` menyebut asal nilai (mis. "config"). */
+export interface TransactionLimitsResponse {
+  source: string;
+  limits: TransactionLimitRow[];
+}
+
 /** domain.TrialBalanceRow (report.go) */
 export interface TrialBalanceRow {
   account_code: string;

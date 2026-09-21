@@ -210,4 +210,45 @@ export const dictionaryEN: Dictionary = {
     emptyFiltered: "No rows match the filter.",
     loadError: "Failed to load the mapping.",
   },
+  limits: {
+    title: "Transaction Limits & Approval Thresholds",
+    description:
+      "The system uses these values to reject transactions above the limit and to route transactions above the approval threshold to the officer approval queue.",
+    sourceLabel: "Value source",
+    searchLabel: "Search role or transaction type",
+    searchPlaceholder: "e.g. TELLER or DEPOSIT",
+    statusFilterLabel: "Configuration status",
+    filterAll: "All rows",
+    filterConfigured: "Configured",
+    filterUnconfigured: "Still default",
+    configured: "Set by bank",
+    unconfigured: "Still default",
+    unconfiguredNotice:
+      "Rows marked \u201cStill default\u201d use the application default because the bank has never configured them. Those values are still in effect today.",
+    allConfigured: "Every limit has been configured by the bank.",
+    colRole: "Role",
+    colTransactionType: "Transaction Type",
+    colPerTransaction: "Per-Transaction Limit",
+    colDailyLimit: "Daily Limit",
+    colApprovalAbove: "Approval Threshold",
+    colStatus: "Status",
+    empty: "No transaction limits are registered yet.",
+    emptyFiltered: "No limits match the filter.",
+    loadError: "Failed to load transaction limits.",
+    forbidden:
+      "You do not have permission to view transaction limits (403).",
+    unavailable:
+      "Transaction limit data is not available on the server yet (endpoint inactive or not found).",
+    resultCount: "rows shown",
+    txType: {
+      DEPOSIT: "Deposit",
+      WITHDRAWAL: "Withdrawal",
+      TRANSFER_INTERNAL: "Internal Transfer",
+      REVERSAL: "Reversal",
+    },
+    source: {
+      config: "System configuration",
+      default: "Application default",
+    },
+  },
 };

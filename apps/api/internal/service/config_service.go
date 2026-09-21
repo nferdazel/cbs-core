@@ -111,3 +111,23 @@ func (s *systemConfigService) Invalidate(key string) {
 	delete(s.cache, key)
 	s.mu.Unlock()
 }
+
+// Exists melaporkan apakah kunci benar-benar ada di system_config (termasuk bernilai
+// kosong). Endpoint batas transaksi memakainya untuk membedakan nilai yang ditetapkan
+// bank dari nilai bawaan. Sengaja membaca repositori, bukan cache: keberadaan kunci
+// jarang ditanyakan dan tidak boleh tertahan cache 60 detik.
+func (s *systemConfigService) Exists(ctx context.Context, key string) bool {
+	_, err := s.repo.Get(ctx, key)
+	return err == nil
+}
+
+// RawValue mengembalikan nilai apa adanya beserta ada tidaknya kunci. Pembaca yang
+// harus tahu apakah kunci sengaja dikosongkan memakainya agar tidak salah menganggap
+// kunci kosong sebagai angka tidak sah.
+func (s *systemConfigService) RawValue(ctx context.Context, key string) (string, bool) {
+	value, err := s.repo.Get(ctx, key)
+	if err != nil {
+		return "", false
+	}
+	return value, true
+}

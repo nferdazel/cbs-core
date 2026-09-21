@@ -22,10 +22,14 @@ type auditReader interface {
 
 type AuditHandler struct {
 	repo auditReader
+	// limits dipakai rute baca batas transaksi. Field ini dititipkan di handler sistem
+	// yang sudah terdaftar karena router.go sedang dipegang perubahan lain; tidak ada
+	// handler pengaturan khusus di pohon rute saat ini.
+	limits domain.TransactionLimitService
 }
 
-func NewAuditHandler(repo auditReader) *AuditHandler {
-	return &AuditHandler{repo: repo}
+func NewAuditHandler(repo auditReader, limits domain.TransactionLimitService) *AuditHandler {
+	return &AuditHandler{repo: repo, limits: limits}
 }
 
 const (
@@ -40,6 +44,37 @@ const (
 func (h *AuditHandler) RegisterRoutes(r chi.Router) {
 	r.With(middleware.RequirePermission(domain.PermAuditLogsRead)).
 		Get("/audit-logs", h.List)
+	// Batas transaksi adalah konfigurasi sistem, bukan transaksi: izinnya system:config
+	// (hanya Superadmin), bukan izin transaksi. Rute ditempelkan pada RegisterRoutes yang
+	// sudah dipanggil router.go agar berkas itu tidak perlu disentuh.
+	r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+		Get("/system/limits", h.ListTransactionLimits)
+}
+
+// TransactionLimitsResponse adalah bentuk respons rute GET /system/limits yang sudah
+// ditetapkan. Jangan ubah nama field-nya tanpa menyepakati ulang dengan pemakai.
+type TransactionLimitsResponse struct {
+	Source string                        `json:"source"`
+	Limits []domain.TransactionLimitView `json:"limits"`
+}
+
+// ListTransactionLimits handles GET /api/v1/system/limits.
+// Mengembalikan nilai efektif per peran x jenis transaksi. configured=false berarti
+// sebagian nilai masih bawaan aplikasi dan bank belum menetapkannya.
+func (h *AuditHandler) ListTransactionLimits(w http.ResponseWriter, r *http.Request) {
+	if h.limits == nil {
+		Error(w, http.StatusServiceUnavailable, "layanan batas transaksi belum tersedia")
+		return
+	}
+	views, err := h.limits.List(r.Context())
+	if err != nil {
+		InternalError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, "batas transaksi efektif", TransactionLimitsResponse{
+		Source: "config",
+		Limits: views,
+	})
 }
 
 // List handles GET /api/v1/audit-logs
