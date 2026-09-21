@@ -76,19 +76,38 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		return nil, err
 	}
 
+	// Keberadaan dan dapat-dieksekusi adalah keadaan normal; hanya bila operator secara
+	// eksplisit menyatakannya tidak, agunan kehilangan status pengurang (Pasal 21(2)).
+	existsKnown := true
+	if input.ExistsKnown != nil {
+		existsKnown = *input.ExistsKnown
+	}
+	executable := true
+	if input.Executable != nil {
+		executable = *input.Executable
+	}
+
 	collateral := &domain.LoanCollateral{
-		LoanID:         input.LoanID,
-		CollateralType: input.CollateralType,
-		Description:    strings.TrimSpace(input.Description),
-		DocumentNumber: strings.TrimSpace(input.DocumentNumber),
-		OwnerName:      strings.TrimSpace(input.OwnerName),
-		AppraisalValue: input.AppraisalValue,
-		AppraisalDate:  input.AppraisalDate,
-		Appraiser:      strings.TrimSpace(input.Appraiser),
-		HaircutPercent: haircut,
-		Status:         domain.CollateralActive,
-		Notes:          strings.TrimSpace(input.Notes),
-		CreatedBy:      actor.DisplayName(),
+		LoanID:               input.LoanID,
+		CollateralType:       input.CollateralType,
+		Description:          strings.TrimSpace(input.Description),
+		DocumentNumber:       strings.TrimSpace(input.DocumentNumber),
+		OwnerName:            strings.TrimSpace(input.OwnerName),
+		AppraisalValue:       input.AppraisalValue,
+		AppraisalDate:        input.AppraisalDate,
+		Appraiser:            strings.TrimSpace(input.Appraiser),
+		AppraiserIndependent: input.AppraiserIndependent,
+		Certified:            input.Certified,
+		Mortgaged:            input.Mortgaged,
+		MortgageValue:        input.MortgageValue,
+		ExistsKnown:          existsKnown,
+		Executable:           executable,
+		ThirdPartyOwner:      input.ThirdPartyOwner,
+		OwnerConsent:         input.OwnerConsent,
+		HaircutPercent:       haircut,
+		Status:               domain.CollateralActive,
+		Notes:                strings.TrimSpace(input.Notes),
+		CreatedBy:            actor.DisplayName(),
 	}
 	if err := collateral.Validate(time.Now().UTC()); err != nil {
 		return nil, err

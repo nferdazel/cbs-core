@@ -39,6 +39,7 @@ const listDueLoansQuery = `
 		MIN(s.due_date) AS last_due_date,
 		(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = l.id) AS final_due_date,
 		l.is_restructured,
+		l.macet_at,
 		l.pre_restructure_collectibility,
 		CASE WHEN l.restructured_at IS NULL THEN 0 ELSE (
 			SELECT COUNT(*)
@@ -80,14 +81,14 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		var s domain.PPAPLoanSnapshot
 		var productID sql.NullString
 		var collectibility, accrual string
-		var lastDue, finalDue sql.NullTime
+		var lastDue, finalDue, macetAt sql.NullTime
 		var preRestructure sql.NullString
 		var cleanPeriods int
 
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP, &lastDue, &finalDue,
-			&s.IsRestructured, &preRestructure, &cleanPeriods,
+			&s.IsRestructured, &macetAt, &preRestructure, &cleanPeriods,
 		); err != nil {
 			return nil, err
 		}
@@ -107,6 +108,10 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		if finalDue.Valid {
 			t := finalDue.Time
 			s.FinalDueDate = &t
+		}
+		if macetAt.Valid {
+			t := macetAt.Time
+			s.MacetAt = &t
 		}
 		if preRestructure.Valid {
 			s.PreRestructureCollectibility = domain.CollectibilityFromOJK(domain.OJKCollectibility(preRestructure.String))
@@ -150,9 +155,14 @@ func (r *PPAPRepository) UpdateCollectibility(ctx context.Context, tx any, loanI
 }
 
 // UpdateLoanState menyimpan seluruh state PPAP hasil satu pemrosesan kredit.
+// Saat kredit pertama kali digolongkan Macet, macet_at diisi sekali; nilainya tidak
+// pernah ditimpa agar penurunan pengurang agunan Pasal 20(3)/(5) tetap dihitung sejak
+// saat kredit benar-benar macet, bukan sejak perhitungan terakhir.
 func (r *PPAPRepository) UpdateLoanState(ctx context.Context, tx any, u domain.PPAPLoanUpdate) error {
 	q := `UPDATE loans
-		SET collectibility=$1, dpd=$2, accrual_status=$3, stop_accrual=$4, required_ppap=$5, updated_at=NOW()
+		SET collectibility=$1, dpd=$2, accrual_status=$3, stop_accrual=$4, required_ppap=$5,
+		    macet_at = CASE WHEN $1 = '5_MACET' THEN COALESCE(macet_at, NOW()) ELSE macet_at END,
+		    updated_at=NOW()
 		WHERE id=$6`
 	exec, err := r.ppapExec(tx)
 	if err != nil {

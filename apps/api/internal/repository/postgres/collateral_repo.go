@@ -9,7 +9,6 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 )
 
 // CollateralRepository menyimpan agunan kredit. bound_amount tidak pernah ditulis dari
@@ -30,7 +29,9 @@ const collateralColumns = `lc.id, lc.loan_id, lc.branch_id, lc.collateral_type, 
 	lc.document_number, lc.owner_name, lc.appraisal_value, lc.appraisal_date,
 	COALESCE(lc.appraiser, ''), lc.haircut_percent, lc.bound_amount, lc.status, lc.released_at,
 	COALESCE(lc.notes, ''), lc.created_by, lc.created_at, COALESCE(lc.updated_by, ''), lc.updated_at,
-	COALESCE(b.code, '')`
+	COALESCE(b.code, ''),
+	lc.appraiser_independent, lc.certified, lc.mortgaged, lc.mortgage_value,
+	lc.exists_known, lc.executable, lc.third_party_owner, lc.owner_consent`
 
 const collateralFrom = `FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id`
 
@@ -44,6 +45,8 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		&c.OwnerName, &c.AppraisalValue, &c.AppraisalDate, &c.Appraiser, &c.HaircutPercent,
 		&c.BoundAmount, &c.Status, &releasedAt, &c.Notes, &c.CreatedBy, &c.CreatedAt,
 		&updatedBy, &c.UpdatedAt, &c.BranchCode,
+		&c.AppraiserIndependent, &c.Certified, &c.Mortgaged, &c.MortgageValue,
+		&c.ExistsKnown, &c.Executable, &c.ThirdPartyOwner, &c.OwnerConsent,
 	); err != nil {
 		return nil, err
 	}
@@ -66,10 +69,13 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 		INSERT INTO loan_collaterals (
 			loan_id, branch_id, collateral_type, description, document_number, owner_name,
 			appraisal_value, appraisal_date, appraiser, haircut_percent, status, notes,
+			certified, mortgaged, mortgage_value, appraiser_independent,
+			exists_known, executable, third_party_owner, owner_consent,
 			created_by, created_at, updated_at
 		)
 		VALUES ($1, (SELECT id FROM branches WHERE code = $2), $3, $4, $5, $6, $7, $8, NULLIF($9, ''),
-		        $10, $11, NULLIF($12, ''), $13, NOW(), NOW())
+		        $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20,
+		        $21, NOW(), NOW())
 		RETURNING id, bound_amount, created_at, updated_at
 	`
 	// bound_amount tidak ada pada daftar INSERT karena dihitung database; nilainya
@@ -79,6 +85,8 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 	err := r.db.QueryRowContext(ctx, query,
 		c.LoanID, branchCode, c.CollateralType, c.Description, c.DocumentNumber, c.OwnerName,
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status, c.Notes,
+		c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
+		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent,
 		c.CreatedBy,
 	).Scan(&c.ID, &c.BoundAmount, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
@@ -128,14 +136,17 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 			collateral_type = $2, description = $3, document_number = $4, owner_name = $5,
 			appraisal_value = $6, appraisal_date = $7, appraiser = NULLIF($8, ''),
 			haircut_percent = $9, status = $10, released_at = $11, notes = NULLIF($12, ''),
-			updated_by = $13, updated_at = NOW()
+			certified = $13, mortgaged = $14, mortgage_value = $15, appraiser_independent = $16,
+			exists_known = $17, executable = $18, third_party_owner = $19, owner_consent = $20,
+			updated_by = $21, updated_at = NOW()
 		WHERE id = $1
 		RETURNING bound_amount, updated_at
 	`
 	err := r.db.QueryRowContext(ctx, query,
 		c.ID, c.CollateralType, c.Description, c.DocumentNumber, c.OwnerName,
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status,
-		c.ReleasedAt, c.Notes, c.UpdatedBy,
+		c.ReleasedAt, c.Notes, c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
+		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent, c.UpdatedBy,
 	).Scan(&c.BoundAmount, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrCollateralNotFound
@@ -176,10 +187,12 @@ func (r *CollateralRepository) SummaryActive(ctx context.Context, branchCode str
 	return list, nil
 }
 
-func (r *CollateralRepository) SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error) {
-	total := make(map[uuid.UUID]decimal.Decimal, len(loanIDs))
+// ListActiveByLoans mengambil seluruh agunan ACTIVE untuk sekumpulan kredit dalam SATU
+// query. Perhitungan PPAP membutuhkan tiap agunan, bukan hanya totalnya, karena tarif
+// Pasal 20(1), syarat Pasal 21(2), dan penurunan waktu Pasal 20(3)/(5) dinilai per agunan.
+func (r *CollateralRepository) ListActiveByLoans(ctx context.Context, loanIDs []uuid.UUID) ([]domain.LoanCollateral, error) {
 	if len(loanIDs) == 0 {
-		return total, nil
+		return nil, nil
 	}
 
 	// Placeholder disusun dari jumlah kredit, bukan memakai tipe array milik driver:
@@ -191,26 +204,26 @@ func (r *CollateralRepository) SumActiveBoundByLoan(ctx context.Context, loanIDs
 		args = append(args, id)
 	}
 
-	query := `SELECT loan_id, COALESCE(SUM(bound_amount), 0) FROM loan_collaterals
-		WHERE status = 'ACTIVE' AND loan_id IN (` + strings.Join(placeholders, ", ") + `)
-		GROUP BY loan_id`
+	query := `SELECT ` + collateralColumns + ` ` + collateralFrom + `
+		WHERE lc.status = 'ACTIVE' AND lc.loan_id IN (` + strings.Join(placeholders, ", ") + `)
+		ORDER BY lc.loan_id, lc.created_at`
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("menjumlahkan agunan aktif: %w", err)
+		return nil, fmt.Errorf("mendaftar agunan aktif kredit: %w", err)
 	}
 	defer rows.Close()
 
+	list := make([]domain.LoanCollateral, 0)
 	for rows.Next() {
-		var loanID uuid.UUID
-		var sum decimal.Decimal
-		if err := rows.Scan(&loanID, &sum); err != nil {
+		c, err := scanCollateral(rows)
+		if err != nil {
 			return nil, err
 		}
-		total[loanID] = sum
+		list = append(list, *c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return total, nil
+	return list, nil
 }

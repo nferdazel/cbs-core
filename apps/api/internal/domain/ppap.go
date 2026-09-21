@@ -371,6 +371,10 @@ type PPAPLoanSnapshot struct {
 	// IsRestructured menandai Kredit pernah direstrukturisasi. Bila true,
 	// RestructureCollectibility membatasi golongannya (POJK 1/2024 Pasal 23).
 	IsRestructured bool
+	// MacetAt adalah saat kredit pertama kali digolongkan Macet. Dipakai menerapkan
+	// penurunan pengurang agunan menurut Pasal 20 ayat (3)/(5) POJK 1/2024; nil berarti
+	// kredit belum pernah digolongkan Macet (atau baru digolongkan pada run berjalan).
+	MacetAt *time.Time
 	// PreRestructureCollectibility adalah kualitas sesaat sebelum restrukturisasi
 	// terakhir; CleanPeriods adalah jumlah angsuran tepat waktu berturut-turut sejak
 	// restrukturisasi terakhir. Keduanya masukan RestructureCollectibility.

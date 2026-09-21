@@ -47,7 +47,18 @@ type collateralRequest struct {
 	AppraisalDate  string           `json:"appraisal_date"`
 	Appraiser      string           `json:"appraiser"`
 	HaircutPercent *decimal.Decimal `json:"haircut_percent,omitempty"`
-	Notes          string           `json:"notes"`
+	// Penanda kepatuhan Pasal 20/21 POJK No. 1 Tahun 2024. Boolean biasa berarti "tidak"
+	// bila tidak dikirim (mis. belum ber-hak tanggungan = tidak boleh jadi pengurang),
+	// sedangkan ExistsKnown/Executable berupa pointer karena keadaan normalnya "ya".
+	AppraiserIndependent bool            `json:"appraiser_independent,omitempty"`
+	Certified            bool            `json:"certified,omitempty"`
+	Mortgaged            bool            `json:"mortgaged,omitempty"`
+	MortgageValue        decimal.Decimal `json:"mortgage_value,omitempty"`
+	ExistsKnown          *bool           `json:"exists_known,omitempty"`
+	Executable           *bool           `json:"executable,omitempty"`
+	ThirdPartyOwner      bool            `json:"third_party_owner,omitempty"`
+	OwnerConsent         bool            `json:"owner_consent,omitempty"`
+	Notes                string          `json:"notes"`
 }
 
 // Create handles POST /api/v1/loans/{loanId}/collaterals
@@ -76,16 +87,24 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	collateral, err := h.svc.Create(r.Context(), domain.CollateralInput{
-		LoanID:         loanID,
-		CollateralType: domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
-		Description:    req.Description,
-		DocumentNumber: req.DocumentNumber,
-		OwnerName:      req.OwnerName,
-		AppraisalValue: req.AppraisalValue,
-		AppraisalDate:  appraisalDate,
-		Appraiser:      req.Appraiser,
-		HaircutPercent: req.HaircutPercent,
-		Notes:          req.Notes,
+		LoanID:               loanID,
+		CollateralType:       domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
+		Description:          req.Description,
+		DocumentNumber:       req.DocumentNumber,
+		OwnerName:            req.OwnerName,
+		AppraisalValue:       req.AppraisalValue,
+		AppraisalDate:        appraisalDate,
+		Appraiser:            req.Appraiser,
+		HaircutPercent:       req.HaircutPercent,
+		AppraiserIndependent: req.AppraiserIndependent,
+		Certified:            req.Certified,
+		Mortgaged:            req.Mortgaged,
+		MortgageValue:        req.MortgageValue,
+		ExistsKnown:          req.ExistsKnown,
+		Executable:           req.Executable,
+		ThirdPartyOwner:      req.ThirdPartyOwner,
+		OwnerConsent:         req.OwnerConsent,
+		Notes:                req.Notes,
 	}, actor)
 	if err != nil {
 		writeCollateralError(w, err)

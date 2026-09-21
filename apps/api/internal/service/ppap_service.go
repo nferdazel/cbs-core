@@ -117,7 +117,7 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	// Nilai agunan pengurang dibaca SEKALI untuk seluruh kredit dalam satu query. Bila
 	// dibaca per kredit, pekerjaan harian ini menjadi N+1 tepat pada saat jumlah kredit
 	// bertambah — persis saat kecepatannya paling dibutuhkan.
-	collateralValues, err := s.collateralValues(ctx, snapshots)
+	collateralsByLoan, err := s.collateralValues(ctx, snapshots)
 	if err != nil {
 		return domain.PPAPRunSummary{}, err
 	}
@@ -130,7 +130,7 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	}
 
 	for _, snap := range snapshots {
-		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, collateralValues[snap.LoanID], actor, preview)
+		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, collateralsByLoan[snap.LoanID], actor, preview)
 		if err != nil {
 			summary.Failed++
 			summary.Failures = append(summary.Failures, domain.PPAPRunFailure{
@@ -155,14 +155,17 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	return summary, nil
 }
 
-// collateralValues mengembalikan nilai agunan pengurang per kredit. Tidak ada yang dibaca
-// dan tidak ada query dijalankan selama ppap.collateral.enabled bernilai false, sehingga
-// modul agunan yang belum diaktifkan tidak menambah beban maupun risiko pada tutup hari.
+// collateralValues mengelompokkan agunan aktif per kredit. Tidak ada yang dibaca dan tidak
+// ada query dijalankan selama ppap.collateral.enabled bernilai false, sehingga modul agunan
+// yang belum diaktifkan tidak menambah beban maupun risiko pada tutup hari.
+//
+// Yang dikembalikan adalah daftar agunan, bukan total, karena pengurang harus dinilai per
+// agunan lewat aturan Pasal 20 dan Pasal 21 POJK No. 1 Tahun 2024 (lihat domain).
 //
 // Kegagalan membaca agunan dikembalikan sebagai error, bukan diabaikan: mengabaikannya
 // berarti menjalankan PPAP atas pokok penuh sambil melaporkan sukses, dan selisihnya baru
 // terlihat saat rekonsiliasi cadangan.
-func (s *ppapService) collateralValues(ctx context.Context, snapshots []domain.PPAPLoanSnapshot) (map[uuid.UUID]decimal.Decimal, error) {
+func (s *ppapService) collateralValues(ctx context.Context, snapshots []domain.PPAPLoanSnapshot) (map[uuid.UUID][]domain.LoanCollateral, error) {
 	if s.collateralRepo == nil || s.config == nil {
 		return nil, nil
 	}
@@ -175,11 +178,16 @@ func (s *ppapService) collateralValues(ctx context.Context, snapshots []domain.P
 	for _, snap := range snapshots {
 		ids = append(ids, snap.LoanID)
 	}
-	sums, err := s.collateralRepo.SumActiveBoundByLoan(ctx, ids)
+	list, err := s.collateralRepo.ListActiveByLoans(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("mengambil nilai agunan untuk PPAP: %w", err)
 	}
-	return sums, nil
+
+	byLoan := make(map[uuid.UUID][]domain.LoanCollateral, len(ids))
+	for _, c := range list {
+		byLoan[c.LoanID] = append(byLoan[c.LoanID], c)
+	}
+	return byLoan, nil
 }
 
 // processLoan menghitung dan menerapkan PPAP satu kredit. preview=true hanya menghitung.
@@ -189,7 +197,7 @@ func (s *ppapService) processLoan(
 	snap domain.PPAPLoanSnapshot,
 	thresholds domain.CollectibilityThresholds,
 	rates domain.PPAPRates,
-	collateralValue decimal.Decimal,
+	collaterals []domain.LoanCollateral,
 	actor domain.Actor,
 	preview bool,
 ) (domain.PPAPRunItem, error) {
@@ -208,9 +216,17 @@ func (s *ppapService) processLoan(
 	// di loans.required_ppap. Saldo akun GL cadangan bersifat agregat portofolio,
 	// sehingga memakainya sebagai pengurang per kredit akan menggandakan/menghilangkan
 	// selisih antar kredit. Saldo GL tetap dipakai untuk rekonsiliasi awal/akhir run.
+	//
 	// Agunan mengurangi eksposur yang dikenai tarif, bukan cadangan yang sudah ada.
-	// Selama ppap.collateral.enabled false, nilai agunan tidak dibaca sama sekali
-	// sehingga perilaku PPAP identik dengan sebelum modul agunan ada.
+	// Pengurang dihitung per agunan lewat domain: hanya agunan yang lolos Pasal 20 dan
+	// Pasal 21 POJK No. 1 Tahun 2024 yang dipakai. Selama ppap.collateral.enabled false,
+	// daftar agunan kosong sehingga perilaku PPAP identik dengan sebelum modul agunan ada.
+	collateralValue := domain.PPAPCollateralDeductionTotal(collaterals, domain.PPAPPasal20Context{
+		AsOf:           asOf,
+		Collectibility: col,
+		MacetAt:        snap.MacetAt,
+		Outstanding:    snap.Outstanding,
+	})
 	exposure := domain.PPAPExposure(snap.Outstanding, collateralValue)
 	calc := domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 

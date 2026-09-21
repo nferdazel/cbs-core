@@ -84,7 +84,19 @@ type CollateralInput struct {
 	Appraiser      string
 	// HaircutPercent kosong berarti pakai kebijakan jenis agunan dari konfigurasi.
 	HaircutPercent *decimal.Decimal
-	Notes          string
+	// Penanda kepatuhan Pasal 20/21 POJK No. 1 Tahun 2024. ExistsKnown dan Executable
+	// berupa pointer: nil berarti belum diisi operator dan dianggap true (keadaan normal);
+	// yang lain bernilai false bila tidak disebut, karena secara hukum justru itu yang
+	// membuat agunan TIDAK boleh jadi pengurang (mis. belum ber-hak tanggungan).
+	AppraiserIndependent bool
+	Certified            bool
+	Mortgaged            bool
+	MortgageValue        decimal.Decimal
+	ExistsKnown          *bool
+	Executable           *bool
+	ThirdPartyOwner      bool
+	OwnerConsent         bool
+	Notes                string
 }
 
 // CollateralSummary adalah rekap agunan aktif per jenis. Dipakai manajemen untuk melihat
@@ -108,17 +120,18 @@ type CollateralService interface {
 	Summary(ctx context.Context, actor Actor) ([]CollateralSummary, error)
 }
 
-// CollateralRepository menyimpan agunan kredit. Ringkas dengan sengaja: yang dibutuhkan
-// perhitungan PPAP hanyalah jumlah nilai pengurang agunan aktif per kredit.
+// CollateralRepository menyimpan agunan kredit. Perhitungan PPKA tidak cukup memakai
+// jumlah nilai pengurang: tarif Pasal 20(1), syarat Pasal 21(2), dan penurunan waktu
+// Pasal 20(3)/(5) dinilai per agunan, jadi jalur PPAP membaca daftar agunan aktif.
 type CollateralRepository interface {
 	// branchCode kosong berarti cabang tidak diketahui dan disimpan sebagai NULL.
 	Create(ctx context.Context, c *LoanCollateral, branchCode string) error
 	GetByID(ctx context.Context, id uuid.UUID) (*LoanCollateral, error)
 	ListByLoan(ctx context.Context, loanID uuid.UUID) ([]LoanCollateral, error)
 	Update(ctx context.Context, c *LoanCollateral) error
-	// SumActiveBoundByLoan menjumlahkan bound_amount agunan berstatus ACTIVE untuk
-	// sekumpulan kredit dalam SATU query, agar perhitungan PPAP tidak menjadi N+1.
-	SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error)
+	// ListActiveByLoans mengambil seluruh agunan berstatus ACTIVE untuk sekumpulan
+	// kredit dalam SATU query, agar perhitungan PPAP tidak menjadi N+1.
+	ListActiveByLoans(ctx context.Context, loanIDs []uuid.UUID) ([]LoanCollateral, error)
 	// SummaryActive merekap agunan ACTIVE per jenis, disaring cabang bila branchCode
 	// tidak kosong. Hanya ACTIVE yang dihitung: agunan yang sudah dilepas atau dieksekusi
 	// tidak lagi menjamin apa pun, dan menampilkannya pada rekap jaminan akan melebihkan
@@ -136,24 +149,35 @@ type LoanCollateral struct {
 	LoanID uuid.UUID `json:"loan_id"`
 	// BranchID dan BranchCode diisi dari join ke branches. Pemeriksaan akses memakai
 	// BranchCode karena Actor membawa kode cabang, bukan id.
-	BranchID       *uuid.UUID       `json:"branch_id,omitempty"`
-	BranchCode     string           `json:"branch_code,omitempty"`
-	CollateralType CollateralType   `json:"collateral_type"`
-	Description    string           `json:"description"`
-	DocumentNumber string           `json:"document_number"`
-	OwnerName      string           `json:"owner_name"`
-	AppraisalValue decimal.Decimal  `json:"appraisal_value"`
-	AppraisalDate  time.Time        `json:"appraisal_date"`
-	Appraiser      string           `json:"appraiser,omitempty"`
-	HaircutPercent decimal.Decimal  `json:"haircut_percent"`
-	BoundAmount    decimal.Decimal  `json:"bound_amount"`
-	Status         CollateralStatus `json:"status"`
-	ReleasedAt     *time.Time       `json:"released_at,omitempty"`
-	Notes          string           `json:"notes,omitempty"`
-	CreatedBy      string           `json:"created_by"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedBy      string           `json:"updated_by,omitempty"`
-	UpdatedAt      time.Time        `json:"updated_at"`
+	BranchID       *uuid.UUID      `json:"branch_id,omitempty"`
+	BranchCode     string          `json:"branch_code,omitempty"`
+	CollateralType CollateralType  `json:"collateral_type"`
+	Description    string          `json:"description"`
+	DocumentNumber string          `json:"document_number"`
+	OwnerName      string          `json:"owner_name"`
+	AppraisalValue decimal.Decimal `json:"appraisal_value"`
+	AppraisalDate  time.Time       `json:"appraisal_date"`
+	Appraiser      string          `json:"appraiser,omitempty"`
+	// Penanda kepatuhan Pasal 20 dan Pasal 21 POJK No. 1 Tahun 2024. Ini yang menentukan
+	// agunan boleh diperhitungkan sebagai pengurang PPKA: jenis dan ikatan hukumnya
+	// (Pasal 20 ayat (1)), serta keadaannya pada saat perhitungan (Pasal 21 ayat (2)).
+	AppraiserIndependent bool             `json:"appraiser_independent"`
+	Certified            bool             `json:"certified"`
+	Mortgaged            bool             `json:"mortgaged"`
+	MortgageValue        decimal.Decimal  `json:"mortgage_value"`
+	ExistsKnown          bool             `json:"exists_known"`
+	Executable           bool             `json:"executable"`
+	ThirdPartyOwner      bool             `json:"third_party_owner"`
+	OwnerConsent         bool             `json:"owner_consent"`
+	HaircutPercent       decimal.Decimal  `json:"haircut_percent"`
+	BoundAmount          decimal.Decimal  `json:"bound_amount"`
+	Status               CollateralStatus `json:"status"`
+	ReleasedAt           *time.Time       `json:"released_at,omitempty"`
+	Notes                string           `json:"notes,omitempty"`
+	CreatedBy            string           `json:"created_by"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedBy            string           `json:"updated_by,omitempty"`
+	UpdatedAt            time.Time        `json:"updated_at"`
 }
 
 // IsActive menandai agunan yang masih dihitung sebagai pengurang.
