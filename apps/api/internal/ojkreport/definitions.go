@@ -108,7 +108,7 @@ var OJKReportDefinitions = []OJKReportDefinition{
 		Code: "LAPORAN_KEUANGAN_PUBLIKASI_TRIWULANAN", Name: "Laporan Keuangan Publikasi BPR (triwulanan)",
 		Periodicity: OJKTribulanan, DueDay: 10, Channel: OJKChannelAPOLO,
 		Buildable:         false,
-		UnavailableReason: "rasio keuangan triwulanan (Form 00.08) belum dihitung oleh layanan yang ada",
+		UnavailableReason: "rasio keuangan triwulanan (Form 00.08) sudah dihitung, tetapi laporan keuangan publikasi, informasi kinerja keuangan lain, dan bukti pengumuman belum tersedia",
 	},
 	{
 		Code: "LAPORAN_LAKU_PANDAI", Name: "Laporan Perkembangan Penyelenggaraan Laku Pandai",
@@ -132,8 +132,10 @@ type OJKFormDefinition struct {
 var OJKBulananForms = []OJKFormDefinition{
 	{Form: "00.00", Name: "Informasi Pokok BPR", Buildable: false,
 		UnavailableReason: "butuh data yang belum tersimpan lengkap (organ pelaksana, informasi audit KAP/AP, PVA, PTI, ultimate shareholder); profil bank hanya memuat nama, alamat, telepon, dan NPWP"},
-	{Form: "00.08", Name: "Rasio Keuangan Triwulanan", Buildable: false,
-		UnavailableReason: "rumus rasio (KPMM, NPL, ROA, BOPO, NIM, LDR, Cash Ratio) belum tersedia di layanan yang ada; hanya diisi untuk posisi Maret/Juni/September/Desember"},
+	// Form 00.08 selalu disertakan; barisnya terisi hanya untuk posisi Maret,
+	// Juni, September, dan Desember, dan rasio yang komponennya belum tersedia
+	// ditandai tidak tersedia (lihat ratios.go).
+	{Form: "00.08", Name: "Rasio Keuangan Triwulanan", Buildable: true},
 	{Form: "01.00", Name: "Laporan Posisi Keuangan", Buildable: true},
 	{Form: "01.01", Name: "Rekening Administratif", Buildable: false,
 		UnavailableReason: "pos komitmen/kontinjensi (off-balance) belum dicatat pada bagan akun"},

@@ -55,12 +55,19 @@ func (e *IncompleteMappingError) Error() string {
 
 func (e *IncompleteMappingError) Unwrap() error { return ErrIncompleteMapping }
 
-// Line adalah satu baris form yang siap ditulis. Amount dalam rupiah penuh.
+// Line adalah satu baris form yang siap ditulis. Amount dalam rupiah penuh,
+// kecuali untuk baris rasio (Percent=true) yang nilainya dalam persen.
 type Line struct {
 	Sandi  string
 	Name   string
 	Level  int
 	Amount decimal.Decimal
+	// Percent menandai baris rasio Form 00.08: nilai ditulis dalam persen dua desimal.
+	Percent bool
+	// UnavailableReason, bila terisi, menandai baris rasio yang komponennya belum
+	// tersedia. Nilainya ditulis "-" (bukan 0) dan alasannya dicatat sebagai komentar,
+	// karena nol dan tidak tersedia adalah dua hal berbeda bagi regulator.
+	UnavailableReason string
 }
 
 // Section adalah satu form lengkap beserta baris-barisnya.
@@ -159,11 +166,32 @@ func (b *Builder) GenerateMonthly(ctx context.Context, period time.Time, book st
 		CorrectionDeadline: def.CorrectionDeadline(periodStart),
 		MappingStatus:      MappingStatus,
 		Sections: []Section{
+			// Form 00.08 selalu hadir; untuk posisi di luar triwulan, isinya
+			// dikosongkan (lihat RasioKeuangan).
+			{Form: "00.08", Name: formName("00.08"), Lines: rasioLines(periodStart, amounts01, amounts02)},
 			{Form: "01.00", Name: formName("01.00"), Lines: renderLines(form01Lines, amounts01)},
 			{Form: "02.00", Name: formName("02.00"), Lines: renderLines(form02Lines, amounts02)},
 		},
 		SkippedForms: skippedForms(),
 	}, nil
+}
+
+// rasioLines menyusun baris Form 00.08 dari hasil perhitungan rasio. Baris rasio
+// ditulis dalam persen dua desimal; baris yang komponennya belum tersedia diberi
+// alasan sehingga penulis berkas menuliskannya sebagai "-".
+func rasioLines(period time.Time, amounts01, amounts02 map[string]decimal.Decimal) []Line {
+	hasil := RasioKeuangan(period, amounts01, amounts02)
+	lines := make([]Line, 0, len(hasil))
+	for _, h := range hasil {
+		lines = append(lines, Line{
+			Sandi:             h.Sandi,
+			Name:              h.Nama,
+			Percent:           true,
+			Amount:            h.NilaiPersen,
+			UnavailableReason: h.Alasan,
+		})
+	}
+	return lines
 }
 
 // collect mengubah baris laporan sumber menjadi jumlah per sandi OJK. Kode COA

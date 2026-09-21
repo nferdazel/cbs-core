@@ -19,6 +19,12 @@ func FormatRupiah(d decimal.Decimal) string {
 	return d.Round(0).StringFixed(0)
 }
 
+// FormatPersen menulis nilai rasio dalam persen dengan dua desimal. Dua desimal
+// dipakai agar pembulatan rupiah penuh tidak menghapus ketelitian rasio.
+func FormatPersen(d decimal.Decimal) string {
+	return d.Round(2).StringFixed(2)
+}
+
 // WriteText menulis bundle sebagai berkas teks yang dapat diperiksa manusia
 // sebelum dikirim ke APOLO. Format: FORM|SANDI|NAMA POS|JUMLAH.
 func WriteText(w io.Writer, b *Bundle) error {
@@ -38,6 +44,7 @@ func WriteText(w io.Writer, b *Bundle) error {
 		fmt.Sprintf("# Status pemetaan  : %s (lihat coa_mapping.go)", b.MappingStatus),
 		fmt.Sprintf("# Kolom            : FORM%sSANDI%sNAMA POS%sJUMLAH (rupiah penuh, tanpa desimal)",
 			ColumnSeparator, ColumnSeparator, ColumnSeparator),
+		`# Baris form 00.08 diisi dalam persen 2 desimal; "-" berarti tidak tersedia (bukan nol).`,
 	}
 	for _, line := range metadata {
 		if err := write("%s\n", line); err != nil {
@@ -54,10 +61,25 @@ func WriteText(w io.Writer, b *Bundle) error {
 			return err
 		}
 		for _, line := range section.Lines {
+			nilai := FormatRupiah(line.Amount)
+			if line.Percent {
+				if line.UnavailableReason != "" {
+					// "-" menandakan tidak tersedia, bukan nilai nol.
+					nilai = "-"
+				} else {
+					nilai = FormatPersen(line.Amount)
+				}
+			}
 			if err := write("%s\n", strings.Join([]string{
-				section.Form, line.Sandi, line.Name, FormatRupiah(line.Amount),
+				section.Form, line.Sandi, line.Name, nilai,
 			}, ColumnSeparator)); err != nil {
 				return err
+			}
+			if line.UnavailableReason != "" {
+				if err := write("# %s|%s TIDAK TERSEDIA: %s\n",
+					section.Form, line.Sandi, line.UnavailableReason); err != nil {
+					return err
+				}
 			}
 		}
 	}
