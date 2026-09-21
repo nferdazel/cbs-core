@@ -334,69 +334,81 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	}
 
 	// Pencairan dan update status loan berada dalam satu transaksi: bila jurnal gagal,
-	// status loan tidak boleh berubah.
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	// EIR orisinal (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) dihitung dari arus kas
-	// nyata dan disimpan HANYA bila saklar kerugian restrukturisasi aktif; saat mati
-	// tidak ada perhitungan maupun penulisan tambahan. Baris kredit dikunci lebih dulu
-	// dan data segar hasil kunci yang dipakai (disiplin LockLoanTx).
-	if s.restructureLossEnabled(ctx) {
+	// status loan tidak boleh berubah. Baris kredit dikunci lebih dulu dan seluruh
+	// angka diambil dari baris hasil kunci — snapshot di luar transaksi bisa sudah
+	// basi (disiplin yang sama dengan pembayaran angsuran, pembatalan, dan koreksi).
+	var result *domain.Loan
+	err = s.txRunner.Run(ctx, func(tx any) error {
 		fresh, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
 		if err != nil {
-			return nil, fmt.Errorf("mengunci kredit untuk EIR: %w", err)
+			return fmt.Errorf("mengunci kredit %s: %w", loan.ID, err)
 		}
-		schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, loan.ID)
-		if err != nil {
-			return nil, fmt.Errorf("membaca jadwal angsuran untuk EIR: %w", err)
+		if !canAccessLoan(actor, fresh) {
+			return domain.ErrCrossBranchAccess
 		}
-		fresh.Schedules = schedules
-		if err := s.storeOriginalEIR(ctx, tx, fresh, schedules); err != nil {
-			return nil, err
+		// Pemeriksaan status di pemanggil hanya gagal-cepat; yang otoritatif adalah
+		// baris hasil kunci. Kredit yang sudah cair tidak boleh dicairkan dua kali,
+		// dan status selain APPROVED tetap ditolak.
+		if fresh.Status == domain.LoanStatusDisbursed {
+			return domain.ErrLoanAlreadyDisbursed
 		}
-	}
+		if fresh.Status != domain.LoanStatusApproved {
+			return domain.ErrLoanNotApproved
+		}
 
-	desc := fmt.Sprintf("Pencairan %s untuk nasabah rekening %s", product.Name, acc.AccountNumber)
-	_, err = s.poster.PostEventTx(ctx, tx, product, domain.EventLoanDisbursement, Amounts{
-		Principal: loan.PrincipalAmount,
-		Total:     loan.PrincipalAmount,
-	}, PostingMeta{
-		TransactionType:  domain.TxTypeTransferInternal,
-		Description:      desc,
-		IdempotencyKey:   "DISB-" + loan.LoanNumber,
-		CreatedBy:        actor.DisplayName(),
-		BranchCode:       actor.BranchCode,
-		AccountOverrides: overrides,
+		// EIR orisinal (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) dihitung dari arus kas
+		// nyata dan disimpan HANYA bila saklar kerugian restrukturisasi aktif; saat
+		// mati tidak ada perhitungan maupun penulisan tambahan.
+		if s.restructureLossEnabled(ctx) {
+			schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, fresh.ID)
+			if err != nil {
+				return fmt.Errorf("membaca jadwal angsuran untuk EIR: %w", err)
+			}
+			fresh.Schedules = schedules
+			if err := s.storeOriginalEIR(ctx, tx, fresh, schedules); err != nil {
+				return err
+			}
+		}
+
+		desc := fmt.Sprintf("Pencairan %s untuk nasabah rekening %s", product.Name, acc.AccountNumber)
+		_, err = s.poster.PostEventTx(ctx, tx, product, domain.EventLoanDisbursement, Amounts{
+			Principal: fresh.PrincipalAmount,
+			Total:     fresh.PrincipalAmount,
+		}, PostingMeta{
+			TransactionType:  domain.TxTypeTransferInternal,
+			Description:      desc,
+			IdempotencyKey:   "DISB-" + fresh.LoanNumber,
+			CreatedBy:        actor.DisplayName(),
+			BranchCode:       actor.BranchCode,
+			AccountOverrides: overrides,
+		})
+		if err != nil {
+			return fmt.Errorf("jurnal pencairan: %w", err)
+		}
+
+		// Dana masuk ke rekening nasabah: debit akun nasabah pada jurnal mapping produk;
+		// liabilitas bank bertambah. Loan outstanding diisi pokok penuh.
+		if err := s.loanRepo.MarkDisbursedTx(ctx, tx, fresh.ID, fresh.PrincipalAmount); err != nil {
+			return fmt.Errorf("menandai kredit dicairkan: %w", err)
+		}
+		if err := writeAudit(ctx, s.auditRepo, tx, actor, "DISBURSE_LOAN", "loan", fresh.ID.String(), map[string]any{
+			"status": domain.LoanStatusDisbursed,
+			"amount": fresh.PrincipalAmount.String(),
+		}); err != nil {
+			return err
+		}
+
+		fresh.Status = domain.LoanStatusDisbursed
+		fresh.OutstandingPrincipal = fresh.PrincipalAmount
+		now := time.Now().UTC()
+		fresh.DisbursedAt = &now
+		result = fresh
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("jurnal pencairan: %w", err)
-	}
-
-	// Dana masuk ke rekening nasabah: debit akun nasabah pada jurnal mapping produk;
-	// liabilitas bank bertambah. Loan outstanding diisi pokok penuh.
-	if err := s.loanRepo.MarkDisbursedTx(ctx, tx, loan.ID, loan.PrincipalAmount); err != nil {
-		return nil, fmt.Errorf("menandai kredit dicairkan: %w", err)
-	}
-	if err := writeAudit(ctx, s.auditRepo, tx, actor, "DISBURSE_LOAN", "loan", loan.ID.String(), map[string]any{
-		"status": domain.LoanStatusDisbursed,
-		"amount": loan.PrincipalAmount.String(),
-	}); err != nil {
 		return nil, err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	loan.Status = domain.LoanStatusDisbursed
-	loan.OutstandingPrincipal = loan.PrincipalAmount
-	now := time.Now().UTC()
-	loan.DisbursedAt = &now
-	return loan, nil
+	return result, nil
 }
 
 func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.Loan, error) {

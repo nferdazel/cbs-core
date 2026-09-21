@@ -269,9 +269,24 @@ func (r *LoanRepository) MarkDisbursedTx(ctx context.Context, tx any, id uuid.UU
 }
 
 func markLoanDisbursed(ctx context.Context, exec execer, id uuid.UUID, outstanding decimal.Decimal) error {
-	q := `UPDATE loans SET status=$1, disbursed_at=NOW(), outstanding_principal=$2, updated_at=NOW() WHERE id=$3`
-	_, err := exec.ExecContext(ctx, q, domain.LoanStatusDisbursed, outstanding, id)
-	return err
+	// Guard status: penandaan hanya sah dari APPROVED. Service sudah memeriksa status
+	// baris hasil kunci, tetapi guard di query menutup celah bila pemeriksaan itu
+	// dilewati/kembali longgar: kredit yang sudah DISBURSED tidak bisa dicairkan lagi
+	// (jurnal ganda), dan status lain tidak bisa "dipromosikan" menjadi cair.
+	q := `UPDATE loans SET status=$1, disbursed_at=NOW(), outstanding_principal=$2, updated_at=NOW()
+		WHERE id=$3 AND status=$4`
+	res, err := exec.ExecContext(ctx, q, domain.LoanStatusDisbursed, outstanding, id, domain.LoanStatusApproved)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrLoanNotApproved
+	}
+	return nil
 }
 
 // queryer adalah sumber baris yang bisa berupa *sql.DB (di luar transaksi) atau

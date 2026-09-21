@@ -165,8 +165,17 @@ type Loan struct {
 	OriginalEIRCalculatedAt *time.Time `json:"original_eir_calculated_at,omitempty"`
 	// RestructureLossBalance adalah saldo kerugian restrukturisasi yang belum
 	// diamortisasi (contra nilai tercatat). PPKA dihitung atas nilai tercatat setelah
-	// dikurangi saldo ini. Amortisasi ke laba belum diimplementasikan; lihat catatan di
-	// service restrukturisasi.
+	// dikurangi saldo ini.
+	//
+	// KEADAAN APA ADANYA: amortisasi saldo ini ke pendapatan bunga (atau penyajiannya
+	// sebagai akun kontra-aset) BELUM ADA. Jurnal kerugian restrukturisasi mengkredit
+	// akun piutang kredit, sedangkan jurnal pelunasan mengkredit pokok penuh, sehingga
+	// saat kredit ter-restrukturisasi lunas atau dihapusbukukan saldo akun piutang
+	// menjadi NEGATIF (kredit melebihi debit yang pernah dicatat). Cacat ini diketahui
+	// dan sengaja belum diperbaiki di sini karena menuntut keputusan pemilik sistem:
+	// amortisasi bunga efektif sesuai jurnal yang diwajibkan, atau pemakaian akun
+	// kontra-aset. Jangan menyebut saldo ini "hanya belum diamortisasi" tanpa
+	// menyebutkan akibat saldo negatifnya.
 	RestructureLossBalance decimal.Decimal `json:"restructure_loss_balance"`
 
 	IsRestructured      bool       `json:"is_restructured"`

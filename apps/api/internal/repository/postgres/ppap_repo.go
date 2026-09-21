@@ -35,6 +35,7 @@ const listDueLoansQuery = `
 	SELECT
 		l.id,
 		l.loan_number,
+		COALESCE(b.code, '') AS branch_code,
 		l.product_id,
 		l.outstanding_principal,
 		l.collectibility::text,
@@ -67,13 +68,14 @@ const listDueLoansQuery = `
 				), l.restructured_at::date - 1)
 		) END AS clean_periods
 	FROM loans l
+	LEFT JOIN branches b ON b.id = l.branch_id
 	LEFT JOIN loan_schedules s
 		ON s.loan_id = l.id
 		AND s.status <> 'PAID'
 		AND s.due_date <= $1
 	WHERE ((l.status IN ('DISBURSED', 'DEFAULTED') AND l.outstanding_principal > 0)
 		OR l.required_ppap <> 0)
-	GROUP BY l.id
+	GROUP BY l.id, b.code
 	ORDER BY l.loan_number`
 
 func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]domain.PPAPLoanSnapshot, error) {
@@ -93,7 +95,7 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 		var cleanPeriods int
 
 		if err := rows.Scan(
-			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
+			&s.LoanID, &s.LoanNumber, &s.BranchCode, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP,
 			&status, &s.RestructureLoss,
 			&lastDue, &finalDue,

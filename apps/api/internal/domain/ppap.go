@@ -373,8 +373,13 @@ func CalculatePPAP(outstanding decimal.Decimal, c Collectibility, existing decim
 
 // PPAPLoanSnapshot adalah data kredit aktif yang dibutuhkan proses PPAP harian.
 type PPAPLoanSnapshot struct {
-	LoanID      uuid.UUID
-	LoanNumber  string
+	LoanID     uuid.UUID
+	LoanNumber string
+	// BranchCode adalah kode cabang KREDIT. Jurnal PPAP diatribusikan ke cabang ini,
+	// bukan ke cabang aktor yang menjalankan run, agar neraca cabang tidak salah saat
+	// run dijalankan aktor dari cabang lain. Kosong berarti data lama/uji; pemanggil
+	// jatuh ke cabang aktor.
+	BranchCode  string
 	ProductID   *uuid.UUID
 	Outstanding decimal.Decimal
 	// Status menentukan apakah kredit masih punya eksposur PPAP. Selain DISBURSED dan

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,12 @@ import (
 // kontrak domain.LoanRepository di sini.
 type lossLoanRepoStub struct {
 	domain.LoanRepository
-	loan      *domain.Loan
+	// loan adalah snapshot yang dikembalikan GetByID.
+	loan *domain.Loan
+	// locked adalah baris yang dikembalikan LockLoanTx. Sengaja terpisah dari loan
+	// agar uji dapat membuktikan perhitungan memakai baris hasil kunci, bukan
+	// snapshot. Bila nil, salinan loan yang dipakai.
+	locked    *domain.Loan
 	schedules []domain.LoanSchedule
 
 	plainRestructureCalled bool
@@ -32,7 +38,17 @@ func (s *lossLoanRepoStub) GetByID(context.Context, uuid.UUID) (*domain.Loan, er
 }
 
 func (s *lossLoanRepoStub) LockLoanTx(context.Context, any, uuid.UUID) (*domain.Loan, error) {
-	return s.loan, nil
+	src := s.locked
+	if src == nil {
+		src = s.loan
+	}
+	if src == nil {
+		return nil, domain.ErrLoanNotFound
+	}
+	// Salinan baru: pointer hasil kunci tidak boleh sama dengan objek snapshot,
+	// supaya uji benar-benar membuktikan nilai mana yang dipakai.
+	cp := *src
+	return &cp, nil
 }
 
 func (s *lossLoanRepoStub) GetSchedulesTx(context.Context, any, uuid.UUID) ([]domain.LoanSchedule, error) {
@@ -42,6 +58,7 @@ func (s *lossLoanRepoStub) GetSchedulesTx(context.Context, any, uuid.UUID) ([]do
 func (s *lossLoanRepoStub) UpdateRestructure(_ context.Context, l *domain.Loan, schedules []domain.LoanSchedule) error {
 	s.plainRestructureCalled = true
 	s.loan = l
+	s.locked = l
 	s.schedules = schedules
 	return nil
 }
@@ -49,6 +66,7 @@ func (s *lossLoanRepoStub) UpdateRestructure(_ context.Context, l *domain.Loan, 
 func (s *lossLoanRepoStub) UpdateRestructureTx(_ context.Context, _ any, l *domain.Loan, schedules []domain.LoanSchedule) error {
 	s.txRestructureCalled = true
 	s.loan = l
+	s.locked = l
 	s.schedules = schedules
 	return nil
 }
@@ -230,8 +248,10 @@ func TestRestructureLoss_MempostingJurnalDanMenyimpanSaldo(t *testing.T) {
 	if !repo.loan.RestructureLossBalance.Equal(req.Lines[0].Amount) {
 		t.Fatalf("saldo kerugian %s, mau %s", repo.loan.RestructureLossBalance, req.Lines[0].Amount)
 	}
-	if strings.Contains(req.IdempotencyKey, "  ") {
-		t.Fatalf("kunci idempotensi tidak wajar: %q", req.IdempotencyKey)
+	// Bentuk kunci idempotensi lengkap: <nomor kredit>-<nomor urut restrukturisasi>.
+	wantKey := fmt.Sprintf("RESTRUCT-LOSS-%s-%d", loan.LoanNumber, 1)
+	if req.IdempotencyKey != wantKey {
+		t.Fatalf("kunci idempotensi %q, mau %q", req.IdempotencyKey, wantKey)
 	}
 }
 
@@ -301,5 +321,180 @@ func TestRestructureLoss_TolakCabangLain(t *testing.T) {
 	}, domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
 	if !errors.Is(err, domain.ErrCrossBranchAccess) {
 		t.Fatalf("mau ErrCrossBranchAccess, dapat %v", err)
+	}
+}
+
+// Baris hasil kunci (LockLoanTx) sengaja berbeda dari snapshot GetByID. Perhitungan
+// harus memakai sisa pokok baris hasil kunci, bukan angka snapshot di luar transaksi.
+func TestRestructureLoss_MemakaiBarisHasilKunci(t *testing.T) {
+	snapshot, product, _ := lossLoan()
+	snapshot.OutstandingPrincipal = decimal.NewFromInt(10_000_000)
+	locked := *snapshot
+	locked.OutstandingPrincipal = decimal.NewFromInt(8_000_000)
+
+	repo := &lossLoanRepoStub{loan: snapshot, locked: &locked}
+	posting := &stubPosting{}
+	cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+	svc := newLossService(repo, &stubProductRepo{product: product}, posting, cfg)
+
+	returned, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:                locked.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+	}, lossActor())
+	if err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+
+	// Jadwal baru dibangun dari pokok baris hasil kunci (8jt), bukan snapshot (10jt).
+	totalPrincipal := decimal.Zero
+	for _, sc := range repo.schedules {
+		totalPrincipal = totalPrincipal.Add(sc.PrincipalAmount)
+	}
+	if !totalPrincipal.Equal(locked.OutstandingPrincipal) {
+		t.Fatalf("jadwal dibangun dari pokok %s, mau pokok hasil kunci %s (snapshot %s)",
+			totalPrincipal, locked.OutstandingPrincipal, snapshot.OutstandingPrincipal)
+	}
+	if !returned.OutstandingPrincipal.Equal(locked.OutstandingPrincipal) {
+		t.Fatalf("kredit hasil %s, mau pokok hasil kunci %s",
+			returned.OutstandingPrincipal, locked.OutstandingPrincipal)
+	}
+	// Nilai tercatat yang dilaporkan ke audit pun harus nilai hasil kunci.
+	if len(posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1", len(posting.requests))
+	}
+}
+
+// Status yang menentukan boleh/tidaknya restrukturisasi juga dibaca dari baris hasil
+// kunci. Snapshot DISBURSED tidak boleh meloloskan kredit yang sudah tidak aktif.
+func TestRestructureLoss_StatusDariBarisHasilKunci(t *testing.T) {
+	snapshot, product, _ := lossLoan()
+	locked := *snapshot
+	locked.Status = domain.LoanStatusPaidOff
+
+	repo := &lossLoanRepoStub{loan: snapshot, locked: &locked}
+	cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+	svc := newLossService(repo, &stubProductRepo{product: product}, &stubPosting{}, cfg)
+
+	_, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:        locked.ID,
+		NewTermMonths: 12,
+	}, lossActor())
+	if err == nil {
+		t.Fatal("status baris hasil kunci bukan aktif harus ditolak, snapshot tidak boleh dipakai")
+	}
+	if repo.txRestructureCalled {
+		t.Fatal("kredit tidak aktif tidak boleh disimpan")
+	}
+}
+
+// Kunci idempotensi jurnal kerugian harus berbentuk lengkap
+// RESTRUCT-LOSS-<nomor kredit>-<nomor urut> dan berbeda antar restrukturisasi.
+func TestRestructureLoss_KunciIdempotensiUnikAntarRestrukturisasi(t *testing.T) {
+	loan, product, _ := lossLoan()
+	repo := &lossLoanRepoStub{loan: loan}
+	posting := &stubPosting{}
+	cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+	svc := newLossService(repo, &stubProductRepo{product: product}, posting, cfg)
+
+	// Suku bunga diturunkan bertahap agar restrukturisasi kedua tetap menghasilkan
+	// kerugian (bila tarifnya sama, nilai tercatat sudah setara nilai kini -> nol).
+	rates := []decimal.Decimal{decimal.NewFromInt(6), decimal.NewFromInt(3)}
+	for i, rate := range rates {
+		if _, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+			LoanID:                loan.ID,
+			NewTermMonths:         12,
+			NewInterestRateAnnual: rate,
+		}, lossActor()); err != nil {
+			t.Fatalf("RestructureLoan ke-%d: %v", i+1, err)
+		}
+	}
+	if len(posting.requests) != 2 {
+		t.Fatalf("jurnal %d, ingin 2", len(posting.requests))
+	}
+	for i := range posting.requests {
+		want := fmt.Sprintf("RESTRUCT-LOSS-%s-%d", loan.LoanNumber, i+1)
+		if got := posting.requests[i].IdempotencyKey; got != want {
+			t.Fatalf("kunci ke-%d %q, mau %q", i+1, got, want)
+		}
+	}
+	if posting.requests[0].IdempotencyKey == posting.requests[1].IdempotencyKey {
+		t.Fatalf("kunci idempotensi dua restrukturisasi harus berbeda, keduanya %q",
+			posting.requests[0].IdempotencyKey)
+	}
+}
+
+// Galat pembacaan pemetaan jurnal BUKAN "produk belum dipetakan": transaksi harus
+// gagal, bukan diam-diam jatuh ke COA fallback.
+func TestRestructureLoss_GalatPemetaanMenggagalkanTransaksi(t *testing.T) {
+	loan, product, _ := lossLoan()
+	repo := &lossLoanRepoStub{loan: loan}
+	posting := &stubPosting{}
+	cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+	products := &stubProductRepo{product: product, mappingErr: errors.New("koneksi database terputus")}
+	svc := newLossService(repo, products, posting, cfg)
+
+	_, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:                loan.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+	}, lossActor())
+	if err == nil {
+		t.Fatal("galat pembacaan pemetaan harus menggagalkan transaksi")
+	}
+	if !strings.Contains(err.Error(), "pemetaan") {
+		t.Fatalf("pesan galat harus menyebut pemetaan, dapat %q", err.Error())
+	}
+	if len(posting.requests) != 0 {
+		t.Fatalf("tidak boleh ada jurnal fallback saat pemetaan gagal dibaca, dapat %d", len(posting.requests))
+	}
+}
+
+// sentinelTxRunner menyalurkan penanda transaksi non-nil ke callback, meniru runner
+// produksi yang memberikan *sql.Tx.
+type sentinelTxRunner struct{ tx any }
+
+func (r sentinelTxRunner) Run(_ context.Context, fn func(tx any) error) error { return fn(r.tx) }
+
+// recordingAuditRepo merekam tx yang dipakai writeAudit.
+type recordingAuditRepo struct {
+	domain.AuditRepository
+	writeCalled bool
+	writeTx     any
+}
+
+func (a *recordingAuditRepo) Write(_ context.Context, tx any, _ domain.AuditEvent) error {
+	a.writeCalled = true
+	a.writeTx = tx
+	return nil
+}
+
+// Audit restrukturisasi harus ditulis DI DALAM transaksi jurnal kerugian. Bila ditulis
+// di luar (tx=nil) lalu gagal, pemanggil mencoba lagi padahal jurnal sudah commit dan
+// menerbitkan jurnal kerugian kedua.
+func TestRestructureLoss_AuditDitulisDalamTransaksi(t *testing.T) {
+	loan, product, _ := lossLoan()
+	repo := &lossLoanRepoStub{loan: loan}
+	posting := &stubPosting{}
+	cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+	svc := newLossService(repo, &stubProductRepo{product: product}, posting, cfg)
+
+	sentinel := &struct{ nama string }{nama: "tx-restrukturisasi"}
+	svc.txRunner = sentinelTxRunner{tx: sentinel}
+	audit := &recordingAuditRepo{}
+	svc.auditRepo = audit
+
+	if _, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+		LoanID:                loan.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+	}, lossActor()); err != nil {
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+	if !audit.writeCalled {
+		t.Fatal("audit restrukturisasi tidak ditulis")
+	}
+	if audit.writeTx != sentinel {
+		t.Fatalf("audit ditulis dengan tx %v, mau tx transaksi yang sama (bukan nil)", audit.writeTx)
 	}
 }

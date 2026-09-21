@@ -132,4 +132,10 @@ func TestIntegrasiRestrukturisasiPelepasanCadanganSaatLunas(t *testing.T) {
 	}
 	key := fmt.Sprintf("PPAP-%s-%s-%s", loan.LoanNumber, asOf.Format("2006-01-02"), decimal.NewFromInt(-700_000).String())
 	assertCKPNJournal(t, e, key, "10900", "DEBIT", "50200", "CREDIT", decimal.NewFromInt(700_000))
+	// Pelepasan cadangan kredit cabang S dijalankan aktor cabang lain (e.actor, 001):
+	// jurnal harus tetap diatribusikan ke cabang KREDIT, bukan cabang aktor.
+	if bc := e.ckpnJournalBranch(t, key); bc != branchCode {
+		t.Fatalf("cabang jurnal pelepasan %q, mau cabang kredit %q (bukan cabang aktor %q)",
+			bc, branchCode, e.actor.BranchCode)
+	}
 }

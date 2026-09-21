@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -74,6 +75,9 @@ var _ domain.PostingService = (*stubPosting)(nil)
 type stubProductRepo struct {
 	product *domain.BankingProduct
 	rules   map[domain.PostingEvent][]domain.JournalMappingRule
+	// mappingErr memaksa GetMapping gagal, dipakai uji membedakan "tidak ada
+	// pemetaan" (boleh fallback COA) dari "galat pembacaan pemetaan" (harus gagal).
+	mappingErr error
 }
 
 func (s *stubProductRepo) List(context.Context) ([]domain.BankingProduct, error) { return nil, nil }
@@ -93,6 +97,9 @@ func (s *stubProductRepo) GetByCode(context.Context, string) (*domain.BankingPro
 }
 
 func (s *stubProductRepo) GetMapping(_ context.Context, _ uuid.UUID, event domain.PostingEvent) ([]domain.JournalMappingRule, error) {
+	if s.mappingErr != nil {
+		return nil, s.mappingErr
+	}
 	return s.rules[event], nil
 }
 
@@ -558,5 +565,103 @@ func TestPPAPRunDaily_MelepasCadanganKreditTidakAktif(t *testing.T) {
 	}
 	if lines[1].AccountNumber != "50200" || lines[1].Direction != domain.DirectionCredit {
 		t.Fatalf("baris kredit pelepasan salah: %+v", lines[1])
+	}
+}
+
+// Jurnal PPAP diatribusikan ke cabang KREDIT, bukan cabang aktor. Ini mencegah run
+// oleh aktor cabang lain mencatat pelepasan cadangan kredit cabang S di cabang aktor.
+func TestPPAPRunDaily_JurnalMengikutiCabangKredit(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -100)
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:         uuid.New(),
+			LoanNumber:     "KRD-CABANG-1",
+			BranchCode:     "002",
+			Outstanding:    decimal.NewFromInt(10_000_000),
+			Collectibility: domain.KolLancar,
+			RequiredPPAP:   decimal.NewFromInt(50_000),
+			LastDueDate:    &due,
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	if _, err := svc.RunDaily(context.Background(), asOf, domain.Actor{Username: "aktor", BranchCode: "001"}); err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if len(posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1", len(posting.requests))
+	}
+	if got := posting.requests[0].BranchCode; got != "002" {
+		t.Fatalf("cabang jurnal %q, mau cabang kredit 002 (bukan cabang aktor 001)", got)
+	}
+}
+
+// Bila cabang kredit tidak tersedia (data lama/uji), cabang jurnal jatuh ke cabang aktor
+// alih-alih dibiarkan kosong.
+func TestPPAPRunDaily_CabangKreditKosongJatuhKeAktor(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -100)
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:         uuid.New(),
+			LoanNumber:     "KRD-CABANG-KOSONG",
+			Outstanding:    decimal.NewFromInt(10_000_000),
+			Collectibility: domain.KolLancar,
+			RequiredPPAP:   decimal.NewFromInt(50_000),
+			LastDueDate:    &due,
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	if _, err := svc.RunDaily(context.Background(), asOf, domain.Actor{Username: "aktor", BranchCode: "001"}); err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if len(posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1", len(posting.requests))
+	}
+	if got := posting.requests[0].BranchCode; got != "001" {
+		t.Fatalf("cabang jurnal %q, mau fallback cabang aktor 001", got)
+	}
+}
+
+// Galat pembacaan pemetaan jurnal produk tidak boleh diam-diam jatuh ke COA fallback:
+// kredit dilaporkan gagal agar tidak ada jurnal ke akun bawaan tanpa jejak.
+func TestPPAPRunDaily_GalatPemetaanTidakJatuhKeFallback(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -100)
+	productID := uuid.New()
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:         uuid.New(),
+			LoanNumber:     "KRD-PEMETAAN-GAGAL",
+			ProductID:      &productID,
+			Outstanding:    decimal.NewFromInt(10_000_000),
+			Collectibility: domain.KolLancar,
+			RequiredPPAP:   decimal.NewFromInt(50_000),
+			LastDueDate:    &due,
+		}},
+	}
+	products := &stubProductRepo{
+		product:    &domain.BankingProduct{ID: productID, Code: "KRD-FLAT"},
+		mappingErr: errors.New("koneksi database terputus"),
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, products, posting)
+
+	summary, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if summary.Failed != 1 {
+		t.Fatalf("kredit harus dilaporkan gagal, dapat failed=%d failures=%+v", summary.Failed, summary.Failures)
+	}
+	if len(posting.requests) != 0 {
+		t.Fatalf("tidak boleh ada jurnal fallback saat pemetaan gagal dibaca, dapat %d", len(posting.requests))
 	}
 }

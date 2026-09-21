@@ -227,27 +227,33 @@ func (s *loanService) restructureLoanWithLoss(ctx context.Context, input domain.
 			return fmt.Errorf("menyimpan restrukturisasi: %w", err)
 		}
 		result = fresh
+
+		// Audit ditulis DI DALAM transaksi yang sama dengan jurnal kerugian. Bila
+		// ditulis setelah commit lalu gagal, pemanggil menganggap operasi gagal dan
+		// mencoba lagi — padahal jurnal kerugiannya sudah commit, sehingga percobaan
+		// ulang menerbitkan jurnal kerugian KEDUA dengan kunci idempotensi berbeda
+		// (nomor urut restrukturisasi naik). Satu transaksi membuat keduanya batal
+		// bersama.
+		if err := writeAudit(ctx, s.auditRepo, tx, actor, "RESTRUCTURE_LOAN", "loan", result.ID.String(), map[string]any{
+			"loan_number":            result.LoanNumber,
+			"reason":                 input.Reason,
+			"collectibility_before":  before.OJKCode(),
+			"collectibility_after":   result.Collectibility,
+			"term_months":            input.NewTermMonths,
+			"total_payable":          result.TotalPayable.StringFixed(2),
+			"monthly_installment":    result.MonthlyInstallment.StringFixed(2),
+			"restructure_loss":       loss.Loss.StringFixed(2),
+			"carrying_amount":        loss.CarryingAmount.StringFixed(2),
+			"present_value":          loss.PresentValue.StringFixed(2),
+			"discount_rate_monthly":  loss.DiscountRateMonthly.String(),
+			"restructure_loss_total": result.RestructureLossBalance.StringFixed(2),
+		}); err != nil {
+			return fmt.Errorf("audit restrukturisasi: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	if err := writeAudit(ctx, s.auditRepo, nil, actor, "RESTRUCTURE_LOAN", "loan", result.ID.String(), map[string]any{
-		"loan_number":            result.LoanNumber,
-		"reason":                 input.Reason,
-		"collectibility_before":  before.OJKCode(),
-		"collectibility_after":   result.Collectibility,
-		"term_months":            input.NewTermMonths,
-		"total_payable":          result.TotalPayable.StringFixed(2),
-		"monthly_installment":    result.MonthlyInstallment.StringFixed(2),
-		"restructure_loss":       loss.Loss.StringFixed(2),
-		"carrying_amount":        loss.CarryingAmount.StringFixed(2),
-		"present_value":          loss.PresentValue.StringFixed(2),
-		"discount_rate_monthly":  loss.DiscountRateMonthly.String(),
-		"restructure_loss_total": result.RestructureLossBalance.StringFixed(2),
-	}); err != nil {
-		return nil, fmt.Errorf("audit restrukturisasi: %w", err)
 	}
 	return result, nil
 }
@@ -272,7 +278,14 @@ func (s *loanService) postRestructureLoss(ctx context.Context, tx any, product *
 
 	if product != nil {
 		rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanRestructureLoss)
-		if err == nil && len(rules) > 0 {
+		if err != nil {
+			// Galat pembacaan pemetaan BUKAN "produk belum dipetakan". Tanpa pembedaan
+			// ini, produk yang sudah memetakan jurnal kerugiannya bisa tanpa jejak
+			// terjurnal ke COA bawaan saat ada galat sesaat. Tidak ada pemetaan
+			// (len==0) tetap memakai COA konfigurasi di bawah.
+			return fmt.Errorf("membaca pemetaan jurnal kerugian restrukturisasi produk %s: %w", product.Code, err)
+		}
+		if len(rules) > 0 {
 			if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanRestructureLoss, Amounts{
 				Principal: amount,
 				Total:     amount,

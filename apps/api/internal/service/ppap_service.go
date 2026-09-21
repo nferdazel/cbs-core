@@ -356,12 +356,20 @@ func (s *ppapService) postAdjustment(
 		event = domain.EventPPAPReversal
 	}
 
+	// Jurnal diatribusikan ke cabang KREDIT, bukan cabang aktor. Kredit cabang lain
+	// yang ikut diproses run aktor cabang S tidak boleh mencatat cadangannya di cabang
+	// aktor. Cabang kredit kosong (data lama/uji) jatuh ke cabang aktor.
+	branchCode := snap.BranchCode
+	if branchCode == "" {
+		branchCode = actor.BranchCode
+	}
+
 	meta := PostingMeta{
 		TransactionType: domain.TxTypeAdjustment,
 		Description:     fmt.Sprintf("PPAP kredit %s golongan %s (%s)", snap.LoanNumber, col.Label(), adjustment.String()),
 		IdempotencyKey:  fmt.Sprintf("PPAP-%s-%s-%s", snap.LoanNumber, asOf.Format("2006-01-02"), adjustment.String()),
 		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		BranchCode:      branchCode,
 	}
 	amount := adjustment.Abs()
 
@@ -370,7 +378,14 @@ func (s *ppapService) postAdjustment(
 	// fallback COA konfigurasi di bawah.
 	if product != nil {
 		rules, err := s.productRepo.GetMapping(ctx, product.ID, event)
-		if err == nil && len(rules) > 0 {
+		if err != nil {
+			// Galat pembacaan pemetaan BUKAN "produk belum dipetakan". Menjatuhkannya
+			// ke COA fallback membuat produk yang sudah memetakan jurnalnya tanpa jejak
+			// terjurnal ke akun bawaan saat ada galat sesaat. Tidak ada pemetaan
+			// (len==0) tetap memakai fallback.
+			return fmt.Errorf("membaca pemetaan jurnal PPAP produk %s: %w", product.Code, err)
+		}
+		if len(rules) > 0 {
 			if _, err := s.poster.PostEventTx(ctx, tx, product, event, Amounts{
 				Principal: amount,
 				Total:     amount,
