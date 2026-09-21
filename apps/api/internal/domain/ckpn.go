@@ -1,0 +1,216 @@
+package domain
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
+
+// Sentinel error modul CKPN. Dipakai agar pemanggil dapat membedakan kegagalan
+// konfigurasi kebijakan dari kegagalan data/tak terduga.
+var (
+	ErrCKPNLoanNotFound     = errors.New("kredit untuk perhitungan CKPN tidak ditemukan")
+	ErrCKPNParameterMissing = errors.New("parameter kebijakan CKPN belum diisi bank")
+	ErrCKPNExpenseNotFound  = errors.New("akun beban kerugian penurunan nilai tidak ditemukan")
+	ErrCKPNReserveNotFound  = errors.New("akun CKPN tidak ditemukan")
+)
+
+// CKPNAsetBaikMaxDPDDefault adalah batas tunggakan hari agar aset keuangan memenuhi
+// kriteria "aset baik" menurut SEOJK No. 21/SEOJK.03/2024 Bab XII butir 12.3.a.1.c:
+// tidak memiliki tunggakan lebih dari 7 (tujuh) hari dan tidak pernah direstrukturisasi.
+// Bila aset baik, BPR "dapat tidak membentuk CKPN" (butir 12.3.a.2.a).
+//
+// Dua kriteria lain di butir yang sama — (a) diterbitkan Pemerintah Pusat RI dan
+// (b) dijamin LPS — tidak dapat dinilai dari data yang ada di sistem ini; keduanya
+// diperlakukan TIDAK terpenuhi (konservatif), bukan diasumsikan terpenuhi.
+const CKPNAsetBaikMaxDPDDefault = 7
+
+// CKPNPolicy adalah parameter kebijakan bank untuk CKPN kolektif. Nilai-nilainya
+// TIDAK boleh ditanam di kode: SAK EP melalui SEOJK No. 21/SEOJK.03/2024 Bab XII
+// mewajibkan bank menetapkan sendiri PD (butir 12.6) dan LGD (butir 12.7) dari data
+// historisnya (periode observasi minimal 3 tahun, butir 12.4.g.2.c), dengan
+// judgment/diskresi manajemen (butir 12.4.c.2). Karena itu struct ini hanya wadah;
+// pengisiannya berasal dari system_config.
+type CKPNPolicy struct {
+	// Enabled adalah saklar utama. false berarti CKPN tidak dihitung sama sekali dan
+	// tidak ada query tambahan (pola yang sama dengan ppap.collateral.enabled).
+	Enabled bool
+	// PD adalah probability of default per golongan kolektibilitas. Kunci yang tidak
+	// ada berarti bank belum mengisi golongan itu, dan perhitungannya menolak berjalan
+	// untuk kredit tersebut — bukan diam-diam memakai nol.
+	PD map[Collectibility]decimal.Decimal
+	// LGD adalah loss given default. Dokumen memperbolehkan LGD "all account" bila data
+	// tidak mendukung pengelompokan per kategori kredit (butir 12.7.a).
+	LGD decimal.Decimal
+	// LGDIsSet menandai LGD benar-benar diisi. Angka nol yang diisi sengaja (mis.
+	// portofolio tanpa kerugian) harus dibedakan dari LGD yang belum diisi.
+	LGDIsSet bool
+	// AsetBaikMaxDPD adalah batas tunggakan hari kriteria aset baik; diisi dari
+	// konfigurasi dengan bawaan CKPNAsetBaikMaxDPDDefault.
+	AsetBaikMaxDPD int
+}
+
+// CKPNIsAsetBaik menilai kriteria aset baik butir 12.3.a.1.c SEOJK 21/2024. Kredit
+// yang pernah direstrukturisasi tidak pernah dianggap aset baik, sekalipun sedang
+// tidak menunggak, karena unsur pertama kriteria itu adalah "tidak pernah dilakukan
+// restrukturisasi". maxDPD biasanya CKPNAsetBaikMaxDPDDefault (7).
+func CKPNIsAsetBaik(dpd int, isRestructured bool, maxDPD int) bool {
+	if isRestructured {
+		return false
+	}
+	return dpd <= maxDPD
+}
+
+// CKPNLoanSnapshot adalah data kredit aktif yang dibutuhkan perhitungan CKPN.
+// PPKA yang dibandingkan adalah hasil yang SUDAH dihitung jalur PPAP
+// (loans.required_ppap), bukan hitungan ulang di sini: modul CKPN tidak boleh
+// menduplikasi logika PPKA.
+type CKPNLoanSnapshot struct {
+	LoanID         uuid.UUID
+	LoanNumber     string
+	ProductID      *uuid.UUID
+	Outstanding    decimal.Decimal
+	Collectibility Collectibility
+	DPD            int
+	IsRestructured bool
+	// RequiredPPAP adalah PPKA per kredit yang sudah diakui (target terakhir jalur PPAP).
+	RequiredPPAP decimal.Decimal
+	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
+	RequiredCKPN decimal.Decimal
+}
+
+// CKPNCalculation adalah hasil perhitungan CKPN satu kredit.
+type CKPNCalculation struct {
+	Outstanding    decimal.Decimal
+	Collectibility Collectibility
+	PD             decimal.Decimal
+	LGD            decimal.Decimal
+	// IsAsetBaik true berarti kredit dikecualikan dari pembentukan CKPN (butir
+	// 12.3.a.2.a); targetnya nol tanpa memerlukan PD/LGD.
+	IsAsetBaik bool
+	Target     decimal.Decimal
+	Existing   decimal.Decimal
+	Adjustment decimal.Decimal
+}
+
+// CalculateCKPN menghitung target CKPN satu kredit dari data kredit dan parameter
+// kebijakan bank. Rumusnya adalah pendekatan kolektif SAK EP sebagaimana
+// dicontohkan SEOJK No. 21/SEOJK.03/2024 Bab XII butir 12.6–12.9, yaitu
+// CKPN = EAD x PD x LGD (contoh tabel butir 12.9: baki debet x PD x LGD). EAD di sini
+// adalah sisa pokok terutang.
+//
+// Batas yang disengaja:
+//   - Pendekatan INDIVIDUAL (discounted cash flow atau nilai realisasi agunan, butir
+//     12.4.g.1) TIDAK diimplementasikan: ia memerlukan estimasi arus kas per debitur
+//     dan suku bunga efektif awal yang tidak tersedia andal di data sistem ini.
+//   - PD/LGD tidak dihitung dari data historis oleh fungsi ini; bank menghitungnya
+//     (mis. dengan Excel PD/LGD dari OJK) lalu mengisinya sebagai parameter kebijakan.
+//
+// Parameter yang belum diisi menghasilkan ErrCKPNParameterMissing, bukan nol.
+func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
+	out := CKPNCalculation{
+		Outstanding:    snap.Outstanding,
+		Collectibility: snap.Collectibility,
+		Existing:       snap.RequiredCKPN,
+	}
+
+	if CKPNIsAsetBaik(snap.DPD, snap.IsRestructured, policy.AsetBaikMaxDPD) {
+		// Aset baik boleh tidak membentuk CKPN. Bila ada CKPN lama, selisihnya dipulihkan
+		// (butir 12.5.b), paling tinggi sebesar yang pernah dibentuk — diwakili Existing.
+		out.IsAsetBaik = true
+		out.Adjustment = RoundToRupiah(decimal.Zero.Sub(out.Existing))
+		return out, nil
+	}
+
+	pd, ok := policy.PD[snap.Collectibility]
+	if !ok {
+		return out, fmt.Errorf("%w: probability of default golongan %s (kunci ckpn.pd.%d)",
+			ErrCKPNParameterMissing, snap.Collectibility.Label(), int(snap.Collectibility))
+	}
+	if !policy.LGDIsSet {
+		return out, fmt.Errorf("%w: loss given default (kunci ckpn.lgd)", ErrCKPNParameterMissing)
+	}
+
+	out.PD = pd
+	out.LGD = policy.LGD
+	out.Target = RoundToRupiah(snap.Outstanding.Mul(pd).Mul(policy.LGD))
+	out.Adjustment = RoundToRupiah(out.Target.Sub(out.Existing))
+	return out, nil
+}
+
+// CKPNLarger menamai pihak yang nilainya lebih besar pada perbandingan CKPN vs PPKA.
+type CKPNLarger string
+
+const (
+	// CKPNLargerPPKA dipakai saat PPKA > CKPN. Menurut SEOJK No. 21/SEOJK.03/2024
+	// butir 1.1.6, selisih itulah yang menjadi pengurang modal inti (ATMR/pengurang
+	// modal) — bukan seluruh PPKA maupun seluruh CKPN.
+	CKPNLargerPPKA CKPNLarger = "PPKA"
+	// CKPNLargerCKPN dipakai saat CKPN > PPKA. Tidak ada pengurang modal inti.
+	CKPNLargerCKPN CKPNLarger = "CKPN"
+	// CKPNLargerSame dipakai saat keduanya sama.
+	CKPNLargerSame CKPNLarger = "SAMA"
+)
+
+// CKPNComparisonItem adalah perbandingan CKPN dan PPKA satu kredit.
+type CKPNComparisonItem struct {
+	LoanID         uuid.UUID       `json:"loan_id"`
+	LoanNumber     string          `json:"loan_number"`
+	Outstanding    decimal.Decimal `json:"outstanding"`
+	Collectibility Collectibility  `json:"collectibility"`
+	IsAsetBaik     bool            `json:"aset_baik"`
+	CKPN           decimal.Decimal `json:"ckpn"`
+	PPKA           decimal.Decimal `json:"ppka"`
+	// Difference adalah PPKA - CKPN. Positif berarti PPKA lebih besar dan menurut
+	// butir 1.1.6 menjadi pengurang modal inti.
+	Difference decimal.Decimal `json:"difference"`
+	Larger     CKPNLarger      `json:"larger"`
+}
+
+// CKPNRunFailure mencatat kredit yang gagal dihitung tanpa menggagalkan seluruh proses.
+type CKPNRunFailure struct {
+	LoanID     uuid.UUID `json:"loan_id"`
+	LoanNumber string    `json:"loan_number"`
+	Error      string    `json:"error"`
+}
+
+// CKPNComparisonSummary adalah ringkasan perbandingan CKPN vs PPKA satu kali proses.
+type CKPNComparisonSummary struct {
+	// Enabled false berarti saklar ckpn.enabled mati: tidak ada kredit yang dibaca.
+	Enabled   bool                 `json:"enabled"`
+	AsOf      time.Time            `json:"as_of"`
+	Total     int                  `json:"total"`
+	Processed int                  `json:"processed"`
+	Failed    int                  `json:"failed"`
+	Items     []CKPNComparisonItem `json:"items"`
+	Failures  []CKPNRunFailure     `json:"failures"`
+	// TotalCKPN dan TotalPPKA adalah jumlah target, bukan saldo GL.
+	TotalCKPN decimal.Decimal `json:"total_ckpn"`
+	TotalPPKA decimal.Decimal `json:"total_ppka"`
+	// ModalIntiDeduction adalah jumlah selisih positif (PPKA > CKPN) seluruh kredit,
+	// yaitu pengurang modal inti menurut SEOJK No. 21/SEOJK.03/2024 butir 1.1.6.
+	ModalIntiDeduction decimal.Decimal `json:"modal_inti_deduction"`
+	// Preview true berarti hanya simulasi, tanpa posting dan tanpa tulis state.
+	Preview bool `json:"preview"`
+}
+
+// CKPNRepository adalah akses data proses CKPN. Seluruh penulisan jurnal tetap lewat
+// posting engine, bukan di sini.
+type CKPNRepository interface {
+	// ListActiveLoans mengambil kredit aktif beserta outstanding, kolektibilitas, DPD,
+	// status restrukturisasi, PPKA tersimpan, dan CKPN tersimpan.
+	ListActiveLoans(ctx context.Context) ([]CKPNLoanSnapshot, error)
+	// UpdateRequiredCKPN menyimpan target CKPN per kredit dalam transaksi pemanggil.
+	UpdateRequiredCKPN(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error
+}
+
+// CKPNService menghitung CKPN dan membandingkannya dengan PPKA. Compare bersifat
+// baca-saja; Run memposting selisih dan menyimpan target.
+type CKPNService interface {
+	Compare(ctx context.Context, asOf time.Time) (CKPNComparisonSummary, error)
+	Run(ctx context.Context, asOf time.Time, actor Actor) (CKPNComparisonSummary, error)
+}

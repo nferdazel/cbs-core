@@ -113,6 +113,10 @@ func main() {
 	// Repositori agunan dipakai dua jalur: pencatatan agunan dan pengurangan eksposur PPAP.
 	collateralRepo := postgres.NewCollateralRepository(db)
 	ppapSvc := service.NewPPAPService(db, ppapRepo, productRepo, ledgerRepo, poster, postingSvc, configSvc, collateralRepo)
+	// CKPN (SAK EP, SEOJK 21/2024) adalah konsep terpisah dari PPKA. Modul ini membaca
+	// target PPKA yang sudah disimpan (loans.required_ppap) untuk membandingkannya,
+	// bukan menghitung ulang PPKA. Kredit dikunci lewat LoanRepository saat menulis.
+	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo)
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
@@ -156,6 +160,7 @@ func main() {
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
+	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, auditRepo)
 
 	// 6. Router
@@ -177,6 +182,7 @@ func main() {
 		DocumentHandler:     docHandler,
 		DepositHandler:      depositHandler,
 		PPAPHandler:         ppapHandler,
+		CKPNHandler:         ckpnHandler,
 		AuditHandler:        httpHandler.NewAuditHandler(auditRepo),
 		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
 		AuthService:         authSvc,

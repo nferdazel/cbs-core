@@ -50,6 +50,7 @@ type RouterParams struct {
 	DocumentHandler     *DocumentHandler
 	DepositHandler      *DepositHandler
 	PPAPHandler         *PPAPHandler
+	CKPNHandler         *CKPNHandler
 	AuditHandler        *AuditHandler
 	CollateralHandler   *CollateralHandler
 	AuthService         domain.AuthService
@@ -313,6 +314,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// ── PPAP & kolektibilitas harian ──
 			if p.PPAPHandler != nil {
 				p.PPAPHandler.RegisterRoutes(r)
+			}
+
+			// ── CKPN (SAK EP) dan perbandingannya dengan PPKA ──
+			if p.CKPNHandler != nil {
+				p.CKPNHandler.RegisterRoutes(r)
 			}
 
 			// ── Audit log (baca saja, untuk pengawas) ──

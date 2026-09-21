@@ -72,9 +72,16 @@ const (
 	EventLoanRecovery     PostingEvent = "LOAN_RECOVERY"
 	EventPPAPProvision    PostingEvent = "PPAP_PROVISION"
 	EventPPAPReversal     PostingEvent = "PPAP_REVERSAL"
-	EventFeeIncome        PostingEvent = "FEE_INCOME"
-	EventCashIn           PostingEvent = "CASH_IN"
-	EventCashOut          PostingEvent = "CASH_OUT"
+	// CKPN adalah konsep akuntansi (SAK EP) yang terpisah dari PPKA (POJK kualitas
+	// aset). Peristiwanya sengaja tidak menumpang PPAP_PROVISION/PPAP_REVERSAL agar
+	// rekening cadangan dan beban keduanya dapat dibandingkan tanpa tercampur.
+	// Dasar jurnalnya: SEOJK No. 21/SEOJK.03/2024 Bab XII butir 12.5 dan 12.10
+	// (Db. Beban kerugian penurunan nilai; Kr. CKPN).
+	EventCKPNProvision PostingEvent = "CKPN_PROVISION"
+	EventCKPNReversal  PostingEvent = "CKPN_REVERSAL"
+	EventFeeIncome     PostingEvent = "FEE_INCOME"
+	EventCashIn        PostingEvent = "CASH_IN"
+	EventCashOut       PostingEvent = "CASH_OUT"
 )
 
 // AmountSource menamai sisi transaksi yang dipakai sebagai nominal jurnal.
