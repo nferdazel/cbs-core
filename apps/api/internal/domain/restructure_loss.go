@@ -56,6 +56,13 @@ var (
 // efektif dihitung dari arus kas aktual kredit (IRR periodik bulanan).
 const RestructureLossEIRMethod = "IRR_ACTUAL_CASHFLOW"
 
+// RestructureLossEIRUnavailableMethod menandai bahwa perhitungan EIR orisinal sudah
+// DICOBA saat pencairan tetapi tidak konvergen. Barisnya tetap disimpan (monthly=0)
+// beserta alasannya pada basis audit, agar restrukturisasi berikutnya menolak dengan
+// pesan yang tepat — bukan menebak bahwa EIR memang belum pernah dihitung (kredit lama),
+// dan bukan diam-diam memakai suku bunga kontraktual.
+const RestructureLossEIRUnavailableMethod = "IRR_UNAVAILABLE"
+
 // LoanCashFlow adalah satu arus kas pada periode bulan ke-N. Period 0 adalah saat
 // pencairan/penilaian; Amount positif = penerimaan, negatif = pengeluaran.
 type LoanCashFlow struct {
@@ -75,6 +82,10 @@ type EIRBasis struct {
 	// Note menjelaskan batas yang disadari, mis. sistem belum memotong biaya saat
 	// pencairan sehingga EIR hanya berasal dari jadwal angsuran.
 	Note string `json:"note,omitempty"`
+	// Reason menjelaskan mengapa EIR TIDAK tersedia; hanya terisi bila Method =
+	// RestructureLossEIRUnavailableMethod. Disimpan agar penolakan restrukturisasi
+	// dapat menyebut alasan sesungguhnya, bukan pesan generik.
+	Reason string `json:"reason,omitempty"`
 }
 
 // EffectiveMonthlyRate menghitung suku bunga efektif periodik bulanan (IRR) dari arus

@@ -356,18 +356,31 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 			return domain.ErrLoanNotApproved
 		}
 
-		// EIR orisinal (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) dihitung dari arus kas
-		// nyata dan disimpan HANYA bila saklar kerugian restrukturisasi aktif; saat
-		// mati tidak ada perhitungan maupun penulisan tambahan.
-		if s.restructureLossEnabled(ctx) {
-			schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, fresh.ID)
-			if err != nil {
-				return fmt.Errorf("membaca jadwal angsuran untuk EIR: %w", err)
-			}
-			fresh.Schedules = schedules
-			if err := s.storeOriginalEIR(ctx, tx, fresh, schedules); err != nil {
-				return err
-			}
+		// EIR orisinal (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) DIHITUNG DAN DISIMPAN
+		// SELALU saat pencairan, terlepas dari saklar loan.restructure.loss.enabled.
+		// Perhitungan ini murni pencatatan data: tidak ada jurnal, tidak mengubah
+		// perilaku transaksi, dan tidak memengaruhi laporan. Saklar itu kini hanya
+		// menyisakan pengakuan kerugian beserta amortisasinya (restructure_loss_service.go,
+		// restructure_loss_amortization.go).
+		//
+		// ALASAN pemisahan: saklar itu MATI secara bawaan. Bila EIR ikut di belakangnya,
+		// seluruh kredit yang cair sebelum bank menyalakannya tidak punya EIR; saat saklar
+		// dinyalakan, restrukturisasi kredit-kredit itu ditolak ErrEIRMissing — dan EIR-nya
+		// tidak bisa direkonstruksi setelah fakta karena arus kas aslinya sudah lewat.
+		// Jalan buntu yang menunggu waktu.
+		//
+		// Pencairan adalah transaksi yang tidak boleh gagal karena data pelengkap: bila
+		// perhitungan tidak konvergen, storeOriginalEIR MENCATAT ketidaktersediaan beserta
+		// alasannya alih-alih mengembalikan galat. Kegagalan tulis infrastruktur tetap
+		// menggagalkan transaksi — tanpa baris tersimpan, status EIR tidak dapat
+		// direpresentasikan sama sekali dan rollback lebih jujur daripada diam-diam kosong.
+		schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, fresh.ID)
+		if err != nil {
+			return fmt.Errorf("membaca jadwal angsuran untuk EIR: %w", err)
+		}
+		fresh.Schedules = schedules
+		if err := s.storeOriginalEIR(ctx, tx, fresh, schedules); err != nil {
+			return err
 		}
 
 		desc := fmt.Sprintf("Pencairan %s untuk nasabah rekening %s", product.Name, acc.AccountNumber)

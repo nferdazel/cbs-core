@@ -101,6 +101,51 @@ export type ReportKind =
   | "income-statement"
   | "cash-flow";
 
+/**
+ * Peninjauan pemetaan COA ke pos laporan OJK
+ * (apps/api/internal/ojkreport/mapping_review.go). Field disalin dari struct Go.
+ */
+export type OJKMappingDecision = "DISETUJUI" | "DICATAT";
+
+export interface OJKMappingReviewRow {
+  form: string;
+  coa_code: string;
+  coa_name: string;
+  coa_found: boolean;
+  sandi: string;
+  pos_name: string;
+  sign: number;
+  draft_verified: boolean;
+  draft_note: string;
+  decision?: OJKMappingDecision;
+  review_note?: string;
+  decided_by?: string;
+  decided_at?: string;
+}
+
+export interface OJKUnmappedCOA {
+  form: string;
+  coa_code: string;
+  coa_name: string;
+}
+
+export interface OJKUnmappedPosition {
+  form: string;
+  sandi: string;
+  pos_name: string;
+}
+
+export interface OJKMappingReview {
+  mapping_status: string;
+  period: string;
+  book: string;
+  rows: OJKMappingReviewRow[];
+  unmapped_coa: OJKUnmappedCOA[];
+  unmapped_positions: OJKUnmappedPosition[];
+  duplicate_coa: string[];
+  source_unbalanced: boolean;
+}
+
 /** domain.EODSummaryResult (system_date.go) */
 export interface EODSummaryResult {
   executed_date: string;

@@ -18,9 +18,12 @@ import (
 //	dibandingkan dengan nilai tercatat diperhitungkan sebagai kerugian kredit.
 //	Nilai kini dihitung dengan tingkat diskonto suku bunga efektif orisinal.
 //
-// Berkas ini menyediakan parameter kebijakan, perhitungan, dan jurnalnya. Seluruh jalur
-// berada di balik saklar loan.restructure.loss.enabled yang MATI secara bawaan; saat
-// mati tidak ada perhitungan, jurnal, atau perubahan perilaku restrukturisasi.
+// Berkas ini menyediakan parameter kebijakan, perhitungan, dan jurnalnya. Yang berada
+// di balik saklar loan.restructure.loss.enabled yang MATI secara bawaan hanyalah
+// PENGAKUAN KERUGIAN beserta amortisasinya; saat mati tidak ada perhitungan kerugian,
+// jurnal, atau perubahan perilaku restrukturisasi. Pencatatan EIR orisinal TIDAK lagi
+// di belakang saklar: ia selalu dilakukan saat pencairan (lihat DisburseLoan) agar
+// kredit yang cair sebelum bank menyalakan saklar tetap punya EIR.
 const (
 	cfgRestructureLossEnabled      = "loan.restructure.loss.enabled"
 	cfgRestructureLossDiscountRate = "loan.restructure.loss.discount_rate_annual"
@@ -60,15 +63,6 @@ type restructureLossPolicy struct {
 	// DiscountErr menyimpan nilai yang DIISI tetapi tidak sah (salah format/rentang),
 	// agar perhitungan menolak dengan pesan jelas alih-alih memakai nol.
 	DiscountErr error
-}
-
-// restructureLossEnabled adalah pembacaan saklar ringan (tanpa validasi parameter),
-// dipakai di jalur pencairan. config nil berarti mati.
-func (s *loanService) restructureLossEnabled(ctx context.Context) bool {
-	if s.config == nil {
-		return false
-	}
-	return s.config.GetBool(ctx, cfgRestructureLossEnabled, false)
 }
 
 // restructureLossPolicy membaca parameter kebijakan. Saklar mati berarti tidak ada
@@ -111,13 +105,50 @@ func (s *loanService) restructureLossDiscountRate(_ context.Context, loan *domai
 		return policy.DiscountAnnual.Div(decimal.NewFromInt(100)).Div(decimal.NewFromInt(12)), nil
 	}
 	if !loan.OriginalEIRMonthly.IsPositive() {
-		return decimal.Zero, fmt.Errorf("%w: kredit %s; EIR dicatat saat pencairan atau isi %s",
-			domain.ErrEIRMissing, loan.LoanNumber, cfgRestructureLossDiscountRate)
+		return decimal.Zero, fmt.Errorf("%w: kredit %s; %s",
+			domain.ErrEIRMissing, loan.LoanNumber, eirUnavailableHint(loan, cfgRestructureLossDiscountRate))
 	}
 	return loan.OriginalEIRMonthly, nil
 }
 
+// eirUnavailableHint menjelaskan mengapa EIR tidak dapat dipakai dan membedakan dua
+// sebab yang berbeda agar pesannya tepat:
+//   - Method = IRR_UNAVAILABLE: perhitungan sudah dicoba saat pencairan tetapi gagal;
+//     alasannya tersimpan pada basis audit.
+//   - selain itu: kredit lama yang dicairkan sebelum pencatatan EIR selalu aktif,
+//     sehingga EIR memang belum pernah dihitung.
+//
+// Keduanya menyebut jalan keluar (override diskonto) agar operator tidak menebak.
+func eirUnavailableHint(loan *domain.Loan, overrideKey string) string {
+	if loan.OriginalEIRMethod == domain.RestructureLossEIRUnavailableMethod {
+		if reason := eirBasisReason(loan.OriginalEIRBasis); reason != "" {
+			return fmt.Sprintf("EIR tidak tersedia: perhitungan saat pencairan gagal (%s); isi %s sebagai override",
+				reason, overrideKey)
+		}
+		return fmt.Sprintf("EIR tidak tersedia: perhitungan saat pencairan gagal; isi %s sebagai override", overrideKey)
+	}
+	return fmt.Sprintf("EIR tidak tersedia: kredit belum menyimpan EIR (dicairkan sebelum pencatatan EIR selalu aktif); isi %s sebagai override", overrideKey)
+}
+
+// eirBasisReason membaca alasan kegagalan dari basis audit. Galat parsing tidak
+// menggagalkan pemanggil: basis rusak/kosong cukup menghasilkan pesan tanpa alasan.
+func eirBasisReason(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	var basis domain.EIRBasis
+	if err := json.Unmarshal([]byte(raw), &basis); err != nil {
+		return ""
+	}
+	return basis.Reason
+}
+
 // storeOriginalEIR menghitung dan menyimpan EIR orisinal dari arus kas nyata pencairan.
+// Selalu dipanggil saat pencairan, terlepas dari saklar kerugian restrukturisasi.
+//
+// Bila perhitungan TIDAK konvergen, EIR tidak boleh menggagalkan pencairan (transaksi
+// riil tidak boleh batal demi data pelengkap): ketidaktersediaan DICATAT beserta
+// alasannya, sehingga restrukturisasi berikutnya menolak dengan pesan yang tepat.
 //
 // PENTING (apa adanya): DisburseLoan saat ini TIDAK memotong provisi/biaya transaksi
 // apa pun — jurnal LOAN_DISBURSEMENT mendebit pokok penuh (lihat migrasi 000005).
@@ -132,13 +163,33 @@ func (s *loanService) storeOriginalEIR(ctx context.Context, tx any, loan *domain
 	}
 	rate, basis, err := domain.CalculateDisbursementEIR(loan.PrincipalAmount, decimal.Zero, schedules)
 	if err != nil {
-		return fmt.Errorf("menghitung EIR kredit %s: %w", loan.LoanNumber, err)
+		return s.recordUnavailableEIR(ctx, writer, tx, loan, err)
 	}
 	raw, err := json.Marshal(basis)
 	if err != nil {
 		return fmt.Errorf("menyusun dasar audit EIR kredit %s: %w", loan.LoanNumber, err)
 	}
 	return writer.UpdateOriginalEIRTx(ctx, tx, loan.ID, rate, domain.RestructureLossEIRMethod, raw, basis.CalculatedAt)
+}
+
+// recordUnavailableEIR menyimpan baris "EIR tidak tersedia" (monthly=0, method penanda,
+// alasan pada basis audit) di dalam transaksi pencairan. Dipakai khusus saat perhitungan
+// numerik gagal, supaya pencairan tetap sah berjalan sementara penyebab kegagalan dapat
+// dibaca kembali oleh penolakan restrukturisasi. Galat tulis dikembalikan: bila barisnya
+// sendiri tidak bisa disimpan, transaksi harus rollback.
+func (s *loanService) recordUnavailableEIR(ctx context.Context, writer domain.LoanEIRWriter, tx any, loan *domain.Loan, calcErr error) error {
+	basis := domain.EIRBasis{
+		Method:       domain.RestructureLossEIRUnavailableMethod,
+		NetProceeds:  loan.PrincipalAmount,
+		FeesDeducted: decimal.Zero,
+		CalculatedAt: time.Now().UTC(),
+		Reason:       calcErr.Error(),
+	}
+	raw, err := json.Marshal(basis)
+	if err != nil {
+		return fmt.Errorf("menyusun dasar audit EIR kredit %s: %w", loan.LoanNumber, err)
+	}
+	return writer.UpdateOriginalEIRTx(ctx, tx, loan.ID, decimal.Zero, domain.RestructureLossEIRUnavailableMethod, raw, basis.CalculatedAt)
 }
 
 // restructureLoanWithLoss menjalankan restrukturisasi kredit beserta pengakuan kerugian

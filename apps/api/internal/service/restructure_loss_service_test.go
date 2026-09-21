@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -199,6 +200,68 @@ func TestRestructureLoss_EIRHilangDitolak(t *testing.T) {
 	}, lossActor())
 	if !errors.Is(err, domain.ErrEIRMissing) {
 		t.Fatalf("mau ErrEIRMissing, dapat %v", err)
+	}
+}
+
+// Pesan penolakan EIR harus TEPAT membedakan dua sebab: kredit lama yang memang belum
+// pernah dihitung, dan kredit yang perhitungan EIR-nya sudah dicoba tetapi gagal
+// konvergen (alasan tersimpan pada basis audit). Keduanya menunjuk jalan keluar.
+func TestRestructureLoss_PesanEIRHilangTepat(t *testing.T) {
+	reason := domain.ErrIRRNotConverged.Error() + ": arus kas tidak berubah tanda"
+	unavailableBasis, err := json.Marshal(domain.EIRBasis{
+		Method: domain.RestructureLossEIRUnavailableMethod,
+		Reason: reason,
+	})
+	if err != nil {
+		t.Fatalf("menyusun basis uji: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		setup   func(*domain.Loan)
+		substrs []string
+	}{
+		{
+			name: "kredit lama tanpa EIR",
+			setup: func(l *domain.Loan) {
+				l.OriginalEIRMonthly = decimal.Zero
+				l.OriginalEIRMethod = ""
+				l.OriginalEIRBasis = ""
+			},
+			substrs: []string{"EIR tidak tersedia", "belum menyimpan EIR", cfgRestructureLossDiscountRate},
+		},
+		{
+			name: "perhitungan EIR gagal konvergen",
+			setup: func(l *domain.Loan) {
+				l.OriginalEIRMonthly = decimal.Zero
+				l.OriginalEIRMethod = domain.RestructureLossEIRUnavailableMethod
+				l.OriginalEIRBasis = string(unavailableBasis)
+			},
+			substrs: []string{"EIR tidak tersedia", "gagal", "tidak berubah tanda", cfgRestructureLossDiscountRate},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			loan, product, _ := lossLoan()
+			tc.setup(loan)
+			repo := &lossLoanRepoStub{loan: loan}
+			cfg := &ckpnConfigStub{values: map[string]string{"loan.restructure.loss.enabled": "true"}}
+			svc := newLossService(repo, &stubProductRepo{product: product}, &stubPosting{}, cfg)
+
+			_, err := svc.RestructureLoan(context.Background(), domain.RestructureLoanInput{
+				LoanID:        loan.ID,
+				NewTermMonths: 12,
+			}, lossActor())
+			if !errors.Is(err, domain.ErrEIRMissing) {
+				t.Fatalf("mau ErrEIRMissing, dapat %v", err)
+			}
+			for _, sub := range tc.substrs {
+				if !strings.Contains(err.Error(), sub) {
+					t.Fatalf("pesan %q tidak memuat %q", err.Error(), sub)
+				}
+			}
+		})
 	}
 }
 

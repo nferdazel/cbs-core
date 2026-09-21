@@ -32,6 +32,31 @@ type SystemBusinessDate struct {
 	UpdatedAt   time.Time          `json:"updated_at"`
 }
 
+// EODStepStatus menandai hasil satu langkah tutup hari.
+type EODStepStatus string
+
+const (
+	// EODStepRan berarti langkah dijalankan dan selesai tanpa galat.
+	EODStepRan EODStepStatus = "RAN"
+	// EODStepFailed berarti langkah dijalankan tetapi gagal.
+	EODStepFailed EODStepStatus = "FAILED"
+	// EODStepSkipped berarti langkah tidak dijalankan: prasyaratnya gagal/tidak
+	// berjalan pada tanggal bisnis yang sama, atau layanannya tidak dikonfigurasi.
+	EODStepSkipped EODStepStatus = "SKIPPED"
+)
+
+// EODStepResult menyatakan apa yang terjadi pada satu langkah tutup hari. Tanpa
+// daftar ini, langkah yang menolak berjalan karena prasyaratnya gagal tidak
+// terlihat, dan ringkasan bisa tampak sah padahal dasarnya hasil run sebelumnya.
+type EODStepResult struct {
+	Name   string        `json:"name"`
+	Status EODStepStatus `json:"status"`
+	// Prerequisites adalah nama langkah yang harus RAN lebih dulu.
+	Prerequisites []string `json:"prerequisites,omitempty"`
+	// Reason diisi pada status FAILED/SKIPPED agar operator tahu mengapa.
+	Reason string `json:"reason,omitempty"`
+}
+
 type EODSummaryResult struct {
 	ExecutedDate               time.Time       `json:"executed_date"`
 	NextBusinessDate           time.Time       `json:"next_business_date"`
@@ -53,9 +78,21 @@ type EODSummaryResult struct {
 	LoanLossAmortized       int             `json:"loan_loss_amortized"`
 	LoanLossAmortizedAmount decimal.Decimal `json:"loan_loss_amortized_amount"`
 	AccountsMarkedDormant   int             `json:"accounts_marked_dormant"`
-	Warnings                []string        `json:"warnings,omitempty"`
-	ExecutedBy              uuid.UUID       `json:"executed_by"`
-	CompletedAt             time.Time       `json:"completed_at"`
+	// Langkah mencatat status setiap pekerjaan harian: RAN, FAILED, atau SKIPPED.
+	// Langkah yang bergantung pada langkah lain (mis. perbandingan CKPN terhadap
+	// required_ppap hasil PPAP) menolak berjalan bila prasyaratnya tidak RAN pada
+	// tanggal bisnis yang sama, dan penolakan itu tampil di sini.
+	Steps []EODStepResult `json:"steps,omitempty"`
+	// Perbandingan CKPN vs PPKA tanggal bisnis ini. Baca-saja, dihitung hanya bila
+	// langkah PPAP berhasil; nilainya nol bila dilewati.
+	CKPNCompared           int             `json:"ckpn_compared"`
+	CKPNFailed             int             `json:"ckpn_failed"`
+	CKPNTotalPPKA          decimal.Decimal `json:"ckpn_total_ppka"`
+	CKPNTotalCKPN          decimal.Decimal `json:"ckpn_total_ckpn"`
+	CKPNModalIntiDeduction decimal.Decimal `json:"ckpn_modal_inti_deduction"`
+	Warnings               []string        `json:"warnings,omitempty"`
+	ExecutedBy             uuid.UUID       `json:"executed_by"`
+	CompletedAt            time.Time       `json:"completed_at"`
 }
 
 type EOMSummaryResult struct {

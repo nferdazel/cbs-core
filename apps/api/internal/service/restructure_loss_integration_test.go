@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -100,6 +101,58 @@ func TestIntegrasiRestrukturisasiKerugian(t *testing.T) {
 	// Bukti negatif: dasar pokok bruto akan menghasilkan angka yang berbeda.
 	if gotPPAP.Equal(domain.RoundToRupiah(outstanding.Mul(decimal.NewFromFloat(0.10)))) {
 		t.Fatal("PPKA terlihat masih dihitung atas pokok bruto, bukan saldo setelah kerugian")
+	}
+}
+
+// TestIntegrasiRestrukturisasiEIRTanpaSaklar membuktikan inti perbaikan terhadap
+// database sungguhan: pencairan dengan saklar kerugian restrukturisasi MATI tetap
+// menyimpan EIR orisinal beserta basis auditnya, lalu restrukturisasi kerugian setelah
+// saklar dinyalakan berjalan tanpa ErrEIRMissing. Tanpa perbaikan, kredit ini akan cair
+// tanpa EIR dan restrukturisasinya buntu.
+func TestIntegrasiRestrukturisasiEIRTanpaSaklar(t *testing.T) {
+	e := newMoneyEnv(t)
+	// Saklar MATI secara eksplisit SAAT pencairan: inilah kondisi yang dulu membuat EIR
+	// tidak tersimpan sama sekali.
+	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
+
+	branchCode := ckpnTestBranchCode("E")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji EIR Selalu Dicatat")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujieir", Role: domain.RoleAdmin, BranchCode: branchCode}
+
+	cust := e.newCustomer(t, "Nasabah EIR Selalu", fmt.Sprintf("eir-%d@uji.local", time.Now().UnixNano()))
+	acc := e.newAccountInBranch(t, cust.ID, branchID)
+	loan := e.disburseAs(t, actor, cust.ID, acc, decimal.NewFromInt(10_000_000), 12)
+
+	// Dibaca ULANG dari database, bukan dari state di memori.
+	if eir := e.loanDecimal(t, loan.ID, "original_eir_monthly"); !eir.IsPositive() {
+		t.Fatalf("EIR orisinal tidak tersimpan saat saklar mati: %s", eir)
+	}
+	if method := e.loanString(t, loan.ID, "original_eir_method"); method != domain.RestructureLossEIRMethod {
+		t.Fatalf("metode EIR %q, mau %q", method, domain.RestructureLossEIRMethod)
+	}
+	if basis := e.loanString(t, loan.ID, "original_eir_basis"); basis == "" {
+		t.Fatal("dasar audit EIR (original_eir_basis) kosong")
+	}
+
+	// Saklar dinyalakan SETELAH pencairan: restrukturisasi kerugian harus menemukan EIR
+	// yang sudah tersimpan, bukan menolak dengan ErrEIRMissing.
+	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "true")
+	t.Cleanup(func() { setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false") })
+
+	if _, err := e.loanSvc.RestructureLoan(e.ctx, domain.RestructureLoanInput{
+		LoanID:                loan.ID,
+		NewTermMonths:         12,
+		NewInterestRateAnnual: decimal.NewFromInt(6),
+		Reason:                "uji integrasi EIR dicatat tanpa saklar",
+	}, actor); err != nil {
+		if errors.Is(err, domain.ErrEIRMissing) {
+			t.Fatalf("restrukturisasi ditolak ErrEIRMissing padahal EIR tersimpan saat saklar mati: %v", err)
+		}
+		t.Fatalf("RestructureLoan: %v", err)
+	}
+	loss := e.loanDecimal(t, loan.ID, "restructure_loss_balance")
+	if !loss.IsPositive() {
+		t.Fatalf("saldo kerugian restrukturisasi %s, mau positif", loss)
 	}
 }
 

@@ -24,6 +24,19 @@ const (
 	configRetainedEarningsCOASyar = "retained_earnings.coa.syariah"
 )
 
+// Nama langkah pekerjaan harian EOD. Dipakai sebagai kunci pada EODSummaryResult.Steps
+// dan sebagai nama prasyarat antar-langkah. Sengaja berupa konstanta agar
+// perbandingan prasyarat tidak bergantung pada string yang ditulis ulang.
+const (
+	eodStepARO              = "aro"
+	eodStepPPAP             = "ppap"
+	eodStepCKPN             = "ckpn_comparison"
+	eodStepPenalty          = "loan_penalty_accrual"
+	eodStepInterestAccrual  = "loan_interest_accrual"
+	eodStepLossAmortization = "restructure_loss_amortization"
+	eodStepDormant          = "dormant"
+)
+
 type batchProcessService struct {
 	dateRepo    domain.BusinessDateRepository
 	batchRepo   domain.BatchActivityRepository
@@ -40,6 +53,10 @@ type batchProcessService struct {
 	penaltySvc domain.LoanPenaltyService
 	dormantSvc domain.DormantRunner
 	accrualSvc domain.LoanInterestAccrualRunner
+	// Perbandingan CKPN vs required_ppap hasil PPAP. Baca-saja, tetapi hanya boleh
+	// dijalankan bila langkah PPAP berhasil pada tanggal bisnis yang sama; jika
+	// tidak, angkanya berasal dari run PPAP sebelumnya dan menyesatkan.
+	ckpnSvc domain.CKPNService
 }
 
 func NewBatchProcessService(
@@ -56,6 +73,7 @@ func NewBatchProcessService(
 	penalty domain.LoanPenaltyService,
 	dormant domain.DormantRunner,
 	accrual domain.LoanInterestAccrualRunner,
+	ckpn domain.CKPNService,
 ) domain.BatchProcessService {
 	return &batchProcessService{
 		dateRepo:    dateRepo,
@@ -71,6 +89,7 @@ func NewBatchProcessService(
 		penaltySvc:  penalty,
 		dormantSvc:  dormant,
 		accrualSvc:  accrual,
+		ckpnSvc:     ckpn,
 	}
 }
 
@@ -140,39 +159,96 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 }
 
 // runDailyJobs menjalankan pekerjaan harian yang menyertai tutup hari: perpanjangan
-// otomatis deposito, perhitungan PPAP, akrual denda kredit, akrual bunga kredit, dan
-// penandaan rekening dormant. Setiap pekerjaan terisolasi — kegagalannya hanya
-// menghasilkan peringatan dan tidak menghentikan pekerjaan berikutnya maupun tutup
-// hari, karena tutup hari yang gagal akan menghentikan seluruh operasional bank.
-// Layanan yang belum dikonfigurasi (nil) dilewati tanpa peringatan.
+// otomatis deposito, perhitungan PPAP, perbandingan CKPN, akrual denda kredit, akrual
+// bunga kredit, amortisasi saldo kerugian restrukturisasi, dan penandaan rekening
+// dormant. Setiap pekerjaan terisolasi — kegagalannya hanya menghasilkan peringatan
+// dan tidak menghentikan pekerjaan berikutnya maupun tutup hari, karena tutup hari
+// yang gagal akan menghentikan seluruh operasional bank. Layanan yang belum
+// dikonfigurasi (nil) dilewati tanpa peringatan.
+//
+// Disiplin antar-langkah: langkah yang bergantung pada hasil langkah lain menolak
+// berjalan bila prasyaratnya tidak berstatus RAN pada jalur ini (jadi bisa gagal,
+// tidak dikonfigurasi, atau tidak berjalan pada tanggal bisnis yang sama). Penolakan
+// itu dicatat di EODSummaryResult.Steps dan dinaikkan menjadi Warnings, sehingga run
+// tidak pernah tampak sah dengan angka dari run sebelumnya. Urutan mengikuti
+// ketergantungan data yang sudah ada; jalur perhitungan tiap langkah tidak diubah.
 func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
 	logger := observability.FromContext(ctx)
 
-	if s.aroSvc != nil {
+	if s.aroSvc == nil {
+		recordEODStep(summary, eodStepARO, domain.EODStepSkipped, "layanan perpanjangan otomatis deposito tidak dikonfigurasi")
+	} else {
 		rolled, err := s.aroSvc.RunARO(ctx, businessDate, actor)
 		summary.DepositsRolledOver = rolled
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perpanjangan otomatis deposito gagal: %v", err))
 			logger.ErrorContext(ctx, "perpanjangan otomatis deposito gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepARO, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepARO, domain.EODStepRan, "")
 		}
 	}
 
-	if s.ppapSvc != nil {
+	// PPAP menyimpan required_ppap dan kolektibilitas. Langkah inilah yang menghasilkan
+	// angka dasar bagi perbandingan CKPN, jadi statusnya menentukan boleh tidaknya CKPN.
+	if s.ppapSvc == nil {
+		recordEODStep(summary, eodStepPPAP, domain.EODStepSkipped, "layanan PPAP tidak dikonfigurasi")
+	} else {
 		ppap, err := s.ppapSvc.RunDaily(ctx, businessDate, actor)
 		summary.PPAPProcessed = ppap.Processed
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perhitungan PPAP harian gagal: %v", err))
 			logger.ErrorContext(ctx, "perhitungan PPAP harian gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepPPAP, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepPPAP, domain.EODStepRan, "")
 		}
 	}
 
-	if s.penaltySvc != nil {
+	// Perbandingan CKPN bersandar pada required_ppap yang baru saja disimpan PPAP pada
+	// tanggal bisnis yang sama. Bila PPAP gagal/tidak berjalan, kredit masih menyimpan
+	// required_ppap run sebelumnya; menampilkan perbandingannya berarti melaporkan
+	// dasar kemarin seolah sah. Dijalankan tepat setelah PPAP (sebelum amortisasi) agar
+	// basis saldo kerugiannya identik dengan basis yang dipakai PPAP.
+	if s.ckpnSvc == nil {
+		recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, "layanan CKPN tidak dikonfigurasi", eodStepPPAP)
+	} else if reason := unmetPrerequisite(summary, eodStepPPAP); reason != "" {
+		summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA dilewati: %s", reason))
+		recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, reason, eodStepPPAP)
+	} else {
+		cmp, err := s.ckpnSvc.Compare(ctx, businessDate, actor)
+		summary.CKPNCompared = cmp.Processed
+		summary.CKPNFailed = cmp.Failed
+		summary.CKPNTotalPPKA = cmp.TotalPPKA
+		summary.CKPNTotalCKPN = cmp.TotalCKPN
+		summary.CKPNModalIntiDeduction = cmp.ModalIntiDeduction
+		switch {
+		case err != nil:
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA gagal: %v", err))
+			logger.ErrorContext(ctx, "perbandingan CKPN vs PPKA gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepCKPN, domain.EODStepFailed, err.Error(), eodStepPPAP)
+		case !cmp.Enabled:
+			recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, "saklar ckpn.enabled mati", eodStepPPAP)
+		default:
+			if cmp.Failed > 0 {
+				summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA: %d kredit gagal dihitung", cmp.Failed))
+			}
+			recordEODStep(summary, eodStepCKPN, domain.EODStepRan, "", eodStepPPAP)
+		}
+	}
+
+	if s.penaltySvc == nil {
+		recordEODStep(summary, eodStepPenalty, domain.EODStepSkipped, "layanan denda kredit tidak dikonfigurasi")
+	} else {
 		penalty, err := s.penaltySvc.AccruePenalties(ctx, businessDate, actor)
 		summary.LoanPenaltiesAccrued = penalty.Accrued
 		summary.LoanPenaltyAmount = penalty.TotalPenalty
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual denda kredit gagal: %v", err))
 			logger.ErrorContext(ctx, "akrual denda kredit gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepPenalty, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepPenalty, domain.EODStepRan, "")
 		}
 		// Tarif yang belum diisi operator bukan kegagalan teknis, tetapi tetap harus
 		// terlihat: tanpa peringatan, batch tampak sukses padahal tidak menagih apa pun.
@@ -181,38 +257,60 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		}
 	}
 
-	if s.accrualSvc != nil {
+	if s.accrualSvc == nil {
+		recordEODStep(summary, eodStepInterestAccrual, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi")
+	} else {
 		accrual, err := s.accrualSvc.AccrueInterest(ctx, businessDate, actor)
 		summary.LoanInterestAccrued = accrual.Accrued
 		summary.LoanInterestAccruedAmount = accrual.TotalAccrued
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual bunga kredit gagal: %v", err))
 			logger.ErrorContext(ctx, "akrual bunga kredit gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepInterestAccrual, domain.EODStepRan, "")
 		}
 		// Produk tanpa pemetaan INTEREST_ACCRUAL bukan kegagalan teknis, tetapi harus
 		// terlihat: tanpa peringatan, batch tampak mengakru padahal tidak.
 		summary.Warnings = append(summary.Warnings, accrual.Warnings...)
+	}
 
-		// Amortisasi saldo kerugian restrukturisasi berjalan SETELAH akrual
-		// kontraktual pada tanggal bisnis yang sama, sehingga selisih bunga efektif
-		// dihitung di atas pendapatan jadwal yang sudah diakui periode itu. Seluruh
-		// perhitungannya di balik loan.restructure.loss.enabled.
+	// Amortisasi saldo kerugian restrukturisasi berjalan SETELAH akrual kontraktual
+	// pada tanggal bisnis yang sama, sehingga selisih bunga efektif dihitung di atas
+	// pendapatan jadwal yang sudah diakui periode itu. Bila akrual gagal, amortisasi
+	// MENOLAK berjalan: selisih efektifnya akan berdiri di atas pendapatan yang belum
+	// diakui dan angkanya menyesatkan. Seluruh perhitungannya di balik
+	// loan.restructure.loss.enabled.
+	if s.accrualSvc == nil {
+		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, "layanan akrual bunga kredit tidak dikonfigurasi", eodStepInterestAccrual)
+	} else if reason := unmetPrerequisite(summary, eodStepInterestAccrual); reason != "" {
+		summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi dilewati: %s", reason))
+		recordEODStep(summary, eodStepLossAmortization, domain.EODStepSkipped, reason, eodStepInterestAccrual)
+	} else {
 		loss, err := s.accrualSvc.AmortizeRestructureLoss(ctx, businessDate, actor)
 		summary.LoanLossAmortized = loss.Amortized
 		summary.LoanLossAmortizedAmount = loss.TotalAmortized
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("amortisasi saldo kerugian restrukturisasi gagal: %v", err))
 			logger.ErrorContext(ctx, "amortisasi saldo kerugian restrukturisasi gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepLossAmortization, domain.EODStepFailed, err.Error(), eodStepInterestAccrual)
+		} else {
+			recordEODStep(summary, eodStepLossAmortization, domain.EODStepRan, "", eodStepInterestAccrual)
 		}
 		summary.Warnings = append(summary.Warnings, loss.Warnings...)
 	}
 
-	if s.dormantSvc != nil {
+	if s.dormantSvc == nil {
+		recordEODStep(summary, eodStepDormant, domain.EODStepSkipped, "layanan dormant tidak dikonfigurasi")
+	} else {
 		dormant, err := s.dormantSvc.MarkDormant(ctx, businessDate, actor)
 		summary.AccountsMarkedDormant = dormant.Marked
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("penandaan rekening dormant gagal: %v", err))
 			logger.ErrorContext(ctx, "penandaan rekening dormant gagal saat EOD", "error", err)
+			recordEODStep(summary, eodStepDormant, domain.EODStepFailed, err.Error())
+		} else {
+			recordEODStep(summary, eodStepDormant, domain.EODStepRan, "")
 		}
 		// Ambang yang tidak valid bukan kegagalan teknis, tetapi tetap harus terlihat:
 		// tanpa peringatan, batch tampak memakai ambang yang disetel operator.
@@ -220,6 +318,43 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 			summary.Warnings = append(summary.Warnings, dormant.Warning)
 		}
 	}
+}
+
+// recordEODStep menambahkan status satu langkah ke ringkasan tutup hari.
+func recordEODStep(summary *domain.EODSummaryResult, name string, status domain.EODStepStatus, reason string, prerequisites ...string) {
+	summary.Steps = append(summary.Steps, domain.EODStepResult{
+		Name:          name,
+		Status:        status,
+		Prerequisites: prerequisites,
+		Reason:        reason,
+	})
+}
+
+// unmetPrerequisite mengembalikan alasan bila salah satu prasyarat tidak berstatus
+// RAN pada jalur EOD ini; kosong berarti seluruh prasyarat terpenuhi. Status prasyarat
+// disertakan agar operator dapat membedakan "gagal" dari "tidak dijalankan", bukan
+// menerima pesan umum yang menyembunyikan sebabnya.
+func unmetPrerequisite(summary *domain.EODSummaryResult, names ...string) string {
+	for _, name := range names {
+		status := domain.EODStepSkipped
+		found := false
+		for _, step := range summary.Steps {
+			if step.Name == name {
+				status = step.Status
+				found = true
+				break
+			}
+		}
+		if found && status == domain.EODStepRan {
+			continue
+		}
+		if !found {
+			status = "TIDAK_JALAN"
+		}
+		return fmt.Sprintf("prasyarat %s berstatus %s, bukan %s; angka akan berasal dari run sebelumnya",
+			name, status, domain.EODStepRan)
+	}
+	return ""
 }
 
 // eomPeriod menentukan periode bulan yang ditutup oleh EOM, sekaligus menolak

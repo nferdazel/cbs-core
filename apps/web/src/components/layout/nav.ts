@@ -11,6 +11,7 @@ import {
   HandCoins,
   Home,
   Landmark,
+  ListChecks,
   Package,
   PiggyBank,
   Settings,
@@ -56,6 +57,8 @@ const LOANS_READ_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AO", "AUDITOR"];
 const MAKER_CHECKER_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR"];
 // users:read — daftar cabang.
 const USERS_READ_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AUDITOR"];
+// reports:export — definisi/ekspor laporan OJK dan peninjauan pemetaan (baca).
+const REPORTS_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AUDITOR"];
 // transactions:deposit/withdraw/transfer — layar teller yang hanya memposting transaksi.
 const TRANSACTION_ROLES = ["SUPERADMIN", "ADMIN", "TELLER"];
 
@@ -149,6 +152,12 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "laporan",
         icon: BarChart3,
         requiredRoles: LEDGER_READ_ROLES,
+      },
+      {
+        href: "/pemetaan-ojk",
+        labelKey: "pemetaanOjk",
+        icon: ListChecks,
+        requiredRoles: REPORTS_ROLES,
       },
     ],
   },

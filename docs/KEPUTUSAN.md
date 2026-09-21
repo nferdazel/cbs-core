@@ -448,3 +448,45 @@ up-only, tidak dapat dibatalkan), jadi ini keputusan pemilik sistem, bukan keput
 - Kebijakan `as_of` penempatan: satu baris terkini per penempatan, tanpa deduplikasi histori.
 - Perlakuan cadangan PPAP/CKPN saat kredit lunas sudah diperbaiki; pola `slog.Warn` lalu jatuh
   ke buku konvensional saat produk tidak terbaca masih ada dan belum diputuskan.
+
+---
+
+# TEMUAN VALIDASI RILIS (belum diputuskan)
+
+## Penghalang: batas transaksi dan ambang persetujuan per peran tidak berlaku
+Kode membangun kunci konfigurasi batas sebagai `limit.<peran>.<jenis_transaksi>.<sufiks>`
+(`internal/service/limit_service.go`), sedangkan migrasi seed menaruh
+`role_limit.<PERAN>.per_transaction`. Karena kunci `limit.*` **tidak pernah di-seed**, penjaga
+batas selalu memakai nilai bawaan: **50 juta per transaksi, 500 juta harian, ambang persetujuan
+10 juta — untuk semua peran.** Niat yang tertulis di seed (AO 250 juta, Supervisor 500 juta,
+Admin tanpa batas) tidak pernah berlaku, dan ambang persetujuan efektif 10 juta menimpa ambang
+`maker_checker.*` yang di-seed (setoran 100 juta, transfer/penarikan 50 juta).
+
+Ini kontrol operasional, bukan sekadar salah tampilan: batas peran dan ambang persetujuan adalah
+bagian dari pengendalian internal bank. **Menghalangi push sampai diperbaiki atau diputuskan.**
+Pilihannya: (a) samakan kunci di kode dengan seed dan pindahkan niat batasnya, atau (b) seed kunci
+`limit.*` secara eksplisit lalu hapus kunci `role_limit.*` yang tidak dibaca.
+
+## Perlu diperhatikan
+- **18 kunci konfigurasi dibaca kode tetapi tidak di-seed.** Dua di antaranya jatuh ke nol secara
+  senyap: `deposit.mudharabah.yield_annual` (bagi hasil nol) dan
+  `loan.penalty.rate.daily.per_mille` (denda nol). Lima kunci lain di-seed tetapi tidak dibaca
+  kode (kode mati): `auth.password_expiry_days`, `role_limit.{TELLER,AO,SUPERVISOR,ADMIN}`.
+- **Satu uji integrasi gagal bila seluruh uji dijalankan pada satu database**
+  (`TestIntegrasiOJKFormDaftarDanNPL` meng-assert rasio NPL bank-wide secara eksak, sedangkan uji
+  lain mengisi kredit ke database yang sama). Lolos bila dijalankan sendiri. Ini kelemahan
+  isolasi uji, bukan tabrakan fitur — perbaiki dengan mengurung asersi pada data uji atau
+  memisahkan database per paket.
+- **PPAP berjalan sebelum amortisasi** sehingga memakai saldo kerugian pra-amortisasi (selisih
+  satu hari). Tidak diubah karena memindahkannya mengubah angka PPAP, bukan sekadar urutan.
+- **Perbandingan CKPN masih dapat dipanggil manual di luar tutup hari** dengan `required_ppap`
+  basi. Menutupnya butuh penanda run PPAP yang persisten.
+- Salinan cadangan **tidak ada di luar VPS**; latihan pemulihan pertama berhasil tetapi tidak
+  ada pengujian rutin.
+
+## Sudah aman (terbukti)
+- Rantai migrasi dari nol bersih dan idempoten; satu transaksi per berkas; tanpa kegagalan.
+- Biner API menyala terhadap database hasil migrasi dan melayani `/healthz` serta login (HTTP 200).
+- Cadangan otomatis sudah berjalan (harian 02:00, rotasi 7/28/93 hari, notifikasi), dan latihan
+  pemulihan memulihkan database utuh ke target terpisah dengan jumlah tabel, akun, dan migrasi
+  yang identik, lalu membersihkannya tanpa mengubah `cbs`.

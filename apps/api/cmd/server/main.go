@@ -134,7 +134,7 @@ func main() {
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
-	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc)
+	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc, ckpnSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, bankProfileRepo, cipher)
 
 	// 5. HTTP Handlers
@@ -169,13 +169,16 @@ func main() {
 	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi. RepoSource menambah
 	// sumber form daftar: kredit (Form 06.00/NPL), profil bank (Form 00.00), dan
 	// penempatan pada bank lain (Form 05.00).
+	//
+	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
+	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
 		Source:     reportSvc,
 		Loans:      loanRepo,
 		Profile:    bankProfileRepo,
 		Config:     configRepo,
 		Placements: postgres.NewLPSPlacementRepository(db),
-	})
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db))
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

@@ -47,6 +47,137 @@ func newOJKHandler() *OJKReportHandler {
 	return &OJKReportHandler{builder: ojkreport.NewBuilder(stubOJKSource{})}
 }
 
+// stubMappingReviewRepo menyimpan keputusan di memori untuk uji handler; idempotensi
+// penyimpanan sungguhan diuji terpisah lewat integrasi basis data.
+type stubMappingReviewRepo struct {
+	saved []ojkreport.MappingReview
+}
+
+func (s *stubMappingReviewRepo) ListReviews(_ context.Context) ([]ojkreport.MappingReview, error) {
+	return s.saved, nil
+}
+
+func (s *stubMappingReviewRepo) UpsertReview(_ context.Context, review ojkreport.MappingReview) error {
+	s.saved = append(s.saved, review)
+	return nil
+}
+
+func newOJKReviewHandler(repo ojkreport.MappingReviewRepository) *OJKReportHandler {
+	return &OJKReportHandler{
+		builder: ojkreport.NewBuilder(stubOJKSource{}),
+		source:  stubOJKSource{},
+		reviews: repo,
+	}
+}
+
+func ojkRequestWithClaims(method, target, body string, claims *domain.JWTClaims) *http.Request {
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	return req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims, claims))
+}
+
+// Bank hanya boleh menandai baris yang benar-benar ada pada pemetaan draf dan memakai
+// keputusan yang dikenal. Pengiriman sah harus menyimpan siapa dan kapan memutuskan.
+func TestDecideMappingMenyimpanKeputusanSah(t *testing.T) {
+	repo := &stubMappingReviewRepo{}
+	h := newOJKReviewHandler(repo)
+	before := time.Now().UTC()
+
+	req := ojkRequestWithClaims(http.MethodPost, "/api/v1/reports/ojk/mapping/decision",
+		`{"form":"01.00","coa_code":"10100","decision":"DISETUJUI","note":"sesuai pedoman"}`,
+		&domain.JWTClaims{Username: "admin.uji", Role: domain.RoleAdmin})
+	rec := httptest.NewRecorder()
+
+	h.DecideMapping(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, ingin 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(repo.saved) != 1 {
+		t.Fatalf("keputusan tersimpan = %d, ingin 1", len(repo.saved))
+	}
+	saved := repo.saved[0]
+	if saved.DecidedBy != "admin.uji" {
+		t.Errorf("decided_by = %q, ingin admin.uji", saved.DecidedBy)
+	}
+	if saved.DecidedAt.Before(before) {
+		t.Errorf("decided_at %s lebih awal dari permintaan %s", saved.DecidedAt, before)
+	}
+	if saved.Decision != ojkreport.ReviewApproved || saved.Note != "sesuai pedoman" {
+		t.Errorf("keputusan = %+v", saved)
+	}
+}
+
+func TestDecideMappingMenolakMasukanTidakSah(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"keputusan asing", `{"form":"01.00","coa_code":"10100","decision":"MUNGKIN"}`},
+		{"baris tidak dikenal", `{"form":"01.00","coa_code":"99999","decision":"DISETUJUI"}`},
+		{"form tidak dikenal", `{"form":"09.99","coa_code":"10100","decision":"DISETUJUI"}`},
+		{"catatan keberatan kosong", `{"form":"01.00","coa_code":"10100","decision":"DICATAT","note":"  "}`},
+		{"body bukan JSON", `bukan-json`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &stubMappingReviewRepo{}
+			h := newOJKReviewHandler(repo)
+			req := ojkRequestWithClaims(http.MethodPost, "/api/v1/reports/ojk/mapping/decision",
+				tc.body, &domain.JWTClaims{Username: "admin.uji", Role: domain.RoleAdmin})
+			rec := httptest.NewRecorder()
+
+			h.DecideMapping(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, ingin 400; body=%s", rec.Code, rec.Body.String())
+			}
+			if len(repo.saved) != 0 {
+				t.Fatalf("keputusan tidak sah tidak boleh tersimpan: %+v", repo.saved)
+			}
+		})
+	}
+}
+
+// stubCOALister mengembalikan bagan akun tetap untuk menguji pelengkapan nama akun.
+type stubCOALister struct {
+	list []domain.ChartOfAccount
+}
+
+func (s stubCOALister) GetCOAList(_ context.Context) ([]domain.ChartOfAccount, error) {
+	return s.list, nil
+}
+
+// Mapping harus menyajikan nama akun dan daftar celah tanpa menyalakan apa pun:
+// status tetap DRAF.
+func TestMappingMenyajikanNamaAkunDanCelah(t *testing.T) {
+	h := &OJKReportHandler{
+		builder: ojkreport.NewBuilder(stubOJKSource{}),
+		source:  stubOJKSource{},
+		coa:     stubCOALister{list: []domain.ChartOfAccount{{Code: "10100", Name: "Kas"}}},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/ojk/mapping?period=2026-03", nil)
+	rec := httptest.NewRecorder()
+
+	h.Mapping(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, ingin 200; body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"mapping_status":"`+ojkreport.MappingStatus+`"`) {
+		t.Fatalf("status pemetaan tidak draf: %s", body)
+	}
+	if !strings.Contains(body, `"coa_name":"Kas"`) {
+		t.Fatalf("nama akun COA tidak disajikan: %s", body)
+	}
+	if !strings.Contains(body, `"pos_name":"Kas dalam Rupiah"`) {
+		t.Fatalf("nama pos OJK tidak disajikan: %s", body)
+	}
+	if !strings.Contains(body, `"unmapped_positions"`) {
+		t.Fatalf("daftar pos tanpa sumber tidak disajikan: %s", body)
+	}
+}
+
 // Aktor yang hanya berwenang atas cabangnya tidak boleh mengekspor laporan
 // bank-wide; permintaan harus ditolak 403.
 func TestExportMonthlyMenolakAktorNonLintasCabang(t *testing.T) {
