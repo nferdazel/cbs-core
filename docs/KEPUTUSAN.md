@@ -397,3 +397,54 @@ diakui di sistem karena tiga hal belum ada: penyimpanan suku bunga efektif orisi
 dihitung atas saldo setelah kerugian, dan pemetaan jurnal untuk beban kerugian penurunan nilai.
 Tidak dibangun setengah-setengah karena memakai suku bunga kontraktual sebagai ganti suku bunga
 efektif orisinal akan menghasilkan angka yang salah.
+
+---
+
+# KEPUTUSAN YANG MENUNGGU BANK
+
+Daftar ini disimpan di sini — bukan di catatan kerja yang bisa hilang — supaya keputusan yang
+menumpuk tidak terlupakan dan tidak menghalangi pekerjaan yang tidak bergantung padanya.
+Setiap butir mencatat apa yang terhalang, bukan sekadar daftar keinginan.
+
+## 1. Panduan konversi COA ke pos laporan OJK
+SEOJK mewajibkan setiap bank punya pedoman konversinya sendiri. Selama belum ada, pemetaan
+`internal/ojkreport/coa_mapping.go` berstatus draf dan laporan belum boleh dikirim ke APOLO.
+**Menghalangi:** seluruh pelaporan OJK.
+
+## 2. Saklar kerugian restrukturisasi (`loan.restructure.loss.enabled`)
+Secara teknis sudah siap — cacat saldo piutang negatif sudah tertutup amortisasi bunga efektif.
+Yang menunggu keputusan bank: membuka saklarnya di produksi, COA yang dipakai, dan kebijakan
+tingkat diskonto untuk kredit lama yang tidak punya suku bunga efektif tersimpan.
+**Menghalangi:** pengakuan kerugian restrukturisasi di produksi.
+
+## 3. PD dan LGD untuk CKPN (`ckpn.pd.1`..`ckpn.pd.5`, `ckpn.lgd`)
+Metodologi sudah terpasang, parameternya belum. Pengisiannya menuntut data historis minimal tiga
+tahun yang hanya bank punya. Selama kosong, kredit gagal dihitung dengan pesan jelas — bukan
+dihitung nol.
+**Menghalangi:** perhitungan CKPN di produksi.
+
+## 4. Cara mencatat penempatan pada bank lain
+Sistem belum memodelkan penempatan pada bank lain; yang ada hanya akun GL agregat. Penandanya
+sudah tersedia (`lps_placements`) tetapi nilainya diisi bank dan belum direkonsiliasi otomatis
+dengan saldo COA. Keputusan yang ditunggu: bagaimana penempatan dicatat, apakah PPKA-nya
+diposting ke GL, dan kebijakan plafon LPS (serta apakah kelebihan jaminan ditolak atau dipotong).
+**Menghalangi:** Pasal 23 dan Form 05.00/13.00 laporan OJK.
+
+## 5. Kepemilikan database dan kredensial
+Database `cbs` dimiliki role aplikasi `cbs_app`, bukan role admin, sehingga role aplikasi dapat
+mengubah struktur di luar migrasi. Preflight memperingatkan hal ini. Ditambah: rotasi password
+superadmin dan penghapusan berkas kredensial sementara di VPS.
+**Menghalangi:** tata kelola akses produksi.
+
+## 6. Kredit yang tertahan di luar push
+Commit sengaja ditahan sampai kode dinilai bebas cacat. Push menyentuh produksi (migrasi
+up-only, tidak dapat dibatalkan), jadi ini keputusan pemilik sistem, bukan keputusan teknis.
+
+## Butir teknis kecil yang menunggu keputusan
+- Kriteria aset baik CKPN huruf (a) dan (b) tidak dapat dinilai karena datanya tidak ada;
+  saat ini diperlakukan konservatif.
+- CKPN individual (arus kas terdiskonto) belum dibangun karena menuntut estimasi arus kas per
+  debitur.
+- Kebijakan `as_of` penempatan: satu baris terkini per penempatan, tanpa deduplikasi histori.
+- Perlakuan cadangan PPAP/CKPN saat kredit lunas sudah diperbaiki; pola `slog.Warn` lalu jatuh
+  ke buku konvensional saat produk tidak terbaca masih ada dan belum diputuskan.
