@@ -1,14 +1,13 @@
 # Keputusan, Dasar Regulasi, dan Rancangan — CBS Core
 
 Dokumen ini merangkum keputusan yang **tahan lama**: dasar hukum, keputusan
-produk, keputusan arsitektur, dan prasyarat environment. Asalnya adalah
-`BACKLOG.md`, yang di-ignore git sehingga seluruh alasan di balik keputusan hanya
-hidup di berkas lokal dan bisa hilang.
+produk, keputusan arsitektur, prasyarat environment, dan utang yang masih terbuka.
+Asalnya adalah `BACKLOG.md` lokal (di-ignore git, sudah dihapus) karena seluruh
+alasan di balik keputusan hanya hidup di berkas lokal dan bisa hilang.
 
-Yang **tidak** dipindahkan ke sini: status pekerjaan harian, catatan per-commit,
-daftar utang berjalan, dan catatan kerja kasar yang masih bergerak. Itu tetap di
-`BACKLOG.md` lokal. Bila dokumen ini dan kode berbeda, **kode dan migrasi adalah
-kebenaran**; perbarui dokumen ini.
+Yang **tidak** ada di sini: status pekerjaan harian dan catatan per-commit — itu
+terbaca dari riwayat git. Bila dokumen ini dan kode berbeda, **kode dan migrasi
+adalah kebenaran**; perbarui dokumen ini.
 
 ---
 
@@ -490,3 +489,47 @@ Pilihannya: (a) samakan kunci di kode dengan seed dan pindahkan niat batasnya, a
 - Cadangan otomatis sudah berjalan (harian 02:00, rotasi 7/28/93 hari, notifikasi), dan latihan
   pemulihan memulihkan database utuh ke target terpisah dengan jumlah tabel, akun, dan migrasi
   yang identik, lalu membersihkannya tanpa mengubah `cbs`.
+
+## 5. Utang terbuka (dipindahkan dari BACKLOG.md, 2026-09-21)
+
+`BACKLOG.md` (catatan kerja awal, 2033 baris) dan `docs/RENCANA_KERJA.md` dihapus
+karena statusnya sudah tidak benar — rencana kerja item 1–8 selesai, dan BACKLOG
+masih menyatakan batas peran "sudah ditegakkan di jalur transaksi" padahal kunci
+konfigurasinya tidak pernah di-seed. Hanya item yang masih terbuka yang dipindahkan
+ke sini, setelah diverifikasi ulang ke kode. Item 9 (housekeeping) ada di bagian
+"KEPUTUSAN YANG MENUNGGU BANK".
+
+### Diverifikasi masih terbuka
+
+- `docker-compose.yml:16` hanya me-mount migrasi `000001`, sehingga setup lokal tidak
+  pernah lengkap. Perlu mount seluruh `packages/db-migrations` atau arahkan ke
+  `scripts/migrate.sh`.
+- `docker-compose.yml:18-25` masih menjalankan Redis (`cbs-redis`) padahal tidak ada
+  kode yang memakainya.
+- `apps/api/go.mod:1` module path `cbs-core/apps/core-api` tidak cocok dengan folder
+  `apps/api`. Kosmetik, tapi menyesatkan pembaca baru.
+
+### Dinyatakan selesai setelah verifikasi (dulu tercatat sebagai utang)
+
+- Referensi jurnal jatuh ke `time.Now().UnixNano()` bila sequence gagal dibaca:
+  tidak ada lagi di kode non-uji.
+- Port Caddyfile: sudah `8095`, cocok dengan Quadlet.
+
+### Belum diverifikasi ulang (jangan dianggap selesai)
+
+- `GetByIDs` (`= ANY($1)` dengan `[]uuid.UUID`) diduga belum diuji terhadap database
+  nyata; uji `document_service_test.go` hanya memakai stub.
+- Akrual **denda** pada kredit NPL (kolektibilitas 3–5): akrual bunga sudah dihentikan
+  berdasarkan keputusan pemilik produk, denda belum diputuskan.
+- Akrual margin syariah (murabahah) belum punya pemetaan; bagi hasil mudharabah diakui
+  saat realisasi sehingga tidak diakru.
+- Akrual bunga kredit tidak di-backfill: migrasi `000023` sengaja tidak menandai
+  angsuran lama.
+- Tampilan frontend lanjutan: rincian per-angsuran akruan bunga dan daftar rekening
+  dormant lintas halaman.
+
+### Saklar yang sengaja tetap mati
+
+`ppap.collateral.enabled`, `ckpn.enabled`, `loan.restructure.loss.enabled`, modul
+Pasal 23 (LPS), dan kebijakan kedaluwarsa kata sandi (`auth.password_expiry_days = 0`,
+0 berarti nonaktif).
