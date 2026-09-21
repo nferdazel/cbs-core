@@ -15,6 +15,11 @@ import (
 var (
 	ErrCKPNLoanNotFound     = errors.New("kredit untuk perhitungan CKPN tidak ditemukan")
 	ErrCKPNParameterMissing = errors.New("parameter kebijakan CKPN belum diisi bank")
+	// ErrCKPNParameterInvalid menandai parameter yang DIISI tetapi tidak sah: salah
+	// format (mis. "0,5") atau di luar rentang 0..1 (mis. "14.23" untuk persen).
+	// Dibedakan dari ErrCKPNParameterMissing agar pesan tidak berkata "belum diisi"
+	// pada nilai yang sebenarnya diisi keliru.
+	ErrCKPNParameterInvalid = errors.New("parameter kebijakan CKPN tidak valid")
 	ErrCKPNExpenseNotFound  = errors.New("akun beban kerugian penurunan nilai tidak ditemukan")
 	ErrCKPNReserveNotFound  = errors.New("akun CKPN tidak ditemukan")
 )
@@ -25,8 +30,12 @@ var (
 // Bila aset baik, BPR "dapat tidak membentuk CKPN" (butir 12.3.a.2.a).
 //
 // Dua kriteria lain di butir yang sama — (a) diterbitkan Pemerintah Pusat RI dan
-// (b) dijamin LPS — tidak dapat dinilai dari data yang ada di sistem ini; keduanya
-// diperlakukan TIDAK terpenuhi (konservatif), bukan diasumsikan terpenuhi.
+// (b) dijamin LPS — TIDAK dinilai karena tidak ada datanya di sistem ini. Keduanya
+// diabaikan, bukan dianggap tidak terpenuhi: kriteria yang dievaluasi hanyalah
+// butir 12.3.a.1.c (tunggakan dan restrukturisasi), sehingga kredit yang lolos
+// kriteria itu BISA bernilai aset baik = true. Bila kelak data penerbit/penjamin
+// tersedia, keduanya wajib ditambahkan di sini agar tidak ada kredit yang lolos
+// karena asumsi.
 const CKPNAsetBaikMaxDPDDefault = 7
 
 // CKPNPolicy adalah parameter kebijakan bank untuk CKPN kolektif. Nilai-nilainya
@@ -43,12 +52,20 @@ type CKPNPolicy struct {
 	// ada berarti bank belum mengisi golongan itu, dan perhitungannya menolak berjalan
 	// untuk kredit tersebut — bukan diam-diam memakai nol.
 	PD map[Collectibility]decimal.Decimal
+	// PDErrors mencatat golongan yang parameter PD-nya DIISI tetapi tidak sah (salah
+	// format atau di luar 0..1). Golongan yang tidak ada di peta ini maupun di PD
+	// berarti belum diisi. Pemisahan ini menjaga pesan "belum diisi" tidak tertukar
+	// dengan "salah isi".
+	PDErrors map[Collectibility]error
 	// LGD adalah loss given default. Dokumen memperbolehkan LGD "all account" bila data
 	// tidak mendukung pengelompokan per kategori kredit (butir 12.7.a).
 	LGD decimal.Decimal
 	// LGDIsSet menandai LGD benar-benar diisi. Angka nol yang diisi sengaja (mis.
 	// portofolio tanpa kerugian) harus dibedakan dari LGD yang belum diisi.
 	LGDIsSet bool
+	// LGDError mencatat LGD yang diisi tetapi tidak sah. Terpisah dari LGDIsSet
+	// dengan alasan yang sama seperti PDErrors.
+	LGDError error
 	// AsetBaikMaxDPD adalah batas tunggakan hari kriteria aset baik; diisi dari
 	// konfigurasi dengan bawaan CKPNAsetBaikMaxDPDDefault.
 	AsetBaikMaxDPD int
@@ -70,9 +87,16 @@ func CKPNIsAsetBaik(dpd int, isRestructured bool, maxDPD int) bool {
 // (loans.required_ppap), bukan hitungan ulang di sini: modul CKPN tidak boleh
 // menduplikasi logika PPKA.
 type CKPNLoanSnapshot struct {
-	LoanID         uuid.UUID
-	LoanNumber     string
-	ProductID      *uuid.UUID
+	LoanID     uuid.UUID
+	LoanNumber string
+	ProductID  *uuid.UUID
+	// BranchCode adalah cabang KREDIT, bukan cabang aktor yang menjalankan. Jurnal
+	// CKPN harus diatribusikan ke cabang kredit agar buku cabang tidak salah.
+	BranchCode string
+	// Status menentukan apakah kredit masih punya eksposur. Hanya DISBURSED dan
+	// DEFAULTED yang dihitung; status lain (PAID_OFF, WRITTEN_OFF, CANCELLED) hanya
+	// boleh melepas required_ckpn yang tersisa dengan target nol.
+	Status         LoanStatus
 	Outstanding    decimal.Decimal
 	Collectibility Collectibility
 	DPD            int
@@ -118,6 +142,17 @@ func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, e
 		Existing:       snap.RequiredCKPN,
 	}
 
+	// Kredit yang sudah tidak aktif (PAID_OFF, WRITTEN_OFF, CANCELLED) tidak lagi
+	// punya eksposur, sehingga tidak boleh membentuk CKPN baru. Tetapi required_ckpn
+	// yang masih tersisa WAJIB dilepas lewat pemulihan: membiarkannya berarti cadangan
+	// lebih besar daripada risikonya (salah saji). Karena itu targetnya nol dan
+	// selisihnya sebesar cadangan yang tersisa. Jalur ini sengaja ditempatkan sebelum
+	// pemeriksaan PD/LGD: melepas cadangan tidak memerlukan parameter kebijakan.
+	if !snap.Status.IsCKPNActive() {
+		out.Adjustment = RoundToRupiah(decimal.Zero.Sub(out.Existing))
+		return out, nil
+	}
+
 	if CKPNIsAsetBaik(snap.DPD, snap.IsRestructured, policy.AsetBaikMaxDPD) {
 		// Aset baik boleh tidak membentuk CKPN. Bila ada CKPN lama, selisihnya dipulihkan
 		// (butir 12.5.b), paling tinggi sebesar yang pernah dibentuk — diwakili Existing.
@@ -126,13 +161,21 @@ func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, e
 		return out, nil
 	}
 
+	// Parameter yang DIISI tetapi tidak sah ditolak dengan pesan tersendiri, bukan
+	// diperlakukan sebagai "belum diisi" maupun dijatuhkan menjadi nol.
+	if err, invalid := policy.PDErrors[snap.Collectibility]; invalid {
+		return out, err
+	}
 	pd, ok := policy.PD[snap.Collectibility]
 	if !ok {
-		return out, fmt.Errorf("%w: probability of default golongan %s (kunci ckpn.pd.%d)",
+		return out, fmt.Errorf("%w: probability of default golongan %s (kunci ckpn.pd.%d) belum diisi",
 			ErrCKPNParameterMissing, snap.Collectibility.Label(), int(snap.Collectibility))
 	}
+	if policy.LGDError != nil {
+		return out, policy.LGDError
+	}
 	if !policy.LGDIsSet {
-		return out, fmt.Errorf("%w: loss given default (kunci ckpn.lgd)", ErrCKPNParameterMissing)
+		return out, fmt.Errorf("%w: loss given default (kunci ckpn.lgd) belum diisi", ErrCKPNParameterMissing)
 	}
 
 	out.PD = pd
@@ -201,9 +244,11 @@ type CKPNComparisonSummary struct {
 // CKPNRepository adalah akses data proses CKPN. Seluruh penulisan jurnal tetap lewat
 // posting engine, bukan di sini.
 type CKPNRepository interface {
-	// ListActiveLoans mengambil kredit aktif beserta outstanding, kolektibilitas, DPD,
-	// status restrukturisasi, PPKA tersimpan, dan CKPN tersimpan.
-	ListActiveLoans(ctx context.Context) ([]CKPNLoanSnapshot, error)
+	// ListActiveLoans mengambil kredit yang perlu diproses CKPN: kredit aktif, ditambah
+	// kredit tidak aktif yang masih menyimpan required_ckpn bukan nol (agar cadangannya
+	// dapat dilepas). Filter cabang diterapkan di query memakai actor, dan aktor
+	// lintas cabang menerima seluruh bank.
+	ListActiveLoans(ctx context.Context, actor Actor) ([]CKPNLoanSnapshot, error)
 	// UpdateRequiredCKPN menyimpan target CKPN per kredit dalam transaksi pemanggil.
 	UpdateRequiredCKPN(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error
 }
@@ -211,6 +256,8 @@ type CKPNRepository interface {
 // CKPNService menghitung CKPN dan membandingkannya dengan PPKA. Compare bersifat
 // baca-saja; Run memposting selisih dan menyimpan target.
 type CKPNService interface {
-	Compare(ctx context.Context, asOf time.Time) (CKPNComparisonSummary, error)
+	// Compare hanya menghitung perbandingan. actor dipakai untuk membatasi kredit yang
+	// dibaca pada cabangnya (aktor lintas cabang membaca seluruh bank).
+	Compare(ctx context.Context, asOf time.Time, actor Actor) (CKPNComparisonSummary, error)
 	Run(ctx context.Context, asOf time.Time, actor Actor) (CKPNComparisonSummary, error)
 }

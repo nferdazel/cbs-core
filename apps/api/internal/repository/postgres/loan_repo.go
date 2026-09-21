@@ -25,7 +25,7 @@ func NewLoanRepository(db *sql.DB) *LoanRepository {
 const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, loan_type::text, status::text,
 	principal_amount, acquisition_cost, deferred_margin, interest_rate_annual, margin_amount, profit_sharing_ratio,
 	total_payable, term_months, monthly_installment, outstanding_principal, penalty_accrued,
-	collectibility, dpd, accrual_status, required_ppap,
+	collectibility, dpd, accrual_status, required_ppap, required_ckpn,
 	is_restructured, restructured_count, restructured_at, restructuring_reason,
 	pre_restructure_collectibility,
 	akad_number, akad_date, purpose,
@@ -47,6 +47,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.PrincipalAmount, &l.AcquisitionCost, &l.DeferredMargin, &l.InterestRateAnnual, &l.MarginAmount, &l.ProfitSharingRatio,
 		&l.TotalPayable, &l.TermMonths, &l.MonthlyInstallment, &l.OutstandingPrincipal, &l.PenaltyAccrued,
 		&l.Collectibility, &l.DPD, &l.AccrualStatus, &l.RequiredPPAP,
+		&l.RequiredCKPN,
 		&l.IsRestructured, &l.RestructuredCount, &restructuredAt, &restructuringReason,
 		&preRestructure,
 		&akadNumber, &akadDate, &purpose,
@@ -157,8 +158,10 @@ func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loa
 
 // LockLoanTx membaca kredit dengan SELECT ... FOR UPDATE di dalam transaksi pemanggil.
 // Kunci ini menyerialkan seluruh jalur yang mengubah uang/jadwal kredit: pembayaran
-// angsuran, koreksi nominal, pembatalan pencairan, akrual denda, akrual bunga, dan
-// PPAP. Tanpa kunci, pembayaran yang commit di antara baca dan hapus jadwal akan
+// angsuran, koreksi nominal, pembatalan pencairan, akrual denda, dan akrual bunga.
+// Jalur PPAP TIDAK memakai kunci ini — ia hanya memperbarui baris kredit tanpa
+// SELECT ... FOR UPDATE, jadi jangan mengandalkannya menyerialkan PPAP.
+// Tanpa kunci, pembayaran yang commit di antara baca dan hapus jadwal akan
 // terhapus sementara jurnalnya tetap ada.
 func (r *LoanRepository) LockLoanTx(ctx context.Context, tx any, id uuid.UUID) (*domain.Loan, error) {
 	sqlTx, ok := tx.(*sql.Tx)

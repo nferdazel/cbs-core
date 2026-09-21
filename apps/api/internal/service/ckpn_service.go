@@ -96,8 +96,10 @@ func NewCKPNService(
 }
 
 // Compare menghitung dan membandingkan CKPN vs PPKA tanpa memposting atau menulis state.
-func (s *ckpnService) Compare(ctx context.Context, asOf time.Time) (domain.CKPNComparisonSummary, error) {
-	return s.run(ctx, asOf, domain.Actor{}, false)
+// actor dipakai membatasi kredit yang dibaca pada cabangnya; aktor lintas cabang membaca
+// seluruh bank.
+func (s *ckpnService) Compare(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.CKPNComparisonSummary, error) {
+	return s.run(ctx, asOf, actor, false)
 }
 
 // Run menghitung CKPN, memposting selisihnya, lalu menyimpan target per kredit.
@@ -122,26 +124,25 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		return summary, nil
 	}
 
-	snapshots, err := s.repo.ListActiveLoans(ctx)
+	// Daftar kredit dibaca di luar transaksi hanya untuk menentukan kredit mana yang
+	// perlu diproses, dan filter cabang diterapkan di query memakai actor. Angka yang
+	// dipakai untuk posting selalu dihitung ulang dari baris yang dikunci (lihat apply):
+	// snapshot di sini bisa basi.
+	snapshots, err := s.repo.ListActiveLoans(ctx, actor)
 	if err != nil {
 		return summary, fmt.Errorf("mengambil daftar kredit untuk CKPN: %w", err)
 	}
 	summary.Total = len(snapshots)
 
 	for _, snap := range snapshots {
-		calc, err := domain.CalculateCKPN(snap, policy)
-		if err != nil {
-			summary.Failed++
-			summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
-				LoanID:     snap.LoanID,
-				LoanNumber: snap.LoanNumber,
-				Error:      err.Error(),
-			})
-			continue
-		}
+		var itemSnap domain.CKPNLoanSnapshot
+		var calc domain.CKPNCalculation
 
-		if post && !calc.Adjustment.IsZero() {
-			if err := s.apply(ctx, snap, calc, asOf, actor); err != nil {
+		if post {
+			// Jalur tulis: kunci kredit lalu hitung ulang dari data segar di dalam
+			// transaksi, bukan dari snapshot di atas.
+			applied, err := s.apply(ctx, snap, policy, asOf, actor)
+			if err != nil {
 				summary.Failed++
 				summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
 					LoanID:     snap.LoanID,
@@ -150,18 +151,33 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 				})
 				continue
 			}
+			itemSnap, calc = applied.snapshot, applied.calc
+		} else {
+			// Jalur baca-saja: perbandingan memakai snapshot apa adanya. Tidak ada
+			// kunci dan tidak ada penulisan.
+			c, err := domain.CalculateCKPN(snap, policy)
+			if err != nil {
+				summary.Failed++
+				summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
+					LoanID:     snap.LoanID,
+					LoanNumber: snap.LoanNumber,
+					Error:      err.Error(),
+				})
+				continue
+			}
+			itemSnap, calc = snap, c
 		}
 
 		// Perbandingan memakai target, bukan saldo GL: target PPKA per kredit sudah
 		// tersimpan di loans.required_ppap hasil jalur PPAP, dan target CKPN dihitung
 		// di sini. Saldo GL bersifat agregat portofolio sehingga tidak dapat dipakai
 		// per kredit.
-		item := ckpnCompare(snap, calc)
+		item := ckpnCompare(itemSnap, calc)
 		summary.Processed++
 		summary.Items = append(summary.Items, item)
 		summary.TotalCKPN = summary.TotalCKPN.Add(calc.Target)
-		summary.TotalPPKA = summary.TotalPPKA.Add(snap.RequiredPPAP)
-		if diff := snap.RequiredPPAP.Sub(calc.Target); diff.IsPositive() {
+		summary.TotalPPKA = summary.TotalPPKA.Add(itemSnap.RequiredPPAP)
+		if diff := itemSnap.RequiredPPAP.Sub(calc.Target); diff.IsPositive() {
 			summary.ModalIntiDeduction = summary.ModalIntiDeduction.Add(diff)
 		}
 	}
@@ -193,29 +209,80 @@ func ckpnCompare(snap domain.CKPNLoanSnapshot, calc domain.CKPNCalculation) doma
 	}
 }
 
-// apply memposting selisih dan menyimpan target CKPN dalam satu transaksi. Kredit
-// dikunci lebih dulu karena baris loans disentuh (disiplin LockLoanTx).
-func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, calc domain.CKPNCalculation, asOf time.Time, actor domain.Actor) error {
+// ckpnApplied adalah hasil satu kredit yang diproses jalur tulis. snapshot dan calc
+// berasal dari baris yang sudah dikunci, sehingga otoritatif untuk ringkasan.
+type ckpnApplied struct {
+	snapshot domain.CKPNLoanSnapshot
+	calc     domain.CKPNCalculation
+}
+
+// apply mengunci kredit, menghitung ulang dari data segar di dalam transaksi,
+// memposting selisih, lalu menyimpan target. Snapshot di luar transaksi hanya dipakai
+// untuk menunjuk kredit; seluruh angka dihitung dari baris yang dikunci. Ini disiplin
+// yang sama dengan LoanService.CancelDisbursementLoan/correctLoanAmountTx.
+func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, policy domain.CKPNPolicy, asOf time.Time, actor domain.Actor) (ckpnApplied, error) {
+	var out ckpnApplied
 	err := s.txRunner.Run(ctx, func(tx any) error {
+		fresh := snap
 		if s.locker != nil {
-			if _, err := s.locker.LockLoanTx(ctx, tx, snap.LoanID); err != nil {
+			// Nilai hasil kunci tidak boleh dibuang: status, sisa pokok, dan
+			// required_ckpn yang otoritatif hanya ada di sini.
+			loan, err := s.locker.LockLoanTx(ctx, tx, snap.LoanID)
+			if err != nil {
 				return fmt.Errorf("mengunci kredit %s: %w", snap.LoanNumber, err)
 			}
+			fresh = ckpnSnapshotFromLoan(loan)
 		}
-		if err := s.postAdjustment(ctx, tx, snap, calc, asOf, actor); err != nil {
+
+		calc, err := domain.CalculateCKPN(fresh, policy)
+		if err != nil {
 			return err
 		}
-		return s.repo.UpdateRequiredCKPN(ctx, tx, snap.LoanID, calc.Target)
+		out = ckpnApplied{snapshot: fresh, calc: calc}
+
+		// Target sama dengan yang tersimpan berarti tidak ada yang perlu diubah.
+		// Tidak ada posting dan tidak ada penulisan, termasuk ketika status segar
+		// berubah menjadi tidak aktif tanpa cadangan tersisa.
+		if calc.Adjustment.IsZero() {
+			return nil
+		}
+		if err := s.postAdjustment(ctx, tx, fresh, calc, asOf, actor); err != nil {
+			return err
+		}
+		return s.repo.UpdateRequiredCKPN(ctx, tx, fresh.LoanID, calc.Target)
 	})
 	if err != nil {
-		return fmt.Errorf("kredit %s: %w", snap.LoanNumber, err)
+		return ckpnApplied{}, fmt.Errorf("kredit %s: %w", snap.LoanNumber, err)
 	}
-	return nil
+	return out, nil
+}
+
+// ckpnSnapshotFromLoan menyusun snapshot CKPN dari baris kredit yang sudah dikunci.
+// required_ckpn dibaca dari baris yang sama agar selisih dihitung dari nilai yang
+// benar-benar tersimpan, bukan dari nilai yang dibaca di luar transaksi.
+func ckpnSnapshotFromLoan(l *domain.Loan) domain.CKPNLoanSnapshot {
+	return domain.CKPNLoanSnapshot{
+		LoanID:         l.ID,
+		LoanNumber:     l.LoanNumber,
+		ProductID:      l.ProductID,
+		BranchCode:     l.BranchCode,
+		Status:         l.Status,
+		Outstanding:    l.OutstandingPrincipal,
+		Collectibility: domain.CollectibilityFromOJK(l.Collectibility),
+		DPD:            l.DPD,
+		IsRestructured: l.IsRestructured,
+		RequiredPPAP:   l.RequiredPPAP,
+		RequiredCKPN:   l.RequiredCKPN,
+	}
 }
 
 // postAdjustment memposting selisih CKPN. Positif = pembentukan (debit beban, kredit
 // CKPN); negatif = pemulihan (debit CKPN, kredit beban), sesuai SEOJK 21/2024 butir
 // 12.5 dan contoh jurnal butir 12.10.
+//
+// Jurnal diatribusikan ke cabang KREDIT (snap.BranchCode), bukan cabang aktor yang
+// menjalankan. Memakai cabang aktor membuat buku cabang salah ketika run lintas
+// cabang dijalankan dari kantor pusat.
 func (s *ckpnService) postAdjustment(ctx context.Context, tx any, snap domain.CKPNLoanSnapshot, calc domain.CKPNCalculation, asOf time.Time, actor domain.Actor) error {
 	event := domain.EventCKPNProvision
 	if calc.Adjustment.IsNegative() {
@@ -227,7 +294,7 @@ func (s *ckpnService) postAdjustment(ctx context.Context, tx any, snap domain.CK
 		Description:     fmt.Sprintf("CKPN kredit %s golongan %s (%s)", snap.LoanNumber, calc.Collectibility.Label(), calc.Adjustment.String()),
 		IdempotencyKey:  fmt.Sprintf("CKPN-%s-%s-%s", snap.LoanNumber, asOf.Format("2006-01-02"), calc.Adjustment.String()),
 		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		BranchCode:      snap.BranchCode,
 	}
 	amount := calc.Adjustment.Abs()
 
@@ -304,10 +371,14 @@ func (s *ckpnService) postAdjustmentFallback(ctx context.Context, tx any, amount
 
 // policy membaca parameter kebijakan bank dari konfigurasi. Kunci PD/LGD yang belum
 // diisi sengaja tidak diberi nilai default: kredit yang membutuhkannya akan gagal
-// dengan ErrCKPNParameterMissing, bukan dihitung dengan nol.
+// dengan ErrCKPNParameterMissing, bukan dihitung dengan nol. Nilai yang DIISI tetapi
+// salah (format atau rentang) disimpan sebagai PDErrors/LGDError agar kegagalannya
+// memakai ErrCKPNParameterInvalid, bukan disamakan dengan "belum diisi" atau
+// dijatuhkan menjadi nol.
 func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 	p := domain.CKPNPolicy{
 		PD:             make(map[domain.Collectibility]decimal.Decimal),
+		PDErrors:       make(map[domain.Collectibility]error),
 		AsetBaikMaxDPD: domain.CKPNAsetBaikMaxDPDDefault,
 	}
 	if s.config == nil {
@@ -325,11 +396,35 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 	for _, c := range []domain.Collectibility{
 		domain.KolLancar, domain.KolDPK, domain.KolKurangLancar, domain.KolDiragukan, domain.KolMacet,
 	} {
-		if v, ok := configDecimalSet(ctx, s.config, ckpnPDKey(c)); ok {
-			p.PD[c] = v
+		key := ckpnPDKey(c)
+		v, set, err := configDecimal(ctx, s.config, key)
+		if err != nil {
+			p.PDErrors[c] = fmt.Errorf("%w: probability of default golongan %s (kunci %s): %v",
+				domain.ErrCKPNParameterInvalid, c.Label(), key, err)
+			continue
 		}
+		if !set {
+			continue // belum diisi -> ErrCKPNParameterMissing saat dihitung
+		}
+		if v.LessThan(decimal.Zero) || v.GreaterThan(decimal.NewFromInt(1)) {
+			p.PDErrors[c] = fmt.Errorf("%w: probability of default golongan %s (kunci %s) di luar rentang 0 s.d. 1: %s",
+				domain.ErrCKPNParameterInvalid, c.Label(), key, v)
+			continue
+		}
+		p.PD[c] = v
 	}
-	if v, ok := configDecimalSet(ctx, s.config, cfgCKPNLGD); ok {
+
+	v, set, err := configDecimal(ctx, s.config, cfgCKPNLGD)
+	switch {
+	case err != nil:
+		p.LGDError = fmt.Errorf("%w: loss given default (kunci %s): %v",
+			domain.ErrCKPNParameterInvalid, cfgCKPNLGD, err)
+	case !set:
+		// belum diisi -> ErrCKPNParameterMissing saat dihitung
+	case v.LessThan(decimal.Zero) || v.GreaterThan(decimal.NewFromInt(1)):
+		p.LGDError = fmt.Errorf("%w: loss given default (kunci %s) di luar rentang 0 s.d. 1: %s",
+			domain.ErrCKPNParameterInvalid, cfgCKPNLGD, v)
+	default:
 		p.LGD = v
 		p.LGDIsSet = true
 	}
@@ -340,19 +435,21 @@ func ckpnPDKey(c domain.Collectibility) string {
 	return "ckpn.pd." + strconv.Itoa(int(c))
 }
 
-// configDecimalSet membaca nilai desimal dan membedakan "kosong/tidak valid" dari
-// "nol yang diisi sengaja". GetDecimal tidak dapat membedakannya karena fallback
-// dikembalikan pada kedua keadaan.
-func configDecimalSet(ctx context.Context, config domain.SystemConfigService, key string) (decimal.Decimal, bool) {
+// configDecimal membaca nilai desimal dan membedakan tiga keadaan: kunci kosong/tidak
+// ada (set=false, err=nil), nilai sah, dan nilai ada tetapi salah format (err != nil).
+// GetDecimal tidak dapat membedakan ketiganya karena fallback dikembalikan pada semua
+// keadaan. Nilai salah format TIDAK boleh menjadi nol diam-diam — pemanggil wajib
+// menolaknya.
+func configDecimal(ctx context.Context, config domain.SystemConfigService, key string) (decimal.Decimal, bool, error) {
 	raw := strings.TrimSpace(config.GetString(ctx, key, ""))
 	if raw == "" {
-		return decimal.Zero, false
+		return decimal.Zero, false, nil
 	}
 	d, err := decimal.NewFromString(raw)
 	if err != nil {
-		return decimal.Zero, false
+		return decimal.Zero, true, fmt.Errorf("nilai %q bukan angka desimal yang sah", raw)
 	}
-	return d, true
+	return d, true, nil
 }
 
 func (s *ckpnService) expenseCOA(ctx context.Context, book domain.COABook) string {

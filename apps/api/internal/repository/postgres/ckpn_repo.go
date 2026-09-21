@@ -22,10 +22,12 @@ func NewCKPNRepository(db *sql.DB) *CKPNRepository {
 	return &CKPNRepository{db: db}
 }
 
-// listActiveLoansCKPNQuery mengambil kredit aktif. required_ppap adalah PPKA yang
-// sudah dihitung dan disimpan jalur PPAP — dibaca, bukan dihitung ulang, agar modul
-// CKPN tidak menduplikasi logika PPKA. Cast ::text wajib untuk kolom enum/varchar.
-const listActiveLoansCKPNQuery = `
+// listLoansForCKPNSelect mengambil kredit yang perlu diproses CKPN. required_ppap
+// adalah PPKA yang sudah dihitung dan disimpan jalur PPAP — dibaca, bukan dihitung
+// ulang, agar modul CKPN tidak menduplikasi logika PPKA. Cast ::text wajib untuk
+// kolom enum/varchar. branch_code dipakai untuk mengatribusikan jurnal ke cabang
+// KREDIT, bukan cabang aktor.
+const listLoansForCKPNSelect = `
 	SELECT
 		l.id,
 		l.loan_number,
@@ -35,14 +37,33 @@ const listActiveLoansCKPNQuery = `
 		l.dpd,
 		l.is_restructured,
 		l.required_ppap,
-		l.required_ckpn
-	FROM loans l
-	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
-		AND l.outstanding_principal > 0
-	ORDER BY l.loan_number`
+		l.required_ckpn,
+		l.status::text,
+		COALESCE((SELECT b.code FROM branches b WHERE b.id = l.branch_id), '')
+	FROM loans l`
 
-func (r *CKPNRepository) ListActiveLoans(ctx context.Context) ([]domain.CKPNLoanSnapshot, error) {
-	rows, err := r.db.QueryContext(ctx, listActiveLoansCKPNQuery)
+func (r *CKPNRepository) ListActiveLoans(ctx context.Context, actor domain.Actor) ([]domain.CKPNLoanSnapshot, error) {
+	// Kredit aktif dengan eksposur berjalan, DITAMBAH kredit tidak aktif yang masih
+	// menyimpan required_ckpn bukan nol. Yang terakhir penting: kredit yang sudah
+	// PAID_OFF/WRITTEN_OFF/CANCELLED tidak boleh membiarkan cadangannya menggantung —
+	// targetnya dipaksa nol agar pemulihan dilepas lewat jalur yang sudah ada.
+	//
+	// Celah yang sama pada jalur PPAP BELUM diperbaiki di sini: query PPAP hanya
+	// mengambil kredit yang jatuh tempo/aktif, sehingga required_ppap kredit lunas
+	// dapat menggantung. Perubahan itu sengaja tidak dilakukan agar cakupan tetap
+	// pada CKPN.
+	where := `
+	WHERE ((l.status IN ('DISBURSED', 'DEFAULTED') AND l.outstanding_principal > 0)
+		OR l.required_ckpn <> 0)`
+	args := []any{}
+	// Filter cabang memakai kolom l.branch_id; aktor lintas cabang tidak difilter.
+	if clause, branchArgs := branchReadClause("l.branch_id", actor); clause != "" {
+		where += " AND " + clause
+		args = append(args, branchArgs...)
+	}
+
+	query := listLoansForCKPNSelect + where + " ORDER BY l.loan_number"
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,12 +73,12 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context) ([]domain.CKPNLoan
 	for rows.Next() {
 		var s domain.CKPNLoanSnapshot
 		var productID sql.NullString
-		var collectibility string
+		var collectibility, status string
 
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &s.IsRestructured,
-			&s.RequiredPPAP, &s.RequiredCKPN,
+			&s.RequiredPPAP, &s.RequiredCKPN, &status, &s.BranchCode,
 		); err != nil {
 			return nil, err
 		}
@@ -69,6 +90,7 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context) ([]domain.CKPNLoan
 			s.ProductID = &id
 		}
 		s.Collectibility = domain.CollectibilityFromOJK(domain.OJKCollectibility(collectibility))
+		s.Status = domain.LoanStatus(status)
 		list = append(list, s)
 	}
 	return list, rows.Err()

@@ -19,9 +19,18 @@ func NewCKPNHandler(ckpnSvc domain.CKPNService) *CKPNHandler {
 
 // Compare handles GET /api/v1/ckpn/comparison.
 // Menyajikan perbandingan CKPN vs PPKA per kredit dan total tanpa menulis apa pun.
-// Tanggal proses opsional lewat query `as_of` (lihat parseAsOf).
+// Tanggal proses opsional lewat query `as_of` (lihat parseAsOf). Aktor diambil dari
+// claims agar perbandingan hanya memuat kredit cabangnya; aktor lintas cabang
+// (SUPERADMIN/AUDITOR) melihat seluruh bank.
 func (h *CKPNHandler) Compare(w http.ResponseWriter, r *http.Request) {
-	summary, err := h.ckpnSvc.Compare(r.Context(), parseAsOf(r))
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	summary, err := h.ckpnSvc.Compare(r.Context(), parseAsOf(r),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return
@@ -53,6 +62,14 @@ func (h *CKPNHandler) Run(w http.ResponseWriter, r *http.Request) {
 // RegisterRoutes memasang rute CKPN pada router yang sudah berada di dalam grup
 // terautentikasi (AuthMiddleware). Menjalankan perhitungan (yang memposting jurnal)
 // butuh wewenang approve kredit; perbandingan cukup wewenang baca.
+//
+// KEPUTUSAN EKSPLISIT cakupan lintas cabang: Run diizinkan bank-wide, tetapi hanya
+// lewat aktor yang memang berwenang lintas cabang (SUPERADMIN/AUDITOR/SYSTEM, lihat
+// Actor.IsCrossBranch). Aktor cabang otomatis terbatas pada cabangnya karena
+// service membaca kredit memakai filter branchReadClause atas actor. Satu run
+// bank-wide diperlukan agar tutup hari tidak harus dijalankan per cabang; jurnalnya
+// tetap diatribusikan ke cabang KREDIT, bukan cabang aktor, sehingga buku cabang
+// tidak tercampur. Tidak ada jalur yang membiarkan aktor cabang memproses cabang lain.
 func (h *CKPNHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/ckpn", func(r chi.Router) {
 		r.With(middleware.RequirePermission(domain.PermLoansApprove)).

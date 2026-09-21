@@ -51,6 +51,14 @@ const (
 	LoanStatusCancelled LoanStatus = "CANCELLED"
 )
 
+// IsCKPNActive melaporkan apakah kredit masih punya eksposur berjalan yang harus
+// dibentuk CKPN. Hanya DISBURSED dan DEFAULTED; status lain (PENDING_APPROVAL,
+// APPROVED, REJECTED, PAID_OFF, WRITTEN_OFF, CANCELLED) tidak punya eksposur dan
+// hanya boleh melepas required_ckpn yang tersisa.
+func (s LoanStatus) IsCKPNActive() bool {
+	return s == LoanStatusDisbursed || s == LoanStatusDefaulted
+}
+
 // LoanType mengikuti enum loan_type di database dan tidak punya nilai default,
 // sehingga wajib diisi setiap kali kredit dibuat.
 type LoanType string
@@ -132,6 +140,9 @@ type Loan struct {
 	DPD            int               `json:"dpd"`
 	AccrualStatus  AccrualStatus     `json:"accrual_status"`
 	RequiredPPAP   decimal.Decimal   `json:"required_ppap"`
+	// RequiredCKPN adalah target CKPN terakhir yang diakui untuk kredit ini. Dibaca
+	// jalur CKPN sebagai nilai otoritatif dari baris yang sudah dikunci.
+	RequiredCKPN decimal.Decimal `json:"required_ckpn"`
 
 	IsRestructured      bool       `json:"is_restructured"`
 	RestructuredCount   int        `json:"restructured_count"`
