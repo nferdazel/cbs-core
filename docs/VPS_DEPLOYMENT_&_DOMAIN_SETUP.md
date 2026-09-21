@@ -1,3 +1,9 @@
+> **Peringatan: dokumen usang.** Dokumen ini menggambarkan penyiapan lama
+> (PostgreSQL 16, `docker-compose.prod`, `golang-migrate`) yang tidak lagi sesuai kenyataan:
+> produksi sekarang memakai PostgreSQL 18 di Podman dan migrasi dijalankan lewat
+> `scripts/migrate.sh`. Acuan yang berlaku adalah `docs/DEPLOY.md`. Isi di bawah dipertahankan
+> sebagai catatan sejarah, jangan diikuti untuk pemasangan baru.
+
 # Panduan Deployment & Konfigurasi Domain (`cbs.qouver.com`)
 
 **Target Server:** Rocky Linux 9.8 VPS / Container Engine (Podman / Docker)  
