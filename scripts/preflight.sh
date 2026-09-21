@@ -77,6 +77,12 @@ psql_query() {
 }
 
 problems=0
+warn() {
+  (($# > 0)) && printf '[PERINGATAN] %s\n' "$1" >&2
+  shift || true
+  for line in "$@"; do printf '            %s\n' "$line" >&2; done
+}
+
 fail() {
   problems=$((problems + 1))
   echo "[GAGAL] $1" >&2
@@ -154,12 +160,29 @@ else
   fi
 fi
 
-# ── 5. Owner skema public ──────────────────────────────────────────────────────
+# ── 5. Owner skema public dan owner database ───────────────────────────────────
+# Sejak PostgreSQL 15, skema public bawaan dimiliki pseudo-role pg_database_owner, yang
+# berlaku sebagai pemilik database. Menolaknya sebagai kesalahan akan menggagalkan
+# pemasangan yang sehat — dan pemasangan ini memang sudah menjalankan puluhan migrasi
+# dalam keadaan itu. Yang benar-benar berbahaya adalah pemilik eksplisit yang lain.
 schema_owner="$(psql_query "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'public'" -q)"
-if [[ -n "$schema_owner" && "$schema_owner" != "$DB_OWNER" ]]; then
-  fail "owner skema public adalah '$schema_owner', bukan '$DB_OWNER'." \
-    "Migrasi DDL mengubah objek milik owner; owner yang salah merusak grant dan DDL." \
+if [[ -n "$schema_owner" && "$schema_owner" != "$DB_OWNER" && "$schema_owner" != "pg_database_owner" ]]; then
+  fail "owner skema public adalah '$schema_owner', bukan '$DB_OWNER' atau pg_database_owner." \
+    "Pemilik eksplisit yang lain membuat migrasi DDL dan grant tidak lagi sepakat soal pemilik." \
     "Perbaiki (sebagai superuser): ALTER SCHEMA public OWNER TO $DB_OWNER;"
+fi
+
+# Least privilege: role aplikasi sebaiknya TIDAK memiliki database. Bila ia pemiliknya, ia
+# juga efektif memiliki skema public, sehingga dapat membuat dan menghapus objek di luar
+# migrasi — persis yang ingin dicegah dengan memisahkan role aplikasi dari role admin.
+# Ini peringatan, bukan kegagalan: keadaan ini tidak menghalangi migrasi, tetapi perlu
+# diketahui operator sebelum dianggap beres.
+db_owner="$(psql_query "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '$DB_NAME'" -q)"
+if [[ -n "$db_owner" && "$db_owner" == "$APP_ROLE" ]]; then
+  warn "database '$DB_NAME' dimiliki role aplikasi '$APP_ROLE', bukan role admin '$DB_OWNER'." \
+    "Role aplikasi menjadi pemilik efektif skema public dan dapat mengubah struktur di luar migrasi." \
+    "Pertimbangkan pemindahan kepemilikan (perlu persetujuan operator, sebagai superuser):" \
+    "  ALTER DATABASE $DB_NAME OWNER TO $DB_OWNER; ALTER SCHEMA public OWNER TO $DB_OWNER;"
 fi
 
 # ── Ringkasan ──────────────────────────────────────────────────────────────────
