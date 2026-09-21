@@ -173,9 +173,14 @@ export interface EODSummaryResult {
   next_business_date: string;
   total_posted_journals_today: number;
   total_deposit_amount_today: string;
+  /** Penempatan deposito berjangka (DEPOSIT_PLACEMENT), terpisah dari setoran tunai teller. */
+  total_deposit_placements_today: number;
+  total_deposit_placement_amount_today: string;
   total_withdrawal_amount_today: string;
   deposits_rolled_over: number;
   ppap_processed: number;
+  /** Jumlah kredit yang PPAP-nya benar-benar berubah dan menulis jurnal penyesuaian. */
+  ppap_adjusted: number;
   loan_penalties_accrued: number;
   loan_penalty_amount: string;
   /** Angsuran jatuh tempo yang bunganya diakru pada tutup hari (kredit konvensional). */

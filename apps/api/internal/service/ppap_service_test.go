@@ -151,6 +151,10 @@ func TestPPAPRunDaily_PostsDifferenceAndStopsAccrual(t *testing.T) {
 	if summary.Processed != 1 || summary.Failed != 0 {
 		t.Fatalf("ringkasan: processed=%d failed=%d", summary.Processed, summary.Failed)
 	}
+	// Kredit ini berubah sehingga menulis satu jurnal: adjusted harus 1, bukan 0.
+	if summary.Adjusted != 1 {
+		t.Fatalf("adjusted=%d, ingin 1 (kredit berubah dan menulis jurnal)", summary.Adjusted)
+	}
 	// Tunggakan 100 hari = Kurang Lancar; 10% x 10.000.000 - 50.000 cadangan lama.
 	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(950_000)) {
 		t.Fatalf("total penyesuaian %s, ingin 950.000", summary.TotalAdjustment)
@@ -353,6 +357,14 @@ func TestPPAPRunDaily_UnchangedIsSkipped(t *testing.T) {
 	}
 	if summary.Skipped != 1 {
 		t.Fatalf("skipped %d, ingin 1", summary.Skipped)
+	}
+	// Tidak ada perubahan = tidak ada jurnal penyesuaian. Processed tetap menghitung
+	// evaluasi, sedangkan adjusted harus 0 agar tidak dibaca sebagai jumlah jurnal.
+	if summary.Processed != 1 {
+		t.Fatalf("processed=%d, ingin 1 (dievaluasi)", summary.Processed)
+	}
+	if summary.Adjusted != 0 {
+		t.Fatalf("adjusted=%d, ingin 0 (tidak ada jurnal)", summary.Adjusted)
 	}
 }
 

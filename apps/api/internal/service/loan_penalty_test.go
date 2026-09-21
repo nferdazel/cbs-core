@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -263,6 +264,13 @@ func TestAccruePenalties_ZeroRateSkipsWithWarning(t *testing.T) {
 	if summary.Warning == "" {
 		t.Fatal("rate 0 harus punya peringatan eksplisit")
 	}
+	// Peringatan harus menyebut jumlah kredit terdampak, bukan sekadar "ada tunggakan".
+	if !strings.Contains(summary.Warning, "1 kredit") {
+		t.Fatalf("peringatan harus menyebut 1 kredit menunggak, dapat %q", summary.Warning)
+	}
+	if summary.Overdue != 1 {
+		t.Fatalf("overdue=%d, mau 1", summary.Overdue)
+	}
 	if summary.Accrued != 0 || summary.Skipped != 1 {
 		t.Fatalf("rate 0: accrued=%d skipped=%d", summary.Accrued, summary.Skipped)
 	}
@@ -438,5 +446,55 @@ func TestAccruePenalties_FailureDoesNotStopOtherLoans(t *testing.T) {
 	}
 	if len(f.posting.requests) != 1 {
 		t.Fatalf("jurnal %d, ingin 1 dari kredit yang sehat", len(f.posting.requests))
+	}
+}
+
+// Tarif 0 dengan beberapa kredit menunggak: peringatan menyebut jumlah yang terdampak
+// agar operator tahu besarnya paparan, bukan hanya bahwa tidak ada denda diakru.
+func TestAccruePenalties_ZeroRateWarningReportsAffectedCount(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+
+	second := f.candidate
+	second.LoanID = uuid.New()
+	second.LoanNumber = "KRD-2026-0002"
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate, second}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.Zero)
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Overdue != 2 {
+		t.Fatalf("overdue=%d, mau 2", summary.Overdue)
+	}
+	if !strings.Contains(summary.Warning, "2 kredit") {
+		t.Fatalf("peringatan harus menyebut 2 kredit menunggak, dapat %q", summary.Warning)
+	}
+	if !strings.Contains(summary.Warning, "tidak ada denda yang diakru") {
+		t.Fatalf("peringatan harus menyatakan tidak ada denda diakru, dapat %q", summary.Warning)
+	}
+}
+
+// Tanpa tunggakan, tarif 0 tidak boleh menghasilkan peringatan: tidak ada denda yang
+// seharusnya diakru, sehingga peringatan hanya kebisingan. Kredit yang jatuh tempo
+// HARI INI belum menunggak (DPD 0) dan tidak boleh dihitung terdampak.
+func TestAccruePenalties_ZeroRateNoOverdueNoWarning(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	dueToday := asOf
+	f.candidate.OldestDueDate = &dueToday
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.Zero)
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Overdue != 0 {
+		t.Fatalf("overdue=%d, mau 0 (jatuh tempo hari ini belum menunggak)", summary.Overdue)
+	}
+	if summary.Warning != "" {
+		t.Fatalf("tanpa tunggakan tidak boleh ada peringatan, dapat %q", summary.Warning)
 	}
 }

@@ -335,6 +335,19 @@ export default function TutupHariPage() {
                     ),
                   },
                   {
+                    label: "Penempatan Deposito Berjangka",
+                    value: eod.total_deposit_placements_today,
+                    isMono: true,
+                  },
+                  {
+                    label: "Nominal Penempatan Deposito",
+                    value: (
+                      <MoneyText
+                        value={eod.total_deposit_placement_amount_today}
+                      />
+                    ),
+                  },
+                  {
                     label: "Total Penarikan Hari Ini",
                     value: (
                       <MoneyText value={eod.total_withdrawal_amount_today} />
@@ -356,6 +369,11 @@ export default function TutupHariPage() {
                     {
                       label: "PPAP Diproses",
                       value: eod.ppap_processed,
+                      isMono: true,
+                    },
+                    {
+                      label: "PPAP Disesuaikan",
+                      value: eod.ppap_adjusted,
                       isMono: true,
                     },
                     {

@@ -152,6 +152,8 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 	summary.NextBusinessDate = nextDate
 	summary.TotalPostedJournalsToday = activity.PostedJournals
 	summary.TotalDepositAmountToday = activity.TotalDepositAmount
+	summary.TotalDepositPlacementsToday = activity.DepositPlacementCount
+	summary.TotalDepositPlacementAmount = activity.TotalDepositPlacementAmount
 	summary.TotalWithdrawalAmountToday = activity.TotalWithdrawalAmount
 	summary.ExecutedBy = executedBy
 	summary.CompletedAt = time.Now().UTC()
@@ -259,6 +261,7 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 	} else {
 		ppap, err := s.ppapSvc.RunDaily(ctx, businessDate, actor)
 		summary.PPAPProcessed = ppap.Processed
+		summary.PPAPAdjusted = ppap.Adjusted
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perhitungan PPAP harian gagal: %v", err))
 			logger.ErrorContext(ctx, "perhitungan PPAP harian gagal saat EOD", "error", err)

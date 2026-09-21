@@ -147,6 +147,9 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		}
 
 		summary.Processed++
+		if item.Posted {
+			summary.Adjusted++
+		}
 		summary.TotalAdjustment = summary.TotalAdjustment.Add(item.Adjustment)
 		if !item.Posted && !item.CollectibilityChanged && item.DPD == snap.DPD && item.Target.Equal(snap.RequiredPPAP) {
 			summary.Skipped++

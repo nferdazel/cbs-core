@@ -89,13 +89,16 @@ type LoanPenaltyFailure struct {
 // LoanPenaltySummary merangkum satu kali eksekusi akrual denda.
 //
 // RateConfigured=false berarti tarif denda harian masih 0 (belum diisi operator):
-// tidak ada denda yang diakru dan Warning menjelaskannya, sehingga batch tidak
-// terlihat "sukses" padahal tidak menagih apa pun.
+// tidak ada denda yang diakru. Bila ada kredit menunggak, Warning menyebut berapa
+// kredit yang terdampak; bila tidak ada tunggakan, Warning kosong agar tidak berisik.
+// Overdue adalah jumlah kredit menunggak (jatuh tempo terlewat dan berpokok tunggakan)
+// yang akan dikenai denda bila tarif diisi.
 type LoanPenaltySummary struct {
 	AsOf           time.Time
 	RatePerMille   decimal.Decimal
 	RateConfigured bool
 	Warning        string
+	Overdue        int
 	Total          int
 	Processed      int
 	Accrued        int

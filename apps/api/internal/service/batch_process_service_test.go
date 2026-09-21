@@ -116,6 +116,17 @@ func TestRunEODRejectsWhenAnotherRunHoldsLock(t *testing.T) {
 	}
 }
 
+// stubBatchActivityRepo menggantikan pembacaan aktivitas jurnal agar pemisahan
+// metrik setoran vs penempatan deposito dapat diuji tanpa database.
+type stubBatchActivityRepo struct {
+	summary domain.DailyActivitySummary
+}
+
+func (s stubBatchActivityRepo) DailyActivity(context.Context, time.Time) (*domain.DailyActivitySummary, error) {
+	out := s.summary
+	return &out, nil
+}
+
 // stubDormantRunner menggantikan penandaan dormant agar ringkasan EOD bisa diuji
 // tanpa database.
 type stubDormantRunner struct {
@@ -200,6 +211,7 @@ func (s stubInterestAccrualRunner) AmortizeRestructureLoss(context.Context, time
 // stubPPAPRunner menggantikan langkah PPAP agar gerbang CKPN dapat diuji tanpa database.
 type stubPPAPRunner struct {
 	processed int
+	adjusted  int
 	err       error
 	// called dipakai uji gerbang untuk membuktikan PPAP tidak dipanggil.
 	called *bool
@@ -213,7 +225,7 @@ func (s stubPPAPRunner) RunDaily(context.Context, time.Time, domain.Actor) (doma
 	if s.order != nil {
 		*s.order = append(*s.order, "ppap")
 	}
-	return domain.PPAPRunSummary{Processed: s.processed}, s.err
+	return domain.PPAPRunSummary{Processed: s.processed, Adjusted: s.adjusted}, s.err
 }
 
 // stubCKPNService menggantikan perbandingan CKPN agar gerbang PPAP dapat diuji.
@@ -563,5 +575,71 @@ func TestRunEODSkipsAmortizationAndPPAPWhenAccrualFails(t *testing.T) {
 	ppapStep := eodStepStatus(t, res, "ppap")
 	if ppapStep.Status != domain.EODStepSkipped || ppapStep.Reason == "" {
 		t.Fatalf("PPAP harus SKIPPED beralasan, dapat %+v", ppapStep)
+	}
+}
+
+// Setoran tunai teller dan penempatan deposito berjangka adalah dua peristiwa berbeda:
+// ringkasan EOD harus melaporkannya terpisah, bukan menjumlahkan keduanya sebagai
+// "setoran". Bidang total setoran lama tidak berubah maknanya bagi klien lama, tetapi
+// kini hanya memuat DEPOSIT.
+func TestRunEODReportsDepositAndPlacementSeparately(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	batchRepo := stubBatchActivityRepo{summary: domain.DailyActivitySummary{
+		PostedJournals:              4,
+		TotalDepositAmount:          decimal.NewFromInt(500_000),
+		TotalWithdrawalAmount:       decimal.NewFromInt(100_000),
+		DepositPlacementCount:       2,
+		TotalDepositPlacementAmount: decimal.NewFromInt(50_000_000),
+	}}
+	svc := service.NewBatchProcessService(
+		dateRepo, batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if !res.TotalDepositAmountToday.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("total_deposit_amount_today = %s, mau 500.000 (DEPOSIT saja)", res.TotalDepositAmountToday)
+	}
+	if res.TotalDepositPlacementsToday != 2 {
+		t.Fatalf("total_deposit_placements_today = %d, mau 2", res.TotalDepositPlacementsToday)
+	}
+	if !res.TotalDepositPlacementAmount.Equal(decimal.NewFromInt(50_000_000)) {
+		t.Fatalf("total_deposit_placement_amount_today = %s, mau 50.000.000", res.TotalDepositPlacementAmount)
+	}
+	if !res.TotalWithdrawalAmountToday.Equal(decimal.NewFromInt(100_000)) {
+		t.Fatalf("total_withdrawal_amount_today = %s, mau 100.000", res.TotalWithdrawalAmountToday)
+	}
+}
+
+// ppap_processed adalah jumlah kredit yang dievaluasi, sedangkan ppap_adjusted adalah
+// jumlah kredit yang PPAP-nya berubah sehingga menulis jurnal. Keduanya harus berbeda
+// supaya "5 diproses, 1 jurnal" tidak menyesatkan.
+func TestRunEODReportsPPAPProcessedAndAdjusted(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 5, adjusted: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if res.PPAPProcessed != 5 {
+		t.Fatalf("ppap_processed = %d, mau 5", res.PPAPProcessed)
+	}
+	if res.PPAPAdjusted != 1 {
+		t.Fatalf("ppap_adjusted = %d, mau 1", res.PPAPAdjusted)
 	}
 }

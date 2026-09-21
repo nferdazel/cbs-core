@@ -11,9 +11,21 @@ import (
 // DailyActivitySummary adalah aktivitas jurnal satu tanggal bisnis, dihitung dari
 // journal_entries/journal_lines agar EOD melaporkan angka nyata, bukan konstanta.
 type DailyActivitySummary struct {
-	PostedJournals        int
+	PostedJournals int
+	// TotalDepositAmount hanya setoran tunai teller (transaction_type = DEPOSIT),
+	// bukan penempatan deposito berjangka. Penempatan dilaporkan terpisah lewat
+	// DepositPlacementCount/TotalDepositPlacementAmount.
 	TotalDepositAmount    decimal.Decimal
 	TotalWithdrawalAmount decimal.Decimal
+	// DepositPlacementCount dan TotalDepositPlacementAmount adalah penempatan deposito
+	// berjangka (transaction_type = DEPOSIT_PLACEMENT) pada tanggal yang sama.
+	//
+	// Keterbatasan data lama: jurnal penempatan yang dibuat sebelum jenis
+	// DEPOSIT_PLACEMENT ada (migrasi 000057) tetap bertipe DEPOSIT dan ikut terhitung
+	// sebagai setoran tunai. Baris lama tidak punya penanda pasti untuk dipisahkan,
+	// sehingga reklasifikasi berbasis tebakan sengaja tidak dilakukan.
+	DepositPlacementCount       int
+	TotalDepositPlacementAmount decimal.Decimal
 }
 
 // BatchActivityRepository membaca aktivitas harian untuk ringkasan EOD.

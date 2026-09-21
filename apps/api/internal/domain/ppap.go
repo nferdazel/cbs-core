@@ -462,9 +462,14 @@ type PPAPRunFailure struct {
 
 // PPAPRunSummary adalah ringkasan satu kali proses PPAP.
 type PPAPRunSummary struct {
-	AsOf            time.Time        `json:"as_of"`
-	Total           int              `json:"total"`
+	AsOf  time.Time `json:"as_of"`
+	Total int       `json:"total"`
+	// Processed adalah jumlah kredit yang berhasil dievaluasi (termasuk yang tidak
+	// berubah); Adjusted adalah jumlah kredit yang PPAP-nya berubah sehingga menulis
+	// jurnal penyesuaian. Pembedaan ini menjaga agar laporan tidak membaca Processed
+	// sebagai "jumlah jurnal".
 	Processed       int              `json:"processed"`
+	Adjusted        int              `json:"adjusted"`
 	Failed          int              `json:"failed"`
 	Skipped         int              `json:"skipped"` // tidak berubah, tidak ada posting
 	TotalAdjustment decimal.Decimal  `json:"total_adjustment"`

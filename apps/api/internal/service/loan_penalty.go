@@ -43,15 +43,15 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 		Items:          []domain.LoanPenaltyItem{},
 		Failures:       []domain.LoanPenaltyFailure{},
 	}
-	if !summary.RateConfigured {
-		summary.Warning = fmt.Sprintf(
-			"tarif denda harian %s masih 0; tidak ada denda yang diakru. Operator wajib mengisi tarifnya.",
-			cfgLoanPenaltyDailyRatePerMille)
-	}
 
 	for _, c := range candidates {
 		item := s.accruePenaltyForLoan(ctx, day, c, rate, actor)
 		summary.Items = append(summary.Items, item)
+		// DPD positif berarti kredit benar-benar melewati jatuh tempo dengan pokok
+		// tunggakan; inilah kredit yang akan dikenai denda bila tarif diisi.
+		if item.DPD > 0 {
+			summary.Overdue++
+		}
 
 		switch item.Status {
 		case domain.BatchItemFailed:
@@ -69,6 +69,15 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 			summary.Processed++
 			summary.Skipped++
 		}
+	}
+
+	// Tarif 0 hanya diperingatkan bila ada kredit menunggak: tanpa angka yang
+	// terdampak, "tidak ada denda yang diakru" tidak dapat ditindaklanjuti; tanpa
+	// tunggakan, peringatan itu hanya kebisingan.
+	if !summary.RateConfigured && summary.Overdue > 0 {
+		summary.Warning = fmt.Sprintf(
+			"tarif denda harian %s masih 0; tidak ada denda yang diakru atas %d kredit yang menunggak (jatuh tempo terlewat). Operator wajib mengisi tarifnya.",
+			cfgLoanPenaltyDailyRatePerMille, summary.Overdue)
 	}
 	return summary, nil
 }

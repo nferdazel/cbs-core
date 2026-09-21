@@ -58,16 +58,31 @@ type EODStepResult struct {
 }
 
 type EODSummaryResult struct {
-	ExecutedDate               time.Time       `json:"executed_date"`
-	NextBusinessDate           time.Time       `json:"next_business_date"`
-	TotalPostedJournalsToday   int             `json:"total_posted_journals_today"`
-	TotalDepositAmountToday    decimal.Decimal `json:"total_deposit_amount_today"`
-	TotalWithdrawalAmountToday decimal.Decimal `json:"total_withdrawal_amount_today"`
+	ExecutedDate             time.Time `json:"executed_date"`
+	NextBusinessDate         time.Time `json:"next_business_date"`
+	TotalPostedJournalsToday int       `json:"total_posted_journals_today"`
+	// TotalDepositAmountToday adalah setoran tunai teller (transaction_type =
+	// DEPOSIT) saja, agar tidak tercampur penempatan deposito berjangka.
+	//
+	// Keterbatasan: jurnal penempatan yang dibuat sebelum jenis DEPOSIT_PLACEMENT ada
+	// tetap bertipe DEPOSIT sehingga ikut terhitung di sini. Jumlah dan nominal
+	// penempatan berjenis baru dilaporkan pada dua bidang berikut.
+	TotalDepositAmountToday decimal.Decimal `json:"total_deposit_amount_today"`
+	// TotalDepositPlacementsToday/TotalDepositPlacementAmountToday melaporkan
+	// penempatan deposito berjangka (DEPOSIT_PLACEMENT) secara terpisah. Bidang
+	// aditif: klien lama tetap membaca TotalDepositAmountToday seperti sebelumnya.
+	TotalDepositPlacementsToday int             `json:"total_deposit_placements_today"`
+	TotalDepositPlacementAmount decimal.Decimal `json:"total_deposit_placement_amount_today"`
+	TotalWithdrawalAmountToday  decimal.Decimal `json:"total_withdrawal_amount_today"`
 	// Pekerjaan harian berikut bersifat best-effort: kegagalannya tidak
 	// menggagalkan tutup hari, tetapi selalu tampil di Warnings agar tidak
 	// terlihat sukses padahal tidak berjalan.
-	DepositsRolledOver   int             `json:"deposits_rolled_over"`
+	DepositsRolledOver int `json:"deposits_rolled_over"`
+	// PPAPProcessed adalah jumlah kredit yang dievaluasi; PPAPAdjusted adalah jumlah
+	// kredit yang PPAP-nya benar-benar berubah sehingga menulis jurnal penyesuaian.
+	// Tanpa pembedaan ini, "ppap_processed: 5" dengan 1 jurnal menyesatkan pembaca.
 	PPAPProcessed        int             `json:"ppap_processed"`
+	PPAPAdjusted         int             `json:"ppap_adjusted"`
 	LoanPenaltiesAccrued int             `json:"loan_penalties_accrued"`
 	LoanPenaltyAmount    decimal.Decimal `json:"loan_penalty_amount"`
 	// Akrual pendapatan bunga kredit berbasis jadwal angsuran (peristiwa EOD kelima).
