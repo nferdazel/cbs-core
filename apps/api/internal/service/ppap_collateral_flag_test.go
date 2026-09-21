@@ -137,3 +137,160 @@ func TestPPAPRunDaily_SaklarAgunanMatiPerilakuTidakBerubah(t *testing.T) {
 		t.Fatalf("pengurang agunan %s, mau nol saat saklar mati", totalDengan.Items[0].CollateralValue)
 	}
 }
+
+// Agunan tunai pun tidak boleh mengubah hasil selama saklar mati. Penanda is_cash hanya
+// berarti bila pengurangan agunan aktif; sebelum itu, jalur PPAP harus identik dengan
+// bank yang belum punya modul agunan.
+func TestPPAPRunDaily_SaklarAgunanMatiTetapMengabaikanAgunanTunai(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -10)
+	loanID := uuid.New()
+
+	snapshot := domain.PPAPLoanSnapshot{
+		LoanID:         loanID,
+		LoanNumber:     "KRD-TUNAI-MATI",
+		Outstanding:    decimal.NewFromInt(10_000_000),
+		Collectibility: domain.KolLancar,
+		RequiredPPAP:   decimal.NewFromInt(50_000),
+		LastDueDate:    &due,
+	}
+	akun := uuid.New()
+	agunanTunai := domain.LoanCollateral{
+		ID:             uuid.New(),
+		LoanID:         loanID,
+		CollateralType: domain.CollateralDeposit,
+		IsCash:         true,
+		CashAccountID:  &akun,
+		AppraisalValue: decimal.NewFromInt(4_000_000),
+		AppraisalDate:  asOf.AddDate(0, 0, -10),
+		HaircutPercent: decimal.Zero,
+		Status:         domain.CollateralActive,
+		ExistsKnown:    true,
+		Executable:     true,
+	}
+
+	repoTanpa, postingTanpa := &stubPPAPRepo{snapshots: []domain.PPAPLoanSnapshot{snapshot}}, &stubPosting{}
+	tanpaAgunan := newTestPPAPService(repoTanpa, &stubProductRepo{}, postingTanpa)
+	totalTanpa, err := tanpaAgunan.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily tanpa agunan: %v", err)
+	}
+
+	repo, posting := &stubPPAPRepo{snapshots: []domain.PPAPLoanSnapshot{snapshot}}, &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunanTunai}}
+	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "false"}}
+	totalDengan, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily dengan agunan tunai: %v", err)
+	}
+
+	if !totalTanpa.TotalAdjustment.Equal(totalDengan.TotalAdjustment) {
+		t.Fatalf("penyesuaian berubah saat saklar mati: %s vs %s",
+			totalTanpa.TotalAdjustment, totalDengan.TotalAdjustment)
+	}
+	if len(repoTanpa.updated) != 1 || len(repo.updated) != 1 {
+		t.Fatalf("state kredit tidak diperbarui sekali: %d dan %d", len(repoTanpa.updated), len(repo.updated))
+	}
+	if !repoTanpa.updated[0].RequiredPPAP.Equal(repo.updated[0].RequiredPPAP) {
+		t.Fatalf("required_ppap berubah saat saklar mati: %s vs %s",
+			repoTanpa.updated[0].RequiredPPAP, repo.updated[0].RequiredPPAP)
+	}
+	if totalDengan.Items[0].CollateralValue.Sign() != 0 {
+		t.Fatalf("pengurang agunan tunai %s, mau nol saat saklar mati", totalDengan.Items[0].CollateralValue)
+	}
+	if !totalDengan.Items[0].Exposure.Equal(decimal.NewFromInt(10_000_000)) {
+		t.Fatalf("eksposur %s, mau baki penuh saat saklar mati", totalDengan.Items[0].Exposure)
+	}
+}
+
+// agunanTunaiPPAP adalah agunan tunai aktif 4 juta yang dikaitkan ke rekening diblokir.
+func agunanTunaiPPAP(loanID uuid.UUID, asOf time.Time) domain.LoanCollateral {
+	akun := uuid.New()
+	return domain.LoanCollateral{
+		ID:             uuid.New(),
+		LoanID:         loanID,
+		CollateralType: domain.CollateralDeposit,
+		IsCash:         true,
+		CashAccountID:  &akun,
+		AppraisalValue: decimal.NewFromInt(4_000_000),
+		AppraisalDate:  asOf.AddDate(0, 0, -10),
+		HaircutPercent: decimal.Zero,
+		Status:         domain.CollateralActive,
+		ExistsKnown:    true,
+		Executable:     true,
+	}
+}
+
+// Kualitas Lancar hanya dikenai PPKA umum. Bagian yang dijamin agunan tunai dikecualikan
+// (Pasal 19 ayat (4) huruf b jo. Pasal 17): dasar 10 juta - 4 juta = 6 juta, tarif 0,5%.
+func TestPPAPPreview_SaklarHidupMengecualikanAgunanTunaiDariPPKAUmum(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -10)
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{snapshots: []domain.PPAPLoanSnapshot{{
+		LoanID:         loanID,
+		LoanNumber:     "KRD-TUNAI-UMUM",
+		Outstanding:    decimal.NewFromInt(10_000_000),
+		Collectibility: domain.KolLancar,
+		RequiredPPAP:   decimal.NewFromInt(50_000),
+		LastDueDate:    &due,
+	}}}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, &stubPosting{})
+	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "true"}}
+	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunanTunaiPPAP(loanID, asOf)}}
+
+	summary, err := svc.Preview(context.Background(), asOf)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	item := summary.Items[0]
+	if !item.Exposure.Equal(decimal.NewFromInt(6_000_000)) {
+		t.Fatalf("eksposur %s, mau 6000000", item.Exposure)
+	}
+	if !item.CollateralValue.Equal(decimal.NewFromInt(4_000_000)) {
+		t.Fatalf("pengurang %s, mau 4000000", item.CollateralValue)
+	}
+	if !item.Target.Equal(decimal.NewFromInt(30_000)) {
+		t.Fatalf("target %s, mau 30000", item.Target)
+	}
+}
+
+// Kualitas Kurang Lancar dikenai PPKA khusus. Agunan tunai TIDAK mengurangi dasarnya
+// (bukan daftar Pasal 20 ayat (1), lihat ayat (2)): dasar tetap 10 juta, tarif 10%.
+func TestPPAPPreview_SaklarHidupAgunanTunaiTidakMengurangiPPKAKhusus(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -100)
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{snapshots: []domain.PPAPLoanSnapshot{{
+		LoanID:         loanID,
+		LoanNumber:     "KRD-TUNAI-KHUSUS",
+		Outstanding:    decimal.NewFromInt(10_000_000),
+		Collectibility: domain.KolLancar,
+		RequiredPPAP:   decimal.NewFromInt(50_000),
+		LastDueDate:    &due,
+	}}}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, &stubPosting{})
+	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "true"}}
+	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunanTunaiPPAP(loanID, asOf)}}
+
+	summary, err := svc.Preview(context.Background(), asOf)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	item := summary.Items[0]
+	if item.Collectibility != domain.KolKurangLancar {
+		t.Fatalf("kolektibilitas %s, mau Kurang Lancar", item.Collectibility.Label())
+	}
+	if !item.Exposure.Equal(decimal.NewFromInt(10_000_000)) {
+		t.Fatalf("eksposur %s, mau baki penuh 10000000", item.Exposure)
+	}
+	if !item.CollateralValue.IsZero() {
+		t.Fatalf("pengurang PPKA khusus %s, mau nol", item.CollateralValue)
+	}
+	if !item.Target.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("target %s, mau 1000000", item.Target)
+	}
+}

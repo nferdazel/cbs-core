@@ -24,29 +24,48 @@ import (
 //   - Pasal 21 ayat (2): agunan bukan pengurang bila belum dinilai, tidak diketahui
 //     keberadaannya, tidak dapat dieksekusi, atau milik pihak lain tanpa persetujuan
 //     pemiliknya.
+//   - Pasal 17 jo. Pasal 19 ayat (4) huruf b: bagian Aset Produktif yang dijamin agunan
+//     tunai dikecualikan dari PPKA umum. Agunan tunai yang sama BUKAN pengurang PPKA
+//     khusus karena tidak tercantum pada Pasal 20 ayat (1).
 
 // Pasal20Rate adalah batas atas fraksi nilai taksasi yang boleh diperhitungkan menurut
 // Pasal 20 ayat (1). ok=false berarti jenis agunan tidak tercantum pada daftar ayat (1),
 // sehingga menurut ayat (2) nilainya tidak diperhitungkan sama sekali.
 //
 // Pemetaan ke jenis agunan yang ada di sistem (jenis di luar peta ini -> nol):
-//   - TANAH_BANGUNAN bersertifikat ber-hak tanggungan/fidusia -> 80% (huruf b)
-//   - TANAH_BANGUNAN bersertifikat tanpa hak tanggungan        -> 60% (huruf d, dari NJOP)
-//   - KENDARAAN / MESIN_PERALATAN ber-hipotek                  -> 50% (huruf g)
-//   - LAINNYA dinilai penilai independen <= 1 tahun            -> 20% (huruf l)
+//   - EMAS_PERHIASAN                                            -> 85% (huruf a)
+//   - TANAH_BANGUNAN bersertifikat ber-hak tanggungan/fidusia   -> 80% (huruf b)
+//   - RESI_GUDANG dinilai <= 12 bulan                           -> 70% (huruf c)
+//   - TANAH_BANGUNAN bersertifikat tanpa hak tanggungan         -> 60% (huruf d, dari NJOP)
+//   - TANAH_ADAT (surat pengakuan tanah adat)                   -> 50% (huruf e, dari NJOP)
+//   - TEMPAT_USAHA dengan bukti kepemilikan/izin pakai + kuasa
+//     menjual                                                   -> 50% (huruf f)
+//   - KENDARAAN / MESIN_PERALATAN ber-hipotek                    -> 50% (huruf g)
+//   - RESI_GUDANG dinilai > 12 s/d 18 bulan                      -> 50% (huruf h)
+//   - JAMINAN_BUMN_BUMD penjamin yang memenuhi kriteria KPMM     -> 50% (huruf i)
+//   - RESI_GUDANG dinilai > 18 s/d 24 bulan                      -> 30% (huruf j)
+//   - LAINNYA dinilai penilai independen <= 1 tahun              -> 20% (huruf k)
 //
-// Belum ada padanannya (tetap nol sampai jenisnya ditambahkan): emas perhiasan 85%
-// (huruf a), resi gudang 70/50/30% menurut umur penilaian (huruf c, h, k), tanah adat 50%
-// (huruf e), tempat usaha 50% (huruf f), dan bagian kredit yang dijamin BUMN/BUMD 50%
-// (huruf i). Menambahkan pemetaan itu memerlukan jenis/enum baru, bukan sekadar tarif.
+// Agunan tunai (IsCash) TIDAK pernah masuk peta ini: perannya adalah membuat bagian yang
+// dijamin berkualitas Lancar (Pasal 17 ayat (1)) sehingga dikecualikan dari PPKA umum
+// (Pasal 19 ayat (4) huruf b), bukan menjadi pengurang PPKA khusus. Menghitungnya di sini
+// juga akan menghitung satu jaminan dua kali.
 //
-// NJOP pada huruf d belum tersedia sebagai kolom tersendiri; nilai taksasi dipakai sebagai
-// pendekatannya sampai kolom NJOP ditambahkan.
+// NJOP pada huruf d dan e belum tersedia sebagai kolom tersendiri; nilai taksasi dipakai
+// sebagai pendekatannya sampai kolom NJOP ditambahkan.
 func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 	if c == nil {
 		return decimal.Zero, false
 	}
+	// Agunan tunai dikecualikan dari pengurang PPKA khusus (Pasal 20 ayat (2)); lihat
+	// catatan di atas.
+	if c.IsCash {
+		return decimal.Zero, false
+	}
 	switch c.CollateralType {
+	case CollateralEmasPerhiasan:
+		// Huruf a: paling tinggi 85% dari nilai pasar.
+		return decimal.NewFromFloat(0.85), true
 	case CollateralTanahBangunan:
 		if c.Certified && c.Mortgaged {
 			return decimal.NewFromFloat(0.80), true
@@ -55,11 +74,27 @@ func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 			return decimal.NewFromFloat(0.60), true
 		}
 		return decimal.Zero, false
+	case CollateralTanahAdat:
+		// Huruf e: paling tinggi 50% dari NJOP/nilai pasar tanah dengan kepemilikan
+		// surat pengakuan tanah adat (girik, petok D, letter C, dan sejenisnya).
+		return decimal.NewFromFloat(0.50), true
+	case CollateralTempatUsaha:
+		// Huruf f: paling tinggi 50% untuk tempat usaha yang disertai bukti
+		// kepemilikan/izin pemakaian/hak pakai dan surat kuasa menjual.
+		return decimal.NewFromFloat(0.50), true
 	case CollateralKendaraan, CollateralMesinPeralatan:
 		if c.Mortgaged {
 			return decimal.NewFromFloat(0.50), true
 		}
 		return decimal.Zero, false
+	case CollateralResiGudang:
+		// Huruf c, h, j: tarif menurut umur penilaian terakhir.
+		return pasal20ResiGudangRate(c, asOf)
+	case CollateralJaminanBumnBumd:
+		// Huruf i: paling tinggi 50% untuk bagian Kredit yang dijamin BUMN/BUMD yang
+		// berusaha sebagai penjamin dan memenuhi kriteria KPMM. Pemenuhan kriteria
+		// diperiksa operator; jenis ini menyatakan kriterianya sudah dipenuhi.
+		return decimal.NewFromFloat(0.50), true
 	case CollateralLainnya:
 		if c.AppraiserIndependent && dinilaiDalamTahunTerakhir(c.AppraisalDate, asOf) {
 			return decimal.NewFromFloat(0.20), true
@@ -67,6 +102,35 @@ func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 		return decimal.Zero, false
 	default:
 		// DEPOSIT dan jenis tak dikenal tidak tercantum pada Pasal 20 ayat (1).
+		return decimal.Zero, false
+	}
+}
+
+// pasal20ResiGudangRate menerapkan pita umur penilaian resi gudang Pasal 20 ayat (1)
+// huruf c, h, dan j: sampai dengan 12 bulan 70%, lebih dari 12 sampai dengan 18 bulan
+// 50%, lebih dari 18 sampai dengan 24 bulan 30%. Penilaian yang lebih tua dari 24 bulan
+// tidak lagi tercantum pada daftar ayat (1), sehingga menurut ayat (2) tidak diperhitungkan.
+//
+// Tanggal yang dipakai adalah WarehouseReceiptValuedAt bila diisi operator; bila kosong,
+// AppraisalDate agunan yang dipakai sebagai penilaian terakhirnya.
+func pasal20ResiGudangRate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
+	t := c.AppraisalDate
+	if c.WarehouseReceiptValuedAt != nil && !c.WarehouseReceiptValuedAt.IsZero() {
+		t = *c.WarehouseReceiptValuedAt
+	}
+	if t.IsZero() {
+		return decimal.Zero, false
+	}
+	ref := tanggalSaja(asOf)
+	penilaian := tanggalSaja(t)
+	switch {
+	case !penilaian.Before(ref.AddDate(0, -12, 0)):
+		return decimal.NewFromFloat(0.70), true
+	case !penilaian.Before(ref.AddDate(0, -18, 0)):
+		return decimal.NewFromFloat(0.50), true
+	case !penilaian.Before(ref.AddDate(0, -24, 0)):
+		return decimal.NewFromFloat(0.30), true
+	default:
 		return decimal.Zero, false
 	}
 }
@@ -115,8 +179,9 @@ func Pasal20TimeFactor(c *LoanCollateral, macetAt *time.Time, asOf time.Time) de
 	macet := tanggalSaja(*macetAt)
 	ref := tanggalSaja(asOf)
 	switch c.CollateralType {
-	case CollateralTanahBangunan:
-		// Huruf b dan d: penuh sampai 2 tahun, 50% pada 2-4 tahun, nol setelah 4 tahun.
+	case CollateralTanahBangunan, CollateralTanahAdat, CollateralTempatUsaha:
+		// Huruf b, d, e, dan f: penuh sampai 2 tahun, 50% pada 2-4 tahun, nol setelah
+		// 4 tahun.
 		switch {
 		case !macet.Before(ref.AddDate(-2, 0, 0)):
 			return decimal.NewFromInt(1)
@@ -136,7 +201,8 @@ func Pasal20TimeFactor(c *LoanCollateral, macetAt *time.Time, asOf time.Time) de
 			return decimal.Zero
 		}
 	default:
-		// Huruf l dan jenis di luar ayat (3)/(5) tidak diturunkan menurut waktu.
+		// Huruf a, c, h, i, j, k dan jenis di luar ayat (3)/(5) tidak diturunkan
+		// menurut waktu.
 		return decimal.NewFromInt(1)
 	}
 }
@@ -205,6 +271,46 @@ func PPAPCollateralDeductionTotal(collaterals []LoanCollateral, ctx PPAPPasal20C
 		total = total.Add(PPAPCollateralDeduction(&collaterals[i], ctx))
 	}
 	return total
+}
+
+// --- Agunan tunai: Pasal 17 jo. Pasal 19 ayat (4) huruf b ---
+
+// CashCollateralValue adalah nilai agunan tunai yang mengecualikan bagian Aset Produktif
+// dari PPKA umum. Hanya agunan aktif dan yang ditandai IsCash yang dihitung. Pemenuhan
+// syarat Pasal 17 ayat (3) (diblokir, ada surat kuasa pencairan, jangka waktu pemblokiran,
+// pengikatan hukum, dan bukti kepemilikan) menjadi tanggung jawab operator yang menandainya;
+// domain tidak boleh menebak syarat yang tidak tersimpan.
+func (c *LoanCollateral) CashCollateralValue() decimal.Decimal {
+	if c == nil || !c.IsCash || !c.IsActive() {
+		return decimal.Zero
+	}
+	return c.AppraisalValue
+}
+
+// PPAPCashCollateralTotal menjumlahkan nilai agunan tunai seluruh agunan satu kredit.
+// Nilai ini TIDAK dipakai mengurangi PPKA khusus (agunan tunai bukan daftar Pasal 20 ayat
+// (1)); yang memakainya adalah dasar PPKA umum.
+func PPAPCashCollateralTotal(collaterals []LoanCollateral) decimal.Decimal {
+	total := decimal.Zero
+	for i := range collaterals {
+		total = total.Add(collaterals[i].CashCollateralValue())
+	}
+	return total
+}
+
+// PPAPGeneralBase menghitung dasar PPKA umum (Pasal 19 ayat (2)) setelah mengecualikan
+// bagian Aset Produktif yang dijamin agunan tunai (Pasal 19 ayat (4) huruf b jo. Pasal 17).
+// Lantai nol dipakai karena jaminan yang melebihi baki debet tidak boleh membuat dasar
+// pengenaan negatif.
+func PPAPGeneralBase(outstanding, cashCollateral decimal.Decimal) decimal.Decimal {
+	if cashCollateral.LessThanOrEqual(decimal.Zero) {
+		return outstanding
+	}
+	base := outstanding.Sub(cashCollateral)
+	if base.IsNegative() {
+		return decimal.Zero
+	}
+	return base
 }
 
 // dinilaiDalamTahunTerakhir menilai apakah tanggal taksasi berada dalam 1 (satu) tahun

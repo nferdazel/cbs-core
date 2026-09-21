@@ -493,3 +493,243 @@ func TestPPAPCollateralDeductionTotal_MenjumlahkanYangLolos(t *testing.T) {
 		t.Fatalf("total pengurang %s, mau %s", got, want)
 	}
 }
+
+// agunanTunai adalah agunan tunai Pasal 17 yang sah: berstatus aktif, ditandai, dan
+// dikaitkan ke rekening tempat dananya diblokir.
+func agunanTunai(jenis domain.CollateralType, nilai int64) domain.LoanCollateral {
+	c := agunanTanah()
+	c.CollateralType = jenis
+	c.IsCash = true
+	akun := uuid.New()
+	c.CashAccountID = &akun
+	c.AppraisalValue = decimal.NewFromInt(nilai)
+	return c
+}
+
+// Setiap jenis baru Pasal 20 ayat (1) harus memetakan tarif sesuai hurufnya. Sebelum
+// ditambahkan, semuanya jatuh ke nol sehingga penyisihan lebih besar dari kewajiban.
+func TestPasal20Rate_JenisBaruSesuaiHuruf(t *testing.T) {
+	cases := []struct {
+		name  string
+		jenis domain.CollateralType
+		want  string
+	}{
+		{name: "emas perhiasan 85% (huruf a)", jenis: domain.CollateralEmasPerhiasan, want: "0.85"},
+		{name: "tanah adat 50% (huruf e)", jenis: domain.CollateralTanahAdat, want: "0.5"},
+		{name: "tempat usaha 50% (huruf f)", jenis: domain.CollateralTempatUsaha, want: "0.5"},
+		{name: "dijamin BUMN/BUMD 50% (huruf i)", jenis: domain.CollateralJaminanBumnBumd, want: "0.5"},
+		{name: "resi gudang dinilai 1 bulan lalu 70% (huruf c)", jenis: domain.CollateralResiGudang, want: "0.7"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanTanah()
+			c.CollateralType = tc.jenis
+			rate, ok := domain.Pasal20Rate(&c, pasal20AsOf)
+			if !ok {
+				t.Fatalf("jenis %s seharusnya tercantum pada Pasal 20 ayat (1)", tc.jenis)
+			}
+			want := decimal.RequireFromString(tc.want)
+			if !rate.Equal(want) {
+				t.Fatalf("tarif %s, mau %s", rate, want)
+			}
+		})
+	}
+}
+
+// Pita umur penilaian resi gudang: huruf c (<=12 bulan) 70%, huruf h (>12 s/d 18) 50%,
+// huruf j (>18 s/d 24) 30%, dan lebih tua dari 24 bulan di luar daftar ayat (1).
+func TestPasal20Rate_ResiGudangMenurutUmurPenilaian(t *testing.T) {
+	bulanLalu := func(n int) time.Time { return pasal20AsOf.AddDate(0, -n, 0) }
+
+	cases := []struct {
+		name      string
+		ubah      func(*domain.LoanCollateral)
+		want      string
+		wantDapat bool
+	}{
+		{
+			name:      "dinilai 6 bulan lalu 70% (huruf c)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(6) },
+			want:      "0.7",
+			wantDapat: true,
+		},
+		{
+			name:      "tepat 12 bulan 70% (huruf c)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(12) },
+			want:      "0.7",
+			wantDapat: true,
+		},
+		{
+			name:      "15 bulan 50% (huruf h)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(15) },
+			want:      "0.5",
+			wantDapat: true,
+		},
+		{
+			name:      "tepat 18 bulan 50% (huruf h)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(18) },
+			want:      "0.5",
+			wantDapat: true,
+		},
+		{
+			name:      "21 bulan 30% (huruf j)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(21) },
+			want:      "0.3",
+			wantDapat: true,
+		},
+		{
+			name:      "tepat 24 bulan 30% (huruf j)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(24) },
+			want:      "0.3",
+			wantDapat: true,
+		},
+		{
+			name:      "25 bulan di luar daftar ayat (1)",
+			ubah:      func(c *domain.LoanCollateral) { c.AppraisalDate = bulanLalu(25) },
+			wantDapat: false,
+		},
+		{
+			name: "tanggal penilaian resi gudang menimpa taksasi lama",
+			ubah: func(c *domain.LoanCollateral) {
+				c.AppraisalDate = bulanLalu(30)
+				tgl := bulanLalu(3)
+				c.WarehouseReceiptValuedAt = &tgl
+			},
+			want:      "0.7",
+			wantDapat: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanTanah()
+			c.CollateralType = domain.CollateralResiGudang
+			tc.ubah(&c)
+			rate, ok := domain.Pasal20Rate(&c, pasal20AsOf)
+			if ok != tc.wantDapat {
+				t.Fatalf("dapat=%v, mau %v", ok, tc.wantDapat)
+			}
+			if !tc.wantDapat {
+				return
+			}
+			want := decimal.RequireFromString(tc.want)
+			if !rate.Equal(want) {
+				t.Fatalf("tarif %s, mau %s", rate, want)
+			}
+		})
+	}
+}
+
+// Tanah adat (huruf e) dan tempat usaha (huruf f) termasuk kelompok yang diturunkan
+// Pasal 20 ayat (3) saat Macet; emas perhiasan dan resi gudang tidak diturunkan.
+func TestPasal20TimeFactor_HurufEDanFBukanHurufACDanI(t *testing.T) {
+	tahunLalu := func(n int) *time.Time {
+		t := pasal20AsOf.AddDate(-n, 0, 0)
+		return &t
+	}
+
+	cases := []struct {
+		name       string
+		jenis      domain.CollateralType
+		macetAt    *time.Time
+		wantFaktor string
+	}{
+		{name: "tanah adat 1 tahun penuh", jenis: domain.CollateralTanahAdat, macetAt: tahunLalu(1), wantFaktor: "1"},
+		{name: "tanah adat 3 tahun turun 50%", jenis: domain.CollateralTanahAdat, macetAt: tahunLalu(3), wantFaktor: "0.5"},
+		{name: "tanah adat 5 tahun nol", jenis: domain.CollateralTanahAdat, macetAt: tahunLalu(5), wantFaktor: "0"},
+		{name: "tempat usaha 3 tahun turun 50%", jenis: domain.CollateralTempatUsaha, macetAt: tahunLalu(3), wantFaktor: "0.5"},
+		{name: "tempat usaha 5 tahun nol", jenis: domain.CollateralTempatUsaha, macetAt: tahunLalu(5), wantFaktor: "0"},
+		{name: "emas perhiasan tidak diturunkan", jenis: domain.CollateralEmasPerhiasan, macetAt: tahunLalu(5), wantFaktor: "1"},
+		{name: "resi gudang tidak diturunkan", jenis: domain.CollateralResiGudang, macetAt: tahunLalu(5), wantFaktor: "1"},
+		{name: "jaminan BUMN/BUMD tidak diturunkan", jenis: domain.CollateralJaminanBumnBumd, macetAt: tahunLalu(5), wantFaktor: "1"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanTanah()
+			c.CollateralType = tc.jenis
+			got := domain.Pasal20TimeFactor(&c, tc.macetAt, pasal20AsOf)
+			want := decimal.RequireFromString(tc.wantFaktor)
+			if !got.Equal(want) {
+				t.Fatalf("faktor %s, mau %s", got, want)
+			}
+		})
+	}
+}
+
+func TestPPAPGeneralBase_MengecualikanAgunanTunai(t *testing.T) {
+	cases := []struct {
+		name        string
+		outstanding string
+		tunai       string
+		want        string
+	}{
+		{name: "tanpa agunan tunai penuh", outstanding: "1000000", tunai: "0", want: "1000000"},
+		{name: "sebagian dijamin tunai", outstanding: "1000000", tunai: "400000", want: "600000"},
+		{name: "agunan tunai menutup seluruh baki", outstanding: "1000000", tunai: "1000000", want: "0"},
+		{name: "agunan tunai melebihi baki tidak negatif", outstanding: "1000000", tunai: "1500000", want: "0"},
+		{name: "nilai tunai negatif diabaikan", outstanding: "1000000", tunai: "-500", want: "1000000"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := domain.PPAPGeneralBase(
+				decimal.RequireFromString(tc.outstanding),
+				decimal.RequireFromString(tc.tunai),
+			)
+			if !got.Equal(decimal.RequireFromString(tc.want)) {
+				t.Fatalf("dasar PPKA umum %s, mau %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPPAPCashCollateralTotal_HanyaAktifDanDitandaiTunai(t *testing.T) {
+	aktif := agunanTunai(domain.CollateralDeposit, 200_000_000)
+	dilepas := agunanTunai(domain.CollateralDeposit, 500_000_000)
+	dilepas.Status = domain.CollateralReleased
+	bukanTunai := agunanTanah()
+	bukanTunai.AppraisalValue = decimal.NewFromInt(900_000_000)
+
+	got := domain.PPAPCashCollateralTotal([]domain.LoanCollateral{aktif, dilepas, bukanTunai})
+	want := decimal.NewFromInt(200_000_000)
+	if !got.Equal(want) {
+		t.Fatalf("total agunan tunai %s, mau %s", got, want)
+	}
+}
+
+// Agunan tunai TIDAK boleh mengurangi PPKA khusus: ia tidak tercantum pada daftar
+// Pasal 20 ayat (1), sehingga menurut ayat (2) bukan pengurang. Ini yang membedakannya
+// dari pengecualian PPKA umum, yang justru memakainya.
+func TestPPAPCollateralDeduction_AgunanTunaiTidakMengurangiPPKAKhusus(t *testing.T) {
+	ctx := domain.PPAPPasal20Context{
+		AsOf:           pasal20AsOf,
+		Collectibility: domain.KolMacet,
+		Outstanding:    decimal.NewFromInt(1_000_000_000),
+	}
+
+	cases := []struct {
+		name string
+		c    domain.LoanCollateral
+	}{
+		{name: "deposito ditandai agunan tunai", c: agunanTunai(domain.CollateralDeposit, 500_000_000)},
+		{name: "emas perhiasan ditandai agunan tunai", c: agunanTunai(domain.CollateralEmasPerhiasan, 500_000_000)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := domain.PPAPCollateralDeduction(&tc.c, ctx); !got.IsZero() {
+				t.Fatalf("pengurang PPKA khusus %s, mau nol", got)
+			}
+		})
+	}
+
+	// Pembanding: emas perhiasan yang BUKAN agunan tunai tetap menjadi pengurang 85%.
+	emas := agunanTanah()
+	emas.CollateralType = domain.CollateralEmasPerhiasan
+	want := decimal.NewFromInt(850_000_000)
+	if got := domain.PPAPCollateralDeduction(&emas, ctx); !got.Equal(want) {
+		t.Fatalf("pengurang emas perhiasan %s, mau %s", got, want)
+	}
+}

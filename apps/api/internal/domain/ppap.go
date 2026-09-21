@@ -253,10 +253,10 @@ func tighten(configured, def int) int {
 
 // RestructureCleanPeriodsForLancar adalah jumlah periode pembayaran bersih
 // berturut-turut yang membebaskan Kredit restrukturisasi dari batas kualitasnya
-// (POJK No. 1 Tahun 2024 Pasal 23 ayat (2) huruf a).
+// (POJK No. 1 Tahun 2024 Pasal 31 ayat (2) huruf a).
 const RestructureCleanPeriodsForLancar = 3
 
-// RestructureCollectibility menerapkan Pasal 23 POJK No. 1 Tahun 2024:
+// RestructureCollectibility menerapkan Pasal 31 POJK No. 1 Tahun 2024:
 //
 //   - Kredit yang sebelum restrukturisasi tergolong Diragukan atau Macet paling tinggi
 //     Kurang Lancar (ayat (1) huruf a).
@@ -369,7 +369,7 @@ type PPAPLoanSnapshot struct {
 	// dimensi "Kredit telah jatuh tempo" POJK 1/2024 Lampiran II.
 	FinalDueDate *time.Time
 	// IsRestructured menandai Kredit pernah direstrukturisasi. Bila true,
-	// RestructureCollectibility membatasi golongannya (POJK 1/2024 Pasal 23).
+	// RestructureCollectibility membatasi golongannya (POJK 1/2024 Pasal 31).
 	IsRestructured bool
 	// MacetAt adalah saat kredit pertama kali digolongkan Macet. Dipakai menerapkan
 	// penurunan pengurang agunan menurut Pasal 20 ayat (3)/(5) POJK 1/2024; nil berarti
@@ -399,10 +399,13 @@ type PPAPRunItem struct {
 	DPD            int            `json:"dpd"`
 	Collectibility Collectibility `json:"collectibility"`
 	Outstanding    decimal.Decimal
-	// CollateralValue adalah nilai agunan pengurang yang dipakai, dan Exposure adalah
-	// baki debet setelah dikuranginya. Keduanya disimpan pada hasil agar selisih cadangan
-	// antar hari dapat ditelusuri: tanpa ini, perubahan cadangan yang berasal dari agunan
-	// baru tidak dapat dibedakan dari perubahan kolektibilitas.
+	// CollateralValue adalah nilai jaminan yang benar-benar mengurangi dasar pengenaan
+	// pada perhitungan ini: pengurang Pasal 20 ayat (1) untuk PPKA khusus, atau nilai
+	// agunan tunai yang dikecualikan dari PPKA umum (Pasal 19 ayat (4) huruf b) untuk
+	// kualitas Lancar. Exposure adalah baki debet setelah dikuranginya. Keduanya disimpan
+	// pada hasil agar selisih cadangan antar hari dapat ditelusuri: tanpa ini, perubahan
+	// cadangan yang berasal dari agunan baru tidak dapat dibedakan dari perubahan
+	// kolektibilitas.
 	CollateralValue       decimal.Decimal
 	Exposure              decimal.Decimal `json:"outstanding"`
 	Target                decimal.Decimal `json:"target"`

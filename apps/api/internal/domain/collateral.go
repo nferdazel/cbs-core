@@ -22,6 +22,15 @@ const (
 	CollateralDeposit        CollateralType = "DEPOSIT"
 	CollateralMesinPeralatan CollateralType = "MESIN_PERALATAN"
 	CollateralLainnya        CollateralType = "LAINNYA"
+
+	// Jenis berikut melengkapi daftar Pasal 20 ayat (1) POJK No. 1 Tahun 2024. Sebelum
+	// ada, agunannya jatuh ke tarif konservatif (nol) sehingga penyisihan lebih besar
+	// dari kewajiban; tarifnya ditegakkan Pasal20Rate, bukan di sini.
+	CollateralEmasPerhiasan   CollateralType = "EMAS_PERHIASAN"    // huruf a: 85% nilai pasar
+	CollateralResiGudang      CollateralType = "RESI_GUDANG"       // huruf c/h/j: 70/50/30%
+	CollateralTanahAdat       CollateralType = "TANAH_ADAT"        // huruf e: 50% NJOP
+	CollateralTempatUsaha     CollateralType = "TEMPAT_USAHA"      // huruf f: 50%
+	CollateralJaminanBumnBumd CollateralType = "JAMINAN_BUMN_BUMD" // huruf i: 50%
 )
 
 // CollateralStatus adalah keadaan agunan. Hanya ACTIVE yang dihitung sebagai pengurang.
@@ -69,6 +78,10 @@ var (
 	ErrCollateralAppraisalDateInvalid = errors.New("tanggal taksasi agunan tidak boleh di masa depan")
 	ErrCollateralHaircutInvalid       = errors.New("haircut agunan harus antara 0 dan 100 persen")
 	ErrCollateralNotActive            = errors.New("hanya agunan berstatus aktif yang dapat diubah")
+	// Agunan tunai mengubah perlakuan PPKA umum (Pasal 19 ayat (4) huruf b jo. Pasal 17),
+	// sehingga rekening tempat dananya diblokir wajib diketahui agar pengecualiannya
+	// dapat ditelusuri; penanda tanpa rekening tidak dapat diaudit.
+	ErrCollateralCashAccountRequired = errors.New("agunan tunai wajib dikaitkan ke rekening tempat dana diblokir")
 )
 
 // CollateralInput adalah permintaan pencatatan agunan. Haircut tidak wajib diisi: bila
@@ -96,7 +109,18 @@ type CollateralInput struct {
 	Executable           *bool
 	ThirdPartyOwner      bool
 	OwnerConsent         bool
-	Notes                string
+	// IsCash menandai agunan tunai Pasal 17 (tabungan, deposito, logam mulia, atau
+	// surat berharga BI/Pemerintah) yang memenuhi syarat ayat (3). Penanda ini TIDAK
+	// dipakai sebagai pengurang PPKA khusus — agunan tunai bukan daftar Pasal 20(1) —
+	// melainkan untuk mengecualikan bagian yang dijamin dari PPKA umum (Pasal 19(4)(b)).
+	IsCash bool
+	// CashAccountID adalah rekening tempat agunan tunai disimpan/diblokir. Wajib
+	// terhubung ke satu rekening agar pemblokiran Pasal 17(3) dapat diaudit.
+	CashAccountID *uuid.UUID
+	// WarehouseReceiptValuedAt adalah tanggal penilaian resi gudang bila berbeda dari
+	// tanggal taksasi agunan. Kosong berarti AppraisalDate yang dipakai.
+	WarehouseReceiptValuedAt *time.Time
+	Notes                    string
 }
 
 // CollateralSummary adalah rekap agunan aktif per jenis. Dipakai manajemen untuk melihat
@@ -161,23 +185,29 @@ type LoanCollateral struct {
 	// Penanda kepatuhan Pasal 20 dan Pasal 21 POJK No. 1 Tahun 2024. Ini yang menentukan
 	// agunan boleh diperhitungkan sebagai pengurang PPKA: jenis dan ikatan hukumnya
 	// (Pasal 20 ayat (1)), serta keadaannya pada saat perhitungan (Pasal 21 ayat (2)).
-	AppraiserIndependent bool             `json:"appraiser_independent"`
-	Certified            bool             `json:"certified"`
-	Mortgaged            bool             `json:"mortgaged"`
-	MortgageValue        decimal.Decimal  `json:"mortgage_value"`
-	ExistsKnown          bool             `json:"exists_known"`
-	Executable           bool             `json:"executable"`
-	ThirdPartyOwner      bool             `json:"third_party_owner"`
-	OwnerConsent         bool             `json:"owner_consent"`
-	HaircutPercent       decimal.Decimal  `json:"haircut_percent"`
-	BoundAmount          decimal.Decimal  `json:"bound_amount"`
-	Status               CollateralStatus `json:"status"`
-	ReleasedAt           *time.Time       `json:"released_at,omitempty"`
-	Notes                string           `json:"notes,omitempty"`
-	CreatedBy            string           `json:"created_by"`
-	CreatedAt            time.Time        `json:"created_at"`
-	UpdatedBy            string           `json:"updated_by,omitempty"`
-	UpdatedAt            time.Time        `json:"updated_at"`
+	AppraiserIndependent bool            `json:"appraiser_independent"`
+	Certified            bool            `json:"certified"`
+	Mortgaged            bool            `json:"mortgaged"`
+	MortgageValue        decimal.Decimal `json:"mortgage_value"`
+	ExistsKnown          bool            `json:"exists_known"`
+	Executable           bool            `json:"executable"`
+	ThirdPartyOwner      bool            `json:"third_party_owner"`
+	OwnerConsent         bool            `json:"owner_consent"`
+	// Penanda agunan tunai Pasal 17 dan rekening tempat dananya diblokir. Agunan tunai
+	// mengubah perlakuan PPKA umum (dikecualikan, Pasal 19 ayat (4) huruf b), tetapi
+	// TIDAK menambah pengurang PPKA khusus karena tidak tercantum pada Pasal 20 ayat (1).
+	IsCash                   bool             `json:"is_cash"`
+	CashAccountID            *uuid.UUID       `json:"cash_account_id,omitempty"`
+	WarehouseReceiptValuedAt *time.Time       `json:"warehouse_receipt_valued_at,omitempty"`
+	HaircutPercent           decimal.Decimal  `json:"haircut_percent"`
+	BoundAmount              decimal.Decimal  `json:"bound_amount"`
+	Status                   CollateralStatus `json:"status"`
+	ReleasedAt               *time.Time       `json:"released_at,omitempty"`
+	Notes                    string           `json:"notes,omitempty"`
+	CreatedBy                string           `json:"created_by"`
+	CreatedAt                time.Time        `json:"created_at"`
+	UpdatedBy                string           `json:"updated_by,omitempty"`
+	UpdatedAt                time.Time        `json:"updated_at"`
 }
 
 // IsActive menandai agunan yang masih dihitung sebagai pengurang.
@@ -214,6 +244,11 @@ func (c *LoanCollateral) Validate(now time.Time) error {
 	}
 	if c.HaircutPercent.IsNegative() || c.HaircutPercent.GreaterThan(decimal.NewFromInt(100)) {
 		return ErrCollateralHaircutInvalid
+	}
+	// Agunan tunai tanpa rekening tidak dapat dibuktikan diblokir (Pasal 17 ayat (3)
+	// huruf a dan d), sehingga pengecualian PPKA umumnya tidak boleh diakui.
+	if c.IsCash && c.CashAccountID == nil {
+		return ErrCollateralCashAccountRequired
 	}
 	return nil
 }

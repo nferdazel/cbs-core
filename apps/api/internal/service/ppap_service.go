@@ -207,7 +207,7 @@ func (s *ppapService) processLoan(
 	}
 	col := domain.CollectibilityFromPosition(dpd, DaysPastMaturity(asOf, snap.FinalDueDate), thresholds)
 	if snap.IsRestructured {
-		// Pasal 23 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
+		// Pasal 31 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
 		// 3 periode pembayaran bersih berturut-turut.
 		col = domain.RestructureCollectibility(snap.PreRestructureCollectibility, col, snap.CleanPeriods)
 	}
@@ -227,7 +227,20 @@ func (s *ppapService) processLoan(
 		MacetAt:        snap.MacetAt,
 		Outstanding:    snap.Outstanding,
 	})
+	// Dua rezim yang TIDAK boleh disamakan:
+	//   - PPKA umum (kualitas Lancar, Pasal 19 ayat (2)): bagian yang dijamin agunan tunai
+	//     dikecualikan (Pasal 19 ayat (4) huruf b jo. Pasal 17). Pengurang Pasal 20 justru
+	//     mengatur PPKA khusus (Pasal 19 ayat (3)), sehingga tidak dikurangkan dari dasar
+	//     PPKA umum.
+	//   - PPKA khusus: dikurangi pengurang Pasal 20 ayat (1). Agunan tunai tidak masuk
+	//     daftar itu, jadi tidak mengurangi PPKA khusus (Pasal 20 ayat (2)).
+	appliedCollateral := collateralValue
 	exposure := domain.PPAPExposure(snap.Outstanding, collateralValue)
+	if col == domain.KolLancar {
+		cashValue := domain.PPAPCashCollateralTotal(collaterals)
+		appliedCollateral = cashValue
+		exposure = domain.PPAPGeneralBase(snap.Outstanding, cashValue)
+	}
 	calc := domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 
 	stop := col.IsNPL() // golongan 3-5: akrual dihentikan (cash basis) sesuai POJK
@@ -242,7 +255,7 @@ func (s *ppapService) processLoan(
 		DPD:                   dpd,
 		Collectibility:        col,
 		Outstanding:           snap.Outstanding,
-		CollateralValue:       collateralValue,
+		CollateralValue:       appliedCollateral,
 		Exposure:              exposure,
 		Target:                calc.Target,
 		Existing:              calc.Existing,

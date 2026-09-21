@@ -31,7 +31,8 @@ const collateralColumns = `lc.id, lc.loan_id, lc.branch_id, lc.collateral_type, 
 	COALESCE(lc.notes, ''), lc.created_by, lc.created_at, COALESCE(lc.updated_by, ''), lc.updated_at,
 	COALESCE(b.code, ''),
 	lc.appraiser_independent, lc.certified, lc.mortgaged, lc.mortgage_value,
-	lc.exists_known, lc.executable, lc.third_party_owner, lc.owner_consent`
+	lc.exists_known, lc.executable, lc.third_party_owner, lc.owner_consent,
+	lc.is_cash, lc.cash_account_id, lc.warehouse_receipt_valued_at`
 
 const collateralFrom = `FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id`
 
@@ -40,6 +41,8 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	var branchID uuid.NullUUID
 	var releasedAt sql.NullTime
 	var updatedBy sql.NullString
+	var cashAccountID uuid.NullUUID
+	var warehouseReceiptValuedAt sql.NullTime
 	if err := row.Scan(
 		&c.ID, &c.LoanID, &branchID, &c.CollateralType, &c.Description, &c.DocumentNumber,
 		&c.OwnerName, &c.AppraisalValue, &c.AppraisalDate, &c.Appraiser, &c.HaircutPercent,
@@ -47,12 +50,21 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		&updatedBy, &c.UpdatedAt, &c.BranchCode,
 		&c.AppraiserIndependent, &c.Certified, &c.Mortgaged, &c.MortgageValue,
 		&c.ExistsKnown, &c.Executable, &c.ThirdPartyOwner, &c.OwnerConsent,
+		&c.IsCash, &cashAccountID, &warehouseReceiptValuedAt,
 	); err != nil {
 		return nil, err
 	}
 	if branchID.Valid {
 		id := branchID.UUID
 		c.BranchID = &id
+	}
+	if cashAccountID.Valid {
+		id := cashAccountID.UUID
+		c.CashAccountID = &id
+	}
+	if warehouseReceiptValuedAt.Valid {
+		t := warehouseReceiptValuedAt.Time
+		c.WarehouseReceiptValuedAt = &t
 	}
 	if releasedAt.Valid {
 		t := releasedAt.Time
@@ -71,11 +83,12 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 			appraisal_value, appraisal_date, appraiser, haircut_percent, status, notes,
 			certified, mortgaged, mortgage_value, appraiser_independent,
 			exists_known, executable, third_party_owner, owner_consent,
+			is_cash, cash_account_id, warehouse_receipt_valued_at,
 			created_by, created_at, updated_at
 		)
 		VALUES ($1, (SELECT id FROM branches WHERE code = $2), $3, $4, $5, $6, $7, $8, NULLIF($9, ''),
 		        $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20,
-		        $21, NOW(), NOW())
+		        $21, $22, $23, $24, NOW(), NOW())
 		RETURNING id, bound_amount, created_at, updated_at
 	`
 	// bound_amount tidak ada pada daftar INSERT karena dihitung database; nilainya
@@ -87,6 +100,7 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status, c.Notes,
 		c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
 		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent,
+		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt,
 		c.CreatedBy,
 	).Scan(&c.ID, &c.BoundAmount, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
@@ -138,7 +152,8 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 			haircut_percent = $9, status = $10, released_at = $11, notes = NULLIF($12, ''),
 			certified = $13, mortgaged = $14, mortgage_value = $15, appraiser_independent = $16,
 			exists_known = $17, executable = $18, third_party_owner = $19, owner_consent = $20,
-			updated_by = $21, updated_at = NOW()
+			is_cash = $21, cash_account_id = $22, warehouse_receipt_valued_at = $23,
+			updated_by = $24, updated_at = NOW()
 		WHERE id = $1
 		RETURNING bound_amount, updated_at
 	`
@@ -146,7 +161,8 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 		c.ID, c.CollateralType, c.Description, c.DocumentNumber, c.OwnerName,
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status,
 		c.ReleasedAt, c.Notes, c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
-		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent, c.UpdatedBy,
+		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent,
+		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt, c.UpdatedBy,
 	).Scan(&c.BoundAmount, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrCollateralNotFound

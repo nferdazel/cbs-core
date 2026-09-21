@@ -223,7 +223,7 @@ func TestPPAPRunDaily_MacetTriggersStopAccrual(t *testing.T) {
 	}
 }
 
-// Pasal 23 POJK 1/2024: kredit yang direstrukturisasi tidak boleh kembali Lancar
+// Pasal 31 POJK 1/2024: kredit yang direstrukturisasi tidak boleh kembali Lancar
 // hanya karena DPD-nya nol; batasnya lepas setelah 3 periode pembayaran bersih.
 func TestPPAPRunDaily_RestructuredLoanCannotImprove(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)

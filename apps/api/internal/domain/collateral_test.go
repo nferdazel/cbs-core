@@ -138,3 +138,22 @@ func TestCollateral_IsActiveHanyaUntukStatusAktif(t *testing.T) {
 		t.Fatal("agunan yang sudah dilepas tidak boleh dihitung sebagai pengurang")
 	}
 }
+
+// Agunan tunai tanpa rekening tidak dapat dibuktikan diblokir (Pasal 17 ayat (3)),
+// sehingga pengecualian PPKA umumnya tidak boleh diakui.
+func TestCollateral_ValidateAgunanTunaiWajibRekening(t *testing.T) {
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+
+	c := agunanValid()
+	c.CollateralType = domain.CollateralDeposit
+	c.IsCash = true
+	if err := c.Validate(now); !errors.Is(err, domain.ErrCollateralCashAccountRequired) {
+		t.Fatalf("kesalahan %v, ingin %v", err, domain.ErrCollateralCashAccountRequired)
+	}
+
+	akun := uuid.New()
+	c.CashAccountID = &akun
+	if err := c.Validate(now); err != nil {
+		t.Fatalf("agunan tunai ber-rekening ditolak: %v", err)
+	}
+}

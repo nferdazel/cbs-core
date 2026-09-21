@@ -104,10 +104,17 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		Executable:           executable,
 		ThirdPartyOwner:      input.ThirdPartyOwner,
 		OwnerConsent:         input.OwnerConsent,
-		HaircutPercent:       haircut,
-		Status:               domain.CollateralActive,
-		Notes:                strings.TrimSpace(input.Notes),
-		CreatedBy:            actor.DisplayName(),
+		// Penanda agunan tunai dan rekeningnya disalin apa adanya: hanya operator yang
+		// dapat menyatakan syarat Pasal 17 ayat (3) sudah dipenuhi. Bila agunan tunai
+		// tidak dikaitkan ke rekening mana pun, penandaannya ditolak agar tidak ada
+		// pengecualian PPKA umum yang tidak dapat diaudit sumber dananya.
+		IsCash:                   input.IsCash,
+		CashAccountID:            input.CashAccountID,
+		WarehouseReceiptValuedAt: input.WarehouseReceiptValuedAt,
+		HaircutPercent:           haircut,
+		Status:                   domain.CollateralActive,
+		Notes:                    strings.TrimSpace(input.Notes),
+		CreatedBy:                actor.DisplayName(),
 	}
 	if err := collateral.Validate(time.Now().UTC()); err != nil {
 		return nil, err

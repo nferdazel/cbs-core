@@ -146,7 +146,7 @@ func TestCollectibilityFromDPD_NeverLighterThanDefault(t *testing.T) {
 	}
 }
 
-// Pasal 23 POJK 1/2024: restrukturisasi tidak boleh menaikkan kualitas Kredit.
+// Pasal 31 POJK 1/2024: restrukturisasi tidak boleh menaikkan kualitas Kredit.
 func TestRestructureCollectibility_Pasal23(t *testing.T) {
 	tests := []struct {
 		name         string

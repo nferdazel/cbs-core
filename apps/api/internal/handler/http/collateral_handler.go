@@ -58,7 +58,14 @@ type collateralRequest struct {
 	Executable           *bool           `json:"executable,omitempty"`
 	ThirdPartyOwner      bool            `json:"third_party_owner,omitempty"`
 	OwnerConsent         bool            `json:"owner_consent,omitempty"`
-	Notes                string          `json:"notes"`
+	// Agunan tunai Pasal 17 dan rekening tempat dananya diblokir. Penanda ini memindahkan
+	// agunan dari pengurang PPKA khusus ke pengecualian PPKA umum (Pasal 19(4)(b)).
+	IsCash        bool   `json:"is_cash,omitempty"`
+	CashAccountID string `json:"cash_account_id,omitempty"`
+	// Tanggal penilaian resi gudang untuk pita umur Pasal 20(1) huruf c/h/j; kosong
+	// berarti memakai tanggal taksasi agunan.
+	WarehouseReceiptValuedAt string `json:"warehouse_receipt_valued_at,omitempty"`
+	Notes                    string `json:"notes"`
 }
 
 // Create handles POST /api/v1/loans/{loanId}/collaterals
@@ -86,25 +93,50 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rekening agunan tunai wajib dapat diurai bila dikirim; agunan tunai tanpa rekening
+	// ditolak domain karena pemblokirannya tidak dapat diaudit (Pasal 17 ayat (3)).
+	var cashAccountID *uuid.UUID
+	if raw := strings.TrimSpace(req.CashAccountID); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			Error(w, http.StatusBadRequest, "id rekening agunan tunai tidak valid")
+			return
+		}
+		cashAccountID = &id
+	}
+
+	var warehouseReceiptValuedAt *time.Time
+	if raw := strings.TrimSpace(req.WarehouseReceiptValuedAt); raw != "" {
+		t, err := parseDateOrRFC3339(raw)
+		if err != nil {
+			Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		warehouseReceiptValuedAt = &t
+	}
+
 	collateral, err := h.svc.Create(r.Context(), domain.CollateralInput{
-		LoanID:               loanID,
-		CollateralType:       domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
-		Description:          req.Description,
-		DocumentNumber:       req.DocumentNumber,
-		OwnerName:            req.OwnerName,
-		AppraisalValue:       req.AppraisalValue,
-		AppraisalDate:        appraisalDate,
-		Appraiser:            req.Appraiser,
-		HaircutPercent:       req.HaircutPercent,
-		AppraiserIndependent: req.AppraiserIndependent,
-		Certified:            req.Certified,
-		Mortgaged:            req.Mortgaged,
-		MortgageValue:        req.MortgageValue,
-		ExistsKnown:          req.ExistsKnown,
-		Executable:           req.Executable,
-		ThirdPartyOwner:      req.ThirdPartyOwner,
-		OwnerConsent:         req.OwnerConsent,
-		Notes:                req.Notes,
+		LoanID:                   loanID,
+		CollateralType:           domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
+		Description:              req.Description,
+		DocumentNumber:           req.DocumentNumber,
+		OwnerName:                req.OwnerName,
+		AppraisalValue:           req.AppraisalValue,
+		AppraisalDate:            appraisalDate,
+		Appraiser:                req.Appraiser,
+		HaircutPercent:           req.HaircutPercent,
+		AppraiserIndependent:     req.AppraiserIndependent,
+		Certified:                req.Certified,
+		Mortgaged:                req.Mortgaged,
+		MortgageValue:            req.MortgageValue,
+		ExistsKnown:              req.ExistsKnown,
+		Executable:               req.Executable,
+		ThirdPartyOwner:          req.ThirdPartyOwner,
+		OwnerConsent:             req.OwnerConsent,
+		IsCash:                   req.IsCash,
+		CashAccountID:            cashAccountID,
+		WarehouseReceiptValuedAt: warehouseReceiptValuedAt,
+		Notes:                    req.Notes,
 	}, actor)
 	if err != nil {
 		writeCollateralError(w, err)
@@ -183,7 +215,8 @@ func writeCollateralError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrCollateralOwnerRequired),
 		errors.Is(err, domain.ErrCollateralAppraisalInvalid),
 		errors.Is(err, domain.ErrCollateralAppraisalDateInvalid),
-		errors.Is(err, domain.ErrCollateralHaircutInvalid):
+		errors.Is(err, domain.ErrCollateralHaircutInvalid),
+		errors.Is(err, domain.ErrCollateralCashAccountRequired):
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 	default:
 		// Kesalahan lain (mis. aturan domain yang belum punya sentinel) tetap ditampilkan
