@@ -18,9 +18,9 @@ type collateralRepoStub struct {
 	created       []domain.LoanCollateral
 	branchCodes   []string
 	existing      []domain.LoanCollateral
-	sums          map[uuid.UUID]decimal.Decimal
-	sumErr        error
-	sumCalled     bool
+	active        []domain.LoanCollateral
+	listErr       error
+	listCalled    bool
 	summaryBranch string
 	summary       []domain.CollateralSummary
 }
@@ -42,14 +42,14 @@ func (r *collateralRepoStub) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return nil, domain.ErrCollateralNotFound
 }
 
-// SumActiveBoundByLoan dipakai jalur PPAP. Nilai dikembalikan dari peta tetap agar test
+// ListActiveByLoans dipakai jalur PPAP. Daftar dikembalikan dari data tetap agar test
 // dapat memeriksa perilaku saklar tanpa database.
-func (r *collateralRepoStub) SumActiveBoundByLoan(ctx context.Context, loanIDs []uuid.UUID) (map[uuid.UUID]decimal.Decimal, error) {
-	r.sumCalled = true
-	if r.sumErr != nil {
-		return nil, r.sumErr
+func (r *collateralRepoStub) ListActiveByLoans(ctx context.Context, loanIDs []uuid.UUID) ([]domain.LoanCollateral, error) {
+	r.listCalled = true
+	if r.listErr != nil {
+		return nil, r.listErr
 	}
-	return r.sums, nil
+	return r.active, nil
 }
 
 // SummaryActive mencatat kode cabang yang diterima agar pemetaan dari aktor dapat diuji.
@@ -79,6 +79,26 @@ func (c *collateralConfigStub) GetString(ctx context.Context, key, fallback stri
 	}
 	return fallback
 }
+
+// Metode lain memakai fallback apa adanya; stub ini hanya menguji perilaku bacaan string
+// (haircut dan saklar), tetapi harus memenuhi seluruh SystemConfigService agar jalur PPAP
+// harian dapat dijalankan di test tanpa database.
+func (c *collateralConfigStub) GetDecimal(ctx context.Context, key string, fallback decimal.Decimal) decimal.Decimal {
+	if v, ok := c.values[key]; ok {
+		if parsed, err := decimal.NewFromString(v); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func (c *collateralConfigStub) GetInt(_ context.Context, _ string, fallback int) int { return fallback }
+
+func (c *collateralConfigStub) GetBool(_ context.Context, _ string, fallback bool) bool {
+	return fallback
+}
+
+func (c *collateralConfigStub) Invalidate(string) {}
 
 func collateralInput() domain.CollateralInput {
 	return domain.CollateralInput{
