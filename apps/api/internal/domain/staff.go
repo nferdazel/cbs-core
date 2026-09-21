@@ -17,7 +17,7 @@ var (
 	ErrSessionRevoked      = errors.New("session has been revoked")
 	ErrInvalidToken        = errors.New("invalid or malformed token")
 	ErrForbidden           = errors.New("you do not have permission to perform this action")
-	ErrPasswordExpired     = errors.New("password has expired, please change it")
+	ErrPasswordExpired     = errors.New("password kedaluwarsa, ganti password terlebih dahulu")
 	// ErrStaffRoleNotManageable menolak perubahan atas akun staf yang perannya
 	// setingkat atau lebih tinggi dari pelaku.
 	ErrStaffRoleNotManageable = errors.New("peran Anda tidak berwenang mengubah akun ini")
@@ -287,6 +287,11 @@ type JWTClaims struct {
 	Role       StaffRole `json:"role"`
 	BranchCode string    `json:"branch"`
 	SessionID  uuid.UUID `json:"sid"`
+	// PasswordExpired menandai token yang diterbitkan saat kata sandi sudah
+	// kedaluwarsa. Token semacam ini hanya boleh dipakai untuk mengganti kata
+	// sandi (lihat middleware.RequirePasswordChange), bukan ditolak saat login,
+	// supaya pengguna tetap punya jalur pulih.
+	PasswordExpired bool `json:"pwd_expired"`
 }
 
 // ToActor membangun identitas pelaku dari claims. IP address diisi terpisah oleh
@@ -330,11 +335,15 @@ type LoginInput struct {
 // cookie) tetapi token TIDAK diserialisasi ke body. Hanya expires_in dan profil
 // user yang dikirim ke klien.
 type LoginResponse struct {
-	AccessToken      string     `json:"-"`
-	RefreshToken     string     `json:"-"`
-	ExpiresIn        int        `json:"expires_in"`         // access token, detik
-	RefreshExpiresIn int        `json:"refresh_expires_in"` // refresh token, detik
-	User             *StaffUser `json:"user"`
+	AccessToken      string `json:"-"`
+	RefreshToken     string `json:"-"`
+	ExpiresIn        int    `json:"expires_in"`         // access token, detik
+	RefreshExpiresIn int    `json:"refresh_expires_in"` // refresh token, detik
+	// PasswordExpired memberitahu klien bahwa token yang baru diterbitkan hanya
+	// boleh dipakai untuk mengganti kata sandi, sehingga antarmuka dapat
+	// mengarahkan ke halaman ganti kata sandi.
+	PasswordExpired bool       `json:"password_expired"`
+	User            *StaffUser `json:"user"`
 }
 
 type RefreshInput struct {

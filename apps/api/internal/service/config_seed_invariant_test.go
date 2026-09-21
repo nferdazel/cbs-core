@@ -25,8 +25,7 @@ import (
 // string di sumber produksi) ditambah kunci yang dibangun saat runtime (keluarga
 // limit.*, haircut, PD/LGD, tarif PPAP, ambang maker-checker), lalu membandingkannya
 // dengan kunci yang di-seed berkas migrasi. Kunci yang dibaca tetapi tidak di-seed
-// MENGGAGALKAN uji; kunci yang di-seed tetapi tidak dibaca juga menggagalkan uji
-// (kecuali pengecualian eksplisit di bawah).
+// MENGGAGALKAN uji; kunci yang di-seed tetapi tidak dibaca juga menggagalkan uji.
 //
 // Menambah kunci baru di kode: seeder harus menambahkannya ke migrasi, atau bila kunci
 // itu memang dibuat runtime (bukan kebijakan bank), tambahkan ke
@@ -50,11 +49,12 @@ var configKeyRuntimeExceptions = map[string]string{
 	"ppap.last_run_business_date": "penanda run PPAP ditulis batch saat PPAP berjalan (migrasi 000052 milik perubahan lain)",
 }
 
-// configKeySeedExceptions adalah kunci yang sengaja tetap di-seed meski belum dibaca
-// kode, karena mewakili kontrol keamanan yang seharusnya ada.
-var configKeySeedExceptions = map[string]string{
-	"auth.password_expiry_days": "kebijakan kedaluwarsa password (kontrol keamanan); penegakannya belum diimplementasikan di jalur login",
-}
+// configKeySeedExceptions sudah tidak diperlukan. Satu-satunya pengecualian dulu
+// adalah auth.password_expiry_days, yang di-seed tetapi belum dibaca kode. Setelah
+// penegakan kedaluwarsa diimplementasikan (auth_service.go membacanya), kunci itu
+// benar-benar dipakai sehingga pengecualian seed dihapus. Bila kelak ada kunci seed
+// yang sengaja dipertahankan tanpa pembaca, kembalikan peta pengecualian di sini
+// beserta alasannya.
 
 func configSeedRepoRoot(t *testing.T) string {
 	t.Helper()
@@ -98,9 +98,6 @@ func TestConfigSeedInvariant(t *testing.T) {
 	var stale []string
 	for key := range seeded {
 		if _, ok := read[key]; ok {
-			continue
-		}
-		if _, excused := configKeySeedExceptions[key]; excused {
 			continue
 		}
 		stale = append(stale, key)

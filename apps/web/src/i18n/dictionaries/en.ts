@@ -243,8 +243,8 @@ export const dictionaryEN: Dictionary = {
     txType: {
       DEPOSIT: "Deposit",
       WITHDRAWAL: "Withdrawal",
-      TRANSFER_INTERNAL: "Internal Transfer",
-      REVERSAL: "Reversal",
+      // The limit guard reads the TRANSFER config key, not an internal-transfer alias.
+      TRANSFER: "Internal Transfer",
     },
     source: {
       config: "System configuration",

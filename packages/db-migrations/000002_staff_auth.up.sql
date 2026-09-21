@@ -80,8 +80,8 @@ INSERT INTO system_config (key, value, description) VALUES
 ('auth.max_failed_logins',         '5',   'Failed login attempts before account lock'),
 ('auth.lockout_minutes',           '15',  'Account lockout duration in minutes'),
 
--- Password policy
-('auth.password_expiry_days', '90', 'Days before password must be changed');
+-- Password policy (0 = kedaluwarsa nonaktif; bank mengisi N hari untuk mengaktifkan)
+('auth.password_expiry_days', '0', 'Masa berlaku kata sandi (hari). 0 = nonaktif (kedaluwarsa tidak ditegakkan). Bank mengisi N hari untuk mengaktifkan.');
 
 -- 5. Add staff_user_id to audit_logs for richer trail
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS staff_user_id UUID REFERENCES staff_users(id) ON DELETE SET NULL;

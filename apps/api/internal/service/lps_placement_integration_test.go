@@ -64,10 +64,17 @@ func TestIntegrasiLPSPlacementPengurangPasal23(t *testing.T) {
 	branchACode := branchCodeOf(t, e, branchA)
 	actorA := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujilps", Role: domain.RoleAdmin, BranchCode: branchACode}
 
+	// Nama bank lawan unik per run. Plafon LPS diuji service atas JUMLAH pengurang per
+	// bank lawan (lihat lps_placement_service.go: deductionByBank per CounterpartyBank).
+	// Nama tetap membuat penempatan run sebelumnya ikut terjumlah hingga melewati plafon,
+	// sehingga uji gagal pada database yang sudah terakumulasi meski datanya benar.
+	bankA := "Bank Uji A " + uuid.New().String()
+	bankB := "Bank Uji B " + uuid.New().String()
+
 	// Cabang A: contoh 1 Penjelasan Pasal 23 -> PPKA umum 0,5% x (10 miliar - 2 miliar).
-	placeA := insertLPSPlacement(t, e, "10200", "Bank Uji A", "DEPOSITO", "LANCAR", 10_000_000_000, 2_000_000_000, branchA)
+	placeA := insertLPSPlacement(t, e, "10200", bankA, "DEPOSITO", "LANCAR", 10_000_000_000, 2_000_000_000, branchA)
 	// Cabang B: contoh 2 -> PPKA khusus 10% x (10 miliar - 2 miliar).
-	insertLPSPlacement(t, e, "10200", "Bank Uji B", "GIRO", "KURANG_LANCAR", 10_000_000_000, 2_000_000_000, branchB)
+	placeB := insertLPSPlacement(t, e, "10200", bankB, "GIRO", "KURANG_LANCAR", 10_000_000_000, 2_000_000_000, branchB)
 
 	svc := newLPSSvcForTest(e)
 
@@ -95,11 +102,31 @@ func TestIntegrasiLPSPlacementPengurangPasal23(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Calculate lintas cabang: %v", err)
 	}
-	if summaryAll.Total != 2 || summaryAll.Processed != 2 {
-		t.Fatalf("lintas cabang total=%d processed=%d, mau 2", summaryAll.Total, summaryAll.Processed)
+	// Database bisa memuat penempatan uji lain (run sebelumnya maupun uji OJK), jadi
+	// ekspektasi TIDAK diambil dari total bank-wide. Sebagai gantinya buktikan kedua
+	// baris uji ini sendiri terlihat oleh aktor lintas cabang, termasuk cabang B.
+	itemAAll := lpsItem(t, summaryAll, placeA)
+	itemBAll := lpsItem(t, summaryAll, placeB)
+
+	// Baris cabang A tetap harus PPKA umum 0,5%.
+	if !itemAAll.PPKA.Equal(decimal.NewFromInt(40_000_000)) || itemAAll.AppliesTo != "UMUM" {
+		t.Fatalf("lintas cabang PPKA umum %s (%s), mau 40000000 (UMUM)", itemAAll.PPKA, itemAAll.AppliesTo)
 	}
-	if !summaryAll.TotalDeduction.Equal(decimal.NewFromInt(4_000_000_000)) {
-		t.Fatalf("total pengurang %s, mau 4000000000", summaryAll.TotalDeduction)
+
+	// Baris cabang B membuktikan PPKA khusus 10% x (10 miliar - 2 miliar) = 800 juta.
+	if !itemBAll.Deduction.Equal(decimal.NewFromInt(2_000_000_000)) {
+		t.Fatalf("lintas cabang pengurang B %s, mau 2000000000", itemBAll.Deduction)
+	}
+	if !itemBAll.Base.Equal(decimal.NewFromInt(8_000_000_000)) {
+		t.Fatalf("lintas cabang dasar B %s, mau 8000000000", itemBAll.Base)
+	}
+	if !itemBAll.PPKA.Equal(decimal.NewFromInt(800_000_000)) || itemBAll.AppliesTo != "KHUSUS" {
+		t.Fatalf("lintas cabang PPKA khusus %s (%s), mau 800000000 (KHUSUS)", itemBAll.PPKA, itemBAll.AppliesTo)
+	}
+
+	// Jumlah pengurang kedua baris uji ini tetap 4 miliar, dihitung dari data sendiri.
+	if own := itemAAll.Deduction.Add(itemBAll.Deduction); !own.Equal(decimal.NewFromInt(4_000_000_000)) {
+		t.Fatalf("jumlah pengurang baris uji %s, mau 4000000000", own)
 	}
 }
 

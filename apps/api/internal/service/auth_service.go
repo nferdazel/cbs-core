@@ -49,6 +49,19 @@ func (s *authService) getConfigInt(ctx context.Context, key string, defaultVal i
 	return n
 }
 
+// isPasswordExpired menghitung umur kata sandi terhadap kebijakan
+// auth.password_expiry_days. Nilai 0 atau negatif berarti penegakan nonaktif
+// (bawaan produksi; bank mengisi N hari untuk mengaktifkannya). Tanggal ubah yang
+// kosong diperlakukan belum kedaluwarsa supaya akun lama yang datanya belum
+// lengkap tidak langsung terkunci.
+func (s *authService) isPasswordExpired(ctx context.Context, user *domain.StaffUser) bool {
+	days := s.getConfigInt(ctx, "auth.password_expiry_days", 0)
+	if days <= 0 || user.PasswordChangedAt.IsZero() {
+		return false
+	}
+	return time.Since(user.PasswordChangedAt) > time.Duration(days)*24*time.Hour
+}
+
 func (s *authService) Login(ctx context.Context, input domain.LoginInput) (*domain.LoginResponse, error) {
 	user, err := s.staffRepo.GetByUsername(ctx, input.Username)
 	if err != nil {
@@ -86,8 +99,13 @@ func (s *authService) Login(ctx context.Context, input domain.LoginInput) (*doma
 	atTTL := s.getConfigInt(ctx, "auth.access_token_ttl_minutes", 15)
 	rtTTL := s.getConfigInt(ctx, "auth.refresh_token_ttl_hours", 8)
 
+	// Kata sandi yang kedaluwarsa TIDAK menolak login: pengguna tetap menerima
+	// token, tetapi tokennya ditandai dan middleware membatasinya hanya untuk
+	// mengganti kata sandi. Menolak login akan mengunci akun tanpa jalur pulih.
+	passwordExpired := s.isPasswordExpired(ctx, user)
+
 	sessionID := uuid.New()
-	accessToken, err := s.generateAccessToken(user, sessionID, atTTL)
+	accessToken, err := s.generateAccessToken(user, sessionID, atTTL, passwordExpired)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -116,6 +134,7 @@ func (s *authService) Login(ctx context.Context, input domain.LoginInput) (*doma
 		RefreshToken:     refreshToken,
 		ExpiresIn:        atTTL * 60,
 		RefreshExpiresIn: rtTTL * 3600,
+		PasswordExpired:  passwordExpired,
 		User:             user,
 	}, nil
 }
@@ -148,8 +167,13 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*domain
 	atTTL := s.getConfigInt(ctx, "auth.access_token_ttl_minutes", 15)
 	rtTTL := s.getConfigInt(ctx, "auth.refresh_token_ttl_hours", 8)
 
+	// Penanda kedaluwarsa dihitung ulang saat refresh: bila kata sandi sudah
+	// kedaluwarsa, token baru tetap terbatas dan tidak menjadi jalan pintas
+	// menembus pembatasan.
+	passwordExpired := s.isPasswordExpired(ctx, user)
+
 	newSessionID := uuid.New()
-	accessToken, err := s.generateAccessToken(user, newSessionID, atTTL)
+	accessToken, err := s.generateAccessToken(user, newSessionID, atTTL, passwordExpired)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +201,7 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*domain
 		RefreshToken:     newRefreshToken,
 		ExpiresIn:        atTTL * 60,
 		RefreshExpiresIn: rtTTL * 3600,
+		PasswordExpired:  passwordExpired,
 		User:             user,
 	}, nil
 }
@@ -236,24 +261,32 @@ func (s *authService) ValidateAccessToken(ctx context.Context, tokenString strin
 		return nil, domain.ErrAccountLocked
 	}
 
+	// mc adalah jwt.MapClaims; nilai bool diambil dengan aman (klaim lama mungkin
+	// belum memuat penanda ini).
+	pwdExpired, _ := mc["pwd_expired"].(bool)
+
 	return &domain.JWTClaims{
 		UserID:     identity.UserID,
 		Username:   identity.Username,
 		Role:       identity.Role,
 		BranchCode: identity.BranchCode,
 		SessionID:  identity.SessionID,
+		// Penanda ini dibaca dari klaim, bukan dari basis data: status kedaluwarsa
+		// dibekukan saat token diterbitkan agar konsisten dengan keputusan login.
+		PasswordExpired: pwdExpired,
 	}, nil
 }
 
-func (s *authService) generateAccessToken(user *domain.StaffUser, sessionID uuid.UUID, ttlMinutes int) (string, error) {
+func (s *authService) generateAccessToken(user *domain.StaffUser, sessionID uuid.UUID, ttlMinutes int, passwordExpired bool) (string, error) {
 	claims := jwt.MapClaims{
-		"uid":      user.ID.String(),
-		"username": user.Username,
-		"role":     string(user.Role),
-		"branch":   user.BranchCode,
-		"sid":      sessionID.String(),
-		"exp":      time.Now().Add(time.Duration(ttlMinutes) * time.Minute).Unix(),
-		"iat":      time.Now().Unix(),
+		"uid":         user.ID.String(),
+		"username":    user.Username,
+		"role":        string(user.Role),
+		"branch":      user.BranchCode,
+		"sid":         sessionID.String(),
+		"pwd_expired": passwordExpired,
+		"exp":         time.Now().Add(time.Duration(ttlMinutes) * time.Minute).Unix(),
+		"iat":         time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.jwtSecret)

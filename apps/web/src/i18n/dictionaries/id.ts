@@ -241,8 +241,8 @@ export const dictionaryID = {
     txType: {
       DEPOSIT: "Setoran",
       WITHDRAWAL: "Penarikan",
-      TRANSFER_INTERNAL: "Transfer Internal",
-      REVERSAL: "Pembatalan",
+      // Penjaga batas membaca kunci konfigurasi TRANSFER, bukan nama varian internalnya.
+      TRANSFER: "Transfer Internal",
     },
     source: {
       config: "Konfigurasi sistem",

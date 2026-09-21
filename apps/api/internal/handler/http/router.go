@@ -128,6 +128,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 		// ── All routes below require authentication ──
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware(p.AuthService, p.Cookies))
+			// Token berpenanda kata sandi kedaluwarsa hanya boleh mengganti kata
+			// sandi. Didaftarkan di sini (setelah AuthMiddleware) agar rute /auth/me
+			// dan logout tetap bebas, sedangkan seluruh rute bisnis lain ditolak 403.
+			r.Use(middleware.RequirePasswordChange)
 			r.Use(middleware.CSRFMiddleware(p.Cookies))
 
 			// ── Staff Management (Admin & SuperAdmin only) ──

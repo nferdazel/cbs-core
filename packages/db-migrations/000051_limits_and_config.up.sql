@@ -147,6 +147,7 @@ INSERT INTO system_config (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- Catatan: auth.password_expiry_days TIDAK dihapus. Kunci itu kontrol keamanan
--- (kedaluwarsa password) yang seharusnya ada. Penegakannya belum diimplementasikan
--- di jalur login karena memaksa penggantian tanpa jalur ganti-password mandiri akan
--- mengunci pengguna; bukan bagian dari migrasi ini.
+-- (kedaluwarsa kata sandi). Nilainya di-seed di 000002 dan dinonaktifkan (0) oleh
+-- migrasi 000053 saat penegakannya diimplementasikan di jalur login/refresh; bank
+-- mengisi N hari untuk mengaktifkan. Kunci ini tidak di-seed ulang di sini, agar
+-- nilai yang disesuaikan operator tidak tertimpa.
