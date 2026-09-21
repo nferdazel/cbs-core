@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -9,13 +9,24 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, helperText, isMono = false, className = "", ...props }, ref) => {
+    // Label harus terhubung ke input lewat htmlFor/id agar pembaca layar membacakan
+    // nama field, bukan sekadar teks visual di sebelahnya. id pemanggil dipakai bila ada.
+    const generatedId = useId();
+    const inputId = props.id ?? generatedId;
+
     return (
       <div className="w-full space-y-1">
         {label && (
-          <label className="block text-meta font-medium text-ink-600">{label}</label>
+          <label
+            htmlFor={inputId}
+            className="block text-meta font-medium text-ink-600"
+          >
+            {label}
+          </label>
         )}
         <input
           ref={ref}
+          id={inputId}
           className={`h-9 w-full rounded-md border bg-surface px-3 text-body text-ink-900 placeholder:text-ink-400 transition-colors duration-fast focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-400 ${
             isMono ? "font-mono" : "font-sans"
           } ${error ? "border-debit-700 focus:border-debit-700 focus:ring-debit-700" : "border-border-strong"} ${className}`}

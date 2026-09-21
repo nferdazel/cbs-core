@@ -108,8 +108,10 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 	record.UpdatedAt = record.CreatedAt
 
 	// Deteksi duplikat lewat blind index sebelum insert, agar pesannya jelas
-	// dan tidak bergantung pada pesan unique violation dari database.
-	if existing, err := s.repo.FindByIDCard(ctx, record.IDCardIndex); err == nil && existing != nil {
+	// dan tidak bergantung pada pesan unique violation dari database. Kandidat
+	// lintas versi dipakai agar NIK yang terdaftar dengan kunci indeks lama tetap
+	// terdeteksi setelah kunci diganti.
+	if existing, err := s.repo.FindByIDCard(ctx, s.cipher.BlindIndexCandidates(input.IDCardNumber)); err == nil && existing != nil {
 		return nil, domain.ErrDuplicateIDCard
 	} else if err != nil && !errors.Is(err, domain.ErrCustomerNotFound) {
 		return nil, err
@@ -234,7 +236,9 @@ func (s *customerService) searchQuery(term string) domain.CustomerQuery {
 	}
 	if isNIK(term) {
 		if s.cipher != nil {
-			return domain.CustomerQuery{IDCardIndex: s.cipher.BlindIndex(term)}
+			// Kandidat semua versi kunci indeks: baris dengan kunci lama tetap
+			// ditemukan meski kunci indeks aktif sudah diganti.
+			return domain.CustomerQuery{IDCardIndexes: s.cipher.BlindIndexCandidates(term)}
 		}
 		// Tanpa cipher NIK tidak bisa diindeks; jatuh ke awalan CIF apa adanya agar
 		// tidak memaksa hash yang tidak akan pernah cocok.
@@ -248,16 +252,17 @@ func (s *customerService) searchQuery(term string) domain.CustomerQuery {
 	if s.cipher == nil {
 		return domain.CustomerQuery{CIF: term}
 	}
-	indexes := s.nameTokenIndexes(term)
-	if len(indexes) == 0 {
+	candidates := s.nameTokenCandidates(term)
+	if len(candidates) == 0 {
 		return domain.CustomerQuery{}
 	}
-	return domain.CustomerQuery{NameTokenIndexes: indexes}
+	return domain.CustomerQuery{NameTokenIndexes: candidates}
 }
 
 // nameTokenIndexes menormalkan nama menjadi kata lalu menghitung blind index tiap
-// kata. Nil mengembalikan nil bila cipher tidak ada atau nama tidak punya kata
-// bermakna, sehingga tidak ada token sampah yang ditulis.
+// kata dengan kunci indeks AKTIF, untuk ditulis ke tabel token. Nil mengembalikan
+// nil bila cipher tidak ada atau nama tidak punya kata bermakna, sehingga tidak ada
+// token sampah yang ditulis.
 func (s *customerService) nameTokenIndexes(fullName string) []string {
 	if s.cipher == nil {
 		return nil
@@ -271,6 +276,23 @@ func (s *customerService) nameTokenIndexes(fullName string) []string {
 		indexes = append(indexes, s.cipher.NameTokenIndex(token))
 	}
 	return indexes
+}
+
+// nameTokenCandidates menghitung kandidat indeks tiap kata lintas versi kunci,
+// dipakai saat pencarian agar baris lama dan baru menyatu.
+func (s *customerService) nameTokenCandidates(fullName string) [][]string {
+	if s.cipher == nil {
+		return nil
+	}
+	tokens := domain.NormalizeNameTokens(fullName)
+	if len(tokens) == 0 {
+		return nil
+	}
+	candidates := make([][]string, 0, len(tokens))
+	for _, token := range tokens {
+		candidates = append(candidates, s.cipher.NameTokenIndexCandidates(token))
+	}
+	return candidates
 }
 
 // looksLikeCIF melaporkan apakah kata kunci berbentuk nomor CIF. CIF selalu
@@ -369,6 +391,10 @@ func (s *customerService) encryptInput(input domain.CreateCustomerInput) (*domai
 		EmailEnc:        email,
 		PhoneNumberEnc:  phone,
 		AddressEnc:      address,
+		// Versi kunci indeks yang membentuk IDCardIndex/EmailIndex/NameTokenIndexes.
+		// Dicatat per baris supaya rotasi kunci berikutnya tahu baris mana yang perlu
+		// diindeks ulang.
+		IndexKeyVersion: s.cipher.IndexKeyVersion(),
 	}
 	// Token nama ikut dihitung di sini agar tersedia sebelum insert; repository
 	// menuliskannya dalam transaksi yang sama dengan nasabahnya.

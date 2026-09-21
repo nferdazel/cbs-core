@@ -23,8 +23,8 @@ func NewCustomerRepository(db *sql.DB) *CustomerRepository {
 }
 
 const customerColumns = `id, cif_number, full_name_enc, id_card_number_enc, email_enc,
-	phone_number_enc, address_enc, id_card_index, email_index, status, branch_id,
-	metadata, created_at, updated_at`
+	phone_number_enc, address_enc, id_card_index, email_index, index_key_version,
+	status, branch_id, metadata, created_at, updated_at`
 
 func (r *CustomerRepository) Create(ctx context.Context, c *domain.CustomerRecord) error {
 	return r.executeCreate(ctx, r.db, c)
@@ -47,10 +47,10 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 	query := `
 		INSERT INTO customers (
 			id, cif_number, full_name_enc, id_card_number_enc, email_enc,
-			phone_number_enc, address_enc, id_card_index, email_index,
+			phone_number_enc, address_enc, id_card_index, email_index, index_key_version,
 			status, branch_id, metadata, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	// Blind index kosong disimpan sebagai NULL, bukan string kosong. Indeks unik
 	// email_index bersifat parsial (WHERE email_index IS NOT NULL); menyimpan ""
@@ -58,9 +58,15 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 	// ini harus benar-benar kosong saat tidak ada.
 	idCardIndex := sql.NullString{String: c.IDCardIndex, Valid: c.IDCardIndex != ""}
 	emailIndex := sql.NullString{String: c.EmailIndex, Valid: c.EmailIndex != ""}
+	// Baris yang belum mencatat versi (pemanggil lama) dianggap memakai kunci
+	// enkripsi bawaan "k1", sama dengan nilai DEFAULT kolom di migrasi 000048.
+	indexKeyVersion := c.IndexKeyVersion
+	if indexKeyVersion == "" {
+		indexKeyVersion = "k1"
+	}
 	_, err = exec.ExecContext(ctx, query,
 		c.ID, c.CIFNumber, c.FullNameEnc, c.IDCardNumberEnc, c.EmailEnc,
-		c.PhoneNumberEnc, c.AddressEnc, idCardIndex, emailIndex,
+		c.PhoneNumberEnc, c.AddressEnc, idCardIndex, emailIndex, indexKeyVersion,
 		c.Status, c.BranchID, metaJSON, c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
@@ -68,7 +74,7 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 	}
 	// Token nama ditulis lewat handler exec yang sama, sehingga pada CreateTx token
 	// ikut dalam transaksi yang sama dengan nasabahnya (atomik).
-	if err := insertNameTokens(ctx, exec, c.ID, c.NameTokenIndexes); err != nil {
+	if err := insertNameTokens(ctx, exec, c.ID, c.NameTokenIndexes, indexKeyVersion); err != nil {
 		return err
 	}
 	return nil
@@ -78,15 +84,15 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 // operasi ini aman terhadap pengulangan (mis. backfill) dan terhadap kata kembar.
 func insertNameTokens(ctx context.Context, exec interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, customerID uuid.UUID, tokenIndexes []string) error {
+}, customerID uuid.UUID, tokenIndexes []string, indexKeyVersion string) error {
 	for _, index := range tokenIndexes {
 		if index == "" {
 			continue
 		}
 		_, err := exec.ExecContext(ctx,
-			`INSERT INTO customer_name_tokens (customer_id, token_index) VALUES ($1, $2)
+			`INSERT INTO customer_name_tokens (customer_id, token_index, index_key_version) VALUES ($1, $2, $3)
 			 ON CONFLICT (customer_id, token_index) DO NOTHING`,
-			customerID, index,
+			customerID, index, indexKeyVersion,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert customer name token: %w", err)
@@ -99,11 +105,11 @@ func insertNameTokens(ctx context.Context, exec interface {
 // transaksi pemanggil. Hapus-lalu-isi diperlukan karena nama yang diubah bisa
 // membuang kata lama; tanpa ini token lama tetap mencocokkan nasabah pada kata yang
 // sudah tidak ada di namanya.
-func (r *CustomerRepository) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error {
+func (r *CustomerRepository) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string, indexKeyVersion string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM customer_name_tokens WHERE customer_id = $1`, customerID); err != nil {
 		return fmt.Errorf("failed to delete old customer name tokens: %w", err)
 	}
-	return insertNameTokens(ctx, tx, customerID, tokenIndexes)
+	return insertNameTokens(ctx, tx, customerID, tokenIndexes, indexKeyVersion)
 }
 
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.CustomerRecord, error) {
@@ -116,9 +122,15 @@ func (r *CustomerRepository) GetByCIF(ctx context.Context, cif string) (*domain.
 	return r.scanOne(ctx, query, cif)
 }
 
-func (r *CustomerRepository) FindByIDCard(ctx context.Context, idCardIndex string) (*domain.CustomerRecord, error) {
-	query := `SELECT ` + customerColumns + ` FROM customers WHERE id_card_index = $1`
-	return r.scanOne(ctx, query, idCardIndex)
+// FindByIDCard mencari NIK lewat kandidat blind index lintas versi kunci. ANY
+// memastikan NIK yang terdaftar dengan kunci indeks lama tetap terdeteksi sebagai
+// duplikat saat kunci indeks sudah diganti.
+func (r *CustomerRepository) FindByIDCard(ctx context.Context, idCardIndexes []string) (*domain.CustomerRecord, error) {
+	if len(idCardIndexes) == 0 {
+		return nil, domain.ErrCustomerNotFound
+	}
+	query := `SELECT ` + customerColumns + ` FROM customers WHERE id_card_index = ANY($1)`
+	return r.scanOne(ctx, query, idCardIndexes)
 }
 
 func (r *CustomerRepository) List(ctx context.Context, limit, offset int, q domain.CustomerQuery, actor domain.Actor) ([]domain.CustomerRecord, int, error) {
@@ -130,9 +142,11 @@ func (r *CustomerRepository) List(ctx context.Context, limit, offset int, q doma
 		whereArgs = append(whereArgs, pattern)
 		where = andCondition(where, fmt.Sprintf("cif_number ILIKE $%d ESCAPE '\\'", len(whereArgs)))
 	}
-	if q.IDCardIndex != "" {
-		whereArgs = append(whereArgs, q.IDCardIndex)
-		where = andCondition(where, fmt.Sprintf("id_card_index = $%d", len(whereArgs)))
+	// Kandidat lintas versi kunci indeks dikirim sebagai satu array; ANY mencocokkan
+	// baris yang diindeks dengan kunci lama maupun baru sekaligus.
+	if len(q.IDCardIndexes) > 0 {
+		whereArgs = append(whereArgs, q.IDCardIndexes)
+		where = andCondition(where, fmt.Sprintf("id_card_index = ANY($%d)", len(whereArgs)))
 	}
 	// Pencarian nama: satu kondisi EXISTS per kata, digabung AND, sehingga semua
 	// kata yang diketik harus ada pada nama nasabah yang sama.
@@ -197,7 +211,7 @@ func scanCustomer(row rowScanner) (*domain.CustomerRecord, error) {
 
 	if err := row.Scan(
 		&c.ID, &c.CIFNumber, &fullName, &idCard, &email, &phone, &address,
-		&idCardIdx, &emailIdx, &c.Status, &c.BranchID, &metaBytes, &c.CreatedAt, &c.UpdatedAt,
+		&idCardIdx, &emailIdx, &c.IndexKeyVersion, &c.Status, &c.BranchID, &metaBytes, &c.CreatedAt, &c.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}

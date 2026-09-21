@@ -199,16 +199,32 @@ func IsQuarterMonth(t time.Time) bool {
 	}
 }
 
+// KomponenRasio membawa komponen yang tidak berasal dari Form 01.00/02.00: kualitas
+// kredit (untuk NPL) dan rata-rata total aset (untuk ROA). Zero-value berarti
+// komponen belum tersedia; Tersedia menegaskan hal itu secara eksplisit.
+type KomponenRasio struct {
+	Kredit            KomponenKreditNPL
+	RataRataTotalAset decimal.Decimal
+	// RataRataTotalAsetTersedia false berarti rata-rata belum dapat diturunkan.
+	RataRataTotalAsetTersedia bool
+}
+
 // RasioKeuangan menghitung seluruh baris Form 00.08 dari angka Form 01.00
-// (amounts01) dan Form 02.00 (amounts02) yang sudah dihitung builder. Rasio yang
+// (amounts01) dan Form 02.00 (amounts02) yang sudah dihitung builder, ditambah
+// komponen opsional (kualitas kredit dan rata-rata total aset). Rasio yang
 // komponennya belum tersedia tetap dikembalikan dengan Tersedia=false dan Alasan
 // terisi, supaya tidak pernah tertukar dengan nilai nol.
-func RasioKeuangan(period time.Time, amounts01, amounts02 map[string]decimal.Decimal) []RasioHasil {
+func RasioKeuangan(period time.Time, amounts01, amounts02 map[string]decimal.Decimal, extra ...KomponenRasio) []RasioHasil {
 	triwulanan := IsQuarterMonth(period)
+	var komponen KomponenRasio
+	if len(extra) > 0 {
+		komponen = extra[0]
+	}
 	bebanOperasional := amounts02["5100000000"]
 	pendapatanOperasional := amounts02["4100000000"]
 	kredit := jumlahSandi(amounts01, kreditDiberikanSandi)
 	danaPihakKetiga := jumlahSandi(amounts01, danaPihakKetigaSandi)
+	labaSebelumPajak := amounts02["3104040300"]
 
 	out := make([]RasioHasil, 0, len(rasioKeuanganDefinisi))
 	for _, d := range rasioKeuanganDefinisi {
@@ -226,12 +242,43 @@ func RasioKeuangan(period time.Time, amounts01, amounts02 map[string]decimal.Dec
 			if !h.Tersedia {
 				h.Alasan = "dana pihak ketiga bukan bank nol atau tidak tersedia pada laporan posisi keuangan"
 			}
+		case d.Sandi == sandiNPLGross:
+			h.NilaiPersen, h.Tersedia, h.Alasan = hitungNPL(komponen.Kredit, false)
+		case d.Sandi == sandiNPLNeto:
+			h.NilaiPersen, h.Tersedia, h.Alasan = hitungNPL(komponen.Kredit, true)
+		case d.Sandi == sandiROA:
+			if !komponen.RataRataTotalAsetTersedia {
+				h.Alasan = d.AlasanKosong
+				break
+			}
+			h.NilaiPersen, h.Tersedia = RumusROA(labaSebelumPajak, komponen.RataRataTotalAset)
+			if !h.Tersedia {
+				h.Alasan = "rata-rata total aset nol sehingga ROA tidak dapat dihitung"
+			}
 		default:
 			h.Alasan = d.AlasanKosong
 		}
 		out = append(out, h)
 	}
 	return out
+}
+
+// hitungNPL menghitung NPL gross/neto dari komponen kredit. Bila komponen kredit
+// belum tersedia, hasilnya dinyatakan tidak tersedia beserta alasan spesifik, bukan
+// nol. neto=true mengurangkan CKPN kredit tidak lancar (Lampiran II hlm. 204 butir 3).
+func hitungNPL(k KomponenKreditNPL, neto bool) (decimal.Decimal, bool, string) {
+	if !k.Tersedia {
+		return decimal.Zero, false, "kualitas kredit per debitur belum tersedia; baki debet dan CKPN per kredit belum dibaca"
+	}
+	if k.TotalKredit.IsZero() {
+		return decimal.Zero, false, "total kredit yang diberikan nol sehingga NPL tidak dapat dihitung"
+	}
+	if neto {
+		nilai, ok := RumusNPLNeto(k.KurangLancar, k.Diragukan, k.Macet, k.CKPNNPL, k.TotalKredit)
+		return nilai, ok, ""
+	}
+	nilai, ok := RumusNPLGross(k.KurangLancar, k.Diragukan, k.Macet, k.TotalKredit)
+	return nilai, ok, ""
 }
 
 // jumlahSandi menjumlahkan nilai sejumlah sandi; sandi tanpa nilai dianggap nol.

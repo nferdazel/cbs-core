@@ -40,7 +40,7 @@ func (s *stubCustomerRepo) GetByCIF(ctx context.Context, cif string) (*domain.Cu
 	return nil, domain.ErrCustomerNotFound
 }
 
-func (s *stubCustomerRepo) FindByIDCard(ctx context.Context, idCardIndex string) (*domain.CustomerRecord, error) {
+func (s *stubCustomerRepo) FindByIDCard(ctx context.Context, idCardIndexes []string) (*domain.CustomerRecord, error) {
 	return nil, domain.ErrCustomerNotFound
 }
 
@@ -56,7 +56,7 @@ func (s *stubCustomerRepo) List(ctx context.Context, limit, offset int, q domain
 	return nil, 0, nil
 }
 
-func (s *stubCustomerRepo) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error {
+func (s *stubCustomerRepo) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string, indexKeyVersion string) error {
 	return nil
 }
 

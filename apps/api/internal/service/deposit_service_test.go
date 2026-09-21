@@ -46,6 +46,10 @@ func (s *stubDepositRepo) Rollover(ctx context.Context, tx any, id uuid.UUID, ne
 type stubDepositProductRepo struct {
 	product *domain.BankingProduct
 	err     error
+	// mappingRules/mappingErr menguji jalur pemetaan jurnal: membedakan "tidak ada
+	// pemetaan" (boleh jatuh ke COA bawaan) dari "galat pembacaan" (harus gagal).
+	mappingRules []domain.JournalMappingRule
+	mappingErr   error
 }
 
 func (s *stubDepositProductRepo) List(ctx context.Context) ([]domain.BankingProduct, error) {
@@ -61,7 +65,7 @@ func (s *stubDepositProductRepo) GetByCode(ctx context.Context, code string) (*d
 	return s.product, s.err
 }
 func (s *stubDepositProductRepo) GetMapping(ctx context.Context, productID uuid.UUID, event domain.PostingEvent) ([]domain.JournalMappingRule, error) {
-	return nil, nil
+	return s.mappingRules, s.mappingErr
 }
 
 type stubDepositPoster struct {

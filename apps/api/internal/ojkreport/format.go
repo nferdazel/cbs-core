@@ -45,6 +45,7 @@ func WriteText(w io.Writer, b *Bundle) error {
 		fmt.Sprintf("# Kolom            : FORM%sSANDI%sNAMA POS%sJUMLAH (rupiah penuh, tanpa desimal)",
 			ColumnSeparator, ColumnSeparator, ColumnSeparator),
 		`# Baris form 00.08 diisi dalam persen 2 desimal; "-" berarti tidak tersedia (bukan nol).`,
+		`# Untuk form daftar (00.00, 05.00, 06.00): kolom SANDI memuat kunci baris dan NAMA POS memuat sandi+kolom.`,
 	}
 	for _, line := range metadata {
 		if err := write("%s\n", line); err != nil {
@@ -78,6 +79,40 @@ func WriteText(w io.Writer, b *Bundle) error {
 			if line.UnavailableReason != "" {
 				if err := write("# %s|%s TIDAK TERSEDIA: %s\n",
 					section.Form, line.Sandi, line.UnavailableReason); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, section := range b.Tables {
+		if err := write("# FORM %s - %s (daftar; kunci baris: %s)\n",
+			section.Form, section.Name, section.KeyLabel); err != nil {
+			return err
+		}
+		for _, n := range section.Notes {
+			if err := write("# %s|CATATAN: %s\n", section.Form, n); err != nil {
+				return err
+			}
+		}
+		for _, u := range section.Unavailable {
+			if err := write("# %s|%s %s KOLOM TIDAK TERSEDIA: %s\n",
+				section.Form, u.Sandi, u.Nama, u.Reason); err != nil {
+				return err
+			}
+		}
+		for _, row := range section.Rows {
+			if row.Reason != "" {
+				if err := write("# %s|%s TIDAK TERSEDIA: %s\n",
+					section.Form, row.Key, row.Reason); err != nil {
+					return err
+				}
+				continue
+			}
+			for _, cell := range row.Cells {
+				if err := write("%s\n", strings.Join([]string{
+					section.Form, row.Key, cell.Sandi + " " + cell.Nama, cell.Value,
+				}, ColumnSeparator)); err != nil {
 					return err
 				}
 			}

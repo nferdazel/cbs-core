@@ -51,8 +51,14 @@ import (
 // (Pasal 19 ayat (4) huruf b), bukan menjadi pengurang PPKA khusus. Menghitungnya di sini
 // juga akan menghitung satu jaminan dua kali.
 //
-// NJOP pada huruf d dan e belum tersedia sebagai kolom tersendiri; nilai taksasi dipakai
-// sebagai pendekatannya sampai kolom NJOP ditambahkan.
+// Tarif pada fungsi ini adalah batas atas pasal; nilai yang dikalikannya ditentukan
+// Pasal20BaseValue. Untuk huruf d dan e, dasarnya NJOP yang diisi terpisah, bukan nilai
+// taksasi agunan — lihat catatan pada Pasal20BaseValue.
+//
+// Jaminan BUMN/BUMD (huruf i): pemenuhan kriteria penjamin tidak dapat dinilai sistem,
+// sehingga tarifnya hanya berlaku bila operator menyatakannya lewat BumnBumdCriteriaMet.
+// Penanda yang kosong berarti kriteria TIDAK dianggap terpenuhi (bukan pengurang),
+// bukan pemenuhan yang disimpulkan diam-diam.
 func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 	if c == nil {
 		return decimal.Zero, false
@@ -92,8 +98,12 @@ func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 		return pasal20ResiGudangRate(c, asOf)
 	case CollateralJaminanBumnBumd:
 		// Huruf i: paling tinggi 50% untuk bagian Kredit yang dijamin BUMN/BUMD yang
-		// berusaha sebagai penjamin dan memenuhi kriteria KPMM. Pemenuhan kriteria
-		// diperiksa operator; jenis ini menyatakan kriterianya sudah dipenuhi.
+		// berusaha sebagai penjamin dan memenuhi kriteria KPMM. Kriteria itu tidak dapat
+		// dinilai sistem, jadi hanya penanda eksplisit operator yang membuatnya berlaku;
+		// tanpa penanda, nilainya dikeluarkan dari daftar ayat (1) (ayat (2)).
+		if !c.BumnBumdCriteriaMet {
+			return decimal.Zero, false
+		}
 		return decimal.NewFromFloat(0.50), true
 	case CollateralLainnya:
 		if c.AppraiserIndependent && dinilaiDalamTahunTerakhir(c.AppraisalDate, asOf) {
@@ -104,6 +114,41 @@ func Pasal20Rate(c *LoanCollateral, asOf time.Time) (decimal.Decimal, bool) {
 		// DEPOSIT dan jenis tak dikenal tidak tercantum pada Pasal 20 ayat (1).
 		return decimal.Zero, false
 	}
+}
+
+// Pasal20BaseValue adalah nilai yang dikalikan tarif Pasal 20 ayat (1) untuk satu agunan.
+//
+// Untuk sebagian besar huruf, dasarnya nilai yang dinilai (AppraisalValue). DUA pengecualian
+// penting, keduanya pada pasal yang menghitung dari NJOP:
+//   - huruf d: tanah/bangunan bersertifikat tanpa hak tanggungan;
+//   - huruf e: tanah dengan surat pengakuan tanah adat.
+//
+// Bila NJOP tidak diisi, ok=false dan pengurangnya nol. Nilai taksasi TIDAK dipakai sebagai
+// pengganti diam-diam: itu akan mengakui dasar yang tidak disebut pasal. Penggantinya hanya
+// nilai pasar menurut penilaian penilai independen, dan itu pun harus dinyatakan operator
+// lewat NJOPSource = NJOPSourceAppraiser, bukan disimpulkan sistem.
+func Pasal20BaseValue(c *LoanCollateral) (decimal.Decimal, bool) {
+	if c == nil {
+		return decimal.Zero, false
+	}
+	hurufD := c.CollateralType == CollateralTanahBangunan && c.Certified && !c.Mortgaged
+	hurufE := c.CollateralType == CollateralTanahAdat
+	if hurufD || hurufE {
+		return c.pasal20NJOPBase()
+	}
+	return c.AppraisalValue, true
+}
+
+// pasal20NJOPBase mengambil dasar NJOP huruf d/e. Asal nilai wajib eksplisit dan nilainya
+// positif; selain itu bukan dasar yang sah, sehingga pengurangnya nol.
+func (c *LoanCollateral) pasal20NJOPBase() (decimal.Decimal, bool) {
+	if c.NJOPValue.LessThanOrEqual(decimal.Zero) || c.NJOPSource == nil {
+		return decimal.Zero, false
+	}
+	if !c.NJOPSource.Valid() {
+		return decimal.Zero, false
+	}
+	return c.NJOPValue, true
 }
 
 // pasal20ResiGudangRate menerapkan pita umur penilaian resi gudang Pasal 20 ayat (1)
@@ -245,10 +290,18 @@ func PPAPCollateralDeduction(c *LoanCollateral, ctx PPAPPasal20Context) decimal.
 	if !ok {
 		return decimal.Zero
 	}
+	// Dasar pengurang bisa berbeda dari nilai taksasi: huruf d dan e memakai NJOP, dan
+	// NJOP yang tidak diisi TIDAK digantikan nilai taksasi (lihat Pasal20BaseValue).
+	base, ok := Pasal20BaseValue(c)
+	if !ok {
+		return decimal.Zero
+	}
 
 	// Pasal 20 ayat (1) adalah batas atas; kebijakan haircut bank boleh lebih konservatif,
-	// jadi yang dipakai adalah yang lebih kecil dari keduanya.
-	nilai := c.AppraisalValue.Mul(rate)
+	// jadi yang dipakai adalah yang lebih kecil dari keduanya. bound dihitung database dari
+	// nilai taksasi, sehingga pengurang tidak pernah melebihi batas Pasal 20 maupun
+	// kebijakan haircut bank.
+	nilai := base.Mul(rate)
 	if bound := c.HaircutBoundAmount(); bound.LessThan(nilai) {
 		nilai = bound
 	}
@@ -298,18 +351,42 @@ func PPAPCashCollateralTotal(collaterals []LoanCollateral) decimal.Decimal {
 	return total
 }
 
-// PPAPGeneralBase menghitung dasar PPKA umum (Pasal 19 ayat (2)) setelah mengecualikan
-// bagian Aset Produktif yang dijamin agunan tunai (Pasal 19 ayat (4) huruf b jo. Pasal 17).
-// Lantai nol dipakai karena jaminan yang melebihi baki debet tidak boleh membuat dasar
-// pengenaan negatif.
-func PPAPGeneralBase(outstanding, cashCollateral decimal.Decimal) decimal.Decimal {
-	if cashCollateral.LessThanOrEqual(decimal.Zero) {
-		return outstanding
-	}
-	base := outstanding.Sub(cashCollateral)
-	if base.IsNegative() {
+// PPAPCashGuaranteedPortion adalah bagian eksposur yang dijamin agunan tunai dan
+// dikecualikan dari PPKA umum (Pasal 17 ayat (1) jo. Pasal 19 ayat (4) huruf b).
+//
+// Batasnya eksplisit: porsi tunai tidak boleh melebihi eksposur. Jaminan yang nilainya
+// lebih besar dari baki debet hanya menjamin sebesar baki, jadi kelebihannya tidak boleh
+// mengecualikan bagian lain atau membuat dasar pengenaan negatif. Nilai negatif (data
+// rusak) diperlakukan sebagai nol, bukan menambah eksposur.
+func PPAPCashGuaranteedPortion(exposure, cashCollateral decimal.Decimal) decimal.Decimal {
+	if exposure.LessThanOrEqual(decimal.Zero) || cashCollateral.LessThanOrEqual(decimal.Zero) {
 		return decimal.Zero
 	}
+	if cashCollateral.GreaterThan(exposure) {
+		return exposure
+	}
+	return cashCollateral
+}
+
+// PPAPLancarPortions memisahkan eksposur Lancar menjadi porsi yang dijamin agunan tunai
+// (dikecualikan dari PPKA umum) dan porsi yang tidak dijamin (tetap dihitung dengan tarif
+// PPKA umum, Pasal 19 ayat (2)). Pemisahan ini eksplisit supaya pengecualian atas bagian
+// yang dijamin tidak memperlakukan seluruh kredit seolah-olah dijamin.
+func PPAPLancarPortions(exposure, cashCollateral decimal.Decimal) (guaranteed, unguaranteed decimal.Decimal) {
+	guaranteed = PPAPCashGuaranteedPortion(exposure, cashCollateral)
+	unguaranteed = exposure.Sub(guaranteed)
+	if unguaranteed.IsNegative() {
+		unguaranteed = decimal.Zero
+	}
+	return guaranteed, unguaranteed
+}
+
+// PPAPGeneralBase menghitung dasar PPKA umum (Pasal 19 ayat (2)) setelah mengecualikan
+// bagian Aset Produktif yang dijamin agunan tunai (Pasal 19 ayat (4) huruf b jo. Pasal 17).
+// Yaitu porsi yang tidak dijamin dari PPAPLancarPortions; karena porsi tunai dibatasi pada
+// eksposur, dasar pengenaannya tidak pernah negatif.
+func PPAPGeneralBase(outstanding, cashCollateral decimal.Decimal) decimal.Decimal {
+	_, base := PPAPLancarPortions(outstanding, cashCollateral)
 	return base
 }
 

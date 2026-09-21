@@ -45,8 +45,9 @@ func (h *OJKReportHandler) Definitions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ExportMonthly menulis berkas teks Laporan Bulanan BPR (form 01.00 dan 02.00)
-// untuk periode YYYY-MM. Query book opsional (mis. CONVENTIONAL/SYARIAH).
+// ExportMonthly menulis berkas teks Laporan Bulanan BPR: form 01.00, 02.00, 00.08,
+// dan — bila sumbernya tersedia — form daftar 00.00, 05.00, dan 06.00 untuk periode
+// YYYY-MM. Query book opsional (mis. CONVENTIONAL/SYARIAH).
 func (h *OJKReportHandler) ExportMonthly(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
@@ -72,8 +73,12 @@ func (h *OJKReportHandler) ExportMonthly(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	bundle, err := h.builder.GenerateMonthly(r.Context(), period, r.URL.Query().Get("book"))
+	bundle, err := h.builder.GenerateMonthlyForActor(r.Context(), period, r.URL.Query().Get("book"), actor)
 	if err != nil {
+		if errors.Is(err, ojkreport.ErrOJKBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
 		if errors.Is(err, ojkreport.ErrIncompleteMapping) ||
 			errors.Is(err, ojkreport.ErrInvalidMapping) ||
 			errors.Is(err, ojkreport.ErrUnbalancedSource) {

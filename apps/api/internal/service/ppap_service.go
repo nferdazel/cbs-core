@@ -264,9 +264,14 @@ func (s *ppapService) processLoan(
 		appliedCollateral = collateralValue
 		exposure = domain.PPAPExposure(carrying, collateralValue)
 		if col == domain.KolLancar {
+			// Pemisahan porsi eksplisit (Pasal 17 ayat (1) jo. Pasal 19 ayat (4) huruf b):
+			// hanya bagian yang benar-benar dijamin agunan tunai yang dikecualikan dari
+			// PPKA umum, dan porsi itu dibatasi pada eksposur. Porsi yang tidak dijamin
+			// tetap dihitung dengan tarif umumnya.
 			cashValue := domain.PPAPCashCollateralTotal(collaterals)
-			appliedCollateral = cashValue
-			exposure = domain.PPAPGeneralBase(carrying, cashValue)
+			guaranteed, unguaranteed := domain.PPAPLancarPortions(carrying, cashValue)
+			appliedCollateral = guaranteed
+			exposure = unguaranteed
 		}
 		calc = domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 	}

@@ -65,7 +65,15 @@ type collateralRequest struct {
 	// Tanggal penilaian resi gudang untuk pita umur Pasal 20(1) huruf c/h/j; kosong
 	// berarti memakai tanggal taksasi agunan.
 	WarehouseReceiptValuedAt string `json:"warehouse_receipt_valued_at,omitempty"`
-	Notes                    string `json:"notes"`
+	// Dasar pengurang Pasal 20(1) huruf d/e: NJOP (atau nilai penilai independen) beserta
+	// tanggal dan asalnya. Nilai dan asal harus dikirim berpasangan.
+	NJOPValue  decimal.Decimal `json:"njop_value,omitempty"`
+	NJOPDate   string          `json:"njop_date,omitempty"`
+	NJOPSource string          `json:"njop_source,omitempty"`
+	// Penanda kriteria penjamin BUMN/BUMD Pasal 20(1) huruf i beserta buktinya.
+	BumnBumdCriteriaMet bool   `json:"bumn_bumd_criteria_met,omitempty"`
+	BumnBumdEvidence    string `json:"bumn_bumd_evidence,omitempty"`
+	Notes               string `json:"notes"`
 }
 
 // Create handles POST /api/v1/loans/{loanId}/collaterals
@@ -115,6 +123,30 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		warehouseReceiptValuedAt = &t
 	}
 
+	// Tanggal NJOP boleh kosong; bila diisi, formatnya harus dikenal. Pesannya khusus NJOP
+	// agar operator tidak mengira tanggal taksasi yang salah.
+	var njopDate *time.Time
+	if raw := strings.TrimSpace(req.NJOPDate); raw != "" {
+		t, err := parseDateOrRFC3339(raw)
+		if err != nil {
+			Error(w, http.StatusBadRequest, "format tanggal NJOP tidak dikenal; gunakan YYYY-MM-DD")
+			return
+		}
+		njopDate = &t
+	}
+
+	// Asal NJOP harus salah satu nilai yang dikenal. Nilai tak dikenal ditolak, bukan
+	// diperlakukan sebagai NJOP (Pasal 20 ayat (1) huruf d/e).
+	var njopSource *domain.NJOPSource
+	if raw := strings.TrimSpace(req.NJOPSource); raw != "" {
+		s := domain.NJOPSource(strings.ToUpper(raw))
+		if !s.Valid() {
+			Error(w, http.StatusBadRequest, domain.ErrCollateralNJOPSourceInvalid.Error())
+			return
+		}
+		njopSource = &s
+	}
+
 	collateral, err := h.svc.Create(r.Context(), domain.CollateralInput{
 		LoanID:                   loanID,
 		CollateralType:           domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
@@ -136,6 +168,11 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		IsCash:                   req.IsCash,
 		CashAccountID:            cashAccountID,
 		WarehouseReceiptValuedAt: warehouseReceiptValuedAt,
+		NJOPValue:                req.NJOPValue,
+		NJOPDate:                 njopDate,
+		NJOPSource:               njopSource,
+		BumnBumdCriteriaMet:      req.BumnBumdCriteriaMet,
+		BumnBumdEvidence:         req.BumnBumdEvidence,
 		Notes:                    req.Notes,
 	}, actor)
 	if err != nil {
@@ -216,7 +253,12 @@ func writeCollateralError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrCollateralAppraisalInvalid),
 		errors.Is(err, domain.ErrCollateralAppraisalDateInvalid),
 		errors.Is(err, domain.ErrCollateralHaircutInvalid),
-		errors.Is(err, domain.ErrCollateralCashAccountRequired):
+		errors.Is(err, domain.ErrCollateralCashAccountRequired),
+		errors.Is(err, domain.ErrCollateralNJOPRequired),
+		errors.Is(err, domain.ErrCollateralNJOPInvalid),
+		errors.Is(err, domain.ErrCollateralNJOPDateInvalid),
+		errors.Is(err, domain.ErrCollateralNJOPSourceInvalid),
+		errors.Is(err, domain.ErrCollateralBumnEvidenceRequired):
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 	default:
 		// Kesalahan lain (mis. aturan domain yang belum punya sentinel) tetap ditampilkan

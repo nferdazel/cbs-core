@@ -88,6 +88,11 @@ type CustomerRecord struct {
 	AddressEnc      string
 	IDCardIndex     string
 	EmailIndex      string
+	// IndexKeyVersion adalah versi kunci indeks yang dipakai membentuk IDCardIndex,
+	// EmailIndex, dan NameTokenIndexes. Versi kunci ENKRIPSI tidak perlu kolom
+	// terpisah karena sudah tertanam di dalam blob ciphertext. Baris lama bernilai
+	// "k1" (kunci enkripsi bawaan) sampai migrasi/reindex mengubahnya.
+	IndexKeyVersion string
 	// NameTokenIndexes adalah blind index tiap kata nama (lihat NormalizeNameTokens
 	// dan Cipher.NameTokenIndex). Kosong berarti nama belum diindeks; repository
 	// menuliskannya pada tabel customer_name_tokens.
@@ -148,12 +153,15 @@ func NormalizeIDCardNumber(raw string) (string, error) {
 type CustomerQuery struct {
 	// CIF mencocokkan awalan nomor CIF.
 	CIF string
-	// IDCardIndex adalah blind index NIK hasil pencocokan persis.
-	IDCardIndex string
-	// NameTokenIndexes adalah blind index tiap kata nama yang dicari. Semua token
-	// harus dimiliki nasabah (AND antar kata), sehingga "siti rahayu" tidak
-	// mencocokkan orang yang hanya bernama "Siti" atau hanya "Rahayu".
-	NameTokenIndexes []string
+	// IDCardIndexes adalah kandidat blind index NIK lintas versi kunci indeks
+	// (lihat Cipher.BlindIndexCandidates). Pencocokan memakai `= ANY(...)`, sehingga
+	// baris yang diindeks dengan kunci lama maupun baru tetap ikut terpilih.
+	IDCardIndexes []string
+	// NameTokenIndexes adalah kandidat blind index tiap kata nama yang dicari.
+	// Elemen luar berpasangan dengan kata (semua kata wajib ada, AND antar kata),
+	// elemen dalam berisi kandidat indeks lintas versi untuk kata itu. Bentuk ini
+	// membuat "siti rahayu" tetap tidak mencocokkan orang yang hanya bernama "Siti".
+	NameTokenIndexes [][]string
 }
 
 type CustomerRepository interface {
@@ -164,7 +172,9 @@ type CustomerRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*CustomerRecord, error)
 	GetByCIF(ctx context.Context, cif string) (*CustomerRecord, error)
 	// FindByIDCard mencari nasabah lewat blind index NIK tanpa membuka enkripsi.
-	FindByIDCard(ctx context.Context, idCardIndex string) (*CustomerRecord, error)
+	// Menerima kandidat lintas versi kunci indeks agar deteksi duplikat tetap
+	// menemukan NIK yang sudah terdaftar sebelum kunci indeks diganti.
+	FindByIDCard(ctx context.Context, idCardIndexes []string) (*CustomerRecord, error)
 	// GetByIDs mengambil banyak nasabah sekaligus untuk menghindari N+1 pada daftar.
 	GetByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*CustomerRecord, error)
 	// List mengembalikan daftar nasabah yang boleh dibaca aktor. Filter cabang
@@ -172,8 +182,9 @@ type CustomerRepository interface {
 	List(ctx context.Context, limit, offset int, q CustomerQuery, actor Actor) ([]CustomerRecord, int, error)
 	// ReplaceNameTokens mengganti seluruh token nama nasabah. Dipanggil saat nama
 	// diubah, memakai transaksi pemanggil agar token lama tidak tertinggal dan
-	// perubahan nama serta tokennya commit bersama.
-	ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error
+	// perubahan nama serta tokennya commit bersama. indexKeyVersion mencatat versi
+	// kunci indeks yang dipakai token baru.
+	ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string, indexKeyVersion string) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 

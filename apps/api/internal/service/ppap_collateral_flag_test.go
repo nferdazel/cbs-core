@@ -294,3 +294,42 @@ func TestPPAPPreview_SaklarHidupAgunanTunaiTidakMengurangiPPKAKhusus(t *testing.
 		t.Fatalf("target %s, mau 1000000", item.Target)
 	}
 }
+
+// Pasal 17 ayat (1) jo. Pasal 19 ayat (4) huruf b: porsi eksposur yang dijamin agunan
+// tunai dibatasi pada eksposur. Jaminan tunai 15 juta atas baki 10 juta hanya
+// mengecualikan 10 juta; kelebihannya tidak boleh membuat dasar negatif, dan porsi yang
+// dijamin dilaporkan tidak melebihi baki.
+func TestPPAPPreview_PorsiTunaiTidakMelebihiEksposur(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -10)
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{snapshots: []domain.PPAPLoanSnapshot{{
+		LoanID:         loanID,
+		LoanNumber:     "KRD-TUNAI-BATAS",
+		Outstanding:    decimal.NewFromInt(10_000_000),
+		Collectibility: domain.KolLancar,
+		RequiredPPAP:   decimal.NewFromInt(50_000),
+		LastDueDate:    &due,
+	}}}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, &stubPosting{})
+	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "true"}}
+	agunan := agunanTunaiPPAP(loanID, asOf)
+	agunan.AppraisalValue = decimal.NewFromInt(15_000_000)
+	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunan}}
+
+	summary, err := svc.Preview(context.Background(), asOf)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	item := summary.Items[0]
+	if !item.CollateralValue.Equal(decimal.NewFromInt(10_000_000)) {
+		t.Fatalf("porsi dijamin %s, mau dibatasi 10000000", item.CollateralValue)
+	}
+	if !item.Exposure.IsZero() {
+		t.Fatalf("eksposur %s, mau nol", item.Exposure)
+	}
+	if !item.Target.IsZero() {
+		t.Fatalf("target %s, mau nol (tidak ada cadangan negatif)", item.Target)
+	}
+}

@@ -61,11 +61,14 @@ export const dictionaryID = {
   },
   customerList: {
     searchLabel: "Cari nasabah",
-    searchPlaceholder: "Nomor CIF atau NIK",
-    searchHint: "Ketik awalan nomor CIF, atau NIK lengkap 16 digit.",
+    searchPlaceholder: "Nomor CIF, NIK, atau nama",
+    searchHint:
+      "Ketik awalan nomor CIF, NIK lengkap 16 digit, atau kata pada nama. Pencarian nama mencocokkan setiap kata.",
     clearButton: "Bersihkan",
     empty: "Belum ada nasabah.",
     emptyFiltered: "Tidak ada nasabah yang cocok dengan pencarian.",
+    loading: "Memuat nasabah...",
+    resultCount: "nasabah ditemukan",
   },
   accountList: {
     searchLabel: "Cari nomor rekening",

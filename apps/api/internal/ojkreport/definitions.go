@@ -90,7 +90,7 @@ var OJKReportDefinitions = []OJKReportDefinition{
 		Code: "LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF", Name: "Laporan Perbedaan Kualitas Aset Produktif",
 		Periodicity: OJKBulanan, DueDay: 10, CorrectionDay: 15, Channel: OJKChannelAPOLO,
 		Buildable:         false,
-		UnavailableReason: "daftar debitur beserta rincian perbedaan kualitas aset produktif belum tersedia sebagai keluaran laporan",
+		UnavailableReason: "Form 06.00 sudah memuat kualitas per debitur, tetapi perbedaan kualitas komersial dengan kualitas menurut PPKA per debitur belum dihitung sebagai keluaran laporan",
 	},
 	{
 		Code: "LAPORAN_TPPU_TPPT_PPSPM", Name: "Laporan Dokumen Penilaian Risiko TPPU/TPPT/PPSPM",
@@ -127,27 +127,30 @@ type OJKFormDefinition struct {
 	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
 
-// OJKBulananForms adalah daftar form Laporan Bulanan BPR. Form buildable pada
-// gelombang ini hanya 01.00 dan 02.00 karena keduanya bersumber dari COA.
+// OJKBulananForms adalah daftar form Laporan Bulanan BPR. Form yang ditandai
+// buildable dapat dibangun bila sumber datanya tersedia; bila tidak, builder
+// mencatat form itu pada SkippedForms beserta alasannya (lihat builder.go).
 var OJKBulananForms = []OJKFormDefinition{
-	{Form: "00.00", Name: "Informasi Pokok BPR", Buildable: false,
-		UnavailableReason: "butuh data yang belum tersimpan lengkap (organ pelaksana, informasi audit KAP/AP, PVA, PTI, ultimate shareholder); profil bank hanya memuat nama, alamat, telepon, dan NPWP"},
+	// Form 00.00 dibangun dari konfigurasi bank (tabel bank_profile dan kunci ojk.*);
+	// bila nama bank belum diisi, form dinyatakan belum tersedia saat ekspor.
+	{Form: "00.00", Name: "Informasi Pokok BPR", Buildable: true},
 	// Form 00.08 selalu disertakan; barisnya terisi hanya untuk posisi Maret,
 	// Juni, September, dan Desember, dan rasio yang komponennya belum tersedia
 	// ditandai tidak tersedia (lihat ratios.go).
 	{Form: "00.08", Name: "Rasio Keuangan Triwulanan", Buildable: true},
 	{Form: "01.00", Name: "Laporan Posisi Keuangan", Buildable: true},
 	{Form: "01.01", Name: "Rekening Administratif", Buildable: false,
-		UnavailableReason: "pos komitmen/kontinjensi (off-balance) belum dicatat pada bagan akun"},
+		UnavailableReason: "pos komitmen/kontinjensi (off-balance) belum dicatat pada bagan akun; tidak ada COA maupun register komitmen"},
 	{Form: "02.00", Name: "Laporan Laba Rugi dan Penghasilan Komprehensif Lain", Buildable: true},
-	{Form: "05.00", Name: "Daftar Penempatan pada Bank Lain", Buildable: false,
-		UnavailableReason: "rincian per bank lawan belum tersedia sebagai keluaran laporan"},
-	{Form: "06.00", Name: "Daftar Kredit yang Diberikan", Buildable: false,
-		UnavailableReason: "rincian per debitur beserta sandi pihak lawan/sektor/agunan belum tersedia sebagai keluaran laporan"},
+	// Form 05.00 dibangun dari penanda lps_placements (migrasi 000045) yang bukan
+	// register lengkap penempatan pada bank lain.
+	{Form: "05.00", Name: "Daftar Penempatan pada Bank Lain", Buildable: true},
+	// Form 06.00 dibangun dari baris kredit per debitur.
+	{Form: "06.00", Name: "Daftar Kredit yang Diberikan", Buildable: true},
 	{Form: "09.00", Name: "Rincian Aset Lainnya", Buildable: false,
-		UnavailableReason: "rincian pos aset lainnya belum tersedia"},
+		UnavailableReason: "hanya tersedia saldo agregat COA 1299000000 (Aset Lainnya); tidak ada rincian per pos sebagaimana diminta Form 09.00/09.01"},
 	{Form: "13.00", Name: "Daftar Simpanan dari Bank Lain", Buildable: false,
-		UnavailableReason: "rincian per bank lawan belum tersedia"},
+		UnavailableReason: "hanya tersedia saldo agregat COA 2103010000 (Simpanan dari Bank Lain); tidak ada rincian per bank lawan"},
 	{Form: "00.13", Name: "Dokumen Pendukung", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF pendukung, bukan angka"},
 	{Form: "00.14", Name: "Daftar Data Jenis Nasabah dan Produk Simpanan di BPR", Buildable: false,

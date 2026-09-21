@@ -63,11 +63,14 @@ export const dictionaryEN: Dictionary = {
   },
   customerList: {
     searchLabel: "Search customers",
-    searchPlaceholder: "CIF number or national ID",
-    searchHint: "Type a CIF number prefix, or the full 16-digit national ID.",
+    searchPlaceholder: "CIF number, national ID, or name",
+    searchHint:
+      "Type a CIF number prefix, the full 16-digit national ID, or a name word. Name search matches every word.",
     clearButton: "Clear",
     empty: "No customers yet.",
     emptyFiltered: "No customers match the search.",
+    loading: "Loading customers...",
+    resultCount: "customers found",
   },
   accountList: {
     searchLabel: "Search account number",

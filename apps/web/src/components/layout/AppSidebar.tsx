@@ -4,11 +4,23 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n/context";
-import { NAV_GROUPS } from "./nav";
+import { NAV_GROUPS, type NavItem } from "./nav";
 
 export interface AppSidebarProps {
-  /** Peran pengguna; item dengan `requiredRole` lain tidak dirender. */
+  /** Peran pengguna; item dengan pembatasan peran yang tidak cocok tidak dirender. */
   role?: string | null;
+}
+
+/**
+ * Apakah item boleh tampil untuk peran ini. `requiredRoles` didahulukan; peran yang
+ * belum diketahui tidak lolos (lebih baik tidak menampilkan pintu yang akan 403).
+ * `requiredRole` dipertahankan persis seperti sebelumnya agar menu lama tidak berubah.
+ */
+function isItemVisible(item: NavItem, role?: string | null): boolean {
+  if (item.requiredRoles) {
+    return role != null && item.requiredRoles.includes(role);
+  }
+  return !item.requiredRole || item.requiredRole === role;
 }
 
 /**
@@ -32,7 +44,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
           </p>
           <ul>
             {group.items
-              .filter((item) => !item.requiredRole || item.requiredRole === role)
+              .filter((item) => isItemVisible(item, role))
               .map((item) => {
                 const isActive =
                   item.href === "/"

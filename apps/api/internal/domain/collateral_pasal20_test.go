@@ -250,9 +250,23 @@ func TestPPAPCollateralDeduction_MenerapkanTarifPasal20(t *testing.T) {
 	}{
 		{name: "tanah 80%", want: "800000000"},
 		{
-			name: "tanah tanpa hak tanggungan 60%",
+			// Huruf d: dasar pengurangnya NJOP, bukan nilai taksasi. NJOP 500 juta
+			// menghasilkan 60% x 500 juta = 300 juta, walaupun taksasinya 1 miliar.
+			name: "tanah tanpa hak tanggungan 60% dari NJOP",
+			ubah: func(c *domain.LoanCollateral) {
+				c.Mortgaged = false
+				c.NJOPValue = decimal.NewFromInt(500_000_000)
+				s := domain.NJOPSourceTax
+				c.NJOPSource = &s
+			},
+			want: "300000000",
+		},
+		{
+			// Tanpa NJOP, huruf d TIDAK memakai nilai taksasi sebagai gantinya: pengurang
+			// nol (konservatif), bukan 600 juta.
+			name: "tanah tanpa hak tanggungan tanpa NJOP nol",
 			ubah: func(c *domain.LoanCollateral) { c.Mortgaged = false },
-			want: "600000000",
+			want: "0",
 		},
 		{
 			name: "kendaraan 50%",
@@ -513,11 +527,22 @@ func TestPasal20Rate_JenisBaruSesuaiHuruf(t *testing.T) {
 		name  string
 		jenis domain.CollateralType
 		want  string
+		ubah  func(*domain.LoanCollateral)
 	}{
 		{name: "emas perhiasan 85% (huruf a)", jenis: domain.CollateralEmasPerhiasan, want: "0.85"},
 		{name: "tanah adat 50% (huruf e)", jenis: domain.CollateralTanahAdat, want: "0.5"},
 		{name: "tempat usaha 50% (huruf f)", jenis: domain.CollateralTempatUsaha, want: "0.5"},
-		{name: "dijamin BUMN/BUMD 50% (huruf i)", jenis: domain.CollateralJaminanBumnBumd, want: "0.5"},
+		{
+			name:  "dijamin BUMN/BUMD 50% (huruf i)",
+			jenis: domain.CollateralJaminanBumnBumd,
+			want:  "0.5",
+			ubah: func(c *domain.LoanCollateral) {
+				// Kriteria penjamin tidak dapat dinilai sistem; hanya penanda operator
+				// beserta buktinya yang membuat tarif huruf i berlaku.
+				c.BumnBumdCriteriaMet = true
+				c.BumnBumdEvidence = "Surat jaminan penjamin BUMN/BUMD"
+			},
+		},
 		{name: "resi gudang dinilai 1 bulan lalu 70% (huruf c)", jenis: domain.CollateralResiGudang, want: "0.7"},
 	}
 
@@ -525,6 +550,9 @@ func TestPasal20Rate_JenisBaruSesuaiHuruf(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := agunanTanah()
 			c.CollateralType = tc.jenis
+			if tc.ubah != nil {
+				tc.ubah(&c)
+			}
 			rate, ok := domain.Pasal20Rate(&c, pasal20AsOf)
 			if !ok {
 				t.Fatalf("jenis %s seharusnya tercantum pada Pasal 20 ayat (1)", tc.jenis)
@@ -731,5 +759,248 @@ func TestPPAPCollateralDeduction_AgunanTunaiTidakMengurangiPPKAKhusus(t *testing
 	want := decimal.NewFromInt(850_000_000)
 	if got := domain.PPAPCollateralDeduction(&emas, ctx); !got.Equal(want) {
 		t.Fatalf("pengurang emas perhiasan %s, mau %s", got, want)
+	}
+}
+
+// ---------- Item 6: NJOP huruf d/e, porsi agunan tunai, penanda BUMN/BUMD ----------
+
+// Pasal20BaseValue menentukan nilai yang dikalikan tarif: nilai taksasi untuk sebagian
+// besar huruf, NJOP untuk huruf d/e. NJOP yang tidak diisi harus menghasilkan ok=false,
+// bukan diam-diam memakai nilai taksasi.
+func TestPasal20BaseValue_NJOPHanyaUntukHurufDDanE(t *testing.T) {
+	njop := decimal.NewFromInt(500_000_000)
+	sumberNJOP := domain.NJOPSourceTax
+	sumberPenilai := domain.NJOPSourceAppraiser
+	sumberTakDikenal := domain.NJOPSource("KIRA_KIRA")
+
+	cases := []struct {
+		name      string
+		ubah      func(*domain.LoanCollateral)
+		want      string
+		wantDapat bool
+	}{
+		{
+			name: "huruf d memakai NJOP",
+			ubah: func(c *domain.LoanCollateral) {
+				c.Mortgaged = false
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+			},
+			want:      "500000000",
+			wantDapat: true,
+		},
+		{
+			name: "huruf e memakai NJOP",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralTanahAdat
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+			},
+			want:      "500000000",
+			wantDapat: true,
+		},
+		{
+			name: "huruf e nilai penilai independen dipakai bila eksplisit",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralTanahAdat
+				c.NJOPValue = decimal.NewFromInt(350_000_000)
+				c.NJOPSource = &sumberPenilai
+			},
+			want:      "350000000",
+			wantDapat: true,
+		},
+		{
+			name: "huruf d tanpa NJOP tidak memakai taksasi",
+			ubah: func(c *domain.LoanCollateral) { c.Mortgaged = false },
+		},
+		{
+			name: "huruf d nilai tanpa asal tidak dipakai",
+			ubah: func(c *domain.LoanCollateral) {
+				c.Mortgaged = false
+				c.NJOPValue = njop
+			},
+		},
+		{
+			name: "huruf e asal tak dikenal tidak dipakai",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralTanahAdat
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberTakDikenal
+			},
+		},
+		{
+			name: "huruf b tetap memakai taksasi walau NJOP diisi",
+			ubah: func(c *domain.LoanCollateral) {
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+			},
+			want:      "1000000000",
+			wantDapat: true,
+		},
+		{
+			name: "huruf f tetap memakai taksasi walau NJOP diisi",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralTempatUsaha
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+			},
+			want:      "1000000000",
+			wantDapat: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanTanah()
+			tc.ubah(&c)
+			got, ok := domain.Pasal20BaseValue(&c)
+			if ok != tc.wantDapat {
+				t.Fatalf("dapat=%v, mau %v", ok, tc.wantDapat)
+			}
+			if !tc.wantDapat {
+				return
+			}
+			if want := decimal.RequireFromString(tc.want); !got.Equal(want) {
+				t.Fatalf("dasar %s, mau %s", got, want)
+			}
+		})
+	}
+}
+
+// Pengurang huruf d/e harus 60%/50% dari NJOP, bukan dari nilai taksasi. Inilah angka
+// yang berubah bila NJOP kosong: nol, bukan nilai taksasi.
+func TestPPAPCollateralDeduction_MemakaiNJOPHurufDDanE(t *testing.T) {
+	ctx := domain.PPAPPasal20Context{AsOf: pasal20AsOf, Collectibility: domain.KolLancar}
+	sumberPenilai := domain.NJOPSourceAppraiser
+
+	cases := []struct {
+		name string
+		ubah func(*domain.LoanCollateral)
+		want string
+	}{
+		{
+			name: "huruf d 60% dari NJOP 500 juta",
+			ubah: func(c *domain.LoanCollateral) {
+				c.Mortgaged = false
+				c.NJOPValue = decimal.NewFromInt(500_000_000)
+				s := domain.NJOPSourceTax
+				c.NJOPSource = &s
+			},
+			want: "300000000",
+		},
+		{
+			name: "huruf e 50% dari nilai penilai independen eksplisit",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralTanahAdat
+				c.NJOPValue = decimal.NewFromInt(400_000_000)
+				c.NJOPSource = &sumberPenilai
+			},
+			want: "200000000",
+		},
+		{
+			name: "huruf d tanpa NJOP nol, taksasi tidak dipakai",
+			ubah: func(c *domain.LoanCollateral) { c.Mortgaged = false },
+			want: "0",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanTanah()
+			tc.ubah(&c)
+			got := domain.PPAPCollateralDeduction(&c, ctx)
+			if want := decimal.RequireFromString(tc.want); !got.Equal(want) {
+				t.Fatalf("pengurang %s, mau %s", got, want)
+			}
+		})
+	}
+}
+
+// Pasal 20 ayat (1) huruf i: kriteria penjamin BUMN/BUMD tidak dapat dinilai sistem.
+// Tanpa penanda operator, nilainya bukan pengurang — bukan tarif 50% yang disimpulkan.
+func TestPasal20Rate_BumnBumdPerluPenandaEksplisit(t *testing.T) {
+	c := agunanTanah()
+	c.CollateralType = domain.CollateralJaminanBumnBumd
+
+	if _, ok := domain.Pasal20Rate(&c, pasal20AsOf); ok {
+		t.Fatal("tanpa penanda kriteria, BUMN/BUMD tidak boleh tercantum di ayat (1)")
+	}
+	if got := domain.PPAPCollateralDeduction(&c, domain.PPAPPasal20Context{AsOf: pasal20AsOf, Collectibility: domain.KolLancar}); !got.IsZero() {
+		t.Fatalf("pengurang tanpa penanda %s, mau nol", got)
+	}
+
+	c.BumnBumdCriteriaMet = true
+	c.BumnBumdEvidence = "Surat jaminan penjamin"
+	rate, ok := domain.Pasal20Rate(&c, pasal20AsOf)
+	if !ok || !rate.Equal(decimal.RequireFromString("0.5")) {
+		t.Fatalf("tarif BUMN/BUMD %s dapat=%v, mau 0.5", rate, ok)
+	}
+	want := decimal.NewFromInt(500_000_000)
+	if got := domain.PPAPCollateralDeduction(&c, domain.PPAPPasal20Context{AsOf: pasal20AsOf, Collectibility: domain.KolLancar}); !got.Equal(want) {
+		t.Fatalf("pengurang berpenanda %s, mau %s", got, want)
+	}
+}
+
+// Pasal 17 ayat (1) jo. Pasal 19 ayat (4) huruf b: porsi eksposur yang dijamin agunan
+// tunai tidak boleh melebihi eksposur.
+func TestPPAPCashGuaranteedPortion_TidakMelebihiEksposur(t *testing.T) {
+	cases := []struct {
+		name     string
+		eksposur string
+		tunai    string
+		want     string
+	}{
+		{name: "tunai lebih kecil", eksposur: "1000000", tunai: "400000", want: "400000"},
+		{name: "tunai sama dengan eksposur", eksposur: "1000000", tunai: "1000000", want: "1000000"},
+		{name: "tunai melebihi eksposur dibatasi", eksposur: "1000000", tunai: "1500000", want: "1000000"},
+		{name: "tunai negatif nol", eksposur: "1000000", tunai: "-500", want: "0"},
+		{name: "eksposur nol", eksposur: "0", tunai: "500000", want: "0"},
+		{name: "eksposur negatif nol", eksposur: "-1", tunai: "500000", want: "0"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := domain.PPAPCashGuaranteedPortion(
+				decimal.RequireFromString(tc.eksposur),
+				decimal.RequireFromString(tc.tunai),
+			)
+			if want := decimal.RequireFromString(tc.want); !got.Equal(want) {
+				t.Fatalf("porsi dijamin %s, mau %s", got, want)
+			}
+		})
+	}
+}
+
+// Pemisahan porsi harus utuh: yang dijamin ditambah yang tidak dijamin sama dengan
+// eksposur. Yang tidak dijamin tetap dikenai tarif umumnya (bukan ditiadakan).
+func TestPPAPLancarPortions_MemisahkanPorsiSecaraUtuh(t *testing.T) {
+	cases := []struct {
+		name           string
+		eksposur       string
+		tunai          string
+		wantDijamin    string
+		wantTakDijamin string
+	}{
+		{name: "sebagian dijamin", eksposur: "1000000", tunai: "400000", wantDijamin: "400000", wantTakDijamin: "600000"},
+		{name: "seluruhnya dijamin", eksposur: "1000000", tunai: "1000000", wantDijamin: "1000000", wantTakDijamin: "0"},
+		{name: "jaminan melebihi eksposur", eksposur: "1000000", tunai: "1500000", wantDijamin: "1000000", wantTakDijamin: "0"},
+		{name: "tanpa jaminan", eksposur: "1000000", tunai: "0", wantDijamin: "0", wantTakDijamin: "1000000"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eksposur := decimal.RequireFromString(tc.eksposur)
+			tunai := decimal.RequireFromString(tc.tunai)
+			dijamin, takDijamin := domain.PPAPLancarPortions(eksposur, tunai)
+			if want := decimal.RequireFromString(tc.wantDijamin); !dijamin.Equal(want) {
+				t.Fatalf("porsi dijamin %s, mau %s", dijamin, want)
+			}
+			if want := decimal.RequireFromString(tc.wantTakDijamin); !takDijamin.Equal(want) {
+				t.Fatalf("porsi tidak dijamin %s, mau %s", takDijamin, want)
+			}
+			if sum := dijamin.Add(takDijamin); !sum.Equal(eksposur) {
+				t.Fatalf("jumlah porsi %s, mau sama dengan eksposur %s", sum, eksposur)
+			}
+		})
 	}
 }

@@ -33,6 +33,28 @@ const (
 	CollateralJaminanBumnBumd CollateralType = "JAMINAN_BUMN_BUMD" // huruf i: 50%
 )
 
+// NJOPSource adalah asal nilai yang dipakai sebagai dasar pengurang Pasal 20 ayat (1)
+// huruf d (tanah/bangunan bersertifikat tanpa hak tanggungan) dan huruf e (tanah adat).
+// Pasal itu menghitung pengurang dari NJOP; penggantinya hanya penilaian penilai
+// independen. Asal nilai wajib dinyatakan eksplisit supaya nilai taksasi agunan tidak
+// pernah dipakai diam-diam seolah-olah NJOP (lihat Pasal20BaseValue).
+type NJOPSource string
+
+const (
+	// NJOPSourceTax adalah NJOP dari SPPT/PBB (dasar normal huruf d dan e).
+	NJOPSourceTax NJOPSource = "NJOP"
+	// NJOPSourceAppraiser adalah nilai pasar menurut penilaian penilai independen,
+	// pengganti NJOP yang diizinkan pasal. Harus dinyatakan operator, bukan disimpulkan
+	// sistem dari nilai taksasi.
+	NJOPSourceAppraiser NJOPSource = "PENILAI_INDEPENDEN"
+)
+
+// Valid menandai asal NJOP yang dikenal domain. Nilai tak dikenal ditolak, bukan
+// diperlakukan sebagai NJOP.
+func (s NJOPSource) Valid() bool {
+	return s == NJOPSourceTax || s == NJOPSourceAppraiser
+}
+
 // CollateralStatus adalah keadaan agunan. Hanya ACTIVE yang dihitung sebagai pengurang.
 type CollateralStatus string
 
@@ -82,6 +104,17 @@ var (
 	// sehingga rekening tempat dananya diblokir wajib diketahui agar pengecualiannya
 	// dapat ditelusuri; penanda tanpa rekening tidak dapat diaudit.
 	ErrCollateralCashAccountRequired = errors.New("agunan tunai wajib dikaitkan ke rekening tempat dana diblokir")
+	// Pasal 20 ayat (1) huruf d dan e menghitung pengurang dari NJOP, bukan dari nilai
+	// taksasi. Nilai dan asalnya harus berpasangan: nilai tanpa asal tidak dapat
+	// dipertanggungjawabkan, asal tanpa nilai tidak dapat dihitung.
+	ErrCollateralNJOPRequired      = errors.New("nilai NJOP dan asalnya wajib diisi berpasangan")
+	ErrCollateralNJOPInvalid       = errors.New("nilai NJOP tidak boleh negatif")
+	ErrCollateralNJOPDateInvalid   = errors.New("tanggal NJOP tidak boleh di masa depan")
+	ErrCollateralNJOPSourceInvalid = errors.New("asal nilai NJOP tidak dikenal; gunakan NJOP atau PENILAI_INDEPENDEN")
+	// Pasal 20 ayat (1) huruf i: sistem tidak dapat menilai pemenuhan kriteria penjamin
+	// BUMN/BUMD, sehingga operator harus menyatakannya beserta buktinya. Penanda tanpa
+	// bukti tidak dapat diaudit.
+	ErrCollateralBumnEvidenceRequired = errors.New("kriteria penjamin BUMN/BUMD wajib disertai bukti/keterangan")
 )
 
 // CollateralInput adalah permintaan pencatatan agunan. Haircut tidak wajib diisi: bila
@@ -120,7 +153,18 @@ type CollateralInput struct {
 	// WarehouseReceiptValuedAt adalah tanggal penilaian resi gudang bila berbeda dari
 	// tanggal taksasi agunan. Kosong berarti AppraisalDate yang dipakai.
 	WarehouseReceiptValuedAt *time.Time
-	Notes                    string
+	// NJOP fields adalah dasar pengurang Pasal 20 ayat (1) huruf d/e. Nilai dan asal
+	// harus diisi berpasangan; asal yang eksplisit mencegah nilai taksasi dipakai
+	// diam-diam sebagai NJOP.
+	NJOPValue  decimal.Decimal
+	NJOPDate   *time.Time
+	NJOPSource *NJOPSource
+	// BumnBumdCriteriaMet menandai penjamin BUMN/BUMD memenuhi kriteria Pasal 20 ayat (1)
+	// huruf i. Sistem tidak dapat menilainya, jadi hanya operator yang boleh menyatakannya;
+	// BumnBumdEvidence menyimpan bukti/keterangannya agar penanda dapat diaudit.
+	BumnBumdCriteriaMet bool
+	BumnBumdEvidence    string
+	Notes               string
 }
 
 // CollateralSummary adalah rekap agunan aktif per jenis. Dipakai manajemen untuk melihat
@@ -196,18 +240,28 @@ type LoanCollateral struct {
 	// Penanda agunan tunai Pasal 17 dan rekening tempat dananya diblokir. Agunan tunai
 	// mengubah perlakuan PPKA umum (dikecualikan, Pasal 19 ayat (4) huruf b), tetapi
 	// TIDAK menambah pengurang PPKA khusus karena tidak tercantum pada Pasal 20 ayat (1).
-	IsCash                   bool             `json:"is_cash"`
-	CashAccountID            *uuid.UUID       `json:"cash_account_id,omitempty"`
-	WarehouseReceiptValuedAt *time.Time       `json:"warehouse_receipt_valued_at,omitempty"`
-	HaircutPercent           decimal.Decimal  `json:"haircut_percent"`
-	BoundAmount              decimal.Decimal  `json:"bound_amount"`
-	Status                   CollateralStatus `json:"status"`
-	ReleasedAt               *time.Time       `json:"released_at,omitempty"`
-	Notes                    string           `json:"notes,omitempty"`
-	CreatedBy                string           `json:"created_by"`
-	CreatedAt                time.Time        `json:"created_at"`
-	UpdatedBy                string           `json:"updated_by,omitempty"`
-	UpdatedAt                time.Time        `json:"updated_at"`
+	IsCash                   bool       `json:"is_cash"`
+	CashAccountID            *uuid.UUID `json:"cash_account_id,omitempty"`
+	WarehouseReceiptValuedAt *time.Time `json:"warehouse_receipt_valued_at,omitempty"`
+	// NJOPValue, NJOPDate, dan NJOPSource adalah dasar pengurang Pasal 20 ayat (1) huruf d
+	// dan e. Bila salah satunya kosong, agunan TIDAK memakai nilai taksasi sebagai NJOP;
+	// pengurangnya nol (perilaku konservatif).
+	NJOPValue  decimal.Decimal `json:"njop_value"`
+	NJOPDate   *time.Time      `json:"njop_date,omitempty"`
+	NJOPSource *NJOPSource     `json:"njop_source,omitempty"`
+	// Penanda kriteria penjamin BUMN/BUMD Pasal 20 ayat (1) huruf i beserta buktinya.
+	// Tanpa penanda, kriteria dianggap TIDAK terpenuhi sehingga nilainya bukan pengurang.
+	BumnBumdCriteriaMet bool             `json:"bumn_bumd_criteria_met"`
+	BumnBumdEvidence    string           `json:"bumn_bumd_evidence,omitempty"`
+	HaircutPercent      decimal.Decimal  `json:"haircut_percent"`
+	BoundAmount         decimal.Decimal  `json:"bound_amount"`
+	Status              CollateralStatus `json:"status"`
+	ReleasedAt          *time.Time       `json:"released_at,omitempty"`
+	Notes               string           `json:"notes,omitempty"`
+	CreatedBy           string           `json:"created_by"`
+	CreatedAt           time.Time        `json:"created_at"`
+	UpdatedBy           string           `json:"updated_by,omitempty"`
+	UpdatedAt           time.Time        `json:"updated_at"`
 }
 
 // IsActive menandai agunan yang masih dihitung sebagai pengurang.
@@ -249,6 +303,34 @@ func (c *LoanCollateral) Validate(now time.Time) error {
 	// huruf a dan d), sehingga pengecualian PPKA umumnya tidak boleh diakui.
 	if c.IsCash && c.CashAccountID == nil {
 		return ErrCollateralCashAccountRequired
+	}
+	// NJOP Pasal 20 ayat (1) huruf d/e: nilai dan asalnya harus berpasangan dan sah.
+	// Nilai negatif ditolak; nilai tanpa asal atau asal tanpa nilai ditolak supaya tidak
+	// ada nilai taksasi yang diam-diam dipakai sebagai NJOP.
+	if c.NJOPValue.IsNegative() {
+		return ErrCollateralNJOPInvalid
+	}
+	if c.NJOPValue.GreaterThan(decimal.Zero) && c.NJOPSource == nil {
+		return ErrCollateralNJOPRequired
+	}
+	if c.NJOPValue.IsZero() && c.NJOPSource != nil {
+		return ErrCollateralNJOPRequired
+	}
+	if c.NJOPSource != nil {
+		if !c.NJOPSource.Valid() {
+			return ErrCollateralNJOPSourceInvalid
+		}
+		if c.NJOPDate != nil && !c.NJOPDate.IsZero() {
+			njop := time.Date(c.NJOPDate.Year(), c.NJOPDate.Month(), c.NJOPDate.Day(), 0, 0, 0, 0, time.UTC)
+			if njop.After(hariIni) {
+				return ErrCollateralNJOPDateInvalid
+			}
+		}
+	}
+	// Penanda kriteria penjamin BUMN/BUMD Pasal 20 ayat (1) huruf i hanya berlaku bila
+	// bukti/keterangannya ikut diisi; penanda tanpa bukti tidak dapat diaudit.
+	if c.BumnBumdCriteriaMet && strings.TrimSpace(c.BumnBumdEvidence) == "" {
+		return ErrCollateralBumnEvidenceRequired
 	}
 	return nil
 }

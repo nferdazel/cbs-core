@@ -32,7 +32,9 @@ const collateralColumns = `lc.id, lc.loan_id, lc.branch_id, lc.collateral_type, 
 	COALESCE(b.code, ''),
 	lc.appraiser_independent, lc.certified, lc.mortgaged, lc.mortgage_value,
 	lc.exists_known, lc.executable, lc.third_party_owner, lc.owner_consent,
-	lc.is_cash, lc.cash_account_id, lc.warehouse_receipt_valued_at`
+	lc.is_cash, lc.cash_account_id, lc.warehouse_receipt_valued_at,
+	lc.njop_value, lc.njop_date, lc.njop_source,
+	lc.bumn_bumd_criteria_met, COALESCE(lc.bumn_bumd_evidence, '')`
 
 const collateralFrom = `FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id`
 
@@ -43,6 +45,8 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	var updatedBy sql.NullString
 	var cashAccountID uuid.NullUUID
 	var warehouseReceiptValuedAt sql.NullTime
+	var njopDate sql.NullTime
+	var njopSource sql.NullString
 	if err := row.Scan(
 		&c.ID, &c.LoanID, &branchID, &c.CollateralType, &c.Description, &c.DocumentNumber,
 		&c.OwnerName, &c.AppraisalValue, &c.AppraisalDate, &c.Appraiser, &c.HaircutPercent,
@@ -51,6 +55,8 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		&c.AppraiserIndependent, &c.Certified, &c.Mortgaged, &c.MortgageValue,
 		&c.ExistsKnown, &c.Executable, &c.ThirdPartyOwner, &c.OwnerConsent,
 		&c.IsCash, &cashAccountID, &warehouseReceiptValuedAt,
+		&c.NJOPValue, &njopDate, &njopSource,
+		&c.BumnBumdCriteriaMet, &c.BumnBumdEvidence,
 	); err != nil {
 		return nil, err
 	}
@@ -65,6 +71,14 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	if warehouseReceiptValuedAt.Valid {
 		t := warehouseReceiptValuedAt.Time
 		c.WarehouseReceiptValuedAt = &t
+	}
+	if njopDate.Valid {
+		t := njopDate.Time
+		c.NJOPDate = &t
+	}
+	if njopSource.Valid {
+		s := domain.NJOPSource(njopSource.String)
+		c.NJOPSource = &s
 	}
 	if releasedAt.Valid {
 		t := releasedAt.Time
@@ -84,11 +98,13 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 			certified, mortgaged, mortgage_value, appraiser_independent,
 			exists_known, executable, third_party_owner, owner_consent,
 			is_cash, cash_account_id, warehouse_receipt_valued_at,
+			njop_value, njop_date, njop_source,
+			bumn_bumd_criteria_met, bumn_bumd_evidence,
 			created_by, created_at, updated_at
 		)
 		VALUES ($1, (SELECT id FROM branches WHERE code = $2), $3, $4, $5, $6, $7, $8, NULLIF($9, ''),
 		        $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20,
-		        $21, $22, $23, $24, NOW(), NOW())
+		        $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''), $29, NOW(), NOW())
 		RETURNING id, bound_amount, created_at, updated_at
 	`
 	// bound_amount tidak ada pada daftar INSERT karena dihitung database; nilainya
@@ -101,6 +117,8 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 		c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
 		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent,
 		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt,
+		c.NJOPValue, c.NJOPDate, njopSourceArg(c.NJOPSource),
+		c.BumnBumdCriteriaMet, strings.TrimSpace(c.BumnBumdEvidence),
 		c.CreatedBy,
 	).Scan(&c.ID, &c.BoundAmount, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
@@ -153,7 +171,9 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 			certified = $13, mortgaged = $14, mortgage_value = $15, appraiser_independent = $16,
 			exists_known = $17, executable = $18, third_party_owner = $19, owner_consent = $20,
 			is_cash = $21, cash_account_id = $22, warehouse_receipt_valued_at = $23,
-			updated_by = $24, updated_at = NOW()
+			njop_value = $24, njop_date = $25, njop_source = $26,
+			bumn_bumd_criteria_met = $27, bumn_bumd_evidence = NULLIF($28, ''),
+			updated_by = $29, updated_at = NOW()
 		WHERE id = $1
 		RETURNING bound_amount, updated_at
 	`
@@ -162,7 +182,10 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 		c.AppraisalValue, c.AppraisalDate, c.Appraiser, c.HaircutPercent, c.Status,
 		c.ReleasedAt, c.Notes, c.Certified, c.Mortgaged, c.MortgageValue, c.AppraiserIndependent,
 		c.ExistsKnown, c.Executable, c.ThirdPartyOwner, c.OwnerConsent,
-		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt, c.UpdatedBy,
+		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt,
+		c.NJOPValue, c.NJOPDate, njopSourceArg(c.NJOPSource),
+		c.BumnBumdCriteriaMet, strings.TrimSpace(c.BumnBumdEvidence),
+		c.UpdatedBy,
 	).Scan(&c.BoundAmount, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrCollateralNotFound
@@ -242,4 +265,13 @@ func (r *CollateralRepository) ListActiveByLoans(ctx context.Context, loanIDs []
 		return nil, err
 	}
 	return list, nil
+}
+
+// njopSourceArg mengubah asal nilai NJOP menjadi parameter SQL. Pointer nil berarti
+// kolom NULL — asal yang belum diisi operator, bukan asal yang ditebak aplikasi.
+func njopSourceArg(s *domain.NJOPSource) any {
+	if s == nil {
+		return nil
+	}
+	return string(*s)
 }

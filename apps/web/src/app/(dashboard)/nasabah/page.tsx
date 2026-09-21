@@ -159,6 +159,19 @@ export default function NasabahPage() {
           <p id="nasabah-search-hint" className="text-meta text-ink-600">
             {t.customerList.searchHint}
           </p>
+          {/* Keadaan muat/kosong/jumlah hasil diumumkan ke pembaca layar, tidak hanya
+              terlihat dari warna atau teks di dalam tabel. */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {loading
+              ? t.customerList.loading
+              : error
+                ? ""
+                : customers.length === 0
+                  ? query
+                    ? t.customerList.emptyFiltered
+                    : t.customerList.empty
+                  : `${meta?.total_items ?? customers.length} ${t.customerList.resultCount}`}
+          </p>
         </CardContent>
       </Card>
 

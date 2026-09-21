@@ -268,7 +268,10 @@ func (s *savingsInterestService) accrue(
 		return res, fmt.Errorf("membaca produk %s: %w", info.ProductCode, err)
 	}
 
-	expenseCOA, payableCOA, mapped := s.resolveInterestCOAs(ctx, product, info.Book)
+	expenseCOA, payableCOA, mapped, err := s.resolveInterestCOAs(ctx, product, info.Book)
+	if err != nil {
+		return res, err
+	}
 
 	// Periode diturunkan dari tanggal saldo harian pertama (hari pertama bulan).
 	periodStr := ""
@@ -377,29 +380,35 @@ func (s *savingsInterestService) postInterestFallback(
 
 // resolveInterestCOAs menentukan akun beban dan kewajiban. Pemetaan produk dipakai
 // lebih dulu; bila tidak lengkap, fallback konfigurasi per buku.
-func (s *savingsInterestService) resolveInterestCOAs(ctx context.Context, product *domain.BankingProduct, book domain.COABook) (expense, payable string, mapped bool) {
+func (s *savingsInterestService) resolveInterestCOAs(ctx context.Context, product *domain.BankingProduct, book domain.COABook) (string, string, bool, error) {
+	var expense, payable string
 	if product != nil {
 		rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventInterestAccrual)
-		if err == nil {
-			for _, r := range rules {
-				switch r.Direction {
-				case domain.DirectionDebit:
-					expense = r.COACode
-				case domain.DirectionCredit:
-					payable = r.COACode
-				}
+		if err != nil {
+			// Galat pembacaan pemetaan BUKAN "produk belum dipetakan". Tanpa pembedaan
+			// ini, produk yang sudah memetakan jurnal bunganya dapat tanpa jejak
+			// terjurnal ke COA bawaan saat ada galat sesaat. Tidak ada pemetaan
+			// (rules kosong) tetap memakai COA konfigurasi di bawah.
+			return "", "", false, fmt.Errorf("membaca pemetaan jurnal bunga tabungan produk %s: %w", product.Code, err)
+		}
+		for _, r := range rules {
+			switch r.Direction {
+			case domain.DirectionDebit:
+				expense = r.COACode
+			case domain.DirectionCredit:
+				payable = r.COACode
 			}
 		}
 	}
 	if expense != "" && payable != "" {
-		return expense, payable, true
+		return expense, payable, true, nil
 	}
 	if book == domain.BookSyariah {
 		return s.configString(ctx, configSavingsExpenseCOASyar, defaultSavingsExpenseCOASyar),
-			s.configString(ctx, configSavingsPayableCOASyar, defaultSavingsPayableCOASyar), false
+			s.configString(ctx, configSavingsPayableCOASyar, defaultSavingsPayableCOASyar), false, nil
 	}
 	return s.configString(ctx, configSavingsExpenseCOAConv, defaultSavingsExpenseCOAConv),
-		s.configString(ctx, configSavingsPayableCOAConv, defaultSavingsPayableCOAConv), false
+		s.configString(ctx, configSavingsPayableCOAConv, defaultSavingsPayableCOAConv), false, nil
 }
 
 // PayInterestToAccounts memindahkan akrual bunga/bagi hasil yang belum dibayar ke
@@ -600,7 +609,11 @@ func (s *savingsInterestService) chargeAdminFee(
 		res.Message = fmt.Sprintf("membaca produk: %v", err)
 		return res
 	}
-	revenueCOA := s.adminFeeRevenueCOA(ctx, product, info.Book)
+	revenueCOA, err := s.adminFeeRevenueCOA(ctx, product, info.Book)
+	if err != nil {
+		res.Message = fmt.Sprintf("membaca pemetaan pendapatan administrasi: %v", err)
+		return res
+	}
 	revenueAcc, err := s.resolver.ResolveGLAccount(ctx, nil, revenueCOA)
 	if err != nil {
 		res.Message = fmt.Sprintf("akun pendapatan administrasi: %v", err)
@@ -674,21 +687,24 @@ func (s *savingsInterestService) chargeAdminFee(
 
 // adminFeeRevenueCOA memilih akun pendapatan administrasi: pemetaan FEE_INCOME yang
 // mengkredit, lalu konfigurasi per buku.
-func (s *savingsInterestService) adminFeeRevenueCOA(ctx context.Context, product *domain.BankingProduct, book domain.COABook) string {
+func (s *savingsInterestService) adminFeeRevenueCOA(ctx context.Context, product *domain.BankingProduct, book domain.COABook) (string, error) {
 	if product != nil {
 		rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventFeeIncome)
-		if err == nil {
-			for _, r := range rules {
-				if r.Direction == domain.DirectionCredit {
-					return r.COACode
-				}
+		if err != nil {
+			// Sama seperti resolveInterestCOAs: galat baca pemetaan tidak boleh
+			// disamarkan sebagai "produk belum dipetakan" lalu jatuh ke COA bawaan.
+			return "", fmt.Errorf("membaca pemetaan jurnal pendapatan administrasi produk %s: %w", product.Code, err)
+		}
+		for _, r := range rules {
+			if r.Direction == domain.DirectionCredit {
+				return r.COACode, nil
 			}
 		}
 	}
 	if book == domain.BookSyariah {
-		return s.configString(ctx, configAdminFeeRevenueCOASyar, defaultAdminFeeRevenueCOASyar)
+		return s.configString(ctx, configAdminFeeRevenueCOASyar, defaultAdminFeeRevenueCOASyar), nil
 	}
-	return s.configString(ctx, configAdminFeeRevenueCOAConv, defaultAdminFeeRevenueCOAConv)
+	return s.configString(ctx, configAdminFeeRevenueCOAConv, defaultAdminFeeRevenueCOAConv), nil
 }
 
 // savingsAccrualTax menghitung PPh final atas satu akrual bunga tabungan. Ambang

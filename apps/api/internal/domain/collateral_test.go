@@ -157,3 +157,96 @@ func TestCollateral_ValidateAgunanTunaiWajibRekening(t *testing.T) {
 		t.Fatalf("agunan tunai ber-rekening ditolak: %v", err)
 	}
 }
+
+// Pasal 20 ayat (1) huruf d/e dan huruf i: nilai NJOP harus berpasangan dengan asalnya,
+// dan penanda kriteria penjamin BUMN/BUMD harus disertai bukti. Parameter yang salah
+// ditolak dengan sentinel yang jelas, bukan dilonggarkan diam-diam.
+func TestCollateral_ValidateNJOPDanPenandaBumnBumd(t *testing.T) {
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	sumberNJOP := domain.NJOPSourceTax
+	njop := decimal.NewFromInt(500_000_000)
+	besok := now.AddDate(0, 0, 1)
+
+	cases := []struct {
+		name    string
+		ubah    func(*domain.LoanCollateral)
+		wantErr error
+	}{
+		{
+			name: "NJOP dengan asal diterima",
+			ubah: func(c *domain.LoanCollateral) {
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+			},
+		},
+		{
+			name:    "nilai NJOP tanpa asal ditolak",
+			ubah:    func(c *domain.LoanCollateral) { c.NJOPValue = njop },
+			wantErr: domain.ErrCollateralNJOPRequired,
+		},
+		{
+			name:    "asal NJOP tanpa nilai ditolak",
+			ubah:    func(c *domain.LoanCollateral) { c.NJOPSource = &sumberNJOP },
+			wantErr: domain.ErrCollateralNJOPRequired,
+		},
+		{
+			name: "NJOP negatif ditolak",
+			ubah: func(c *domain.LoanCollateral) {
+				c.NJOPValue = decimal.NewFromInt(-1)
+				c.NJOPSource = &sumberNJOP
+			},
+			wantErr: domain.ErrCollateralNJOPInvalid,
+		},
+		{
+			name: "asal NJOP tak dikenal ditolak",
+			ubah: func(c *domain.LoanCollateral) {
+				s := domain.NJOPSource("KIRA_KIRA")
+				c.NJOPValue = njop
+				c.NJOPSource = &s
+			},
+			wantErr: domain.ErrCollateralNJOPSourceInvalid,
+		},
+		{
+			name: "tanggal NJOP di masa depan ditolak",
+			ubah: func(c *domain.LoanCollateral) {
+				c.NJOPValue = njop
+				c.NJOPSource = &sumberNJOP
+				c.NJOPDate = &besok
+			},
+			wantErr: domain.ErrCollateralNJOPDateInvalid,
+		},
+		{
+			name: "penanda BUMN/BUMD tanpa bukti ditolak",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralJaminanBumnBumd
+				c.BumnBumdCriteriaMet = true
+			},
+			wantErr: domain.ErrCollateralBumnEvidenceRequired,
+		},
+		{
+			name: "penanda BUMN/BUMD dengan bukti diterima",
+			ubah: func(c *domain.LoanCollateral) {
+				c.CollateralType = domain.CollateralJaminanBumnBumd
+				c.BumnBumdCriteriaMet = true
+				c.BumnBumdEvidence = "Surat jaminan penjamin BUMN"
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := agunanValid()
+			tc.ubah(c)
+			err := c.Validate(now)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("agunan sah ditolak: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("kesalahan %v, ingin %v", err, tc.wantErr)
+			}
+		})
+	}
+}

@@ -31,7 +31,14 @@ func main() {
 	if cfg.EncryptionMasterKey == "" {
 		log.Fatal("ENCRYPTION_MASTER_KEY wajib diisi untuk menghitung token nama")
 	}
-	cipher, err := crypto.NewCipher(cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey)
+	cipher, err := crypto.NewCipherWithIndexKey(
+		cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey,
+		crypto.IndexKeyConfig{
+			ActiveKeyID:  cfg.EncryptionIndexKeyID,
+			ActiveKey:    cfg.EncryptionIndexKey,
+			PreviousKeys: cfg.EncryptionPreviousIndexKeys,
+		},
+	)
 	if err != nil {
 		log.Fatalf("konfigurasi enkripsi tidak valid: %v", err)
 	}
@@ -90,9 +97,9 @@ func run(ctx context.Context, db *sql.DB, cipher *crypto.Cipher) error {
 		}
 		for _, token := range domain.NormalizeNameTokens(name) {
 			result, err := db.ExecContext(ctx,
-				`INSERT INTO customer_name_tokens (customer_id, token_index) VALUES ($1, $2)
+				`INSERT INTO customer_name_tokens (customer_id, token_index, index_key_version) VALUES ($1, $2, $3)
 				 ON CONFLICT (customer_id, token_index) DO NOTHING`,
-				rec.id, cipher.NameTokenIndex(token),
+				rec.id, cipher.NameTokenIndex(token), cipher.IndexKeyVersion(),
 			)
 			if err != nil {
 				return fmt.Errorf("nasabah %s: %w", rec.id, err)

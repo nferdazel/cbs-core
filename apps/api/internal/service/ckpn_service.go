@@ -315,7 +315,14 @@ func (s *ckpnService) postAdjustment(ctx context.Context, tx any, snap domain.CK
 
 	if product != nil {
 		rules, err := s.productRepo.GetMapping(ctx, product.ID, event)
-		if err == nil && len(rules) > 0 {
+		if err != nil {
+			// Galat pembacaan pemetaan BUKAN "produk belum dipetakan". Menjatuhkannya
+			// ke COA fallback membuat produk yang sudah memetakan jurnal CKPN-nya tanpa
+			// jejak terjurnal ke akun bawaan saat ada galat sesaat. Tidak ada pemetaan
+			// (len==0) tetap memakai COA konfigurasi di bawah.
+			return fmt.Errorf("membaca pemetaan jurnal CKPN produk %s: %w", product.Code, err)
+		}
+		if len(rules) > 0 {
 			if _, err := s.poster.PostEventTx(ctx, tx, product, event, Amounts{
 				Principal: amount,
 				Total:     amount,

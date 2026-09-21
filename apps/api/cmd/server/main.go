@@ -11,6 +11,7 @@ import (
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
+	"cbs-core/apps/core-api/internal/ojkreport"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
 )
@@ -42,7 +43,16 @@ func main() {
 	// 2. Enkripsi data pribadi (envelope encryption, master key dari environment)
 	var cipher *crypto.Cipher
 	if cfg.EncryptionMasterKey != "" {
-		cipher, err = crypto.NewCipher(cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey)
+		// Kunci indeks terpisah opsional; bila kosong, indeks memakai master key
+		// enkripsi seperti sebelumnya (nilai indeks lama tidak berubah).
+		cipher, err = crypto.NewCipherWithIndexKey(
+			cfg.EncryptionKeyID, cfg.EncryptionMasterKey, cfg.EncryptionPreviousKey,
+			crypto.IndexKeyConfig{
+				ActiveKeyID:  cfg.EncryptionIndexKeyID,
+				ActiveKey:    cfg.EncryptionIndexKey,
+				PreviousKeys: cfg.EncryptionPreviousIndexKeys,
+			},
+		)
 		if err != nil {
 			logger.Error("konfigurasi enkripsi tidak valid", "error", err)
 			os.Exit(1)
@@ -156,8 +166,16 @@ func main() {
 	mcHandler := httpHandler.NewMakerCheckerHandler(mcSvc)
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
 	// Ekspor OJK memakai laporan journal-based yang sama; hanya pemetaan pos OJK
-	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi.
-	ojkReportHandler := httpHandler.NewOJKReportHandler(reportSvc)
+	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi. RepoSource menambah
+	// sumber form daftar: kredit (Form 06.00/NPL), profil bank (Form 00.00), dan
+	// penempatan pada bank lain (Form 05.00).
+	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
+		Source:     reportSvc,
+		Loans:      loanRepo,
+		Profile:    bankProfileRepo,
+		Config:     configRepo,
+		Placements: postgres.NewLPSPlacementRepository(db),
+	})
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
@@ -209,6 +227,8 @@ func main() {
 		"addr", server.Addr,
 		"environment", cfg.Environment,
 		"enkripsi_nasabah", cfg.EncryptionMasterKey != "",
+		// Hanya status boolean; nilai kunci tidak pernah ditulis ke log.
+		"indeks_terpisah", cfg.EncryptionIndexKey != "",
 	)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server berhenti dengan error", "error", err)

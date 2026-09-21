@@ -36,6 +36,13 @@ type Config struct {
 	EncryptionMasterKey   string
 	EncryptionPreviousKey map[string]string
 
+	// Kunci indeks pencarian (blind index & token nama), terpisah dari kunci
+	// enkripsi. Kosong berarti indeks memakai master key enkripsi seperti sebelumnya,
+	// sehingga perilaku dan nilai indeks tidak berubah. Lihat crypto.IndexKeyConfig.
+	EncryptionIndexKeyID        string
+	EncryptionIndexKey          string
+	EncryptionPreviousIndexKeys map[string]string
+
 	// Pembatasan percobaan login (anti brute force). Penghitung disimpan
 	// in-memory per proses; pada deployment multi instance nilainya tidak
 	// dibagi. Nilai default: 5/15 menit per akun, 20/15 menit per IP.
@@ -70,6 +77,11 @@ func Load() *Config {
 		EncryptionKeyID:       getEnv("ENCRYPTION_KEY_ID", "k1"),
 		EncryptionMasterKey:   os.Getenv("ENCRYPTION_MASTER_KEY"),
 		EncryptionPreviousKey: parsePreviousKeys(os.Getenv("ENCRYPTION_PREVIOUS_KEYS")),
+
+		// Semua opsional; tanpa ENCRYPTION_INDEX_KEY, kunci indeks = master key.
+		EncryptionIndexKeyID:        strings.TrimSpace(os.Getenv("ENCRYPTION_INDEX_KEY_ID")),
+		EncryptionIndexKey:          strings.TrimSpace(os.Getenv("ENCRYPTION_INDEX_KEY")),
+		EncryptionPreviousIndexKeys: parsePreviousKeys(os.Getenv("ENCRYPTION_PREVIOUS_INDEX_KEYS")),
 
 		LoginRateLimitAccountMax:    getEnvInt("LOGIN_RATE_LIMIT_ACCOUNT_MAX", 5),
 		LoginRateLimitAccountWindow: getEnvDuration("LOGIN_RATE_LIMIT_ACCOUNT_WINDOW", 15*time.Minute),

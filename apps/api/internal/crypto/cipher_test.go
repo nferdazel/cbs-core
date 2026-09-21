@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"encoding/base64"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -135,5 +136,106 @@ func TestNewCipherRejectsBadKey(t *testing.T) {
 	short := base64.StdEncoding.EncodeToString([]byte("terlalu pendek"))
 	if _, err := NewCipher("k1", short, nil); err == nil {
 		t.Fatal("master key dengan ukuran salah seharusnya ditolak")
+	}
+}
+
+// Nilai indeks harus TIDAK BERUBAH saat kunci indeks terpisah belum dikonfigurasi.
+// Nilai emas di bawah dihitung dari formula lama (HMAC-SHA256 master key +
+// "blind-index:"/"name-token:") dengan testKey deterministik; bila implementasi
+// mengubah formula, test ini gagal dan pencarian NIK/email/nama yang sudah berjalan
+// akan terputus.
+func TestDefaultIndexValueUnchanged(t *testing.T) {
+	c, err := NewCipher("k1", testKey(t), nil)
+	if err != nil {
+		t.Fatalf("NewCipher: %v", err)
+	}
+	if got, want := c.BlindIndex("3201234567890001"), "ipAeq4Frtv+IPub2ywE+Z3wgQeRh8axMLbMzbl3ykF0="; got != want {
+		t.Fatalf("blind index berubah: %q, ingin %q", got, want)
+	}
+	if got, want := c.NameTokenIndex("siti"), "KnNPo9UIYOxszl3bj4F2POZmxpzsMrWRmklU+WGhM6E="; got != want {
+		t.Fatalf("token nama berubah: %q, ingin %q", got, want)
+	}
+	if got := c.IndexKeyVersion(); got != "k1" {
+		t.Fatalf("versi kunci indeks bawaan = %q, ingin k1", got)
+	}
+}
+
+func byteKey(b byte) string {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = b
+	}
+	return base64.StdEncoding.EncodeToString(key)
+}
+
+// Kunci indeks terpisah harus mengubah nilai indeks (memisahkan domain kunci), tetapi
+// kandidat pencarian tetap memuat nilai versi lama agar data lama tidak hilang.
+func TestSeparateIndexKeyProducesDifferentValueWithLegacyCandidate(t *testing.T) {
+	const value = "3201234567890001"
+	legacy, err := NewCipher("k1", testKey(t), nil)
+	if err != nil {
+		t.Fatalf("cipher lama: %v", err)
+	}
+	split, err := NewCipherWithIndexKey("k1", testKey(t), nil, IndexKeyConfig{
+		ActiveKeyID: "ik1",
+		ActiveKey:   byteKey(7),
+	})
+	if err != nil {
+		t.Fatalf("cipher kunci terpisah: %v", err)
+	}
+
+	oldIndex, newIndex := legacy.BlindIndex(value), split.BlindIndex(value)
+	if oldIndex == newIndex {
+		t.Fatal("kunci indeks terpisah menghasilkan nilai yang sama; pemisahan kunci tidak berlaku")
+	}
+	candidates := split.BlindIndexCandidates(value)
+	if !slices.Contains(candidates, oldIndex) {
+		t.Fatalf("kandidat tidak memuat indeks versi lama %q: %v", oldIndex, candidates)
+	}
+	if !slices.Contains(candidates, newIndex) {
+		t.Fatalf("kandidat tidak memuat indeks versi baru %q: %v", newIndex, candidates)
+	}
+	if got := split.IndexKeyVersion(); got != "ik1" {
+		t.Fatalf("versi kunci indeks aktif = %q, ingin ik1", got)
+	}
+}
+
+// Pesan galat konfigurasi kunci tidak boleh membocorkan nilai kunci. Nilai yang
+// diuji sengaja disisipkan agar mudah dideteksi bila muncul di pesan.
+func TestCipherConfigErrorsDoNotLeakKeyMaterial(t *testing.T) {
+	const secret = "nilai-kunci-yang-tidak-boleh-muncul"
+
+	_, err := NewCipher("k1", "!!!"+secret, nil)
+	if err == nil {
+		t.Fatal("master key bukan base64 seharusnya ditolak")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("pesan galat membocorkan nilai kunci: %v", err)
+	}
+
+	// Base64 valid tetapi ukuran salah; pesan hanya boleh menyebut kelas kesalahan.
+	_, err = NewCipherWithIndexKey("k1", testKey(t), nil, IndexKeyConfig{ActiveKey: base64.StdEncoding.EncodeToString([]byte(secret))})
+	if err == nil {
+		t.Fatal("kunci indeks dengan ukuran salah seharusnya ditolak")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("pesan galat membocorkan nilai kunci: %v", err)
+	}
+
+	_, err = NewCipherWithIndexKey("k1", testKey(t), nil, IndexKeyConfig{ActiveKey: "!!!" + secret})
+	if err == nil {
+		t.Fatal("kunci indeks bukan base64 seharusnya ditolak")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("pesan galat membocorkan nilai kunci: %v", err)
+	}
+}
+
+// Id kunci indeks yang sama dengan id kunci enkripsi tetapi material berbeda adalah
+// salah konfigurasi dan harus ditolak, bukan menimpa kunci diam-diam.
+func TestSeparateIndexKeyRejectsIDCollision(t *testing.T) {
+	_, err := NewCipherWithIndexKey("k1", testKey(t), nil, IndexKeyConfig{ActiveKeyID: "k1", ActiveKey: byteKey(9)})
+	if err == nil {
+		t.Fatal("id kunci indeks yang menabrak kunci enkripsi harus ditolak")
 	}
 }

@@ -111,10 +111,17 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		IsCash:                   input.IsCash,
 		CashAccountID:            input.CashAccountID,
 		WarehouseReceiptValuedAt: input.WarehouseReceiptValuedAt,
-		HaircutPercent:           haircut,
-		Status:                   domain.CollateralActive,
-		Notes:                    strings.TrimSpace(input.Notes),
-		CreatedBy:                actor.DisplayName(),
+		// Dasar pengurang huruf d/e dan penanda kriteria penjamin BUMN/BUMD disalin apa
+		// adanya: nilainya hanya boleh datang dari operator, bukan disimpulkan service.
+		NJOPValue:           input.NJOPValue,
+		NJOPDate:            input.NJOPDate,
+		NJOPSource:          input.NJOPSource,
+		BumnBumdCriteriaMet: input.BumnBumdCriteriaMet,
+		BumnBumdEvidence:    strings.TrimSpace(input.BumnBumdEvidence),
+		HaircutPercent:      haircut,
+		Status:              domain.CollateralActive,
+		Notes:               strings.TrimSpace(input.Notes),
+		CreatedBy:           actor.DisplayName(),
 	}
 	if err := collateral.Validate(time.Now().UTC()); err != nil {
 		return nil, err
@@ -139,6 +146,10 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		"appraisal_value": collateral.AppraisalValue.StringFixed(2),
 		"haircut_percent": collateral.HaircutPercent.StringFixed(2),
 		"bound_amount":    collateral.BoundAmount.StringFixed(2),
+		// Dasar pengurang huruf d/e dan penanda BUMN/BUMD ikut terekam: inilah yang
+		// menentukan pengurang, sehingga harus dapat ditelusuri tanpa menebak.
+		"njop_value":             collateral.NJOPValue.StringFixed(2),
+		"bumn_bumd_criteria_met": collateral.BumnBumdCriteriaMet,
 	}); err != nil {
 		return nil, err
 	}

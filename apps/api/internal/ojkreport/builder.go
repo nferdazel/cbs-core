@@ -87,7 +87,11 @@ type Bundle struct {
 	CorrectionDeadline time.Time
 	MappingStatus      string
 	Sections           []Section
-	// SkippedForms adalah form yang belum dapat dibangun beserta alasannya.
+	// Tables adalah form daftar/rincian (00.00, 05.00, 06.00) dengan baris per pihak
+	// lawan. Berbeda dari Sections yang berupa pos-pos statement.
+	Tables []TableSection
+	// SkippedForms adalah form yang belum dapat dibangun beserta alasannya, baik
+	// karena belum didukung maupun karena data/konfigurasinya kosong saat ekspor.
 	SkippedForms []OJKFormDefinition
 }
 
@@ -115,10 +119,18 @@ func MonthEnd(t time.Time) time.Time {
 	return first.AddDate(0, 1, -1)
 }
 
-// GenerateMonthly menyusun form 01.00 dan 02.00 untuk periode bulan tertentu.
-// Laporan laba rugi disajikan year-to-date (1 Januari s/d akhir periode), sesuai
-// praktik laporan berkala OJK.
+// GenerateMonthly menyusun laporan bulanan untuk aktor lintas cabang bawaan. Unit
+// test memakainya tanpa data aktor; handler memakai GenerateMonthlyForActor dengan
+// aktor sungguhan.
 func (b *Builder) GenerateMonthly(ctx context.Context, period time.Time, book string) (*Bundle, error) {
+	return b.GenerateMonthlyForActor(ctx, period, book, domain.Actor{Role: domain.RoleSuperAdmin})
+}
+
+// GenerateMonthlyForActor menyusun form 01.00/02.00/00.08 dan, bila sumbernya
+// tersedia, form daftar 00.00/05.00/06.00 untuk periode bulan tertentu. Laporan laba
+// rugi disajikan year-to-date (1 Januari s/d akhir periode), sesuai praktik laporan
+// berkala OJK.
+func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time, book string, actor domain.Actor) (*Bundle, error) {
 	if b.source == nil {
 		return nil, errors.New("sumber laporan OJK belum dikonfigurasi")
 	}
@@ -129,6 +141,13 @@ func (b *Builder) GenerateMonthly(ctx context.Context, period time.Time, book st
 	periodStart := time.Date(period.Year(), period.Month(), 1, 0, 0, 0, 0, time.UTC)
 	periodEnd := MonthEnd(period)
 	yearStart := time.Date(period.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
+
+	// Rata-rata total aset dibaca lebih dulu agar pemanggilan GetBalanceSheet(periodEnd)
+	// untuk laporan utama tetap menjadi pemanggilan terakhir.
+	rataRataTotalAset, rataRataTersedia, err := b.rataRataTotalAset(ctx, period, book)
+	if err != nil {
+		return nil, err
+	}
 
 	bs, err := b.source.GetBalanceSheet(ctx, periodEnd, book)
 	if err != nil {
@@ -156,6 +175,28 @@ func (b *Builder) GenerateMonthly(ctx context.Context, period time.Time, book st
 	deriveTotals(form01Lines, amounts01)
 	deriveTotals(form02Lines, amounts02)
 
+	// Komponen rasio di luar Form 01.00/02.00: kualitas kredit (NPL) dan rata-rata
+	// total aset (ROA). Bila sumber kredit tidak tersedia, komponen kredit dibiarkan
+	// Tersedia=false sehingga NPL ditulis "-", bukan nol.
+	komponen := KomponenRasio{
+		RataRataTotalAset:         rataRataTotalAset,
+		RataRataTotalAsetTersedia: rataRataTersedia,
+	}
+	var loanRows []LoanRow
+	if ls, ok := b.source.(LoanDataSource); ok {
+		rows, err := ls.ListLoansForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, err
+		}
+		loanRows = rows
+		komponen.Kredit = NPLDariLoanRows(rows)
+	}
+
+	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows)
+	if err != nil {
+		return nil, err
+	}
+
 	def := reportByCode("LAPORAN_BULANAN_BPR")
 	return &Bundle{
 		Period:             periodStart,
@@ -168,19 +209,94 @@ func (b *Builder) GenerateMonthly(ctx context.Context, period time.Time, book st
 		Sections: []Section{
 			// Form 00.08 selalu hadir; untuk posisi di luar triwulan, isinya
 			// dikosongkan (lihat RasioKeuangan).
-			{Form: "00.08", Name: formName("00.08"), Lines: rasioLines(periodStart, amounts01, amounts02)},
+			{Form: "00.08", Name: formName("00.08"), Lines: rasioLines(periodStart, amounts01, amounts02, komponen)},
 			{Form: "01.00", Name: formName("01.00"), Lines: renderLines(form01Lines, amounts01)},
 			{Form: "02.00", Name: formName("02.00"), Lines: renderLines(form02Lines, amounts02)},
 		},
-		SkippedForms: skippedForms(),
+		Tables:       tables,
+		SkippedForms: append(skippedForms(), runtimeSkipped...),
 	}, nil
+}
+
+// rataRataTotalAset menurunkan rata-rata total aset dari riwayat posisi keuangan
+// journal-based: rata-rata saldo total aset akhir bulan dari Januari sampai akhir
+// periode. Hanya dihitung untuk posisi triwulanan karena Form 00.08 hanya diisi pada
+// posisi Maret, Juni, September, dan Desember (Lampiran II hlm. 204). Rata-rata
+// dihitung dari angka jurnal, bukan disimpan terpisah.
+func (b *Builder) rataRataTotalAset(ctx context.Context, period time.Time, book string) (decimal.Decimal, bool, error) {
+	if !IsQuarterMonth(period) {
+		return decimal.Zero, false, nil
+	}
+	periodEnd := MonthEnd(period)
+	yearStart := time.Date(period.Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
+	var totals []decimal.Decimal
+	for m := yearStart; !m.After(periodEnd); m = m.AddDate(0, 1, 0) {
+		bs, err := b.source.GetBalanceSheet(ctx, MonthEnd(m), book)
+		if err != nil {
+			return decimal.Zero, false, err
+		}
+		totals = append(totals, bs.TotalAssets)
+	}
+	avg, ok := RataRata(totals)
+	return avg, ok, nil
+}
+
+// buildTables menyusun form daftar 00.00/05.00/06.00 dan mencatat form yang belum
+// dapat dibangun pada sumber ini.
+func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow) ([]TableSection, []OJKFormDefinition, error) {
+	var tables []TableSection
+	var skipped []OJKFormDefinition
+
+	// Form 00.00 Informasi Pokok BPR: dari konfigurasi bank.
+	if ps, ok := b.source.(BankProfileSource); ok {
+		cfg, err := ps.GetBankProfileConfig(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if sec, ok := buildForm00(cfg); ok {
+			tables = append(tables, sec)
+		} else {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.00", Name: formName("00.00"),
+				UnavailableReason: "identitas bank belum dikonfigurasi: isi bank_profile.bank_name dan kunci ojk.* (migrasi 000046)"})
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.00", Name: formName("00.00"),
+			UnavailableReason: "sumber profil bank belum dikonfigurasi pada ekspor ini"})
+	}
+
+	// Form 06.00 Daftar Kredit yang Diberikan: dari baris kredit.
+	if _, ok := b.source.(LoanDataSource); ok {
+		tables = append(tables, buildForm06(loanRows))
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "06.00", Name: formName("06.00"),
+			UnavailableReason: "sumber data kredit belum dikonfigurasi; hanya laporan journal-based yang tersedia"})
+	}
+
+	// Form 05.00 Daftar Penempatan pada Bank Lain: dari penanda lps_placements.
+	if ps, ok := b.source.(PlacementDataSource); ok {
+		rows, err := ps.ListPlacementsForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "05.00", Name: formName("05.00"),
+				UnavailableReason: "belum ada penempatan pada bank lain yang ditandai pada lps_placements (migrasi 000045)"})
+		} else {
+			tables = append(tables, buildForm05(rows))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "05.00", Name: formName("05.00"),
+			UnavailableReason: "sumber penempatan pada bank lain belum dikonfigurasi pada ekspor ini"})
+	}
+
+	return tables, skipped, nil
 }
 
 // rasioLines menyusun baris Form 00.08 dari hasil perhitungan rasio. Baris rasio
 // ditulis dalam persen dua desimal; baris yang komponennya belum tersedia diberi
 // alasan sehingga penulis berkas menuliskannya sebagai "-".
-func rasioLines(period time.Time, amounts01, amounts02 map[string]decimal.Decimal) []Line {
-	hasil := RasioKeuangan(period, amounts01, amounts02)
+func rasioLines(period time.Time, amounts01, amounts02 map[string]decimal.Decimal, komponen KomponenRasio) []Line {
+	hasil := RasioKeuangan(period, amounts01, amounts02, komponen)
 	lines := make([]Line, 0, len(hasil))
 	for _, h := range hasil {
 		lines = append(lines, Line{
