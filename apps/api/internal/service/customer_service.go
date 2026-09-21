@@ -219,24 +219,70 @@ func (s *customerService) ListCustomers(ctx context.Context, page, pageSize int,
 	return customers, total, nil
 }
 
-// searchQuery menerjemahkan satu kata kunci menjadi filter repo. Kata kunci yang
-// berbentuk NIK (tepat 16 digit) dicari lewat blind index NIK SAJA: nomor CIF tidak
-// pernah berbentuk 16 digit, sehingga menggabungkan keduanya dengan AND akan
-// menyaring habis hasilnya. Bentuk lain dicari sebagai awalan nomor CIF.
+// searchQuery menerjemahkan satu kata kunci menjadi filter repo. Bentuknya
+// ditentukan agar setiap masukan jatuh ke satu mode pencarian saja:
+//   - NIK (tepat 16 digit) dicari lewat blind index NIK;
+//   - bentuk CIF ("CIF..." atau angka) dicari sebagai awalan nomor CIF;
+//   - sisanya dianggap potongan nama dan dipecah menjadi token (AND antar kata).
+//
+// Menggabungkan mode dengan AND akan menyaring habis hasilnya (mis. nama yang
+// jarang diawali "CIF"), jadi tiap kata kunci hanya memakai satu mode.
 func (s *customerService) searchQuery(term string) domain.CustomerQuery {
 	term = strings.TrimSpace(term)
 	if term == "" {
 		return domain.CustomerQuery{}
 	}
-	if isNIK(term) && s.cipher != nil {
-		return domain.CustomerQuery{IDCardIndex: s.cipher.BlindIndex(term)}
+	if isNIK(term) {
+		if s.cipher != nil {
+			return domain.CustomerQuery{IDCardIndex: s.cipher.BlindIndex(term)}
+		}
+		// Tanpa cipher NIK tidak bisa diindeks; jatuh ke awalan CIF apa adanya agar
+		// tidak memaksa hash yang tidak akan pernah cocok.
+		return domain.CustomerQuery{CIF: term}
 	}
-	return domain.CustomerQuery{CIF: term}
+	if looksLikeCIF(term) {
+		return domain.CustomerQuery{CIF: term}
+	}
+	// Tanpa cipher token nama tidak dapat dihitung; perlakukan sebagai CIF seperti
+	// perilaku lama alih-alih mengembalikan hasil kosong yang menyesatkan.
+	if s.cipher == nil {
+		return domain.CustomerQuery{CIF: term}
+	}
+	indexes := s.nameTokenIndexes(term)
+	if len(indexes) == 0 {
+		return domain.CustomerQuery{}
+	}
+	return domain.CustomerQuery{NameTokenIndexes: indexes}
 }
 
-// isNIK melaporkan apakah kata kunci berbentuk NIK: tepat 16 digit angka.
-func isNIK(term string) bool {
-	if len(term) != 16 {
+// nameTokenIndexes menormalkan nama menjadi kata lalu menghitung blind index tiap
+// kata. Nil mengembalikan nil bila cipher tidak ada atau nama tidak punya kata
+// bermakna, sehingga tidak ada token sampah yang ditulis.
+func (s *customerService) nameTokenIndexes(fullName string) []string {
+	if s.cipher == nil {
+		return nil
+	}
+	tokens := domain.NormalizeNameTokens(fullName)
+	if len(tokens) == 0 {
+		return nil
+	}
+	indexes := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		indexes = append(indexes, s.cipher.NameTokenIndex(token))
+	}
+	return indexes
+}
+
+// looksLikeCIF melaporkan apakah kata kunci berbentuk nomor CIF. CIF selalu
+// diawali "CIF" (lihat ReferenceGenerator.NextCIF), tetapi pencarian CIF parsial
+// berupa angka juga tetap didukung seperti perilaku lama.
+func looksLikeCIF(term string) bool {
+	return strings.HasPrefix(strings.ToUpper(term), "CIF") || isDigits(term)
+}
+
+// isDigits melaporkan apakah seluruh karakter adalah angka (dan tidak kosong).
+func isDigits(term string) bool {
+	if term == "" {
 		return false
 	}
 	for i := 0; i < len(term); i++ {
@@ -245,6 +291,11 @@ func isNIK(term string) bool {
 		}
 	}
 	return true
+}
+
+// isNIK melaporkan apakah kata kunci berbentuk NIK: tepat 16 digit angka.
+func isNIK(term string) bool {
+	return len(term) == domain.IDCardDigits && isDigits(term)
 }
 
 // NamesByIDs mengembalikan nama nasabah yang sudah didekripsi. Hanya field nama yang
@@ -319,6 +370,9 @@ func (s *customerService) encryptInput(input domain.CreateCustomerInput) (*domai
 		PhoneNumberEnc:  phone,
 		AddressEnc:      address,
 	}
+	// Token nama ikut dihitung di sini agar tersedia sebelum insert; repository
+	// menuliskannya dalam transaksi yang sama dengan nasabahnya.
+	record.NameTokenIndexes = s.nameTokenIndexes(input.FullName)
 	if strings.TrimSpace(input.IDCardNumber) != "" {
 		record.IDCardIndex = s.cipher.BlindIndex(input.IDCardNumber)
 	}

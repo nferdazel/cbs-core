@@ -88,11 +88,15 @@ type CustomerRecord struct {
 	AddressEnc      string
 	IDCardIndex     string
 	EmailIndex      string
-	Status          CustomerStatus
-	BranchID        *uuid.UUID
-	Metadata        map[string]any
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// NameTokenIndexes adalah blind index tiap kata nama (lihat NormalizeNameTokens
+	// dan Cipher.NameTokenIndex). Kosong berarti nama belum diindeks; repository
+	// menuliskannya pada tabel customer_name_tokens.
+	NameTokenIndexes []string
+	Status           CustomerStatus
+	BranchID         *uuid.UUID
+	Metadata         map[string]any
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type CreateCustomerInput struct {
@@ -146,6 +150,10 @@ type CustomerQuery struct {
 	CIF string
 	// IDCardIndex adalah blind index NIK hasil pencocokan persis.
 	IDCardIndex string
+	// NameTokenIndexes adalah blind index tiap kata nama yang dicari. Semua token
+	// harus dimiliki nasabah (AND antar kata), sehingga "siti rahayu" tidak
+	// mencocokkan orang yang hanya bernama "Siti" atau hanya "Rahayu".
+	NameTokenIndexes []string
 }
 
 type CustomerRepository interface {
@@ -162,6 +170,10 @@ type CustomerRepository interface {
 	// List mengembalikan daftar nasabah yang boleh dibaca aktor. Filter cabang
 	// diterapkan di query agar pagination dan total tetap benar.
 	List(ctx context.Context, limit, offset int, q CustomerQuery, actor Actor) ([]CustomerRecord, int, error)
+	// ReplaceNameTokens mengganti seluruh token nama nasabah. Dipanggil saat nama
+	// diubah, memakai transaksi pemanggil agar token lama tidak tertinggal dan
+	// perubahan nama serta tokennya commit bersama.
+	ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 

@@ -112,6 +112,22 @@ func TestBlindIndexDeterministic(t *testing.T) {
 	}
 }
 
+// Indeks token nama wajib deterministik supaya pencarian stabil, tetapi harus
+// terpisah domain dari blind index nilai utuh: token "siti" tidak boleh pernah
+// sama dengan BlindIndex("SITI"), agar satu indeks tidak bocor ke konteks lain.
+func TestNameTokenIndexSeparateDomain(t *testing.T) {
+	c, _ := NewCipher("k1", testKey(t), nil)
+	if c.NameTokenIndex("siti") != c.NameTokenIndex("siti") {
+		t.Fatal("indeks token nama tidak deterministik")
+	}
+	if c.NameTokenIndex("siti") == c.NameTokenIndex("rahayu") {
+		t.Fatal("token berbeda menghasilkan indeks sama")
+	}
+	if c.NameTokenIndex("siti") == c.BlindIndex("siti") {
+		t.Fatal("token nama tidak boleh berbagi indeks dengan blind index nilai utuh")
+	}
+}
+
 func TestNewCipherRejectsBadKey(t *testing.T) {
 	if _, err := NewCipher("k1", "", nil); err == nil {
 		t.Fatal("master key kosong seharusnya ditolak")

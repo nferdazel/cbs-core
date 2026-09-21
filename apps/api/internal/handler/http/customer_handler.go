@@ -97,7 +97,8 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	// q mencari nomor CIF (awalan) atau NIK (persis, lewat blind index).
+	// q mencari nomor CIF (awalan), NIK (persis, lewat blind index), atau potongan
+	// nama (tiap kata dicocokkan lewat token nama).
 	search := r.URL.Query().Get("q")
 
 	customers, total, err := h.service.ListCustomers(r.Context(), page, pageSize, search, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))

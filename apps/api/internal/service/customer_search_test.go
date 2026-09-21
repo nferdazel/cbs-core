@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/base64"
+	"reflect"
 	"testing"
 
 	"cbs-core/apps/core-api/internal/crypto"
@@ -72,7 +73,7 @@ func TestSearchQuery_ForCIFUsesPrefixOnly(t *testing.T) {
 		t.Fatalf("bukan NIK tidak boleh jadi blind index, dapat %q", q.IDCardIndex)
 	}
 
-	if empty := svc.searchQuery("   "); empty != (domain.CustomerQuery{}) {
+	if empty := svc.searchQuery("   "); !reflect.DeepEqual(empty, domain.CustomerQuery{}) {
 		t.Fatalf("kata kunci kosong harus menghasilkan filter kosong, dapat %+v", empty)
 	}
 }
@@ -88,5 +89,78 @@ func TestSearchQuery_WithoutCipherFallsBackToCIF(t *testing.T) {
 	}
 	if q.CIF != "3201234567890001" {
 		t.Fatalf("jatuh ke CIF apa adanya, dapat %q", q.CIF)
+	}
+}
+
+// Kata kunci nama dipecah menjadi token dan diterjemahkan ke blind index tiap kata.
+// CIF dan NIK tidak boleh ikut diisi: menggabungkannya dengan AND akan menyaring
+// habis hasilnya.
+func TestSearchQuery_ForNameUsesTokenIndexes(t *testing.T) {
+	cipher := searchTestCipher(t)
+	svc := &customerService{cipher: cipher}
+
+	q := svc.searchQuery("  Siti  Rahayu ")
+	if q.CIF != "" || q.IDCardIndex != "" {
+		t.Fatalf("kata kunci nama tidak boleh menyaring CIF/NIK, dapat %+v", q)
+	}
+	want := []string{cipher.NameTokenIndex("siti"), cipher.NameTokenIndex("rahayu")}
+	if !reflect.DeepEqual(q.NameTokenIndexes, want) {
+		t.Fatalf("token nama = %v, ingin %v", q.NameTokenIndexes, want)
+	}
+}
+
+// Gelar tidak membedakan nasabah, jadi kueri bergelar harus menghasilkan token yang
+// sama dengan nama telanjangnya.
+func TestSearchQuery_NameWithTitleMatchesPlainName(t *testing.T) {
+	cipher := searchTestCipher(t)
+	svc := &customerService{cipher: cipher}
+
+	withTitle := svc.searchQuery("Hj. Siti")
+	plain := svc.searchQuery("siti")
+	if !reflect.DeepEqual(withTitle, plain) {
+		t.Fatalf("kueri bergelar = %+v, ingin sama dengan %+v", withTitle, plain)
+	}
+}
+
+// Kueri yang hanya berisi tanda baca atau gelar tidak menghasilkan token apa pun,
+// sehingga tidak menyaring dan tidak salah mencocokkan seluruh nasabah.
+func TestSearchQuery_PunctuationOnlyFindsNothing(t *testing.T) {
+	svc := &customerService{cipher: searchTestCipher(t)}
+
+	for _, term := range []string{"!!! ???", "---", "Hj."} {
+		if q := svc.searchQuery(term); !reflect.DeepEqual(q, domain.CustomerQuery{}) {
+			t.Fatalf("kueri %q harus tanpa filter, dapat %+v", term, q)
+		}
+	}
+}
+
+// Jalur tulis wajib mengisi token nama, jika tidak pencarian nama tidak akan pernah
+// menemukan nasabah baru meski sudah dibuat.
+func TestEncryptInput_IncludesNameTokens(t *testing.T) {
+	cipher := searchTestCipher(t)
+	svc := &customerService{cipher: cipher}
+
+	record, err := svc.encryptInput(domain.CreateCustomerInput{FullName: "Hj. Siti Rahayu"})
+	if err != nil {
+		t.Fatalf("encryptInput: %v", err)
+	}
+	want := []string{cipher.NameTokenIndex("siti"), cipher.NameTokenIndex("rahayu")}
+	if !reflect.DeepEqual(record.NameTokenIndexes, want) {
+		t.Fatalf("token nama = %v, ingin %v", record.NameTokenIndexes, want)
+	}
+}
+
+// Nama kosong/tidak sah tidak boleh menyisipkan token sampah.
+func TestEncryptInput_NoTokensForInvalidName(t *testing.T) {
+	svc := &customerService{cipher: searchTestCipher(t)}
+
+	for _, name := range []string{"", "   ", "!!!", "A."} {
+		record, err := svc.encryptInput(domain.CreateCustomerInput{FullName: name})
+		if err != nil {
+			t.Fatalf("encryptInput(%q): %v", name, err)
+		}
+		if len(record.NameTokenIndexes) != 0 {
+			t.Fatalf("nama %q menghasilkan token sampah %v", name, record.NameTokenIndexes)
+		}
 	}
 }

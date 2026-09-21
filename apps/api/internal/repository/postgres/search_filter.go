@@ -1,6 +1,9 @@
 package postgres
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // likePrefixPattern menyiapkan pola pencarian awalan untuk ILIKE. Karakter khusus
 // LIKE (%, _, \) di-escape agar kata kunci dari pengguna tidak berubah menjadi
@@ -28,4 +31,26 @@ func andCondition(existing, cond string) string {
 		return cond
 	}
 	return existing + " AND " + cond
+}
+
+// addNameTokenFilters menambahkan satu kondisi EXISTS untuk tiap token nama.
+// Semua token digabung dengan AND: nasabah harus memiliki setiap kata yang
+// diketik. Token kosong dilewati; daftar kosong berarti tanpa filter nama.
+//
+// Subquery berkorelasi ke customers.id (tabel luar), sehingga filter tetap berada
+// di query List yang sama dan COUNT memakai klausa yang sama — total pagination
+// tetap benar.
+func addNameTokenFilters(where string, whereArgs []any, tokenIndexes []string) (string, []any) {
+	for _, index := range tokenIndexes {
+		if index == "" {
+			continue
+		}
+		whereArgs = append(whereArgs, index)
+		cond := fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM customer_name_tokens cnt WHERE cnt.customer_id = customers.id AND cnt.token_index = $%d)",
+			len(whereArgs),
+		)
+		where = andCondition(where, cond)
+	}
+	return where, whereArgs
 }

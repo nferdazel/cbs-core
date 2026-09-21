@@ -66,7 +66,44 @@ func (r *CustomerRepository) executeCreate(ctx context.Context, exec interface {
 	if err != nil {
 		return fmt.Errorf("failed to insert customer: %w", err)
 	}
+	// Token nama ditulis lewat handler exec yang sama, sehingga pada CreateTx token
+	// ikut dalam transaksi yang sama dengan nasabahnya (atomik).
+	if err := insertNameTokens(ctx, exec, c.ID, c.NameTokenIndexes); err != nil {
+		return err
+	}
 	return nil
+}
+
+// insertNameTokens menyimpan indeks tiap kata nama. ON CONFLICT DO NOTHING membuat
+// operasi ini aman terhadap pengulangan (mis. backfill) dan terhadap kata kembar.
+func insertNameTokens(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, customerID uuid.UUID, tokenIndexes []string) error {
+	for _, index := range tokenIndexes {
+		if index == "" {
+			continue
+		}
+		_, err := exec.ExecContext(ctx,
+			`INSERT INTO customer_name_tokens (customer_id, token_index) VALUES ($1, $2)
+			 ON CONFLICT (customer_id, token_index) DO NOTHING`,
+			customerID, index,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert customer name token: %w", err)
+		}
+	}
+	return nil
+}
+
+// ReplaceNameTokens menghapus token lama nasabah lalu menulis token baru di dalam
+// transaksi pemanggil. Hapus-lalu-isi diperlukan karena nama yang diubah bisa
+// membuang kata lama; tanpa ini token lama tetap mencocokkan nasabah pada kata yang
+// sudah tidak ada di namanya.
+func (r *CustomerRepository) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM customer_name_tokens WHERE customer_id = $1`, customerID); err != nil {
+		return fmt.Errorf("failed to delete old customer name tokens: %w", err)
+	}
+	return insertNameTokens(ctx, tx, customerID, tokenIndexes)
 }
 
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.CustomerRecord, error) {
@@ -97,6 +134,9 @@ func (r *CustomerRepository) List(ctx context.Context, limit, offset int, q doma
 		whereArgs = append(whereArgs, q.IDCardIndex)
 		where = andCondition(where, fmt.Sprintf("id_card_index = $%d", len(whereArgs)))
 	}
+	// Pencarian nama: satu kondisi EXISTS per kata, digabung AND, sehingga semua
+	// kata yang diketik harus ada pada nama nasabah yang sama.
+	where, whereArgs = addNameTokenFilters(where, whereArgs, q.NameTokenIndexes)
 
 	countQuery := "SELECT COUNT(*) FROM customers"
 	if where != "" {

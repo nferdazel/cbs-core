@@ -165,6 +165,22 @@ func (c *Cipher) BlindIndex(value string) string {
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// NameTokenIndex menghasilkan blind index untuk SATU kata nama. Mekanismenya sama
+// dengan BlindIndex (HMAC-SHA256 dengan master key, hasil base64), hanya berbeda
+// awalan domain ("name-token:") agar indeks token nama tidak pernah bertabrakan
+// dengan blind index nilai utuh seperti NIK/email. Pemisahan domain ini penting:
+// memakai ulang indeks yang sama untuk konteks berbeda membuat satu nilai dapat
+// dicocokkan di tempat yang tidak dimaksudkan.
+//
+// Token sudah dinormalkan pemanggil (huruf kecil, tanpa gelar) lewat
+// domain.NormalizeNameTokens; fungsi ini mengulang trim/lower sebagai pengaman.
+func (c *Cipher) NameTokenIndex(token string) string {
+	mac := hmac.New(sha256.New, c.masterKey)
+	mac.Write([]byte("name-token:"))
+	mac.Write([]byte(strings.ToLower(strings.TrimSpace(token))))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
 func seal(key, plaintext, aad []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {

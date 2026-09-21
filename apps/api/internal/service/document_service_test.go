@@ -56,6 +56,10 @@ func (s *stubCustomerRepo) List(ctx context.Context, limit, offset int, q domain
 	return nil, 0, nil
 }
 
+func (s *stubCustomerRepo) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string) error {
+	return nil
+}
+
 func (s *stubCustomerRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.CustomerStatus) error {
 	return nil
 }
