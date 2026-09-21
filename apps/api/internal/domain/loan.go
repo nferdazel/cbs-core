@@ -21,6 +21,12 @@ var (
 	// keadaan itu pencairan tidak boleh dibatalkan — yang benar adalah koreksi nominal,
 	// karena uang dan jadwal angsuran sudah berjalan.
 	ErrLoanHasInstallmentPayments = errors.New("kredit sudah memiliki angsuran dibayar, pembatalan pencairan tidak dapat dilakukan")
+	// ErrLoanHasAccrualPostings menolak pembatalan pencairan yang sudah memiliki akrual
+	// terposting (piutang bunga, piutang denda, atau cadangan PPAP). Pembatalan hanya
+	// menghapus jadwal dan menolkan tagihan; ia tidak membalik jurnal-jurnal akrual itu,
+	// sehingga piutang dan cadangan akan menggantung tanpa kredit yang menopangnya.
+	// Akrualnya harus diselesaikan atau dibalik lebih dulu.
+	ErrLoanHasAccrualPostings = errors.New("kredit sudah memiliki akrual bunga/denda/PPAP terposting; selesaikan atau balik akrualnya lebih dulu sebelum membatalkan pencairan")
 	ErrInvalidLoanAmount    = errors.New("nominal pokok harus positif")
 	ErrInvalidLoanTerm      = errors.New("jangka waktu minimal 1 bulan")
 	// ErrLoanAmountUnchanged menolak koreksi nominal yang tidak mengubah apa pun:
@@ -319,6 +325,17 @@ type LoanRepository interface {
 	// tidak lagi PENDING. Selama masih seluruhnya PENDING, pencairan belum menyentuh
 	// uang dan jadwal, sehingga aman dibatalkan penuh.
 	HasInstallmentPaymentTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error)
+	// LockLoanTx mengunci baris kredit (SELECT ... FOR UPDATE) dan mengembalikan
+	// keadaannya yang segar di dalam transaksi pemanggil. Seluruh jalur yang mengubah
+	// jadwal angsuran, nominal, atau status kredit harus mengambil kunci ini lebih dulu
+	// agar tidak saling menyalip: tanpa kunci, pembayaran yang commit di antara baca dan
+	// hapus jadwal akan terhapus, dan dua koreksi bersamaan menerbitkan jurnal ganda.
+	LockLoanTx(ctx context.Context, tx any, id uuid.UUID) (*Loan, error)
+	// HasAccrualPostingsTx melaporkan apakah kredit sudah punya akrual terposting:
+	// piutang bunga tersimpan di jadwal, piutang denda atau cadangan PPAP tersimpan di
+	// baris kredit. Pembatalan pencairan menolak kredit semacam itu karena ia tidak
+	// membalik jurnal akrualnya.
+	HasAccrualPostingsTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error)
 	// DeleteSchedulesTx menghapus seluruh jadwal angsuran satu kredit di dalam
 	// transaksi pemanggil. Kredit yang dibatalkan tidak pernah ada sebagai tagihan,
 	// jadi jadwalnya tidak boleh tertinggal menggantung.
@@ -328,8 +345,9 @@ type LoanRepository interface {
 	// idempotency_key yang dibentuk DisburseLoan ("DISB-"+nomor kredit).
 	GetDisbursementJournalRefTx(ctx context.Context, tx any, loanNumber string) (string, error)
 	// GetSchedulesTx membaca jadwal angsuran di dalam transaksi pemanggil. Koreksi
-	// nominal harus menghitung dari jadwal yang sama dengan yang akan ditulis, tanpa
-	// celah bagi pembayaran yang menyelinap di antara baca dan tulis.
+	// nominal harus menghitung dari jadwal yang sama dengan yang akan ditulis. Jaminan
+	// bahwa tidak ada pembayaran yang menyelinap di antara baca dan tulis datang dari
+	// LockLoanTx yang harus dipanggil lebih dulu, bukan dari transaksi itu sendiri.
 	GetSchedulesTx(ctx context.Context, tx any, loanID uuid.UUID) ([]LoanSchedule, error)
 	// CorrectLoanAmountTx memperbarui nominal, total tagihan, angsuran bulanan, dan
 	// sisa pokok lalu mengganti seluruh jadwal angsuran di dalam transaksi pemanggil.

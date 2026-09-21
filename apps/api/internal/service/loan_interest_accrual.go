@@ -128,6 +128,14 @@ func (s *loanService) accrueInterestForLoan(
 	}
 
 	err = s.txRunner.Run(ctx, func(tx any) error {
+		// Kunci baris kredit sebelum menyentuh jadwal. Akrual bunga hanya meng-update
+		// loan_schedules, jadi tanpa kunci ini ia dapat menyelinap di antara
+		// pemeriksaan akrual dan penghapusan jadwal milik pembatalan pencairan. Kunci
+		// yang sama dipakai pembayaran, koreksi, dan pembatalan sehingga semuanya
+		// terserialkan. Hasilnya diabaikan; yang dibutuhkan hanya efek pengunciannya.
+		if _, err := s.loanRepo.LockLoanTx(ctx, tx, first.LoanID); err != nil {
+			return err
+		}
 		for i := range group {
 			c := group[i]
 			if c.DueDate.After(day) {

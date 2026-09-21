@@ -54,6 +54,14 @@ func (r *interestLoanRepo) GetSchedules(context.Context, uuid.UUID) ([]domain.Lo
 	return r.schedules, nil
 }
 
+func (r *interestLoanRepo) GetSchedulesTx(context.Context, any, uuid.UUID) ([]domain.LoanSchedule, error) {
+	return r.schedules, nil
+}
+
+func (r *interestLoanRepo) LockLoanTx(context.Context, any, uuid.UUID) (*domain.Loan, error) {
+	return r.loan, nil
+}
+
 func (r *interestLoanRepo) UpdateSchedulePayment(_ context.Context, _ uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, _ domain.InstallmentStatus) error {
 	r.paidPrincipal = paidPrincipal
 	r.paidProfit = paidProfit

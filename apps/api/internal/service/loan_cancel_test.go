@@ -20,6 +20,7 @@ type cancelLoanRepo struct {
 	loan       *domain.Loan
 	schedules  []domain.LoanSchedule
 	hasPayment bool
+	hasAccrual bool
 	journalRef string
 	deleteErr  error
 
@@ -39,8 +40,16 @@ func (r *cancelLoanRepo) GetSchedules(context.Context, uuid.UUID) ([]domain.Loan
 	return r.schedules, nil
 }
 
+func (r *cancelLoanRepo) LockLoanTx(context.Context, any, uuid.UUID) (*domain.Loan, error) {
+	return r.loan, nil
+}
+
 func (r *cancelLoanRepo) HasInstallmentPaymentTx(context.Context, any, uuid.UUID) (bool, error) {
 	return r.hasPayment, nil
+}
+
+func (r *cancelLoanRepo) HasAccrualPostingsTx(context.Context, any, uuid.UUID) (bool, error) {
+	return r.hasAccrual, nil
 }
 
 func (r *cancelLoanRepo) GetDisbursementJournalRefTx(context.Context, any, string) (string, error) {

@@ -70,6 +70,9 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors)
 	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc,
 		postgres.NewBusinessDateRepository(db), auditRepo)
+	// Pendaftaran eksekutor sama seperti produksi: tanpa ini persetujuan lintas hari
+	// akan ditolak dengan ErrNoExecutorForAction dan jurnal kontranya tidak pernah ditulis.
+	executors.Register(service.ActionReverse, ledgerSvc)
 
 	// Rekening tabungan uji pada COA 20100 (simpanan pihak ketiga), akun kewajiban yang
 	// sudah pasti ada karena dipakai jurnal setoran.
@@ -234,6 +237,57 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	if kontraLintasHari != 0 {
 		t.Fatalf("jurnal kontra ditulis sebelum disetujui: %d baris", kontraLintasHari)
 	}
+
+	// Eksekusi persetujuan: jurnal kontra benar-benar terposting dan jurnal asal menjadi
+	// REVERSED. Tanpa langkah ini jalur lintas hari hanya teruji sampai penolakan, bukan
+	// sampai pembatalannya benar-benar terjadi dan saldo kembali.
+	checker := secondStaffActor(ctx, t, db)
+	if err := mcSvc.Approve(ctx, pending.RequestID, checker, "setuju lintas hari"); err != nil {
+		t.Fatalf("persetujuan pembatalan lintas hari: %v", err)
+	}
+	statusSetelah := ""
+	if err := db.QueryRowContext(ctx,
+		`SELECT status FROM journal_entries WHERE reference_number = $1`,
+		deposit2.ReferenceNumber).Scan(&statusSetelah); err != nil {
+		t.Fatalf("membaca status jurnal kedua setelah persetujuan: %v", err)
+	}
+	if statusSetelah != string(domain.JournalStatusReversed) {
+		t.Fatalf("status jurnal kedua %q, mau REVERSED setelah disetujui", statusSetelah)
+	}
+	var kontraID uuid.UUID
+	if err := db.QueryRowContext(ctx,
+		`SELECT id FROM journal_entries WHERE idempotency_key = $1`,
+		"REV-"+deposit2.ReferenceNumber).Scan(&kontraID); err != nil {
+		t.Fatalf("jurnal kontra lintas hari tidak terposting: %v", err)
+	}
+	if got := saldoRekening(ctx, t, db, accountID); !got.Equal(saldoAwal) {
+		t.Fatalf("saldo setelah pembatalan lintas hari %s, mau %s", got, saldoAwal)
+	}
+	if got := saldoKas(ctx, t, db); !got.Equal(saldoKasAwal) {
+		t.Fatalf("saldo kas setelah pembatalan lintas hari %s, mau %s", got, saldoKasAwal)
+	}
+}
+
+// secondStaffActor menyisipkan staf kedua sebagai pemeriksa: audit log memuat FK ke
+// staff_users, sehingga identitas pemeriksa harus merujuk baris staf yang nyata, dan
+// pemisahan tugas menolak pembuat menyetujui permintaannya sendiri.
+func secondStaffActor(ctx context.Context, t *testing.T, db *sql.DB) domain.Actor {
+	t.Helper()
+	suffix := time.Now().UnixNano()
+	var id uuid.UUID
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO staff_users (employee_id, username, full_name, email, password_hash, role, branch_code)
+		VALUES ($1, $2, $3, $4, $5, 'SUPERVISOR', '001')
+		RETURNING id`,
+		fmt.Sprintf("EMP-E2E-%d", suffix),
+		fmt.Sprintf("checker.e2e.%d", suffix),
+		"Checker Uji",
+		fmt.Sprintf("checker.e2e.%d@cbs.local", suffix),
+		"$2a$12$0000000000000000000000000000000000000000000000000000000000",
+	).Scan(&id); err != nil {
+		t.Fatalf("menyiapkan staf pemeriksa: %v", err)
+	}
+	return domain.Actor{UserID: id, Username: "checker.e2e", Role: domain.RoleSupervisor, BranchCode: "001"}
 }
 
 func saldoRekening(ctx context.Context, t *testing.T, db *sql.DB, accountID uuid.UUID) decimal.Decimal {

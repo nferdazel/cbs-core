@@ -69,6 +69,14 @@ func (s *stubLoanRepo) GetSchedules(ctx context.Context, loanID uuid.UUID) ([]do
 	return s.schedules, nil
 }
 
+func (s *stubLoanRepo) LockLoanTx(ctx context.Context, tx any, id uuid.UUID) (*domain.Loan, error) {
+	return s.GetByID(ctx, id)
+}
+
+func (s *stubLoanRepo) HasAccrualPostingsTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 func (s *stubLoanRepo) UpdateSchedulePayment(ctx context.Context, scheduleID uuid.UUID, paidPrincipal, paidProfit, settleAccrued decimal.Decimal, status domain.InstallmentStatus) error {
 	return nil
 }

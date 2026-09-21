@@ -155,6 +155,27 @@ func (r *LoanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Loa
 	return l, nil
 }
 
+// LockLoanTx membaca kredit dengan SELECT ... FOR UPDATE di dalam transaksi pemanggil.
+// Kunci ini menyerialkan seluruh jalur yang mengubah uang/jadwal kredit: pembayaran
+// angsuran, koreksi nominal, pembatalan pencairan, akrual denda, akrual bunga, dan
+// PPAP. Tanpa kunci, pembayaran yang commit di antara baca dan hapus jadwal akan
+// terhapus sementara jurnalnya tetap ada.
+func (r *LoanRepository) LockLoanTx(ctx context.Context, tx any, id uuid.UUID) (*domain.Loan, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return nil, errors.New("loan: transaksi tidak valid")
+	}
+	row := sqlTx.QueryRowContext(ctx, `SELECT `+loanColumns+` FROM loans WHERE id = $1 FOR UPDATE`, id)
+	l, err := scanLoan(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrLoanNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
 func (r *LoanRepository) GetByNumber(ctx context.Context, loanNumber string) (*domain.Loan, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+loanColumns+` FROM loans WHERE loan_number = $1`, loanNumber)
 	l, err := scanLoan(row)
@@ -667,6 +688,37 @@ func (r *LoanRepository) HasInstallmentPaymentTx(ctx context.Context, tx any, lo
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// HasAccrualPostingsTx mendeteksi akrual yang sudah terposting dari state yang
+// tersimpan bersama jurnalnya. Karena penulisan state dan jurnal berada di transaksi
+// yang sama, salah satu dari berikut menandakan akrual sudah ada:
+//   - jadwal dengan profit_accrued_at terisi atau profit_accrued_amount tidak nol
+//     (akrual bunga, jurnal ACCR-<nomor kredit>-<angsuran>);
+//   - kredit dengan penalty_accrued tidak nol atau penalty_last_accrued_on terisi
+//     (akrual denda, jurnal PENALTY-<nomor kredit>-<tanggal>);
+//   - kredit dengan required_ppap tidak nol (cadangan PPAP sudah dibukukan).
+//
+// Pemeriksaan ini sengaja berbasis state yang tersimpan di baris kredit/jadwal, bukan
+// pencocokan string kunci jurnal: format kunci bisa berubah tanpa jejak di skema.
+// Pemanggil harus memegang LockLoanTx agar hasilnya otoritatif.
+func (r *LoanRepository) HasAccrualPostingsTx(ctx context.Context, tx any, loanID uuid.UUID) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("loan: transaksi tidak valid")
+	}
+	q := `SELECT
+		EXISTS (SELECT 1 FROM loan_schedules
+			WHERE loan_id = $1
+			  AND (profit_accrued_at IS NOT NULL OR profit_accrued_amount <> 0))
+		OR EXISTS (SELECT 1 FROM loans
+			WHERE id = $1
+			  AND (penalty_accrued <> 0 OR penalty_last_accrued_on IS NOT NULL OR required_ppap <> 0))`
+	var has bool
+	if err := sqlTx.QueryRowContext(ctx, q, loanID).Scan(&has); err != nil {
+		return false, err
+	}
+	return has, nil
 }
 
 // DeleteSchedulesTx menghapus seluruh jadwal angsuran satu kredit. Pola yang sama

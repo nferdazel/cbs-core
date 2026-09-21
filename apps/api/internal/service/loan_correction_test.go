@@ -38,6 +38,10 @@ func (r *correctionLoanRepo) GetSchedules(context.Context, uuid.UUID) ([]domain.
 	return r.schedules, nil
 }
 
+func (r *correctionLoanRepo) LockLoanTx(context.Context, any, uuid.UUID) (*domain.Loan, error) {
+	return r.loan, nil
+}
+
 func (r *correctionLoanRepo) GetSchedulesTx(context.Context, any, uuid.UUID) ([]domain.LoanSchedule, error) {
 	return r.schedules, nil
 }
@@ -62,8 +66,10 @@ var _ domain.LoanRepository = (*correctionLoanRepo)(nil)
 
 const correctionDisbursementRef = "TRF-20260920-0002"
 
-// correctionDisbursementEntry adalah jurnal pencairan asal: dana keluar ke rekening
-// nasabah (debit) melawan akun pokok kredit (kredit).
+// correctionDisbursementEntry adalah jurnal pencairan asal: pokok kredit didebit
+// (piutang kredit bertambah) melawan rekening nasabah yang dikredit (dana keluar).
+// Arah ini mengikuti `disbursementLegs` di kode produksi; kebalikannya adalah dugaan
+// yang paling mudah dibuat dan pernah menyesatkan komentar di sini.
 func correctionDisbursementEntry() *domain.JournalEntry {
 	return &domain.JournalEntry{
 		ID:              uuid.New(),
@@ -75,8 +81,8 @@ func correctionDisbursementEntry() *domain.JournalEntry {
 		BranchCode:      "001",
 		Source:          domain.SourceLoan,
 		Lines: []domain.JournalLine{
-			{ID: uuid.New(), AccountNumber: "1110001234", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(10_000_000)},
-			{ID: uuid.New(), AccountNumber: "10301", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(10_000_000)},
+			{ID: uuid.New(), AccountNumber: "10301", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(10_000_000)},
+			{ID: uuid.New(), AccountNumber: "1110001234", Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(10_000_000)},
 		},
 	}
 }
@@ -224,12 +230,12 @@ func TestCorrectLoanAmount_MenaikkanNominal(t *testing.T) {
 	if len(req.Lines) != 2 {
 		t.Fatalf("baris jurnal %d, ingin 2", len(req.Lines))
 	}
-	// Nominal naik: arah mengikuti pencairan awal — kas/rekening didebit, pokok dikredit.
-	if req.Lines[0].AccountNumber != "1110001234" || req.Lines[0].Direction != domain.DirectionDebit {
-		t.Fatalf("kaki kas tidak sesuai: %+v", req.Lines[0])
+	// Nominal naik: arah mengikuti pencairan awal — pokok didebit, rekening nasabah dikredit.
+	if req.Lines[0].AccountNumber != "10301" || req.Lines[0].Direction != domain.DirectionDebit {
+		t.Fatalf("kaki pokok tidak sesuai: %+v", req.Lines[0])
 	}
-	if req.Lines[1].AccountNumber != "10301" || req.Lines[1].Direction != domain.DirectionCredit {
-		t.Fatalf("kaki pokok tidak sesuai: %+v", req.Lines[1])
+	if req.Lines[1].AccountNumber != "1110001234" || req.Lines[1].Direction != domain.DirectionCredit {
+		t.Fatalf("kaki rekening nasabah tidak sesuai: %+v", req.Lines[1])
 	}
 	if !req.Lines[0].Amount.Equal(decimal.NewFromInt(2_000_000)) || !req.Lines[1].Amount.Equal(decimal.NewFromInt(2_000_000)) {
 		t.Fatalf("nominal jurnal tidak sama dengan selisih: %+v", req.Lines)

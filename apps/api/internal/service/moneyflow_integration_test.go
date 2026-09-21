@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -296,6 +298,136 @@ func (e *moneyEnv) journalImbalance(t *testing.T, journalID uuid.UUID) decimal.D
 	return selisih
 }
 
+// journalLineRow adalah satu baris jurnal sebagaimana tersimpan di database.
+type journalLineRow struct {
+	AccountNumber string
+	Direction     string
+	Amount        decimal.Decimal
+}
+
+// journalLines membaca baris satu jurnal langsung dari database dengan urutan stabil.
+func (e *moneyEnv) journalLines(t *testing.T, journalID uuid.UUID) []journalLineRow {
+	t.Helper()
+	rows, err := e.db.QueryContext(e.ctx, `
+		SELECT a.account_number, l.direction::text, l.amount
+		FROM journal_lines l
+		JOIN accounts a ON a.id = l.account_id
+		WHERE l.journal_entry_id = $1
+		ORDER BY a.account_number, l.direction, l.amount`, journalID)
+	if err != nil {
+		t.Fatalf("membaca baris jurnal: %v", err)
+	}
+	defer rows.Close()
+	var out []journalLineRow
+	for rows.Next() {
+		var l journalLineRow
+		if err := rows.Scan(&l.AccountNumber, &l.Direction, &l.Amount); err != nil {
+			t.Fatalf("memindai baris jurnal: %v", err)
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// oppositeDirection membalik arah baris untuk jurnal kontra.
+func oppositeDirection(direction string) string {
+	if direction == string(domain.DirectionDebit) {
+		return string(domain.DirectionCredit)
+	}
+	return string(domain.DirectionDebit)
+}
+
+// assertLinesMirror menuntut setiap baris jurnal pertama punya tepat satu baris lawan
+// dengan akun sama, arah berlawanan, dan nominal sama. Keseimbangan saja tidak cukup:
+// kontra yang tergandakan dua kali tetap seimbang, tetapi tidak mencerminkan jurnal asal.
+func assertLinesMirror(t *testing.T, label string, original, counterpart []journalLineRow) {
+	t.Helper()
+	if len(original) != len(counterpart) {
+		t.Fatalf("%s: %d baris, mau %d (mencerminkan %d baris asal); asal=%+v kontra=%+v",
+			label, len(counterpart), len(original), len(original), original, counterpart)
+	}
+	want := map[string]int{}
+	for _, l := range original {
+		key := l.AccountNumber + "|" + oppositeDirection(l.Direction) + "|" + l.Amount.String()
+		want[key]++
+	}
+	for _, l := range counterpart {
+		key := l.AccountNumber + "|" + l.Direction + "|" + l.Amount.String()
+		if want[key] == 0 {
+			t.Fatalf("%s: baris %s tidak mencerminkan jurnal asal (akun/arah/nominal salah); asal=%+v kontra=%+v",
+				label, key, original, counterpart)
+		}
+		want[key]--
+	}
+}
+
+// assertCorrectionLines memeriksa akun, arah, dan nominal jurnal koreksi terhadap
+// jurnal pencairan asal. Koreksi naik mengikuti arah asal; koreksi turun membalik arah.
+func assertCorrectionLines(t *testing.T, label string, original, correction []journalLineRow, amount decimal.Decimal, increase bool) {
+	t.Helper()
+	if len(correction) != len(original) {
+		t.Fatalf("%s: %d baris, mau %d; asal=%+v koreksi=%+v", label, len(correction), len(original), original, correction)
+	}
+	want := map[string]int{}
+	for _, l := range original {
+		dir := l.Direction
+		if !increase {
+			dir = oppositeDirection(dir)
+		}
+		key := l.AccountNumber + "|" + dir + "|" + amount.String()
+		want[key]++
+	}
+	for _, l := range correction {
+		key := l.AccountNumber + "|" + l.Direction + "|" + l.Amount.String()
+		if want[key] == 0 {
+			t.Fatalf("%s: baris %s tidak sesuai arah/nominal yang diharapkan; asal=%+v koreksi=%+v",
+				label, key, original, correction)
+		}
+		want[key]--
+	}
+}
+
+func (e *moneyEnv) loanString(t *testing.T, loanID uuid.UUID, column string) string {
+	t.Helper()
+	var v string
+	// column berasal dari kode uji, bukan masukan pengguna.
+	if err := e.db.QueryRowContext(e.ctx, `SELECT `+column+` FROM loans WHERE id = $1`, loanID).Scan(&v); err != nil {
+		t.Fatalf("membaca %s kredit: %v", column, err)
+	}
+	return v
+}
+
+func (e *moneyEnv) loanInt(t *testing.T, loanID uuid.UUID, column string) int {
+	t.Helper()
+	var v int
+	if err := e.db.QueryRowContext(e.ctx, `SELECT `+column+` FROM loans WHERE id = $1`, loanID).Scan(&v); err != nil {
+		t.Fatalf("membaca %s kredit: %v", column, err)
+	}
+	return v
+}
+
+func (e *moneyEnv) loanNullableTime(t *testing.T, loanID uuid.UUID, column string) sql.NullTime {
+	t.Helper()
+	var v sql.NullTime
+	if err := e.db.QueryRowContext(e.ctx, `SELECT `+column+` FROM loans WHERE id = $1`, loanID).Scan(&v); err != nil {
+		t.Fatalf("membaca %s kredit: %v", column, err)
+	}
+	return v
+}
+
+// setPenaltyRatePerMille menyetel tarif denda harian agar jalur akrual denda berjalan.
+func (e *moneyEnv) setPenaltyRatePerMille(t *testing.T, rate int) {
+	t.Helper()
+	const key = "loan.penalty.rate.daily.per_mille"
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ($1, $2, 'tarif denda untuk uji integrasi')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, strconv.Itoa(rate)); err != nil {
+		t.Fatalf("menyetel tarif denda: %v", err)
+	}
+	e.configSvc.Invalidate(key)
+}
+
 func (e *moneyEnv) journalBranch(t *testing.T, ref string) sql.NullString {
 	t.Helper()
 	var branch sql.NullString
@@ -359,6 +491,12 @@ func TestIntegrasiJalurUangPembatalanPencairanKredit(t *testing.T) {
 	if imb := e.journalImbalance(t, revID); !imb.IsZero() {
 		t.Fatalf("jurnal kontra tidak seimbang, selisih %s", imb)
 	}
+	// Setiap baris kontra harus mencerminkan nominal baris jurnal asal dengan arah
+	// berlawanan. Kontra yang tergandakan dua kali tetap seimbang, tetapi tidak
+	// mencerminkan jurnal asal; asersi ini menutup celah itu.
+	assertLinesMirror(t, "jurnal kontra pembatalan",
+		e.journalLines(t, e.journalIDByRef(t, disbursementRef)),
+		e.journalLines(t, revID))
 	// Cabang kontra mewarisi jurnal asal.
 	if kontra, asal := e.journalBranch(t, revRef), e.journalBranch(t, disbursementRef); kontra.String != asal.String {
 		t.Fatalf("cabang jurnal kontra %v, mau mengikuti jurnal asal %v", kontra, asal)
@@ -396,6 +534,11 @@ func TestIntegrasiJalurUangKoreksiNominalPencairan(t *testing.T) {
 	cust := e.newCustomer(t, "Citra Dewi", "")
 	accID := e.newAccount(t, cust.ID)
 	loan := e.disburse(t, cust.ID, accID, idr(10_000_000), 4)
+	disbID, _ := e.journalByKey(t, "DISB-"+loan.LoanNumber)
+	disbLines := e.journalLines(t, disbID)
+	if got := e.accountBalance(t, accID); !got.Equal(idr(10_000_000)) {
+		t.Fatalf("saldo rekening setelah pencairan %s, mau 10000000", got)
+	}
 
 	if _, err := e.loanSvc.PayInstallment(e.ctx, domain.PayInstallmentInput{
 		LoanID: loan.ID, InstallmentNo: 1,
@@ -437,6 +580,14 @@ func TestIntegrasiJalurUangKoreksiNominalPencairan(t *testing.T) {
 	if imb := e.journalImbalance(t, corrID); !imb.IsZero() {
 		t.Fatalf("jurnal koreksi naik tidak seimbang, selisih %s", imb)
 	}
+	// Akun, arah, dan nominal tiap baris jurnal koreksi harus persis mengikuti jurnal
+	// pencairan asal dengan nominal sebesar selisih. Saldo rekening nasabah ikut bergerak
+	// sebesar selisih yang dikredit ke rekeningnya.
+	assertCorrectionLines(t, "jurnal koreksi naik", disbLines, e.journalLines(t, corrID), idr(2_000_000), true)
+	wantUpBalance := idr(12_000_000).Sub(paidBefore.PaidPrincipal).Sub(paidBefore.PaidProfit)
+	if got := e.accountBalance(t, accID); !got.Equal(wantUpBalance) {
+		t.Fatalf("saldo rekening setelah koreksi naik %s, mau %s", got, wantUpBalance)
+	}
 	// Angsuran yang sudah dibayar tidak berubah.
 	paidAfter := e.schedule(t, loan.ID, 1)
 	if paidAfter.ID != paidBefore.ID ||
@@ -467,6 +618,12 @@ func TestIntegrasiJalurUangKoreksiNominalPencairan(t *testing.T) {
 	downID, _ := e.journalByKey(t, downKey)
 	if imb := e.journalImbalance(t, downID); !imb.IsZero() {
 		t.Fatalf("jurnal koreksi turun tidak seimbang, selisih %s", imb)
+	}
+	// Koreksi turun 12jt -> 8jt: arah baris dibalik dari pencairan asal, nominal 4jt.
+	assertCorrectionLines(t, "jurnal koreksi turun", disbLines, e.journalLines(t, downID), idr(4_000_000), false)
+	wantDownBalance := idr(8_000_000).Sub(paidBefore.PaidPrincipal).Sub(paidBefore.PaidProfit)
+	if got := e.accountBalance(t, accID); !got.Equal(wantDownBalance) {
+		t.Fatalf("saldo rekening setelah koreksi turun %s, mau %s", got, wantDownBalance)
 	}
 	afterDown, err := e.loanRepo.GetByID(e.ctx, loan.ID)
 	if err != nil {
@@ -652,10 +809,14 @@ func TestIntegrasiJalurUangPPAPDenganAgunan(t *testing.T) {
 		t.Fatalf("preview PPAP saklar hidup: %v", err)
 	}
 	itemOn := ppapItem(t, on, loan.ID)
-	if !itemOn.CollateralValue.IsPositive() {
-		t.Fatalf("saklar hidup: pengurang %s, mau positif", itemOn.CollateralValue)
+	// Pasal 20 ayat (1): tanah dan bangunan bersertifikat dengan hak tanggungan
+	// diperhitungkan paling tinggi 80% dari nilai agunan. Taksasi 4 juta -> 3,2 juta,
+	// sehingga eksposur = 10 juta - 3,2 juta = 6,8 juta.
+	wantCollateral := idr(3_200_000)
+	if !itemOn.CollateralValue.Equal(wantCollateral) {
+		t.Fatalf("saklar hidup: pengurang %s, mau 80%% dari 4000000 = %s", itemOn.CollateralValue, wantCollateral)
 	}
-	wantExposure := idr(10_000_000).Sub(itemOn.CollateralValue)
+	wantExposure := idr(10_000_000).Sub(wantCollateral)
 	if !itemOn.Exposure.Equal(wantExposure) {
 		t.Fatalf("saklar hidup: eksposur %s, mau %s", itemOn.Exposure, wantExposure)
 	}
@@ -664,12 +825,11 @@ func TestIntegrasiJalurUangPPAPDenganAgunan(t *testing.T) {
 	}
 }
 
-// RunDaily pada database sungguhan tidak pernah sampai menyimpan state PPAP karena
-// SQL UpdateLoanState memakai $1 pada dua konteks tipe yang berbeda (kolom
-// collectibility character varying vs perbandingan CASE yang terdeduksi text):
-// PostgreSQL menolaknya dengan SQLSTATE 42P08 "inconsistent types deduced for
-// parameter $1". Uji ini menyatakan hasil yang diharapkan; kegagalannya adalah
-// temuannya, bukan cacat uji.
+// RunDaily harus benar-benar menyimpan state ke database: kolektibilitas, DPD, dan
+// required_ppap pada baris kredit, serta macet_at yang terisi sekali saat kredit
+// pertama kali digolongkan Macet. Bug cast SQL dulu menolak seluruh UPDATE dengan
+// SQLSTATE 42P08 tanpa jejak di ringkasan, sehingga asersi state tersimpan inilah yang
+// mengunci regresinya.
 func TestIntegrasiJalurUangPPAPRunDaily(t *testing.T) {
 	e := newMoneyEnv(t)
 	asOf := time.Now().UTC()
@@ -688,6 +848,19 @@ func TestIntegrasiJalurUangPPAPRunDaily(t *testing.T) {
 	if !itemOff.Exposure.Equal(idr(10_000_000)) {
 		t.Fatalf("saklar mati: eksposur %s, mau 10000000", itemOff.Exposure)
 	}
+	if itemOff.Collectibility != domain.KolKurangLancar {
+		t.Fatalf("saklar mati: kolektibilitas %s, mau Kurang Lancar", itemOff.Collectibility.Label())
+	}
+	// State benar-benar tersimpan di database, bukan hanya dilaporkan di ringkasan.
+	if got := e.loanString(t, loan.ID, "collectibility"); got != string(domain.KolKurangLancar.OJKCode()) {
+		t.Fatalf("kolektibilitas tersimpan %q, mau %q", got, domain.KolKurangLancar.OJKCode())
+	}
+	if got := e.loanInt(t, loan.ID, "dpd"); got != itemOff.DPD {
+		t.Fatalf("dpd tersimpan %d, mau %d", got, itemOff.DPD)
+	}
+	if got := e.loanDecimal(t, loan.ID, "required_ppap"); !got.Equal(itemOff.Target) {
+		t.Fatalf("required_ppap tersimpan %s, mau %s", got, itemOff.Target)
+	}
 
 	e.addLandCollateral(t, loan.ID, 4_000_000)
 	e.setCollateralEnabled(t, true)
@@ -696,8 +869,42 @@ func TestIntegrasiJalurUangPPAPRunDaily(t *testing.T) {
 		t.Fatalf("run PPAP saklar hidup: %v", err)
 	}
 	itemOn := ppapItem(t, on, loan.ID)
-	if !itemOn.CollateralValue.IsPositive() {
-		t.Fatalf("saklar hidup: pengurang %s, mau positif", itemOn.CollateralValue)
+	if !itemOn.CollateralValue.Equal(idr(3_200_000)) {
+		t.Fatalf("saklar hidup: pengurang %s, mau 3200000 (80%% Pasal 20)", itemOn.CollateralValue)
+	}
+	if got := e.loanDecimal(t, loan.ID, "required_ppap"); !got.Equal(itemOn.Target) {
+		t.Fatalf("required_ppap tersimpan setelah agunan %s, mau %s", got, itemOn.Target)
+	}
+
+	// Kredit Macet: macet_at terisi saat pertama digolongkan Macet dan tidak ditimpa
+	// pada run berikutnya.
+	custMacet := e.newCustomer(t, "Lukman Hakim", "")
+	accMacet := e.newAccount(t, custMacet.ID)
+	loanMacet := e.disburse(t, custMacet.ID, accMacet, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanMacet.ID, asOf.AddDate(0, 0, -400))
+
+	macet1, err := e.ppapSvc.RunDaily(e.ctx, asOf, e.actor)
+	if err != nil {
+		t.Fatalf("run PPAP kredit macet: %v", err)
+	}
+	itemMacet := ppapItem(t, macet1, loanMacet.ID)
+	if itemMacet.Collectibility != domain.KolMacet {
+		t.Fatalf("kolektibilitas kredit macet %s, mau Macet", itemMacet.Collectibility.Label())
+	}
+	if got := e.loanString(t, loanMacet.ID, "collectibility"); got != string(domain.KolMacet.OJKCode()) {
+		t.Fatalf("kolektibilitas macet tersimpan %q, mau %q", got, domain.KolMacet.OJKCode())
+	}
+	macetAt1 := e.loanNullableTime(t, loanMacet.ID, "macet_at")
+	if !macetAt1.Valid {
+		t.Fatal("macet_at tidak terisi saat kredit digolongkan Macet")
+	}
+
+	if _, err := e.ppapSvc.RunDaily(e.ctx, asOf, e.actor); err != nil {
+		t.Fatalf("run PPAP ulang: %v", err)
+	}
+	macetAt2 := e.loanNullableTime(t, loanMacet.ID, "macet_at")
+	if !macetAt2.Valid || !macetAt2.Time.Equal(macetAt1.Time) {
+		t.Fatalf("macet_at berubah pada run berikutnya: %v vs %v", macetAt1.Time, macetAt2.Time)
 	}
 }
 
@@ -790,6 +997,134 @@ func TestIntegrasiJalurUangPencarianNamaNasabah(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("email_index nasabah tanpa email bukan NULL (baris %d)", n)
+	}
+}
+
+// ---------- 5. pembatalan menolak akrual yang sudah terposting (T2) ----------
+
+// Pembatalan pencairan hanya menolak kredit yang sudah punya angsuran dibayar. Padahal
+// akrual bunga, akrual denda, dan PPAP dapat sudah memposting jurnal tanpa menyentuh
+// paid_* maupun status. Ketiganya harus menolak pembatalan dengan sentinel yang
+// menjelaskan apa yang harus dibereskan lebih dulu.
+func TestIntegrasiJalurUangPembatalanDitolakSaatAdaAkrual(t *testing.T) {
+	e := newMoneyEnv(t)
+	asOf := time.Now().UTC()
+
+	// (a) Akrual bunga: angsuran jatuh tempo kemarin, masih Lancar sehingga diakru.
+	custBunga := e.newCustomer(t, "Maya Puspita", "")
+	accBunga := e.newAccount(t, custBunga.ID)
+	loanBunga := e.disburse(t, custBunga.ID, accBunga, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanBunga.ID, asOf.AddDate(0, 0, -1))
+	bungaSum, err := e.loanSvc.AccrueInterest(e.ctx, asOf, e.actor)
+	if err != nil {
+		t.Fatalf("akrual bunga: %v", err)
+	}
+	if bungaSum.Accrued == 0 {
+		t.Fatalf("akrual bunga tidak terjadi: %+v", bungaSum)
+	}
+	if _, err := e.loanSvc.CancelDisbursementLoan(e.ctx, domain.CancelLoanInput{
+		LoanID: loanBunga.ID, Reason: "coba batal setelah akrual bunga",
+	}, e.actor); !errors.Is(err, domain.ErrLoanHasAccrualPostings) {
+		t.Fatalf("pembatalan setelah akrual bunga: %v, mau ErrLoanHasAccrualPostings", err)
+	}
+	if got := e.loanStatus(t, loanBunga.ID); got != string(domain.LoanStatusDisbursed) {
+		t.Fatalf("status kredit bunga berubah meski ditolak: %q", got)
+	}
+
+	// (b) Akrual denda: tarif dipasang, lalu tunggakan sehari diakru.
+	e.setPenaltyRatePerMille(t, 10)
+	custDenda := e.newCustomer(t, "Nina Marlina", "")
+	accDenda := e.newAccount(t, custDenda.ID)
+	loanDenda := e.disburse(t, custDenda.ID, accDenda, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanDenda.ID, asOf.AddDate(0, 0, -1))
+	penSum, err := e.loanSvc.AccruePenalties(e.ctx, asOf, e.actor)
+	if err != nil {
+		t.Fatalf("akrual denda: %v", err)
+	}
+	if penSum.Accrued == 0 {
+		t.Fatalf("akrual denda tidak terjadi: %+v", penSum)
+	}
+	if _, err := e.loanSvc.CancelDisbursementLoan(e.ctx, domain.CancelLoanInput{
+		LoanID: loanDenda.ID, Reason: "coba batal setelah akrual denda",
+	}, e.actor); !errors.Is(err, domain.ErrLoanHasAccrualPostings) {
+		t.Fatalf("pembatalan setelah akrual denda: %v, mau ErrLoanHasAccrualPostings", err)
+	}
+
+	// (c) PPAP: run harian memposting cadangan tapi tidak mengubah status.
+	custPpap := e.newCustomer(t, "Omar Surya", "")
+	accPpap := e.newAccount(t, custPpap.ID)
+	loanPpap := e.disburse(t, custPpap.ID, accPpap, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanPpap.ID, asOf.AddDate(0, 0, -100))
+	e.setCollateralEnabled(t, false)
+	if _, err := e.ppapSvc.RunDaily(e.ctx, asOf, e.actor); err != nil {
+		t.Fatalf("run PPAP: %v", err)
+	}
+	if got := e.loanDecimal(t, loanPpap.ID, "required_ppap"); !got.IsPositive() {
+		t.Fatalf("required_ppap tidak positif setelah run PPAP: %s", got)
+	}
+	if _, err := e.loanSvc.CancelDisbursementLoan(e.ctx, domain.CancelLoanInput{
+		LoanID: loanPpap.ID, Reason: "coba batal setelah PPAP",
+	}, e.actor); !errors.Is(err, domain.ErrLoanHasAccrualPostings) {
+		t.Fatalf("pembatalan setelah PPAP: %v, mau ErrLoanHasAccrualPostings", err)
+	}
+}
+
+// ---------- 6. dua koreksi bersamaan (T1/T6) ----------
+
+// Dua koreksi bersamaan terhadap kredit yang sama harus terserialkan oleh kunci baris
+// kredit: hanya satu jurnal selisih terbit dan saldo akhir konsisten. Tanpa kunci,
+// keduanya membaca pokok lama dan menerbitkan jurnal selisih ganda dengan urutan berbeda.
+func TestIntegrasiJalurUangDuaKoreksiBersamaan(t *testing.T) {
+	e := newMoneyEnv(t)
+	cust := e.newCustomer(t, "Putri Anggraini", "")
+	accID := e.newAccount(t, cust.ID)
+	loan := e.disburse(t, cust.ID, accID, idr(10_000_000), 4)
+
+	const workers = 2
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			_, errs[idx] = e.loanSvc.CorrectLoanAmount(e.ctx, domain.CorrectLoanAmountInput{
+				LoanID: loan.ID, NewAmount: idr(12_000_000), Reason: "koreksi bersamaan",
+			}, e.actor)
+		}(i)
+	}
+	wg.Wait()
+
+	sukses := 0
+	for i, err := range errs {
+		switch {
+		case err == nil:
+			sukses++
+		case errors.Is(err, domain.ErrLoanAmountUnchanged):
+			// Kalah balapan: kredit sudah bernilai 12jt saat kunci diperoleh.
+		default:
+			t.Fatalf("koreksi #%d gagal tak terduga: %v", i, err)
+		}
+	}
+	if sukses == 0 {
+		t.Fatal("tidak ada koreksi yang berhasil")
+	}
+
+	// Tepat satu jurnal selisih terbit untuk pasangan 10jt -> 12jt.
+	if n := e.countJournalsByKey(t, "CORR-"+loan.LoanNumber+"-12000000-1"); n != 1 {
+		t.Fatalf("jurnal selisih urutan pertama %d, mau 1", n)
+	}
+	if n := e.countJournalsByKey(t, "CORR-"+loan.LoanNumber+"-12000000-2"); n != 0 {
+		t.Fatalf("jurnal selisih urutan kedua %d, mau 0 (koreksi kedua tidak menerbitkan selisih)", n)
+	}
+	after, err := e.loanRepo.GetByID(e.ctx, loan.ID)
+	if err != nil {
+		t.Fatalf("membaca kredit: %v", err)
+	}
+	if !after.PrincipalAmount.Equal(idr(12_000_000)) {
+		t.Fatalf("nominal akhir %s, mau 12000000", after.PrincipalAmount)
+	}
+	if got := e.accountBalance(t, accID); !got.Equal(idr(12_000_000)) {
+		t.Fatalf("saldo rekening akhir %s, mau 12000000 (kaki jurnal pencairan)", got)
 	}
 }
 

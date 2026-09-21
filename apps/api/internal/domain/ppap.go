@@ -140,10 +140,12 @@ func SubMonthlyCollectibilityThresholds() CollectibilityThresholds {
 // pengurang, dengan lantai nol: agunan yang nilainya melebihi baki debet tidak menghasilkan
 // eksposur negatif, karena penyisihan negatif tidak punya arti.
 //
-// PASAL DAN CAKUPAN RESMINYA BELUM DIVERIFIKASI. Catatan lama proyek menyebut Pasal 20,
-// komentar migrasi 000026 menyebut Pasal 17; salah satu salah. Fungsi ini disediakan agar
-// perhitungannya siap, tetapi baru dipakai bila ppap.collateral.enabled diaktifkan setelah
-// teks POJK No. 1 Tahun 2024 diverifikasi.
+// Dasar hukum pengurang agunan adalah Pasal 20 ayat (1) POJK No. 1 Tahun 2024; pemetaan
+// pasal yang ditegakkan ada di collateral_pasal20.go (batas atas per jenis agunan,
+// larangan agunan di luar daftar ayat (1), dan penurunan untuk kualitas Macet). Fungsi
+// ini hanya melakukan pengurangan matematisnya dan tidak memutuskan jenis agunan mana
+// yang boleh mengurangi; keputusan itu dibuat pemanggil lewat PPAPCollateralDeductionTotal
+// dan PPAPCashCollateralTotal.
 func PPAPExposure(outstanding, collateralValue decimal.Decimal) decimal.Decimal {
 	if collateralValue.IsNegative() {
 		collateralValue = decimal.Zero

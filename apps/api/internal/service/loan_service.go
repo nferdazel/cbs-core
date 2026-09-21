@@ -432,102 +432,128 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		return nil, err
 	}
 
-	schedules, err := s.loanRepo.GetSchedules(ctx, loan.ID)
-	if err != nil {
-		return nil, err
-	}
 	payAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 	if err != nil {
 		return nil, errors.New("rekening pembayaran angsuran tidak ditemukan")
 	}
-	var target *domain.LoanSchedule
-	for i := range schedules {
-		if schedules[i].InstallmentNo == input.InstallmentNo {
-			target = &schedules[i]
-			break
-		}
-	}
-	if target == nil {
-		return nil, errors.New("jadwal angsuran tidak ditemukan")
-	}
-	if target.Status == domain.InstallmentStatusPaid {
-		return nil, errors.New("angsuran ini sudah dibayar penuh")
-	}
 
-	outstandingPrincipal := target.PrincipalAmount.Sub(target.PaidPrincipal)
-	outstandingProfit := target.ProfitAmount.Sub(target.PaidProfit)
-	if outstandingPrincipal.IsNegative() {
-		outstandingPrincipal = decimal.Zero
-	}
-	if outstandingProfit.IsNegative() {
-		outstandingProfit = decimal.Zero
-	}
-
-	// Denda adalah kewajiban tingkat kredit, bukan tingkat angsuran, sehingga seluruh
-	// denda yang sudah diakru ditagih lebih dulu. Sebelum ini denda tidak punya jalur
-	// pelunasan sama sekali: piutangnya menumpuk di 10305/11700 sementara kredit bisa
-	// dinyatakan lunas dengan denda masih menggantung.
-	penaltyDue := loan.PenaltyAccrued
-	if penaltyDue.IsNegative() {
-		penaltyDue = decimal.Zero
-	}
-
-	// Tanpa nominal, pemanggil meminta pelunasan penuh angsuran ini beserta dendanya.
-	amount := input.Amount
-	if !amount.IsPositive() {
-		amount = penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal)
-	}
-	allocation := domain.AllocateLoanPayment(amount, penaltyDue, outstandingProfit, outstandingPrincipal)
-	if allocation.Unapplied.IsPositive() {
-		return nil, fmt.Errorf(
-			"pembayaran %s melebihi kewajiban angsuran ke-%d kredit %s (%s); kelebihan belum dapat diterima",
-			amount.StringFixed(2), input.InstallmentNo, loan.LoanNumber,
-			penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal).StringFixed(2))
-	}
-
-	// settle adalah porsi bunga yang diselesaikan dari akruan yang sudah terbentuk.
-	// min(porsi bunga yang dibayar, profit_accrued_amount) memastikan piutang bunga
-	// 10400 tidak pernah negatif dan pendapatan satu angsuran tidak melebihi porsi
-	// bunga jadwal.
-	settle := allocation.Profit
-	if settle.GreaterThan(target.ProfitAccruedAmount) {
-		settle = target.ProfitAccruedAmount
-	}
-	if settle.IsNegative() {
-		settle = decimal.Zero
-	}
-
-	touchesSchedule := allocation.Profit.IsPositive() || allocation.Principal.IsPositive()
-	installmentStatus := domain.InstallmentStatusPartial
-	if allocation.Profit.Equal(outstandingProfit) && allocation.Principal.Equal(outstandingPrincipal) {
-		installmentStatus = domain.InstallmentStatusPaid
-	}
-
-	newOutstanding := loan.OutstandingPrincipal.Sub(allocation.Principal)
-	if newOutstanding.IsNegative() {
-		newOutstanding = decimal.Zero
-	}
-	newPenalty := penaltyDue.Sub(allocation.Penalty)
-	if newPenalty.IsNegative() {
-		newPenalty = decimal.Zero
-	}
-
-	// Kunci idempotensi memuat total bayar kumulatif setelah pembayaran ini: percobaan
-	// ulang atas pembayaran yang sama menghasilkan kunci yang sama (ditolak sebagai
-	// duplikat), sedangkan angsuran sebagian berikutnya menghasilkan kunci berbeda
-	// karena totalnya sudah berubah. Kunci lama (-PRIN/-PROF) tidak memuat itu sehingga
-	// angsuran sebagian kedua akan tertolak sebagai duplikat.
-	baseKey := fmt.Sprintf("INST-%s-%d-%s-%s", loan.LoanNumber, input.InstallmentNo,
-		target.PaidPrincipal.Add(allocation.Principal).StringFixed(2),
-		target.PaidProfit.Add(allocation.Profit).StringFixed(2))
-	meta := PostingMeta{
-		TransactionType: domain.TxTypeTransferInternal,
-		Description:     fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
-	}
+	// Hasil perhitungan di dalam transaksi disimpan ke variabel luar untuk dipakai
+	// setelah commit (nilai kembalian dan pemeriksaan pelunasan).
+	var (
+		target            *domain.LoanSchedule
+		allocation        domain.PaymentAllocation
+		settle            decimal.Decimal
+		installmentStatus domain.InstallmentStatus
+		touchesSchedule   bool
+		newPenalty        decimal.Decimal
+	)
 
 	err = s.txRunner.Run(ctx, func(tx any) error {
+		// Kunci baris kredit lebih dulu, lalu baca jadwal di dalam kunci. Jadwal yang
+		// dibaca di luar transaksi bisa sudah basi: koreksi nominal yang commit di
+		// antaranya mengganti pokok tiap angsuran, sehingga pembayaran menghitung
+		// kewajiban dari angka lama. Kunci yang sama juga menyerialkan pembayaran
+		// dengan pembatalan pencairan, sehingga pembayaran tidak pernah jatuh pada
+		// kredit yang sudah CANCELLED.
+		locked, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
+		if err != nil {
+			return err
+		}
+		if locked.Status != domain.LoanStatusDisbursed {
+			return errors.New("kredit tidak dalam status aktif")
+		}
+		loan = locked
+
+		schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, loan.ID)
+		if err != nil {
+			return err
+		}
+		for i := range schedules {
+			if schedules[i].InstallmentNo == input.InstallmentNo {
+				target = &schedules[i]
+				break
+			}
+		}
+		if target == nil {
+			return errors.New("jadwal angsuran tidak ditemukan")
+		}
+		if target.Status == domain.InstallmentStatusPaid {
+			return errors.New("angsuran ini sudah dibayar penuh")
+		}
+
+		outstandingPrincipal := target.PrincipalAmount.Sub(target.PaidPrincipal)
+		outstandingProfit := target.ProfitAmount.Sub(target.PaidProfit)
+		if outstandingPrincipal.IsNegative() {
+			outstandingPrincipal = decimal.Zero
+		}
+		if outstandingProfit.IsNegative() {
+			outstandingProfit = decimal.Zero
+		}
+
+		// Denda adalah kewajiban tingkat kredit, bukan tingkat angsuran, sehingga seluruh
+		// denda yang sudah diakru ditagih lebih dulu. Sebelum ini denda tidak punya jalur
+		// pelunasan sama sekali: piutangnya menumpuk di 10305/11700 sementara kredit bisa
+		// dinyatakan lunas dengan denda masih menggantung.
+		penaltyDue := loan.PenaltyAccrued
+		if penaltyDue.IsNegative() {
+			penaltyDue = decimal.Zero
+		}
+
+		// Tanpa nominal, pemanggil meminta pelunasan penuh angsuran ini beserta dendanya.
+		amount := input.Amount
+		if !amount.IsPositive() {
+			amount = penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal)
+		}
+		allocation = domain.AllocateLoanPayment(amount, penaltyDue, outstandingProfit, outstandingPrincipal)
+		if allocation.Unapplied.IsPositive() {
+			return fmt.Errorf(
+				"pembayaran %s melebihi kewajiban angsuran ke-%d kredit %s (%s); kelebihan belum dapat diterima",
+				amount.StringFixed(2), input.InstallmentNo, loan.LoanNumber,
+				penaltyDue.Add(outstandingProfit).Add(outstandingPrincipal).StringFixed(2))
+		}
+
+		// settle adalah porsi bunga yang diselesaikan dari akruan yang sudah terbentuk.
+		// min(porsi bunga yang dibayar, profit_accrued_amount) memastikan piutang bunga
+		// 10400 tidak pernah negatif dan pendapatan satu angsuran tidak melebihi porsi
+		// bunga jadwal.
+		settle = allocation.Profit
+		if settle.GreaterThan(target.ProfitAccruedAmount) {
+			settle = target.ProfitAccruedAmount
+		}
+		if settle.IsNegative() {
+			settle = decimal.Zero
+		}
+
+		touchesSchedule = allocation.Profit.IsPositive() || allocation.Principal.IsPositive()
+		installmentStatus = domain.InstallmentStatusPartial
+		if allocation.Profit.Equal(outstandingProfit) && allocation.Principal.Equal(outstandingPrincipal) {
+			installmentStatus = domain.InstallmentStatusPaid
+		}
+
+		newOutstanding := loan.OutstandingPrincipal.Sub(allocation.Principal)
+		if newOutstanding.IsNegative() {
+			newOutstanding = decimal.Zero
+		}
+		newPenalty = penaltyDue.Sub(allocation.Penalty)
+		if newPenalty.IsNegative() {
+			newPenalty = decimal.Zero
+		}
+
+		// Kunci idempotensi memuat total bayar kumulatif setelah pembayaran ini: percobaan
+		// ulang atas pembayaran yang sama menghasilkan kunci yang sama (ditolak sebagai
+		// duplikat), sedangkan angsuran sebagian berikutnya menghasilkan kunci berbeda
+		// karena totalnya sudah berubah. Kunci lama (-PRIN/-PROF) tidak memuat itu sehingga
+		// angsuran sebagian kedua akan tertolak sebagai duplikat.
+		baseKey := fmt.Sprintf("INST-%s-%d-%s-%s", loan.LoanNumber, input.InstallmentNo,
+			target.PaidPrincipal.Add(allocation.Principal).StringFixed(2),
+			target.PaidProfit.Add(allocation.Profit).StringFixed(2))
+		meta := PostingMeta{
+			TransactionType: domain.TxTypeTransferInternal,
+			Description:     fmt.Sprintf("Angsuran ke-%d kredit %s", input.InstallmentNo, loan.LoanNumber),
+			CreatedBy:       actor.DisplayName(),
+			BranchCode:      actor.BranchCode,
+		}
+
 		// Sumber dana ditentukan di dalam transaksi: penerimaan tunai mengarahkan kaki
 		// debit ke kas teller, sedangkan pembayaran lewat rekening mengarahkannya ke
 		// rekening nasabah (bawaan).
@@ -1341,14 +1367,34 @@ func (s *loanService) CancelDisbursementLoan(ctx context.Context, input domain.C
 	}
 
 	if err := s.txRunner.Run(ctx, func(tx any) error {
-		// Pemeriksaan angsuran dilakukan di dalam transaksi agar tidak ada
-		// pembayaran yang menyelinap di antara guard dan eksekusi.
+		// Kunci baris kredit lebih dulu. Pemeriksaan di pemanggil hanyalah gagal-cepat:
+		// setelah kunci diperoleh, status dan ada/tidaknya pembayaran diperiksa ulang
+		// dari keadaan segar, sehingga pembayaran atau koreksi yang commit lebih dulu
+		// pasti terlihat dan pembatalan tidak menghapus jadwal miliknya.
+		locked, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
+		if err != nil {
+			return err
+		}
+		if locked.Status != domain.LoanStatusDisbursed {
+			return domain.ErrLoanNotCancellable
+		}
 		paid, err := s.loanRepo.HasInstallmentPaymentTx(ctx, tx, loan.ID)
 		if err != nil {
 			return err
 		}
 		if paid {
 			return domain.ErrLoanHasInstallmentPayments
+		}
+		// Akrual bunga/denda/PPAP yang sudah terposting tidak akan dibalik oleh
+		// pembatalan ini, jadi kredit semacam itu ditolak alih-alih dibiarkan
+		// menggantung. Memeriksa tepat setelah kunci membuat hasilnya otoritatif:
+		// jalur akrual juga memegang kunci baris kredit yang sama.
+		accrued, err := s.loanRepo.HasAccrualPostingsTx(ctx, tx, loan.ID)
+		if err != nil {
+			return err
+		}
+		if accrued {
+			return domain.ErrLoanHasAccrualPostings
 		}
 
 		ref, err := s.loanRepo.GetDisbursementJournalRefTx(ctx, tx, loan.LoanNumber)
@@ -1448,6 +1494,28 @@ func (s *loanService) CorrectLoanAmount(ctx context.Context, input domain.Correc
 // memperbarui nominal, dan menulis audit. Tanggal bisnis dibaca paling awal agar
 // koreksi ditolak sebelum satu pun baris berubah bila tanggal tidak tersedia.
 func (s *loanService) correctLoanAmountTx(ctx context.Context, tx any, loan *domain.Loan, input domain.CorrectLoanAmountInput, actor domain.Actor) error {
+	// Kunci baris kredit lebih dulu, sebelum jadwal dibaca. Tanpa kunci, dua koreksi
+	// bersamaan menghitung selisih dari data basi dan menerbitkan jurnal selisih ganda,
+	// dan koreksi pada kredit yang baru saja CANCELLED dapat menghidupkan kembali
+	// jadwalnya. Pemeriksaan status di pemanggil hanya gagal-cepat; yang otoritatif
+	// adalah keadaan setelah kunci diperoleh.
+	locked, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
+	if err != nil {
+		return err
+	}
+	if locked.Status != domain.LoanStatusDisbursed {
+		return domain.ErrLoanNotCancellable
+	}
+	// Nominal yang diminta bisa saja sudah menjadi nominal berjalan karena koreksi lain
+	// commit lebih dulu. Tanpa pemeriksaan ulang ini, selisihnya nol tetapi koreksi
+	// tetap menulis audit dan menimpa jadwal tanpa manfaat.
+	if input.NewAmount.Equal(locked.PrincipalAmount) {
+		return domain.ErrLoanAmountUnchanged
+	}
+	// Salin keadaan segar ke objek pemanggil agar mutasi di bawah (nominal, jadwal)
+	// tetap terlihat pada kredit yang dikembalikan.
+	*loan = *locked
+
 	entryDate, err := s.businessDate(ctx)
 	if err != nil {
 		return err
@@ -1546,10 +1614,6 @@ func (s *loanService) postLoanCorrectionTx(ctx context.Context, tx any, original
 	return posted.ReferenceNumber, nil
 }
 
-// disbursementAccounts memisahkan kaki kas/rekening dan kaki pokok pada jurnal
-// pencairan asli. Sisi debit adalah tempat dana keluar (kas/rekening nasabah), sisi
-// kredit adalah lawannya (akun pokok kredit). Koreksi harus bergerak di antara dua
-// akun yang sama supaya dana kembali ke/keluar dari tempat yang sama.
 // disbursementLegs memisahkan jurnal pencairan menjadi kaki debit dan kaki kredit.
 // Nama "kas" dan "pokok" sengaja tidak dipakai: pada pencairan kredit, kaki DEBIT adalah
 // piutang kredit (aset bertambah) dan kaki KREDIT adalah rekening nasabah (kewajiban
