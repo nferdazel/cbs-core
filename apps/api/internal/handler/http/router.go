@@ -45,6 +45,7 @@ type RouterParams struct {
 	ReportHandler       *ReportHandler
 	CollectionHandler   *CollectionHandler
 	IntegrationHandler  *IntegrationHandler
+	OJKReportHandler    *OJKReportHandler
 	BatchProcessHandler *BatchProcessHandler
 	DocumentHandler     *DocumentHandler
 	DepositHandler      *DepositHandler
@@ -255,6 +256,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// deposito berjangka. Baca saja, cabang dibatasi oleh service.
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/due-obligations", p.ReportHandler.DueObligations)
+				// Fondasi ekspor laporan OJK (APOLO): definisi/tenggat dan berkas
+				// teks bulanan. Rute pemiliknya didaftarkan handler agar router tidak
+				// menumpuk detail form di sini.
+				if p.OJKReportHandler != nil {
+					p.OJKReportHandler.RegisterRoutes(r)
+				}
 			})
 
 			// ── Third-Party Integration Gateway (OJK SLIK / CBAS & Dukcapil) ──

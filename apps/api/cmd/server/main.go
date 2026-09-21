@@ -147,6 +147,9 @@ func main() {
 	loanHandler := httpHandler.NewLoanHandler(loanSvc)
 	mcHandler := httpHandler.NewMakerCheckerHandler(mcSvc)
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
+	// Ekspor OJK memakai laporan journal-based yang sama; hanya pemetaan pos OJK
+	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi.
+	ojkReportHandler := httpHandler.NewOJKReportHandler(reportSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
@@ -167,6 +170,7 @@ func main() {
 		LoanHandler:         loanHandler,
 		MakerCheckerHandler: mcHandler,
 		ReportHandler:       reportHandler,
+		OJKReportHandler:    ojkReportHandler,
 		CollectionHandler:   collectionHandler,
 		IntegrationHandler:  integrationHandler,
 		BatchProcessHandler: batchHandler,
