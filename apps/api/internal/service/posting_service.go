@@ -20,6 +20,7 @@ type postingService struct {
 	accountRepo  domain.AccountRepository
 	resolver     domain.AccountResolver
 	referenceGen domain.ReferenceGenerator
+	dates        domain.BusinessDateRepository
 }
 
 func NewPostingService(
@@ -28,6 +29,7 @@ func NewPostingService(
 	accountRepo domain.AccountRepository,
 	resolver domain.AccountResolver,
 	referenceGen domain.ReferenceGenerator,
+	dates domain.BusinessDateRepository,
 ) domain.PostingService {
 	return &postingService{
 		db:           db,
@@ -35,6 +37,7 @@ func NewPostingService(
 		accountRepo:  accountRepo,
 		resolver:     resolver,
 		referenceGen: referenceGen,
+		dates:        dates,
 	}
 }
 
@@ -78,10 +81,18 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 	journalID := uuid.New()
 	now := time.Now().UTC()
 
-	// Tanggal akuntansi entri. Nol berarti hari ini (UTC), perilaku lama dipertahankan.
+	// Tanggal akuntansi entri. Nol berarti tanggal bisnis berjalan, bukan tanggal
+	// kalender: bila tutup hari tertinggal, tanggal kalender jatuh di periode yang
+	// belum dibuka sehingga jurnal terlewat oleh tutup hari dan buku cabang berbeda
+	// dari kenyataan. Tanggal bisnis yang tidak terbaca menolak posting, bukan
+	// menebak tanggal kalender.
 	entryDate := req.EntryDate
 	if entryDate.IsZero() {
-		entryDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		businessDate, err := s.businessDate(ctx)
+		if err != nil {
+			return nil, err
+		}
+		entryDate = businessDate
 	}
 
 	refNumber := req.ReferenceNumber
@@ -133,6 +144,24 @@ func (s *postingService) PostTx(ctx context.Context, tx any, req domain.PostingR
 		return nil, err
 	}
 	return entry, nil
+}
+
+// businessDate membaca tanggal bisnis berjalan dari repositori tanggal, bukan dari
+// layanan konfigurasi yang nilainya bisa basi. Tanpa tanggal yang pasti, posting
+// ditolak: menebak tanggal kalender berisiko menulis jurnal di periode yang belum
+// dibuka dan membuat buku cabang berbeda dari kenyataan.
+func (s *postingService) businessDate(ctx context.Context) (time.Time, error) {
+	if s.dates == nil {
+		return time.Time{}, errors.New("sumber tanggal bisnis belum terpasang")
+	}
+	current, err := s.dates.GetCurrentDate(ctx)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("membaca tanggal bisnis: %w", err)
+	}
+	if current == nil || current.CurrentDate.IsZero() {
+		return time.Time{}, errors.New("tanggal bisnis tidak tersedia")
+	}
+	return current.CurrentDate, nil
 }
 
 // buildLines mengunci tiap akun, menghitung saldo baru berdasarkan normal balance

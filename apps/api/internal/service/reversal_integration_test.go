@@ -64,7 +64,7 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	auditRepo := postgres.NewAuditRepository(db)
 	configSvc := service.NewSystemConfigService(configRepo)
 	referenceGen := postgres.NewReferenceGenerator(db)
-	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
+	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, postgres.NewBusinessDateRepository(db))
 	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo)
 	executors := service.NewExecutorRegistry()
 	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors)

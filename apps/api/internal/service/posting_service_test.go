@@ -65,6 +65,7 @@ func newPostingServiceForTest(repo *stubPostingRepo) *postingService {
 			"20100": {ID: uuid.New(), AccountNumber: "20100", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
 		}},
 		referenceGen: stubReferenceGen{},
+		dates:        &reversalDateRepo{date: tanggalBisnisUji},
 	}
 }
 
@@ -80,8 +81,9 @@ func balancedPostingRequest() domain.PostingRequest {
 	}
 }
 
-// EntryDate nol harus jatuh ke tanggal UTC hari ini agar pemanggil lama tidak berubah.
-func TestPostTxEntryDateDefaultsToTodayUTC(t *testing.T) {
+// EntryDate nol harus memakai tanggal bisnis berjalan, bukan tanggal kalender:
+// bila tutup hari tertinggal, tanggal kalender jatuh di periode yang belum dibuka.
+func TestPostTxEntryDateDefaultsToBusinessDate(t *testing.T) {
 	repo := &stubPostingRepo{}
 	svc := newPostingServiceForTest(repo)
 
@@ -91,22 +93,51 @@ func TestPostTxEntryDateDefaultsToTodayUTC(t *testing.T) {
 		t.Fatalf("posting gagal: %v", err)
 	}
 
-	want := time.Now().UTC().Format("2006-01-02")
-	if got := entry.EntryDate.UTC().Format("2006-01-02"); got != want {
-		t.Fatalf("entry_date default = %s, ingin hari ini UTC %s", got, want)
+	if !entry.EntryDate.Equal(tanggalBisnisUji) {
+		t.Fatalf("entry_date default = %s, ingin tanggal bisnis %s", entry.EntryDate, tanggalBisnisUji)
 	}
 	if repo.inserted == nil {
 		t.Fatal("entri tidak sampai ke repository")
 	}
-	if !repo.inserted.EntryDate.Equal(entry.EntryDate) {
-		t.Fatalf("entry_date tersimpan %s berbeda dari entri %s", repo.inserted.EntryDate, entry.EntryDate)
+	if !repo.inserted.EntryDate.Equal(tanggalBisnisUji) {
+		t.Fatalf("entry_date tersimpan %s, ingin tanggal bisnis %s", repo.inserted.EntryDate, tanggalBisnisUji)
+	}
+}
+
+// Sumber tanggal bisnis yang tidak terbaca harus menolak posting, bukan menebak
+// tanggal kalender dan bukan menulis jurnal di periode yang salah.
+func TestPostTxEntryDateRejectsMissingBusinessDate(t *testing.T) {
+	cases := []struct {
+		name  string
+		dates domain.BusinessDateRepository
+	}{
+		{"repositori nil", nil},
+		{"pembacaan gagal", &reversalDateRepo{err: errors.New("database tanggal tidak dapat dihubungi")}},
+		{"tanggal nol", &reversalDateRepo{date: time.Time{}}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &stubPostingRepo{}
+			svc := newPostingServiceForTest(repo)
+			svc.dates = tc.dates
+
+			if _, err := svc.PostTx(context.Background(), (*sql.Tx)(nil), balancedPostingRequest()); err == nil {
+				t.Fatal("posting harus ditolak saat tanggal bisnis tidak terbaca")
+			}
+			if repo.inserted != nil {
+				t.Fatal("jurnal tidak boleh tertulis saat tanggal bisnis tidak terbaca")
+			}
+		})
 	}
 }
 
 // EntryDate yang diisi pemanggil harus tersimpan apa adanya, bukan ditimpa tanggal jalan.
+// Sumber tanggal bisnis sengaja dibuat gagal: jalur eksplisit tidak boleh bergantung padanya.
 func TestPostTxEntryDateUsesCallerValue(t *testing.T) {
 	repo := &stubPostingRepo{}
 	svc := newPostingServiceForTest(repo)
+	svc.dates = &reversalDateRepo{err: errors.New("sumber tanggal tidak dipakai untuk tanggal eksplisit")}
 
 	explicit := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
 	req := balancedPostingRequest()

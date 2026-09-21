@@ -46,8 +46,9 @@ type PostingRequest struct {
 	CreatedBy       string        `json:"created_by"`
 	BranchCode      string        `json:"branch_code,omitempty"`
 	// EntryDate adalah tanggal akuntansi entri. Bila nol, posting engine memakai
-	// tanggal UTC hari ini. Pemanggil yang tanggalnya penting (tutup buku, akrual)
-	// wajib mengisinya, karena laporan periode membaca kolom ini.
+	// tanggal bisnis berjalan dari BusinessDateRepository; posting ditolak bila
+	// tanggal itu tidak terbaca. Pemanggil yang tanggalnya penting (tutup buku,
+	// akrual) wajib mengisinya, karena laporan periode membaca kolom ini.
 	EntryDate time.Time     `json:"entry_date,omitempty"`
 	Lines     []PostingLine `json:"lines"`
 }

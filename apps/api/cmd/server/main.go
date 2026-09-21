@@ -76,7 +76,7 @@ func main() {
 
 	// 4. Core services
 	configSvc := service.NewSystemConfigService(configRepo)
-	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen)
+	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
 	// Registry memutus siklus ledger <-> maker-checker: ledger mengajukan persetujuan,
