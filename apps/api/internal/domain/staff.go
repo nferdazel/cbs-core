@@ -201,6 +201,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermProductsRead,
 		PermCustomersCreate, PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead,
+		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
 		PermLedgerRead,
 	},
 	RoleAO: {

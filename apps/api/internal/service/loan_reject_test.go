@@ -109,6 +109,11 @@ func TestRejectLoan_AlasanTersimpanDanAuditMencatat(t *testing.T) {
 		t.Fatalf("aksi audit %q, ingin REJECT_LOAN", event.Action)
 	}
 	if got, _ := event.Changes["reason"].(string); got != trimmed {
-		t.Fatalf("alasan pada audit %q, ingin %q", got, trimmed)
+		t.Fatalf("alasan pada audit changes %q, ingin %q", got, trimmed)
+	}
+	// Pembaca audit lama membaca metadata, bukan changes; alasan harus ada di sana
+	// juga agar penolakan tidak tampak tanpa alasan.
+	if got, _ := event.Metadata["reason"].(string); got != trimmed {
+		t.Fatalf("alasan pada audit metadata %q, ingin %q", got, trimmed)
 	}
 }

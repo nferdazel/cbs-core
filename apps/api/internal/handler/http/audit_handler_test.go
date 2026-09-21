@@ -82,6 +82,36 @@ func TestAuditHandler_ListMeneruskanFilter(t *testing.T) {
 	}
 }
 
+// Alasan penolakan kredit harus terbaca pembaca lama lewat metadata, di samping
+// changes yang tetap dikirim. Bentuk respons tidak berubah, hanya bertambah field.
+func TestAuditHandler_ListMengirimMetadataAlasan(t *testing.T) {
+	reader := &stubAuditReader{events: []domain.AuditEvent{{
+		ActorID: "spv1", Action: "REJECT_LOAN", ResourceType: "loan", ResourceID: "L-2",
+		Changes:  map[string]any{"reason": "agunan tidak memenuhi syarat"},
+		Metadata: map[string]any{"reason": "agunan tidak memenuhi syarat"},
+	}}}
+	handler := httpHandler.NewAuditHandler(reader, nil)
+
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?resource_type=loan&action=REJECT_LOAN", nil)
+
+	handler.List(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, mau 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var body auditListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("respons bukan JSON valid: %v", err)
+	}
+	if len(body.Data) != 1 {
+		t.Fatalf("data audit %d baris, mau 1", len(body.Data))
+	}
+	if got, _ := body.Data[0].Metadata["reason"].(string); got != "agunan tidak memenuhi syarat" {
+		t.Fatalf("metadata.reason %q, ingin alasan penolakan", got)
+	}
+}
+
 func TestAuditHandler_ListMembatasiPermintaanBerlebihan(t *testing.T) {
 	reader := &stubAuditReader{}
 	handler := httpHandler.NewAuditHandler(reader, nil)

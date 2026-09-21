@@ -54,10 +54,10 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 	query := `
 		INSERT INTO audit_logs (
 			actor_id, actor_role, action, resource_type, resource_id,
-			ip_address, changes, staff_user_id, staff_role,
+			ip_address, changes, metadata, staff_user_id, staff_role,
 			request_id, user_agent, created_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 	_, err := exec.ExecContext(ctx, query,
 		actorLabel,
@@ -67,6 +67,7 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 		event.ResourceID,
 		event.IPAddress,
 		event.ChangesJSON(),
+		event.MetadataJSON(),
 		staffUserID,
 		event.ActorRole,
 		nullIfEmpty(event.RequestID),
@@ -127,7 +128,7 @@ func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilte
 	}
 
 	query := `SELECT actor_id, COALESCE(actor_role, ''), action, resource_type, resource_id,
-		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb),
+		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb), COALESCE(metadata, '{}'::jsonb),
 		       COALESCE(request_id, ''), COALESCE(user_agent, ''), created_at
 		FROM audit_logs`
 	if len(conditions) > 0 {
@@ -146,15 +147,18 @@ func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilte
 	events := make([]domain.AuditEvent, 0, limit)
 	for rows.Next() {
 		var e domain.AuditEvent
-		var changes []byte
+		var changes, metadata []byte
 		if err := rows.Scan(
 			&e.ActorID, &e.ActorRole, &e.Action, &e.ResourceType, &e.ResourceID,
-			&e.IPAddress, &changes, &e.RequestID, &e.UserAgent, &e.CreatedAt,
+			&e.IPAddress, &changes, &metadata, &e.RequestID, &e.UserAgent, &e.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		if len(changes) > 0 {
 			_ = json.Unmarshal(changes, &e.Changes)
+		}
+		if len(metadata) > 0 {
+			_ = json.Unmarshal(metadata, &e.Metadata)
 		}
 		events = append(events, e)
 	}
@@ -171,7 +175,7 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 
 	query := `
 		SELECT actor_id, COALESCE(actor_role, ''), action, resource_type, resource_id,
-		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb),
+		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb), COALESCE(metadata, '{}'::jsonb),
 		       COALESCE(request_id, ''), COALESCE(user_agent, ''), created_at
 		FROM audit_logs
 		WHERE resource_type = $1 AND resource_id = $2
@@ -187,15 +191,18 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 	var events []domain.AuditEvent
 	for rows.Next() {
 		var e domain.AuditEvent
-		var changes []byte
+		var changes, metadata []byte
 		if err := rows.Scan(
 			&e.ActorID, &e.ActorRole, &e.Action, &e.ResourceType, &e.ResourceID,
-			&e.IPAddress, &changes, &e.RequestID, &e.UserAgent, &e.CreatedAt,
+			&e.IPAddress, &changes, &metadata, &e.RequestID, &e.UserAgent, &e.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		if len(changes) > 0 {
 			_ = json.Unmarshal(changes, &e.Changes)
+		}
+		if len(metadata) > 0 {
+			_ = json.Unmarshal(metadata, &e.Metadata)
 		}
 		events = append(events, e)
 	}

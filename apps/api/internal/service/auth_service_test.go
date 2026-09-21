@@ -258,7 +258,14 @@ func TestStaffRole_HasPermission(t *testing.T) {
 		{domain.RoleAuditor, domain.PermTransactionsDeposit, false},
 		{domain.RoleSuperAdmin, domain.PermSystemConfig, true},
 		{domain.RoleCS, domain.PermCustomersCreate, true},
-		{domain.RoleCS, domain.PermTransactionsDeposit, false},
+		// CS diperlakukan seperti AO: izin transaksi diselaraskan dengan batas
+		// limit.cs.* yang di-seed, tanpa izin administratif/persetujuan.
+		{domain.RoleCS, domain.PermTransactionsDeposit, true},
+		{domain.RoleCS, domain.PermTransactionsWithdraw, true},
+		{domain.RoleCS, domain.PermTransactionsTransfer, true},
+		{domain.RoleCS, domain.PermLedgerRead, true},
+		{domain.RoleCS, domain.PermMakerCheckerApprove, false},
+		{domain.RoleCS, domain.PermSystemConfig, false},
 	}
 
 	for _, tc := range cases {

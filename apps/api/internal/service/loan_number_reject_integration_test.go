@@ -74,15 +74,38 @@ func TestIntegrasiKreditW2TolakMenyimpanAlasan(t *testing.T) {
 		t.Fatalf("alasan di database %q, ingin %q", dbReason, reason)
 	}
 
-	var auditReason string
+	var auditReason, auditMetadataReason string
 	if err := e.db.QueryRowContext(e.ctx, `
-		SELECT changes->>'reason' FROM audit_logs
+		SELECT changes->>'reason', metadata->>'reason' FROM audit_logs
 		WHERE resource_type = 'loan' AND resource_id = $1 AND action = 'REJECT_LOAN'
-		ORDER BY created_at DESC LIMIT 1`, loan.ID.String()).Scan(&auditReason); err != nil {
+		ORDER BY created_at DESC LIMIT 1`, loan.ID.String()).Scan(&auditReason, &auditMetadataReason); err != nil {
 		t.Fatalf("membaca audit penolakan: %v", err)
 	}
 	if auditReason != reason {
-		t.Fatalf("alasan pada audit %q, ingin %q", auditReason, reason)
+		t.Fatalf("alasan pada audit changes %q, ingin %q", auditReason, reason)
+	}
+	// Pembaca audit lama membaca metadata; alasan harus terbaca di sana juga.
+	if auditMetadataReason != reason {
+		t.Fatalf("alasan pada audit metadata %q, ingin %q", auditMetadataReason, reason)
+	}
+
+	// Jalur baca repositori (kolom metadata ikut dipetakan) juga harus membawa alasan.
+	auditEvents, err := postgres.NewAuditRepository(e.db).List(e.ctx, "loan", loan.ID.String(), 10)
+	if err != nil {
+		t.Fatalf("membaca audit lewat repositori: %v", err)
+	}
+	ditemukan := false
+	for _, ev := range auditEvents {
+		if ev.Action != "REJECT_LOAN" {
+			continue
+		}
+		ditemukan = true
+		if got, _ := ev.Metadata["reason"].(string); got != reason {
+			t.Fatalf("alasan metadata dari repositori audit %q, ingin %q", got, reason)
+		}
+	}
+	if !ditemukan {
+		t.Fatal("audit REJECT_LOAN tidak ditemukan lewat repositori audit")
 	}
 }
 

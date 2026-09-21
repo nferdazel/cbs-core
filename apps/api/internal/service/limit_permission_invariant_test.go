@@ -33,7 +33,6 @@ import (
 // menumpuk tanpa guna.
 var limitPermissionExceptions = map[domain.StaffRole]string{
 	domain.RoleSupervisor: "peran persetujuan: tidak menerbitkan transaksi kas sendiri (hanya menyetujui/membatalkan), sehingga batasnya hanya nilai rujukan. Bila kelak SUPERVISOR diizinkan bertransaksi, hapus pengecualian ini.",
-	domain.RoleCS:         "CS tidak menangani transaksi kas (hanya data nasabah/rekening); kunci limit.cs.* ter-seed sebagai bawaan lama tanpa niat tertulis. Ini TEMUAN yang menunggu keputusan pemilik sistem: hapus kunci limit.cs.* atau beri izin transaksi. Jangan diperlakukan sebagai rujukan tetap.",
 	domain.RoleAuditor:    "peran pengawas independen: hanya baca untuk audit dan tidak boleh menerbitkan transaksi, sehingga batasnya semata rujukan pengawasan.",
 }
 

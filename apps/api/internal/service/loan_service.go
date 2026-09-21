@@ -310,11 +310,18 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, reason s
 		if err := s.loanRepo.RejectLoanTx(ctx, tx, loanID, reason); err != nil {
 			return fmt.Errorf("menolak kredit: %w", err)
 		}
-		return writeAudit(ctx, s.auditRepo, tx, actor, "REJECT_LOAN", "loan", loan.ID.String(), map[string]any{
-			"status": domain.LoanStatusRejected,
-			"amount": loan.PrincipalAmount.String(),
-			"reason": reason,
-		})
+		return writeAuditWithMetadata(ctx, s.auditRepo, tx, actor, "REJECT_LOAN", "loan", loan.ID.String(),
+			map[string]any{
+				"status": domain.LoanStatusRejected,
+				"amount": loan.PrincipalAmount.String(),
+				"reason": reason,
+			},
+			// Alasan juga ditulis ke metadata: pembaca audit lama membaca kolom itu,
+			// sedangkan changes.reason tetap dipertahankan bagi pembaca yang sudah
+			// bergantung padanya.
+			map[string]any{
+				"reason": reason,
+			})
 	})
 	if err != nil {
 		return nil, err
