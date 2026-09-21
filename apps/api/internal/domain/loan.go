@@ -27,8 +27,8 @@ var (
 	// sehingga piutang dan cadangan akan menggantung tanpa kredit yang menopangnya.
 	// Akrualnya harus diselesaikan atau dibalik lebih dulu.
 	ErrLoanHasAccrualPostings = errors.New("kredit sudah memiliki akrual bunga/denda/PPAP terposting; selesaikan atau balik akrualnya lebih dulu sebelum membatalkan pencairan")
-	ErrInvalidLoanAmount    = errors.New("nominal pokok harus positif")
-	ErrInvalidLoanTerm      = errors.New("jangka waktu minimal 1 bulan")
+	ErrInvalidLoanAmount      = errors.New("nominal pokok harus positif")
+	ErrInvalidLoanTerm        = errors.New("jangka waktu minimal 1 bulan")
 	// ErrLoanAmountUnchanged menolak koreksi nominal yang tidak mengubah apa pun:
 	// tanpa perubahan, jurnal selisih nol dan penulisan ulang jadwal hanya menghapus
 	// jejak tanpa manfaat.
@@ -56,6 +56,14 @@ const (
 // APPROVED, REJECTED, PAID_OFF, WRITTEN_OFF, CANCELLED) tidak punya eksposur dan
 // hanya boleh melepas required_ckpn yang tersisa.
 func (s LoanStatus) IsCKPNActive() bool {
+	return s == LoanStatusDisbursed || s == LoanStatusDefaulted
+}
+
+// IsPPAPActive melaporkan apakah kredit masih punya eksposur berjalan yang harus
+// dicadangkan PPAP. Hanya DISBURSED dan DEFAULTED; status lain (PAID_OFF, WRITTEN_OFF,
+// CANCELLED) tidak punya eksposur dan hanya boleh melepas required_ppap yang tersisa
+// dengan target nol, supaya cadangan tidak menggantung selamanya.
+func (s LoanStatus) IsPPAPActive() bool {
 	return s == LoanStatusDisbursed || s == LoanStatusDefaulted
 }
 
@@ -100,9 +108,9 @@ const (
 type ProfitType string
 
 const (
-	ProfitTypeInterest   ProfitType = "INTEREST"   // bunga (konvensional)
-	ProfitTypeMargin     ProfitType = "MARGIN"     // margin murabahah
-	ProfitTypeBagiHasil  ProfitType = "BAGI_HASIL" // nisbah mudharabah/musyarakah
+	ProfitTypeInterest  ProfitType = "INTEREST"   // bunga (konvensional)
+	ProfitTypeMargin    ProfitType = "MARGIN"     // margin murabahah
+	ProfitTypeBagiHasil ProfitType = "BAGI_HASIL" // nisbah mudharabah/musyarakah
 )
 
 type OJKCollectibility string
@@ -126,15 +134,15 @@ const (
 // dengan ambang dari system_config. Jangan menambah fungsi kolektibilitas lain.
 
 type Loan struct {
-	ID           uuid.UUID  `json:"id"`
-	LoanNumber   string     `json:"loan_number"`
-	CustomerID   uuid.UUID  `json:"customer_id"`
-	ProductID    *uuid.UUID `json:"product_id,omitempty"`
-	BranchID     *uuid.UUID `json:"branch_id,omitempty"`
-	BranchCode   string     `json:"branch_code,omitempty"` // kode cabang kredit; kosong = data lama
-	DisbursementAccountID uuid.UUID `json:"disbursement_account_id"`
-	LoanType     LoanType   `json:"loan_type"`
-	Status       LoanStatus `json:"status"`
+	ID                    uuid.UUID  `json:"id"`
+	LoanNumber            string     `json:"loan_number"`
+	CustomerID            uuid.UUID  `json:"customer_id"`
+	ProductID             *uuid.UUID `json:"product_id,omitempty"`
+	BranchID              *uuid.UUID `json:"branch_id,omitempty"`
+	BranchCode            string     `json:"branch_code,omitempty"` // kode cabang kredit; kosong = data lama
+	DisbursementAccountID uuid.UUID  `json:"disbursement_account_id"`
+	LoanType              LoanType   `json:"loan_type"`
+	Status                LoanStatus `json:"status"`
 
 	Collectibility OJKCollectibility `json:"collectibility"`
 	DPD            int               `json:"dpd"`
@@ -143,6 +151,23 @@ type Loan struct {
 	// RequiredCKPN adalah target CKPN terakhir yang diakui untuk kredit ini. Dibaca
 	// jalur CKPN sebagai nilai otoritatif dari baris yang sudah dikunci.
 	RequiredCKPN decimal.Decimal `json:"required_ckpn"`
+
+	// OriginalEIRMonthly adalah suku bunga efektif orisinal per bulan (fraksi, mis.
+	// 0.01713), dihitung saat pencairan dari arus kas nyata dan dipakai sebagai tingkat
+	// diskonto nilai kini arus kas hasil restrukturisasi (PA BPR Bab 5.2, SAK EP 11.20).
+	// Nol berarti belum tersimpan; perhitungan kerugian menolak memakai suku bunga
+	// kontraktual sebagai gantinya.
+	OriginalEIRMonthly decimal.Decimal `json:"original_eir_monthly,omitempty"`
+	OriginalEIRMethod  string          `json:"original_eir_method,omitempty"`
+	// OriginalEIRBasis adalah dasar audit perhitungan EIR (metode, masukan, waktu) dalam
+	// bentuk JSON; disimpan sebagai JSONB pada loans.original_eir_basis.
+	OriginalEIRBasis        string     `json:"original_eir_basis,omitempty"`
+	OriginalEIRCalculatedAt *time.Time `json:"original_eir_calculated_at,omitempty"`
+	// RestructureLossBalance adalah saldo kerugian restrukturisasi yang belum
+	// diamortisasi (contra nilai tercatat). PPKA dihitung atas nilai tercatat setelah
+	// dikurangi saldo ini. Amortisasi ke laba belum diimplementasikan; lihat catatan di
+	// service restrukturisasi.
+	RestructureLossBalance decimal.Decimal `json:"restructure_loss_balance"`
 
 	IsRestructured      bool       `json:"is_restructured"`
 	RestructuredCount   int        `json:"restructured_count"`
@@ -158,47 +183,47 @@ type Loan struct {
 	// dimensi "Kredit telah jatuh tempo" POJK 1/2024 Lampiran II.
 	FinalDueDate *time.Time `json:"final_due_date,omitempty"`
 
-	PrincipalAmount    decimal.Decimal `json:"principal_amount"`
-	AcquisitionCost    decimal.Decimal `json:"acquisition_cost"`
-	DeferredMargin     decimal.Decimal `json:"deferred_margin"`
-	InterestRateAnnual decimal.Decimal `json:"interest_rate_annual"`
-	MarginAmount       decimal.Decimal `json:"margin_amount"`
-	ProfitSharingRatio decimal.Decimal `json:"profit_sharing_ratio"`
-	TotalPayable       decimal.Decimal `json:"total_payable"`
-	TermMonths         int             `json:"term_months"`
-	MonthlyInstallment decimal.Decimal `json:"monthly_installment"`
+	PrincipalAmount      decimal.Decimal `json:"principal_amount"`
+	AcquisitionCost      decimal.Decimal `json:"acquisition_cost"`
+	DeferredMargin       decimal.Decimal `json:"deferred_margin"`
+	InterestRateAnnual   decimal.Decimal `json:"interest_rate_annual"`
+	MarginAmount         decimal.Decimal `json:"margin_amount"`
+	ProfitSharingRatio   decimal.Decimal `json:"profit_sharing_ratio"`
+	TotalPayable         decimal.Decimal `json:"total_payable"`
+	TermMonths           int             `json:"term_months"`
+	MonthlyInstallment   decimal.Decimal `json:"monthly_installment"`
 	OutstandingPrincipal decimal.Decimal `json:"outstanding_principal"`
-	PenaltyAccrued     decimal.Decimal `json:"penalty_accrued"`
+	PenaltyAccrued       decimal.Decimal `json:"penalty_accrued"`
 
 	AkadNumber string     `json:"akad_number,omitempty"`
 	AkadDate   *time.Time `json:"akad_date,omitempty"`
 	Purpose    string     `json:"purpose,omitempty"`
 
-	AOID       *uuid.UUID `json:"ao_id,omitempty"`
-	ApprovedBy *uuid.UUID `json:"approved_by,omitempty"`
-	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+	AOID        *uuid.UUID `json:"ao_id,omitempty"`
+	ApprovedBy  *uuid.UUID `json:"approved_by,omitempty"`
+	ApprovedAt  *time.Time `json:"approved_at,omitempty"`
 	DisbursedAt *time.Time `json:"disbursed_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	Schedules []LoanSchedule `json:"schedules,omitempty"`
 }
 
 type LoanSchedule struct {
-	ID              uuid.UUID         `json:"id"`
-	LoanID          uuid.UUID         `json:"loan_id"`
-	InstallmentNo   int               `json:"installment_no"`
-	DueDate         time.Time         `json:"due_date"`
-	PrincipalAmount decimal.Decimal   `json:"principal_amount"`
-	ProfitAmount    decimal.Decimal   `json:"profit_amount"`
-	TotalInstallment decimal.Decimal  `json:"total_installment"`
-	PaidPrincipal   decimal.Decimal   `json:"paid_principal"`
-	PaidProfit      decimal.Decimal   `json:"paid_profit"`
-	ProfitType      ProfitType        `json:"profit_type"`
-	OutstandingPrincipal decimal.Decimal `json:"outstanding_principal"`
-	Status          InstallmentStatus `json:"status"`
-	PaidAt          *time.Time        `json:"paid_at,omitempty"`
-	CreatedAt       time.Time         `json:"created_at"`
+	ID                   uuid.UUID         `json:"id"`
+	LoanID               uuid.UUID         `json:"loan_id"`
+	InstallmentNo        int               `json:"installment_no"`
+	DueDate              time.Time         `json:"due_date"`
+	PrincipalAmount      decimal.Decimal   `json:"principal_amount"`
+	ProfitAmount         decimal.Decimal   `json:"profit_amount"`
+	TotalInstallment     decimal.Decimal   `json:"total_installment"`
+	PaidPrincipal        decimal.Decimal   `json:"paid_principal"`
+	PaidProfit           decimal.Decimal   `json:"paid_profit"`
+	ProfitType           ProfitType        `json:"profit_type"`
+	OutstandingPrincipal decimal.Decimal   `json:"outstanding_principal"`
+	Status               InstallmentStatus `json:"status"`
+	PaidAt               *time.Time        `json:"paid_at,omitempty"`
+	CreatedAt            time.Time         `json:"created_at"`
 
 	// ProfitAccruedAt menandai angsuran ini sudah diakru bunganya (basis akrual).
 	// ProfitAccruedAmount adalah SISA akruan yang belum diselesaikan pembayaran;
@@ -209,13 +234,13 @@ type LoanSchedule struct {
 }
 
 type ApplyLoanInput struct {
-	CustomerID             uuid.UUID       `json:"customer_id"`
-	ProductID              uuid.UUID       `json:"product_id"`
+	CustomerID            uuid.UUID       `json:"customer_id"`
+	ProductID             uuid.UUID       `json:"product_id"`
 	DisbursementAccountID uuid.UUID       `json:"disbursement_account_id"`
-	PrincipalAmount        decimal.Decimal `json:"principal_amount"`
-	TermMonths             int             `json:"term_months"`
-	MarginAmount           decimal.Decimal `json:"margin_amount"`
-	Purpose                string          `json:"purpose"`
+	PrincipalAmount       decimal.Decimal `json:"principal_amount"`
+	TermMonths            int             `json:"term_months"`
+	MarginAmount          decimal.Decimal `json:"margin_amount"`
+	Purpose               string          `json:"purpose"`
 }
 
 // LoanPaymentMethod menentukan dari mana angsuran dibayar. Bank menerima angsuran

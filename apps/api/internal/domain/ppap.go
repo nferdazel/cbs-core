@@ -136,6 +136,23 @@ func SubMonthlyCollectibilityThresholds() CollectibilityThresholds {
 	return CollectibilityThresholds{Lancar: 15, DPK: 30, KurangLancar: 90, Diragukan: 180}
 }
 
+// PPAPCarryingAmount menghitung nilai tercatat kredit yang menjadi dasar PPKA setelah
+// kerugian restrukturisasi. Menurut SEOJK No. 21/SEOJK.03/2024 Bab 5.2 hlm. 60-61,
+// kerugian restrukturisasi sudah mengurangi nilai tercatat Kredit (jurnal
+// Db. Beban kerugian penurunan nilai; Kr. Kredit yang diberikan), sehingga PPKA harus
+// dihitung atas saldo setelah kerugian, bukan pokok bruto. Lantai nol dipakai agar
+// saldo kerugian yang melebihi pokok tidak menghasilkan dasar negatif.
+func PPAPCarryingAmount(outstanding, restructureLoss decimal.Decimal) decimal.Decimal {
+	if restructureLoss.IsNegative() {
+		restructureLoss = decimal.Zero
+	}
+	carrying := outstanding.Sub(restructureLoss)
+	if carrying.IsNegative() {
+		return decimal.Zero
+	}
+	return carrying
+}
+
 // PPAPExposure menghitung eksposur yang dikenai tarif PPAP setelah dikurangi nilai agunan
 // pengurang, dengan lantai nol: agunan yang nilainya melebihi baki debet tidak menghasilkan
 // eksposur negatif, karena penyisihan negatif tidak punya arti.
@@ -356,14 +373,23 @@ func CalculatePPAP(outstanding decimal.Decimal, c Collectibility, existing decim
 
 // PPAPLoanSnapshot adalah data kredit aktif yang dibutuhkan proses PPAP harian.
 type PPAPLoanSnapshot struct {
-	LoanID         uuid.UUID
-	LoanNumber     string
-	ProductID      *uuid.UUID
-	Outstanding    decimal.Decimal
+	LoanID      uuid.UUID
+	LoanNumber  string
+	ProductID   *uuid.UUID
+	Outstanding decimal.Decimal
+	// Status menentukan apakah kredit masih punya eksposur PPAP. Selain DISBURSED dan
+	// DEFAULTED, kredit hanya boleh melepas required_ppap yang tersisa dengan target
+	// nol. Status kosong diperlakukan sebagai aktif demi pemanggil lama/uji.
+	Status         LoanStatus
 	Collectibility Collectibility // kolektibilitas tersimpan
 	DPD            int            // DPD tersimpan
 	AccrualStatus  AccrualStatus
 	RequiredPPAP   decimal.Decimal // cadangan per kredit yang sudah diakui (target terakhir)
+	// RestructureLoss adalah saldo kerugian restrukturisasi yang belum diamortisasi
+	// (loans.restructure_loss_balance). Dasar PPKA adalah Outstanding dikurangi nilai ini
+	// (PPAPCarryingAmount), sesuai perlakuan akuntansi Pasal 32 POJK 1/2024 jo. PA BPR
+	// Bab 5.2.
+	RestructureLoss decimal.Decimal
 	// LastDueDate adalah jatuh tempo angsuran terlama yang belum dibayar; nil bila
 	// seluruh angsuran sudah lunas.
 	LastDueDate *time.Time
@@ -408,8 +434,12 @@ type PPAPRunItem struct {
 	// pada hasil agar selisih cadangan antar hari dapat ditelusuri: tanpa ini, perubahan
 	// cadangan yang berasal dari agunan baru tidak dapat dibedakan dari perubahan
 	// kolektibilitas.
-	CollateralValue       decimal.Decimal
-	Exposure              decimal.Decimal `json:"outstanding"`
+	CollateralValue decimal.Decimal
+	Exposure        decimal.Decimal `json:"outstanding"`
+	// CarryingAmount adalah nilai tercatat Kredit setelah dikurangi saldo kerugian
+	// restrukturisasi; inilah dasar PPKA yang dipakai pada perhitungan ini (Pasal 32
+	// POJK 1/2024 jo. PA BPR Bab 5.2). Disimpan agar dasarnya dapat ditelusuri.
+	CarryingAmount        decimal.Decimal `json:"carrying_amount"`
 	Target                decimal.Decimal `json:"target"`
 	Existing              decimal.Decimal `json:"existing"`
 	Adjustment            decimal.Decimal `json:"adjustment"`

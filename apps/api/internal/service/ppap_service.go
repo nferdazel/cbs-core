@@ -201,47 +201,75 @@ func (s *ppapService) processLoan(
 	actor domain.Actor,
 	preview bool,
 ) (domain.PPAPRunItem, error) {
-	dpd := 0
-	if snap.LastDueDate != nil {
-		dpd = daysPastDue(asOf, *snap.LastDueDate)
-	}
-	col := domain.CollectibilityFromPosition(dpd, DaysPastMaturity(asOf, snap.FinalDueDate), thresholds)
-	if snap.IsRestructured {
-		// Pasal 31 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
-		// 3 periode pembayaran bersih berturut-turut.
-		col = domain.RestructureCollectibility(snap.PreRestructureCollectibility, col, snap.CleanPeriods)
-	}
+	// Dasar PPKA adalah NILAI TERCATAT kredit setelah kerugian restrukturisasi. Menurut
+	// Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2 hlm. 60-61, kerugian restrukturisasi sudah
+	// mengurangi nilai tercatat Kredit, sehingga PPKA tidak boleh dihitung atas pokok
+	// bruto. required_ppap TETAP berarti cadangan yang sudah diakui; yang berubah hanya
+	// dasar perhitungannya, bukan arti kolom.
+	carrying := domain.PPAPCarryingAmount(snap.Outstanding, snap.RestructureLoss)
 
-	// Cadangan yang sudah ada untuk kredit ini adalah target terakhir yang tersimpan
-	// di loans.required_ppap. Saldo akun GL cadangan bersifat agregat portofolio,
-	// sehingga memakainya sebagai pengurang per kredit akan menggandakan/menghilangkan
-	// selisih antar kredit. Saldo GL tetap dipakai untuk rekonsiliasi awal/akhir run.
-	//
-	// Agunan mengurangi eksposur yang dikenai tarif, bukan cadangan yang sudah ada.
-	// Pengurang dihitung per agunan lewat domain: hanya agunan yang lolos Pasal 20 dan
-	// Pasal 21 POJK No. 1 Tahun 2024 yang dipakai. Selama ppap.collateral.enabled false,
-	// daftar agunan kosong sehingga perilaku PPAP identik dengan sebelum modul agunan ada.
-	collateralValue := domain.PPAPCollateralDeductionTotal(collaterals, domain.PPAPPasal20Context{
-		AsOf:           asOf,
-		Collectibility: col,
-		MacetAt:        snap.MacetAt,
-		Outstanding:    snap.Outstanding,
-	})
-	// Dua rezim yang TIDAK boleh disamakan:
-	//   - PPKA umum (kualitas Lancar, Pasal 19 ayat (2)): bagian yang dijamin agunan tunai
-	//     dikecualikan (Pasal 19 ayat (4) huruf b jo. Pasal 17). Pengurang Pasal 20 justru
-	//     mengatur PPKA khusus (Pasal 19 ayat (3)), sehingga tidak dikurangkan dari dasar
-	//     PPKA umum.
-	//   - PPKA khusus: dikurangi pengurang Pasal 20 ayat (1). Agunan tunai tidak masuk
-	//     daftar itu, jadi tidak mengurangi PPKA khusus (Pasal 20 ayat (2)).
-	appliedCollateral := collateralValue
-	exposure := domain.PPAPExposure(snap.Outstanding, collateralValue)
-	if col == domain.KolLancar {
-		cashValue := domain.PPAPCashCollateralTotal(collaterals)
-		appliedCollateral = cashValue
-		exposure = domain.PPAPGeneralBase(snap.Outstanding, cashValue)
+	// Kredit tidak aktif (PAID_OFF/WRITTEN_OFF/CANCELLED) yang masih menyimpan cadangan
+	// tidak punya eksposur lagi: targetnya dipaksa nol agar pemulihan dilepas lewat jalur
+	// yang sudah ada. Status kosong (pemanggil lama/uji) diperlakukan aktif.
+	inactive := snap.Status != "" && !snap.Status.IsPPAPActive()
+
+	appliedCollateral := decimal.Zero
+	exposure := carrying
+	col := snap.Collectibility
+	dpd := snap.DPD
+	var calc domain.PPAPCalculation
+
+	if inactive {
+		calc = domain.PPAPCalculation{
+			Outstanding:    carrying,
+			Collectibility: col,
+			Target:         decimal.Zero,
+			Existing:       snap.RequiredPPAP,
+			Adjustment:     domain.PPAPAdjustment(decimal.Zero, snap.RequiredPPAP),
+		}
+	} else {
+		dpd = 0
+		if snap.LastDueDate != nil {
+			dpd = daysPastDue(asOf, *snap.LastDueDate)
+		}
+		col = domain.CollectibilityFromPosition(dpd, DaysPastMaturity(asOf, snap.FinalDueDate), thresholds)
+		if snap.IsRestructured {
+			// Pasal 31 POJK 1/2024: restrukturisasi tidak boleh menaikkan golongan sebelum
+			// 3 periode pembayaran bersih berturut-turut.
+			col = domain.RestructureCollectibility(snap.PreRestructureCollectibility, col, snap.CleanPeriods)
+		}
+
+		// Cadangan yang sudah ada untuk kredit ini adalah target terakhir yang tersimpan
+		// di loans.required_ppap. Saldo akun GL cadangan bersifat agregat portofolio,
+		// sehingga memakainya sebagai pengurang per kredit akan menggandakan/menghilangkan
+		// selisih antar kredit. Saldo GL tetap dipakai untuk rekonsiliasi awal/akhir run.
+		//
+		// Agunan mengurangi eksposur yang dikenai tarif, bukan cadangan yang sudah ada.
+		// Pengurang dihitung per agunan lewat domain: hanya agunan yang lolos Pasal 20 dan
+		// Pasal 21 POJK No. 1 Tahun 2024 yang dipakai. Selama ppap.collateral.enabled false,
+		// daftar agunan kosong sehingga perilaku PPAP identik dengan sebelum modul agunan ada.
+		collateralValue := domain.PPAPCollateralDeductionTotal(collaterals, domain.PPAPPasal20Context{
+			AsOf:           asOf,
+			Collectibility: col,
+			MacetAt:        snap.MacetAt,
+			Outstanding:    carrying,
+		})
+		// Dua rezim yang TIDAK boleh disamakan:
+		//   - PPKA umum (kualitas Lancar, Pasal 19 ayat (2)): bagian yang dijamin agunan tunai
+		//     dikecualikan (Pasal 19 ayat (4) huruf b jo. Pasal 17). Pengurang Pasal 20 justru
+		//     mengatur PPKA khusus (Pasal 19 ayat (3)), sehingga tidak dikurangkan dari dasar
+		//     PPKA umum.
+		//   - PPKA khusus: dikurangi pengurang Pasal 20 ayat (1). Agunan tunai tidak masuk
+		//     daftar itu, jadi tidak mengurangi PPKA khusus (Pasal 20 ayat (2)).
+		appliedCollateral = collateralValue
+		exposure = domain.PPAPExposure(carrying, collateralValue)
+		if col == domain.KolLancar {
+			cashValue := domain.PPAPCashCollateralTotal(collaterals)
+			appliedCollateral = cashValue
+			exposure = domain.PPAPGeneralBase(carrying, cashValue)
+		}
+		calc = domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 	}
-	calc := domain.CalculatePPAP(exposure, col, snap.RequiredPPAP, rates)
 
 	stop := col.IsNPL() // golongan 3-5: akrual dihentikan (cash basis) sesuai POJK
 	accrual := domain.AccrualStatusAccrual
@@ -257,6 +285,7 @@ func (s *ppapService) processLoan(
 		Outstanding:           snap.Outstanding,
 		CollateralValue:       appliedCollateral,
 		Exposure:              exposure,
+		CarryingAmount:        carrying,
 		Target:                calc.Target,
 		Existing:              calc.Existing,
 		Adjustment:            calc.Adjustment,

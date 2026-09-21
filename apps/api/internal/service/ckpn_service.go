@@ -262,17 +262,18 @@ func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, p
 // benar-benar tersimpan, bukan dari nilai yang dibaca di luar transaksi.
 func ckpnSnapshotFromLoan(l *domain.Loan) domain.CKPNLoanSnapshot {
 	return domain.CKPNLoanSnapshot{
-		LoanID:         l.ID,
-		LoanNumber:     l.LoanNumber,
-		ProductID:      l.ProductID,
-		BranchCode:     l.BranchCode,
-		Status:         l.Status,
-		Outstanding:    l.OutstandingPrincipal,
-		Collectibility: domain.CollectibilityFromOJK(l.Collectibility),
-		DPD:            l.DPD,
-		IsRestructured: l.IsRestructured,
-		RequiredPPAP:   l.RequiredPPAP,
-		RequiredCKPN:   l.RequiredCKPN,
+		LoanID:          l.ID,
+		LoanNumber:      l.LoanNumber,
+		ProductID:       l.ProductID,
+		BranchCode:      l.BranchCode,
+		Status:          l.Status,
+		Outstanding:     l.OutstandingPrincipal,
+		Collectibility:  domain.CollectibilityFromOJK(l.Collectibility),
+		DPD:             l.DPD,
+		IsRestructured:  l.IsRestructured,
+		RequiredPPAP:    l.RequiredPPAP,
+		RestructureLoss: l.RestructureLossBalance,
+		RequiredCKPN:    l.RequiredCKPN,
 	}
 }
 

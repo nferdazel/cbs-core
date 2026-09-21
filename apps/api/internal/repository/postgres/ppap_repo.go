@@ -26,6 +26,11 @@ func NewPPAPRepository(db *sql.DB) *PPAPRepository {
 // listDueLoansQuery mengambil kredit aktif beserta jatuh tempo angsuran terlama yang
 // belum dibayar pada/tanggal sebelum asOf. DPD kemudian dihitung service dari tanggal
 // tersebut. Cast ::text wajib untuk kolom enum/varchar agar aman dipindai ke string.
+//
+// Kredit tidak aktif yang masih menyimpan required_ppap bukan nol IKUT diambil (pola
+// yang sama dengan CKPNRepository.ListActiveLoans). Sebelumnya kredit lunas/hapus buku
+// keluar dari daftar ini dan cadangannya menggantung selamanya; kini service memaksa
+// targetnya nol sehingga pelepasannya lewat jalur PPAP yang sudah ada.
 const listDueLoansQuery = `
 	SELECT
 		l.id,
@@ -36,6 +41,8 @@ const listDueLoansQuery = `
 		l.dpd,
 		l.accrual_status::text,
 		l.required_ppap,
+		l.status::text,
+		l.restructure_loss_balance,
 		MIN(s.due_date) AS last_due_date,
 		(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = l.id) AS final_due_date,
 		l.is_restructured,
@@ -64,8 +71,8 @@ const listDueLoansQuery = `
 		ON s.loan_id = l.id
 		AND s.status <> 'PAID'
 		AND s.due_date <= $1
-	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
-		AND l.outstanding_principal > 0
+	WHERE ((l.status IN ('DISBURSED', 'DEFAULTED') AND l.outstanding_principal > 0)
+		OR l.required_ppap <> 0)
 	GROUP BY l.id
 	ORDER BY l.loan_number`
 
@@ -80,14 +87,16 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 	for rows.Next() {
 		var s domain.PPAPLoanSnapshot
 		var productID sql.NullString
-		var collectibility, accrual string
+		var collectibility, accrual, status string
 		var lastDue, finalDue, macetAt sql.NullTime
 		var preRestructure sql.NullString
 		var cleanPeriods int
 
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
-			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP, &lastDue, &finalDue,
+			&collectibility, &s.DPD, &accrual, &s.RequiredPPAP,
+			&status, &s.RestructureLoss,
+			&lastDue, &finalDue,
 			&s.IsRestructured, &macetAt, &preRestructure, &cleanPeriods,
 		); err != nil {
 			return nil, err
@@ -100,6 +109,7 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]do
 			s.ProductID = &id
 		}
 		s.Collectibility = domain.CollectibilityFromOJK(domain.OJKCollectibility(collectibility))
+		s.Status = domain.LoanStatus(status)
 		s.AccrualStatus = domain.AccrualStatus(accrual)
 		if lastDue.Valid {
 			t := lastDue.Time

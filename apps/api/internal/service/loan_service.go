@@ -30,11 +30,11 @@ type loanService struct {
 	resolver    domain.AccountResolver
 	// ledgerRepo dipakai membalik jurnal pencairan saat pencairan dibatalkan.
 	ledgerRepo domain.LedgerRepository
-	poster      *ProductPoster
-	posting     domain.PostingService
-	references  domain.ReferenceGenerator
-	config      domain.SystemConfigService
-	auditRepo   domain.AuditRepository
+	poster     *ProductPoster
+	posting    domain.PostingService
+	references domain.ReferenceGenerator
+	config     domain.SystemConfigService
+	auditRepo  domain.AuditRepository
 	// dates membaca tanggal bisnis berjalan. Jurnal kontra harus bertanggal bisnis,
 	// bukan tanggal kalender; boleh nil, dan bila nil pembatalan ditolak alih-alih
 	// menebak tanggal.
@@ -142,10 +142,10 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		return nil, fmt.Errorf("membuat nomor kredit: %w", err)
 	}
 	loan := &domain.Loan{
-		ID:                    loanID,
-		LoanNumber:            loanNumber,
-		CustomerID:            input.CustomerID,
-		ProductID:             &product.ID,
+		ID:         loanID,
+		LoanNumber: loanNumber,
+		CustomerID: input.CustomerID,
+		ProductID:  &product.ID,
 		// Cabang kredit mengikuti cabang rekening pencairan. Untuk aktor
 		// non-lintas-cabang, penegakan di atas sudah memastikan cabang rekening
 		// sama dengan cabang aktor; untuk aktor lintas cabang, cabang rekening
@@ -340,6 +340,25 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 		return nil, err
 	}
 	defer tx.Rollback()
+
+	// EIR orisinal (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) dihitung dari arus kas
+	// nyata dan disimpan HANYA bila saklar kerugian restrukturisasi aktif; saat mati
+	// tidak ada perhitungan maupun penulisan tambahan. Baris kredit dikunci lebih dulu
+	// dan data segar hasil kunci yang dipakai (disiplin LockLoanTx).
+	if s.restructureLossEnabled(ctx) {
+		fresh, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
+		if err != nil {
+			return nil, fmt.Errorf("mengunci kredit untuk EIR: %w", err)
+		}
+		schedules, err := s.loanRepo.GetSchedulesTx(ctx, tx, loan.ID)
+		if err != nil {
+			return nil, fmt.Errorf("membaca jadwal angsuran untuk EIR: %w", err)
+		}
+		fresh.Schedules = schedules
+		if err := s.storeOriginalEIR(ctx, tx, fresh, schedules); err != nil {
+			return nil, err
+		}
+	}
 
 	desc := fmt.Sprintf("Pencairan %s untuk nasabah rekening %s", product.Name, acc.AccountNumber)
 	_, err = s.poster.PostEventTx(ctx, tx, product, domain.EventLoanDisbursement, Amounts{
@@ -880,6 +899,13 @@ func (s *loanService) allSchedulesPaid(ctx context.Context, loanID uuid.UUID) bo
 }
 
 func (s *loanService) RestructureLoan(ctx context.Context, input domain.RestructureLoanInput, actor domain.Actor) (*domain.Loan, error) {
+	// Saklar kerugian restrukturisasi (Pasal 32 POJK 1/2024) mati secara bawaan. Saat
+	// mati, jalur di bawah ini persis seperti sebelumnya: tidak ada perhitungan EIR,
+	// nilai kini, jurnal, atau perubahan perilaku restrukturisasi.
+	if policy := s.restructureLossPolicy(ctx); policy.Enabled {
+		return s.restructureLoanWithLoss(ctx, input, actor, policy)
+	}
+
 	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
 	if err != nil {
 		return nil, err
@@ -928,12 +954,12 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	// nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP yang boleh
 	// mengubahnya karena ia pula yang memposting selisih jurnalnya.
 	//
-	// Perlakuan akuntansi kerugian restrukturisasi TIDAK diposting di jalur ini.
-	// Pasal 32 menyerahkannya ke standar akuntansi keuangan dan pedoman akuntansi BPR
-	// (penjelasannya: "antara lain pengakuan kerugian yang timbul akibat Restrukturisasi
-	// Kredit"), sedangkan nilainya bergantung pada suku bunga efektif orisinal yang
-	// belum disimpan sistem. Menghitungnya dengan suku bunga kontraktual akan menjadi
-	// angka karangan, jadi tidak dilakukan sampai EIR dan netting PPKA tersedia.
+	// Catatan: blok ini adalah jalur SAKLAR-MATI. Perlakuan akuntansi kerugian
+	// restrukturisasi (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2) TIDAK diposting di
+	// sini; jalurnya ada di restructureLoanWithLoss yang aktif hanya bila
+	// loan.restructure.loss.enabled=true dan memakai EIR orisinal, bukan suku bunga
+	// kontraktual. required_ppap tetap tidak dihitung ulang di kedua jalur: hanya batch
+	// PPAP yang boleh mengubahnya karena batch itulah yang memposting selisih jurnalnya.
 	col := CollectibilityForPosition(ctx, s.config, loan.DPD, DaysPastMaturity(now, loan.FinalDueDate))
 	col = domain.RestructureCollectibility(before, col, 0)
 	loan.Collectibility = col.OJKCode()

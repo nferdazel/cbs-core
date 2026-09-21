@@ -32,7 +32,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	ao_id, approved_by, approved_at, disbursed_at,
 	created_at, updated_at,
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), ''),
-	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id)`
+	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id),
+	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -40,7 +41,8 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var approvedAt, disbursedAt, restructuredAt, akadDate sql.NullTime
 	var restructuringReason, akadNumber, purpose sql.NullString
 	var preRestructure sql.NullString
-	var finalDue sql.NullTime
+	var finalDue, eirCalculatedAt sql.NullTime
+	var eirMethod, eirBasis sql.NullString
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -55,9 +57,19 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.CreatedAt, &l.UpdatedAt,
 		&l.BranchCode,
 		&finalDue,
+		&l.OriginalEIRMonthly, &eirMethod, &eirBasis, &eirCalculatedAt, &l.RestructureLossBalance,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if eirMethod.Valid {
+		l.OriginalEIRMethod = eirMethod.String
+	}
+	if eirBasis.Valid {
+		l.OriginalEIRBasis = eirBasis.String
+	}
+	if eirCalculatedAt.Valid {
+		l.OriginalEIRCalculatedAt = &eirCalculatedAt.Time
 	}
 	if aoID.Valid {
 		id, _ := uuid.Parse(aoID.String)
@@ -355,19 +367,40 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 	}
 	defer tx.Rollback()
 
+	if err := r.updateRestructureTx(ctx, tx, l, schedules); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// UpdateRestructureTx menjalankan penyimpanan restrukturisasi di dalam transaksi
+// pemanggil. Dipakai jalur kerugian restrukturisasi agar jurnal kerugian dan jadwal
+// baru commit bersama; polanya sama dengan UpdateRestructure.
+func (r *LoanRepository) UpdateRestructureTx(ctx context.Context, tx any, l *domain.Loan, schedules []domain.LoanSchedule) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	return r.updateRestructureTx(ctx, sqlTx, l, schedules)
+}
+
+func (r *LoanRepository) updateRestructureTx(ctx context.Context, tx *sql.Tx, l *domain.Loan, schedules []domain.LoanSchedule) error {
+	// restructure_loss_balance ikut ditulis agar jalur saklar-mati (UpdateRestructure)
+	// tidak menghapus saldo kerugian yang sudah diakui: nilai pada l dibaca dari baris
+	// yang sama, jadi tetap dipertahankan.
 	q := `UPDATE loans SET
 		term_months=$1, interest_rate_annual=$2, margin_amount=$3, total_payable=$4, monthly_installment=$5,
 		collectibility=$6, accrual_status=$7, required_ppap=$8,
 		is_restructured=$9, restructured_count=$10, restructured_at=$11, restructuring_reason=$12,
-		pre_restructure_collectibility=$13,
+		pre_restructure_collectibility=$13, restructure_loss_balance=$14,
 		updated_at=NOW()
-		WHERE id=$14`
+		WHERE id=$15`
 
-	_, err = tx.ExecContext(ctx, q,
+	_, err := tx.ExecContext(ctx, q,
 		l.TermMonths, l.InterestRateAnnual, l.MarginAmount, l.TotalPayable, l.MonthlyInstallment,
 		l.Collectibility, l.AccrualStatus, l.RequiredPPAP,
 		l.IsRestructured, l.RestructuredCount, l.RestructuredAt, l.RestructuringReason,
-		l.PreRestructureCollectibility,
+		l.PreRestructureCollectibility, l.RestructureLossBalance,
 		l.ID,
 	)
 	if err != nil {
@@ -390,8 +423,22 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 			return err
 		}
 	}
+	return nil
+}
 
-	return tx.Commit()
+// UpdateOriginalEIRTx menyimpan suku bunga efektif orisinal beserta dasar auditnya saat
+// pencairan, di dalam transaksi pemanggil. Kolom nullable diisi jsonb/nama metode.
+func (r *LoanRepository) UpdateOriginalEIRTx(ctx context.Context, tx any, loanID uuid.UUID, monthly decimal.Decimal, method string, basis []byte, calculatedAt time.Time) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	const q = `UPDATE loans
+		SET original_eir_monthly=$1, original_eir_method=$2, original_eir_basis=$3,
+		    original_eir_calculated_at=$4, updated_at=NOW()
+		WHERE id=$5`
+	_, err := sqlTx.ExecContext(ctx, q, monthly, method, basis, calculatedAt, loanID)
+	return err
 }
 
 // CorrectLoanAmountTx memperbarui nominal kredit beserta sisa pokok dan mengganti

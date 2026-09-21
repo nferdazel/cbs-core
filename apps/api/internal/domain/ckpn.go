@@ -103,6 +103,12 @@ type CKPNLoanSnapshot struct {
 	IsRestructured bool
 	// RequiredPPAP adalah PPKA per kredit yang sudah diakui (target terakhir jalur PPAP).
 	RequiredPPAP decimal.Decimal
+	// RestructureLoss adalah saldo kerugian restrukturisasi yang belum diamortisasi.
+	// EAD CKPN memakai nilai tercatat setelah dikurangi saldo ini agar basisnya
+	// KONSISTEN dengan PPKA yang juga dihitung atas saldo setelah kerugian (Pasal 32
+	// POJK 1/2024 jo. PA BPR Bab 5.2). Tanpa ini, perbandingan PPKA vs CKPN akan
+	// membandingkan dua basis yang berbeda.
+	RestructureLoss decimal.Decimal
 	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
 	RequiredCKPN decimal.Decimal
 }
@@ -180,7 +186,11 @@ func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, e
 
 	out.PD = pd
 	out.LGD = policy.LGD
-	out.Target = RoundToRupiah(snap.Outstanding.Mul(pd).Mul(policy.LGD))
+	// EAD adalah nilai tercatat setelah kerugian restrukturisasi, bukan pokok bruto:
+	// dasar ini sama dengan dasar PPKA sehingga perbandingan CKPN vs PPKA konsisten
+	// (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2).
+	ead := PPAPCarryingAmount(snap.Outstanding, snap.RestructureLoss)
+	out.Target = RoundToRupiah(ead.Mul(pd).Mul(policy.LGD))
 	out.Adjustment = RoundToRupiah(out.Target.Sub(out.Existing))
 	return out, nil
 }

@@ -79,9 +79,14 @@ const (
 	// (Db. Beban kerugian penurunan nilai; Kr. CKPN).
 	EventCKPNProvision PostingEvent = "CKPN_PROVISION"
 	EventCKPNReversal  PostingEvent = "CKPN_REVERSAL"
-	EventFeeIncome     PostingEvent = "FEE_INCOME"
-	EventCashIn        PostingEvent = "CASH_IN"
-	EventCashOut       PostingEvent = "CASH_OUT"
+	// Kerugian restrukturisasi kredit (Pasal 32 POJK No. 1 Tahun 2024 jo. SEOJK
+	// No. 21/SEOJK.03/2024 PA BPR Bab 5.2 hlm. 60-61): selisih kurang antara nilai
+	// tercatat dan nilai kini arus kas baru yang didiskonto pada suku bunga efektif
+	// orisinal, dijurnal Db. Beban kerugian penurunan nilai; Kr. Kredit yang diberikan.
+	EventLoanRestructureLoss PostingEvent = "LOAN_RESTRUCTURE_LOSS"
+	EventFeeIncome           PostingEvent = "FEE_INCOME"
+	EventCashIn              PostingEvent = "CASH_IN"
+	EventCashOut             PostingEvent = "CASH_OUT"
 )
 
 // AmountSource menamai sisi transaksi yang dipakai sebagai nominal jurnal.

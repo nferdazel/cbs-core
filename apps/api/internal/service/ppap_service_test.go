@@ -476,3 +476,87 @@ type stubPPAPError struct{}
 func (stubPPAPError) Error() string { return "stub ppap update gagal" }
 
 var errStubPPAP = stubPPAPError{}
+
+// PPKA dihitung atas saldo SETELAH kerugian restrukturisasi (Pasal 32 POJK 1/2024 jo.
+// PA BPR Bab 5.2): pokok 10.000.000 dikurangi saldo kerugian 2.000.000 = 8.000.000,
+// sehingga DPK 3% menjadi 240.000 (bukan 300.000).
+func TestPPAPRunDaily_MemakaiSaldoSetelahKerugianRestrukturisasi(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	due := asOf.AddDate(0, 0, -40) // DPK
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:          loanID,
+			LoanNumber:      "KRD-SETELAH-KERUGIAN",
+			Outstanding:     decimal.NewFromInt(10_000_000),
+			RestructureLoss: decimal.NewFromInt(2_000_000),
+			Collectibility:  domain.KolLancar,
+			RequiredPPAP:    decimal.NewFromInt(1_000_000),
+			LastDueDate:     &due,
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	summary, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if len(repo.updated) != 1 {
+		t.Fatalf("state diperbarui %d kali, ingin 1", len(repo.updated))
+	}
+	upd := repo.updated[0]
+	if !upd.RequiredPPAP.Equal(decimal.NewFromInt(240_000)) {
+		t.Fatalf("required_ppap %s, ingin 240.000 (3%% dari 8.000.000)", upd.RequiredPPAP)
+	}
+	if len(summary.Items) != 1 || !summary.Items[0].CarryingAmount.Equal(decimal.NewFromInt(8_000_000)) {
+		t.Fatalf("dasar nilai tercatat tidak tercatat: %+v", summary.Items)
+	}
+}
+
+// Celah cadangan menggantung ditutup: kredit yang sudah tidak aktif tetapi masih
+// menyimpan required_ppap bukan nol ikut diproses dengan target nol, dan pelepasannya
+// lewat jalur PPAP yang sudah ada (debit cadangan, kredit beban).
+func TestPPAPRunDaily_MelepasCadanganKreditTidakAktif(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	loanID := uuid.New()
+
+	repo := &stubPPAPRepo{
+		snapshots: []domain.PPAPLoanSnapshot{{
+			LoanID:         loanID,
+			LoanNumber:     "KRD-LUNAS",
+			Status:         domain.LoanStatusPaidOff,
+			Outstanding:    decimal.NewFromInt(5_000_000), // sisa pokok basi; tetap tidak boleh dicadangkan
+			Collectibility: domain.KolLancar,
+			RequiredPPAP:   decimal.NewFromInt(500_000),
+		}},
+	}
+	posting := &stubPosting{}
+	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
+
+	summary, err := svc.RunDaily(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunDaily: %v", err)
+	}
+	if summary.Failed != 0 {
+		t.Fatalf("run gagal: %+v", summary.Failures)
+	}
+	if len(repo.updated) != 1 || !repo.updated[0].RequiredPPAP.IsZero() {
+		t.Fatalf("required_ppap kredit tidak aktif harus nol: %+v", repo.updated)
+	}
+	if !summary.TotalAdjustment.Equal(decimal.NewFromInt(-500_000)) {
+		t.Fatalf("total penyesuaian %s, ingin -500.000", summary.TotalAdjustment)
+	}
+	if len(posting.requests) != 1 {
+		t.Fatalf("jurnal pelepasan %d, ingin 1", len(posting.requests))
+	}
+	lines := posting.requests[0].Lines
+	if lines[0].AccountNumber != "10900" || lines[0].Direction != domain.DirectionDebit ||
+		!lines[0].Amount.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("baris debit pelepasan salah: %+v", lines[0])
+	}
+	if lines[1].AccountNumber != "50200" || lines[1].Direction != domain.DirectionCredit {
+		t.Fatalf("baris kredit pelepasan salah: %+v", lines[1])
+	}
+}

@@ -38,6 +38,7 @@ const listLoansForCKPNSelect = `
 		l.is_restructured,
 		l.required_ppap,
 		l.required_ckpn,
+		l.restructure_loss_balance,
 		l.status::text,
 		COALESCE((SELECT b.code FROM branches b WHERE b.id = l.branch_id), '')
 	FROM loans l`
@@ -78,7 +79,7 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context, actor domain.Actor
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &s.IsRestructured,
-			&s.RequiredPPAP, &s.RequiredCKPN, &status, &s.BranchCode,
+			&s.RequiredPPAP, &s.RequiredCKPN, &s.RestructureLoss, &status, &s.BranchCode,
 		); err != nil {
 			return nil, err
 		}
