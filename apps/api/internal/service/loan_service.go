@@ -875,7 +875,7 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	}
 
 	now := time.Now().UTC()
-	// Kualitas sebelum restrukturisasi disimpan sebelum apa pun berubah: Pasal 23
+	// Kualitas sebelum restrukturisasi disimpan sebelum apa pun berubah: Pasal 31
 	// POJK 1/2024 membatasi kualitas sesudahnya berdasarkan nilai ini, dan proses
 	// harian memakainya lagi lewat pre_restructure_collectibility.
 	before := domain.CollectibilityFromOJK(loan.Collectibility)
@@ -895,11 +895,18 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	}
 
 	// Kolektibilitas mengikuti DPD kredit dari konfigurasi yang sama dengan proses
-	// PPAP harian, bukan aturan tersendiri, lalu dibatasi Pasal 23 POJK 1/2024:
+	// PPAP harian, bukan aturan tersendiri, lalu dibatasi Pasal 31 POJK 1/2024:
 	// restrukturisasi tidak boleh menaikkan golongan sebelum 3 periode pembayaran
 	// bersih berturut-turut. required_ppap sengaja TIDAK dihitung ulang di sini:
 	// nilainya berarti cadangan yang sudah dibukukan, dan hanya batch PPAP yang boleh
 	// mengubahnya karena ia pula yang memposting selisih jurnalnya.
+	//
+	// Perlakuan akuntansi kerugian restrukturisasi TIDAK diposting di jalur ini.
+	// Pasal 32 menyerahkannya ke standar akuntansi keuangan dan pedoman akuntansi BPR
+	// (penjelasannya: "antara lain pengakuan kerugian yang timbul akibat Restrukturisasi
+	// Kredit"), sedangkan nilainya bergantung pada suku bunga efektif orisinal yang
+	// belum disimpan sistem. Menghitungnya dengan suku bunga kontraktual akan menjadi
+	// angka karangan, jadi tidak dilakukan sampai EIR dan netting PPKA tersedia.
 	col := CollectibilityForPosition(ctx, s.config, loan.DPD, DaysPastMaturity(now, loan.FinalDueDate))
 	col = domain.RestructureCollectibility(before, col, 0)
 	loan.Collectibility = col.OJKCode()
@@ -923,7 +930,7 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 		return nil, fmt.Errorf("menyimpan restrukturisasi: %w", err)
 	}
 	// Restrukturisasi mengubah jadwal angsuran sekaligus menahan kualitas kredit pada
-	// batas Pasal 23. Tanpa jejak audit, perubahan yang berimplikasi pada PPAP dan
+	// batas Pasal 31. Tanpa jejak audit, perubahan yang berimplikasi pada PPAP dan
 	// kualitas aset tidak dapat direkonstruksi.
 	if err := writeAudit(ctx, s.auditRepo, nil, actor, "RESTRUCTURE_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":           loan.LoanNumber,

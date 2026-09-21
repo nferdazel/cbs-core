@@ -21,7 +21,7 @@ kebenaran**; perbarui dokumen ini.
 - Istilah lama **PPAP** menjadi **PPKA** (Penyisihan Penghapusan Kualitas Aset);
   tarifnya identik: 0,5% / 3% / 10% / 50% / 100%.
 - Nomor pasal bergeser: tarif PPAP Pasal 16 → **Pasal 19**; agunan pengurang
-  Pasal 17 → **Pasal 20**; restrukturisasi tetap sekitar **Pasal 23**.
+  Pasal 17 → **Pasal 20**; restrukturisasi berada di **Pasal 29–35** (batas kualitas **Pasal 31**, akuntansi **Pasal 32**).
 - Komentar kode lama yang menyebut "POJK 40/2019" salah: itu kerangka **Bank
   Umum**, bukan BPR — sekaligus menjelaskan kenapa pita lamanya (30/90/180)
   menyerupai pita Bank Umum yang digeser.
@@ -116,7 +116,7 @@ pertanyaan untuk bank.
 **CKPN menurut standar akuntansi** (PSAK), di samping PPKA menurut POJK. Sistem
 baru punya PPKA; CKPN/PSAK belum.
 
-### 1.4 Cap restrukturisasi Pasal 23
+### 1.4 Cap restrukturisasi Pasal 31
 
 Aturan Pasal 23 POJK 1/2024 ditegakkan untuk kredit yang direstrukturisasi
 (kolektibilitas tidak boleh langsung kembali ke Lancar). Detail teknis dan
@@ -376,3 +376,24 @@ superadmin produksi, password dalam teks polos, IP VPS produksi (dipindah ke
 `CBS_VPS`), fallback JWT secret di kode, dan CORS wildcard. Aturan: tidak ada
 kredensial di repo, gagal cepat bila secret wajib kosong di production, dan
 seed user memakai placeholder.
+
+### 1.6 Koreksi: Pasal 23 mengatur hal lain
+
+Kutipan resmi Pasal 23 POJK No. 1 Tahun 2024: "Bagian Penempatan pada Bank Lain yang memenuhi
+persyaratan kriteria penjaminan Lembaga Penjamin Simpanan dapat dijadikan sebagai faktor
+pengurang dalam pembentukan perhitungan PPKA umum dan khusus."
+
+Jadi Pasal 23 **bukan** tentang restrukturisasi. Rujukan lama "Pasal 23 = restrukturisasi"
+berasal dari POJK 33/POJK.03/2018 yang sudah dicabut. Semua sitasi di kode dan dokumen sudah
+dipindahkan ke Pasal 31 (batas kualitas) dan Pasal 32 (perlakuan akuntansi).
+
+**Aturan yang belum diimplementasikan dari Pasal 23:** bagian Penempatan pada Bank Lain yang
+dijamin LPS dapat mengurangi PPKA umum **dan** khusus. Sistem belum menghitung ini. Perlu
+dikerjakan bila bank punya penempatan pada bank lain yang dijamin LPS.
+
+**Kerugian restrukturisasi:** landasannya Pasal 32 beserta penjelasannya, dengan metode
+didelegasikan ke standar akuntansi (ditambah panduan akuntansi perbankan untuk BPR). Belum
+diakui di sistem karena tiga hal belum ada: penyimpanan suku bunga efektif orisinal, PPKA yang
+dihitung atas saldo setelah kerugian, dan pemetaan jurnal untuk beban kerugian penurunan nilai.
+Tidak dibangun setengah-setengah karena memakai suku bunga kontraktual sebagai ganti suku bunga
+efektif orisinal akan menghasilkan angka yang salah.

@@ -133,7 +133,8 @@ type Loan struct {
 	RestructuringReason string     `json:"restructuring_reason,omitempty"`
 
 	// PreRestructureCollectibility adalah kualitas Kredit sesaat sebelum
-	// restrukturisasi terakhir; dasar penerapan batas Pasal 23 POJK 1/2024.
+	// restrukturisasi terakhir; dasar penerapan batas Pasal 31 POJK 1/2024.
+	// Catatan: rujukan lama "Pasal 23" berasal dari POJK 33/2018 yang sudah dicabut.
 	PreRestructureCollectibility OJKCollectibility `json:"pre_restructure_collectibility,omitempty"`
 
 	// FinalDueDate adalah jatuh tempo Kredit (angsuran terakhir), dipakai menilai

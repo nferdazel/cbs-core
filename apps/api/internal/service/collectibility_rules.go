@@ -65,7 +65,7 @@ func DaysPastMaturity(asOf time.Time, finalDueDate *time.Time) int {
 }
 
 // AccrualForCollectibility memetakan golongan akhir ke status akrualnya. Wajib
-// dipakai setelah golongan diubah (mis. dibatasi Pasal 23), agar penghentian akrual
+// dipakai setelah golongan diubah (mis. dibatasi Pasal 31), agar penghentian akrual
 // selalu mengikuti golongan yang benar-benar disimpan.
 func AccrualForCollectibility(c domain.Collectibility) domain.AccrualStatus {
 	if c.IsNPL() {

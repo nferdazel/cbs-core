@@ -210,7 +210,7 @@ func TestRestructureLoan_MemakaiAturanPOJKDariKonfigurasi(t *testing.T) {
 	}
 }
 
-// Restrukturisasi kredit bermasalah tidak boleh menghapus NPL (Pasal 23 POJK 1/2024):
+// Restrukturisasi kredit bermasalah tidak boleh menghapus NPL (Pasal 31 POJK 1/2024):
 // meski jadwal baru membuat DPD nol, kualitasnya paling tinggi Kurang Lancar.
 func TestRestructureLoan_MacetTidakKembaliLancar(t *testing.T) {
 	loanID := uuid.New()
