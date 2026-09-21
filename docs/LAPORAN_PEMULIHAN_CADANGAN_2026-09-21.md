@@ -1,6 +1,6 @@
 # Laporan Latihan Pemulihan Cadangan `cbs`
 
-- **Tanggal latihan**: 2026-09-21 (WIB, VPS `VM-18-144-rockylinux`, 43.133.148.191)
+- **Tanggal latihan**: 2026-09-21 (WIB, VPS produksi; alamat dan nama host sengaja tidak ditulis karena repositori ini publik)
 - **Lingkup**: dump `cbs` → pulihkan ke target terpisah → verifikasi → bersihkan.
 - **Batasan yang dipatuhi**: tidak ada perubahan isi `cbs`, tidak ada migrasi dijalankan,
   tidak ada container produksi di-restart. Hanya baca `cbs` + target latihan sementara.
