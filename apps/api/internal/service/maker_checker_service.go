@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -22,6 +23,10 @@ type makerCheckerService struct {
 	auditRepo domain.AuditRepository
 	config    domain.SystemConfigService
 	executors domain.MakerCheckerExecutor
+	// dates adalah sumber tanggal bisnis bank (WIB). Dipakai menandai setiap pengajuan
+	// dengan business_date agar akumulasi batas harian mengaitkannya ke hari bisnis
+	// yang benar, bukan tanggal kalender UTC created_at.
+	dates domain.BusinessDateProvider
 }
 
 func NewMakerCheckerService(
@@ -30,8 +35,9 @@ func NewMakerCheckerService(
 	auditRepo domain.AuditRepository,
 	config domain.SystemConfigService,
 	executors domain.MakerCheckerExecutor,
+	dates domain.BusinessDateProvider,
 ) domain.MakerCheckerService {
-	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config, executors: executors}
+	return &makerCheckerService{db: db, repo: repo, auditRepo: auditRepo, config: config, executors: executors, dates: dates}
 }
 
 // Threshold membaca ambang persetujuan untuk satu jenis aksi dari system_config.
@@ -46,28 +52,57 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 		return nil, errors.New("jenis aksi maker-checker wajib diisi")
 	}
 
-	threshold := s.Threshold(ctx, input.ActionType)
-	requiresApproval := input.Amount.IsPositive() && input.Amount.GreaterThanOrEqual(threshold)
-
+	// Ambang persetujuan TIDAK dihitung ulang di sini. Keputusan "perlu persetujuan"
+	// sudah dibuat pemanggil: untuk setoran/penarikan/transfer dan penempatan deposito
+	// oleh penjaga batas transaksi yang membaca SATU sumber kebenaran
+	// limit.<peran>.<jenis>.approval_above; untuk aksi kredit oleh guard khususnya.
+	//
+	// Menulis ambang kedua dari maker_checker.<aksi>.threshold ke payload membuat dua
+	// angka untuk hal yang sama bisa saling bertentangan: pembaca API melihat angka
+	// yang bukan angka yang dipakai memutuskan, dan selisihnya dapat meloloskan dana.
+	// Payload dari pemanggil yang masih memuat "threshold"/"requires_approval" karena
+	// itu DITERIMA tetapi DIABAIKAN (dihapus), sehingga klien lama tidak patah dan
+	// angka lama tidak tersimpan sebagai kebenaran.
 	payload := input.Payload
 	if payload == nil {
 		payload = map[string]any{}
 	}
+	delete(payload, "threshold")
+	delete(payload, "requires_approval")
 	payload["amount"] = input.Amount.String()
-	payload["threshold"] = threshold.String()
-	payload["requires_approval"] = requiresApproval
+	// Identitas pembuat disimpan pada payload agar penilai ulang batas saat eksekusi
+	// dapat merekonstruksi peran pembuat tanpa kueri tambahan. Tanpa peran, batas harian
+	// pembuat tidak dapat dibaca dan evaluasi ulang akan jatuh ke peran pemeriksa.
+	payload["maker_id"] = actor.UserID.String()
+	payload["maker_username"] = actor.DisplayName()
+	payload["maker_role"] = string(actor.Role)
+	payload["maker_branch"] = actor.BranchCode
+
+	// Tanggal bisnis ditandai pada pengajuan agar akumulasi batas harian dapat
+	// mengaitkannya ke hari bisnis yang benar tanpa menebak dari tanggal kalender.
+	// Bila sumber tanggal bisnis tidak tersedia (mis. stub uji tanpa database),
+	// business_date dibiarkan nol dan pembaca jatuh ke tanggal kalender WIB created_at.
+	var businessDate time.Time
+	if s.dates != nil {
+		d, err := s.dates.CurrentBusinessDate(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("membaca tanggal bisnis untuk pengajuan: %w", err)
+		}
+		businessDate = d
+	}
 
 	now := time.Now().UTC()
 	req := &domain.MakerCheckerRequest{
-		ID:         uuid.New(),
-		ActionType: input.ActionType,
-		Payload:    payload,
-		Status:     domain.MakerCheckerPending,
-		MakerID:    actor.UserID.String(),
-		MakerNotes: input.Notes,
-		BranchCode: actor.BranchCode,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:           uuid.New(),
+		ActionType:   input.ActionType,
+		Payload:      payload,
+		Status:       domain.MakerCheckerPending,
+		MakerID:      actor.UserID.String(),
+		MakerNotes:   input.Notes,
+		BranchCode:   actor.BranchCode,
+		BusinessDate: businessDate,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

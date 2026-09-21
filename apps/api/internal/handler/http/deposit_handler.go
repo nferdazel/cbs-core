@@ -84,7 +84,10 @@ func (h *DepositHandler) Place(w http.ResponseWriter, r *http.Request) {
 
 	deposit, err := h.service.Place(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
-		Fail(w, r, http.StatusUnprocessableEntity, err)
+		// Penempatan yang melewati ambang persetujuan bukan kegagalan: ia diterima
+		// untuk direview dan dibalas 202 oleh writeTransactionError, sama seperti
+		// transaksi setoran. Menjawabnya 422 akan menyembunyikan alur persetujuan.
+		writeTransactionError(w, r, err)
 		return
 	}
 	Success(w, http.StatusCreated, "deposit placed successfully", deposit)

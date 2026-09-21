@@ -50,28 +50,69 @@ var _ domain.SystemConfigService = (*stubLimitConfig)(nil)
 type stubDailyDebit struct {
 	total decimal.Decimal
 	err   error
+	// pending adalah nominal pengajuan PENDING per jenis aksi maker-checker, dipakai
+	// membuktikan pengajuan yang belum terposting ikut dihitung.
+	pending    map[string]decimal.Decimal
+	pendingErr error
+	// locked mencatat kunci evaluasi yang diminta, agar test dapat membuktikan
+	// evaluasi batas saat eksekusi diserialkan.
+	lockErr error
 }
 
 func (s *stubDailyDebit) SumDebitByCreatedByAndDate(_ context.Context, _ string, _ time.Time) (decimal.Decimal, error) {
 	return s.total, s.err
 }
 
+func (s *stubDailyDebit) SumPendingDebitByMakerAndAction(_ context.Context, _, actionType string, _ time.Time) (decimal.Decimal, error) {
+	if s.pendingErr != nil {
+		return decimal.Zero, s.pendingErr
+	}
+	return s.pending[actionType], nil
+}
+
+func (s *stubDailyDebit) LockDailyEvaluation(_ context.Context, _ any, _, _ string, _ time.Time) error {
+	return s.lockErr
+}
+
 var _ domain.DailyDebitSumReader = (*stubDailyDebit)(nil)
+
+// stubBusinessDate adalah domain.BusinessDateProvider in-memory dengan satu tanggal
+// bisnis tetap. Tanggalnya sengaja bukan hari kalender UTC sekarang, agar test
+// membuktikan penjaga batas memakai tanggal bisnis, bukan kalender.
+type stubBusinessDate struct {
+	date time.Time
+	err  error
+}
+
+func (s stubBusinessDate) CurrentBusinessDate(context.Context) (time.Time, error) {
+	if s.err != nil {
+		return time.Time{}, s.err
+	}
+	return s.date, nil
+}
+
+func businessDateStub() stubBusinessDate {
+	return stubBusinessDate{date: time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)}
+}
+
+var _ domain.BusinessDateProvider = stubBusinessDate{}
 
 func tellerActor() domain.Actor {
 	return domain.Actor{UserID: uuid.New(), Username: "teller01", Role: domain.RoleTeller}
 }
 
 func tellerLimitConfig() *stubLimitConfig {
+	// Mengikuti seed produksi (migrasi 000051): 50 juta per transaksi, 100 juta
+	// ambang persetujuan. Urutan inilah yang dulu mematikan jalur persetujuan.
 	return &stubLimitConfig{values: map[string]decimal.Decimal{
 		"limit.teller.deposit.per_transaction": decimal.NewFromInt(50_000_000),
 		"limit.teller.deposit.daily":           decimal.NewFromInt(500_000_000),
-		"limit.teller.deposit.approval_above":  decimal.NewFromInt(10_000_000),
+		"limit.teller.deposit.approval_above":  decimal.NewFromInt(100_000_000),
 	}}
 }
 
 func TestTransactionLimitService_CheckBelowLimits(t *testing.T) {
-	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{}, businessDateStub())
 
 	if err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(5_000_000)); err != nil {
 		t.Fatalf("nominal di bawah batas seharusnya lolos, got %v", err)
@@ -79,8 +120,11 @@ func TestTransactionLimitService_CheckBelowLimits(t *testing.T) {
 }
 
 func TestTransactionLimitService_CheckExceedsPerTransaction(t *testing.T) {
-	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{}, businessDateStub())
 
+	// 60 juta: di atas per transaksi (50 juta) tetapi belum melewati ambang
+	// persetujuan (100 juta). Harus DITOLAK sebagai batas keras, bukan dialihkan
+	// ke persetujuan.
 	err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(60_000_000))
 	if !errors.Is(err, domain.ErrLimitPerTransaction) {
 		t.Fatalf("got %v, ingin ErrLimitPerTransaction", err)
@@ -88,18 +132,40 @@ func TestTransactionLimitService_CheckExceedsPerTransaction(t *testing.T) {
 }
 
 func TestTransactionLimitService_CheckExceedsApprovalThreshold(t *testing.T) {
-	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(tellerLimitConfig(), &stubDailyDebit{}, businessDateStub())
 
-	err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(20_000_000))
+	// 150 juta melewati ambang persetujuan 100 juta, sehingga harus meminta
+	// persetujuan -- bukan ditolak oleh batas per transaksi 50 juta.
+	err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(150_000_000))
 	if !errors.Is(err, domain.ErrRequiresApproval) {
 		t.Fatalf("got %v, ingin ErrRequiresApproval", err)
+	}
+}
+
+// Peran tanpa batas per transaksi (per_transaction = 0) tidak boleh berubah:
+// nominal di bawah ambang persetujuan tetap lolos, di atas ambang tetap minta
+// persetujuan, dan batas per transaksi tidak pernah menolak.
+func TestTransactionLimitService_CheckUnlimitedPerTransactionUnchanged(t *testing.T) {
+	config := &stubLimitConfig{values: map[string]decimal.Decimal{
+		"limit.admin.deposit.per_transaction": decimal.NewFromInt(0),
+		"limit.admin.deposit.daily":           decimal.NewFromInt(0),
+		"limit.admin.deposit.approval_above":  decimal.NewFromInt(100_000_000),
+	}}
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
+	actor := domain.Actor{UserID: uuid.New(), Username: "admin01", Role: domain.RoleAdmin}
+
+	if err := svc.Check(context.Background(), actor, "DEPOSIT", decimal.NewFromInt(60_000_000)); err != nil {
+		t.Fatalf("60 juta (di bawah ambang) pada peran tanpa batas harus lolos, got %v", err)
+	}
+	if err := svc.Check(context.Background(), actor, "DEPOSIT", decimal.NewFromInt(150_000_000)); !errors.Is(err, domain.ErrRequiresApproval) {
+		t.Fatalf("150 juta harus minta persetujuan, got %v", err)
 	}
 }
 
 func TestTransactionLimitService_CheckExceedsDaily(t *testing.T) {
 	config := tellerLimitConfig()
 	daily := &stubDailyDebit{total: decimal.NewFromInt(500_000_000)}
-	svc := service.NewTransactionLimitService(config, daily)
+	svc := service.NewTransactionLimitService(config, daily, businessDateStub())
 
 	// Nominal kecil (di bawah per transaksi dan ambang persetujuan) tetap ditolak
 	// karena akumulasi hari berjalan sudah menyentuh batas harian.
@@ -109,13 +175,70 @@ func TestTransactionLimitService_CheckExceedsDaily(t *testing.T) {
 	}
 }
 
+// P1(a): pengajuan yang masih menunggu persetujuan ikut dihitung sebagai akumulasi
+// harian. Tanpa ini, pengajuan kedua yang akan melampaui batas harian (setelah
+// digabung dengan pengajuan pertama yang belum terposting) lolos ke antrean.
+func TestTransactionLimitService_CheckDailyIncludesPendingApprovals(t *testing.T) {
+	config := tellerLimitConfig() // harian teller deposit 500 juta
+	// 450 juta tertahan sebagai pengajuan PENDING; belum ada jurnal terposting.
+	daily := &stubDailyDebit{pending: map[string]decimal.Decimal{
+		service.ActionDeposit: decimal.NewFromInt(450_000_000),
+	}}
+	svc := service.NewTransactionLimitService(config, daily, businessDateStub())
+
+	// 60 juta sendirian masih di bawah batas harian, tetapi 450 + 60 melewati 500.
+	err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(60_000_000))
+	if !errors.Is(err, domain.ErrLimitDaily) {
+		t.Fatalf("got %v, ingin ErrLimitDaily karena pengajuan PENDING ikut dihitung", err)
+	}
+
+	// Nominal kecil yang masih menyisakan ruang di bawah batas tetap lolos.
+	if err := svc.Check(context.Background(), tellerActor(), "DEPOSIT", decimal.NewFromInt(10_000_000)); err != nil {
+		t.Fatalf("10 juta setelah 450 juta tertahan seharusnya lolos, got %v", err)
+	}
+}
+
+// P1(b): saat pengajuan dieksekusi, hanya jurnal yang sudah terposting yang dihitung
+// ulang bersama nominal pengajuan. Nominal di atas ambang persetujuan tetap lolos
+// selama batas harian belum terlampaui.
+func TestTransactionLimitService_CheckDailyAtExecution(t *testing.T) {
+	config := tellerLimitConfig() // harian teller deposit 500 juta, ambang 100 juta
+
+	t.Run("di bawah batas harian lolos meski di atas ambang", func(t *testing.T) {
+		svc := service.NewTransactionLimitService(config, &stubDailyDebit{total: decimal.NewFromInt(100_000_000)}, businessDateStub())
+		// 150 juta > ambang 100 juta, tetapi 100 + 150 < 500.
+		if err := svc.CheckDailyAtExecution(context.Background(), nil, tellerActor(), "DEPOSIT", decimal.NewFromInt(150_000_000)); err != nil {
+			t.Fatalf("eksekusi seharusnya lolos, got %v", err)
+		}
+	})
+
+	t.Run("melampaui batas harian gagal", func(t *testing.T) {
+		svc := service.NewTransactionLimitService(config, &stubDailyDebit{total: decimal.NewFromInt(400_000_000)}, businessDateStub())
+		err := svc.CheckDailyAtExecution(context.Background(), nil, tellerActor(), "DEPOSIT", decimal.NewFromInt(150_000_000))
+		if !errors.Is(err, domain.ErrLimitDaily) {
+			t.Fatalf("got %v, ingin ErrLimitDaily", err)
+		}
+	})
+
+	t.Run("peran tanpa batas harian tidak terpengaruh", func(t *testing.T) {
+		unlimited := &stubLimitConfig{values: map[string]decimal.Decimal{
+			"limit.admin.deposit.daily": decimal.NewFromInt(0),
+		}}
+		svc := service.NewTransactionLimitService(unlimited, &stubDailyDebit{total: decimal.NewFromInt(999_000_000)}, businessDateStub())
+		actor := domain.Actor{UserID: uuid.New(), Username: "admin01", Role: domain.RoleAdmin}
+		if err := svc.CheckDailyAtExecution(context.Background(), nil, actor, "DEPOSIT", decimal.NewFromInt(150_000_000)); err != nil {
+			t.Fatalf("peran tanpa batas harian seharusnya lolos, got %v", err)
+		}
+	})
+}
+
 func TestTransactionLimitService_ForActorUsesRoleLowercaseKeys(t *testing.T) {
 	config := &stubLimitConfig{values: map[string]decimal.Decimal{
 		"limit.supervisor.transfer.per_transaction": decimal.NewFromInt(250_000_000),
 		"limit.supervisor.transfer.daily":           decimal.NewFromInt(1_000_000_000),
 		"limit.supervisor.transfer.approval_above":  decimal.NewFromInt(0),
 	}}
-	svc := service.NewTransactionLimitService(config, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
 	actor := domain.Actor{UserID: uuid.New(), Username: "spv01", Role: domain.RoleSupervisor}
 
 	limit, err := svc.ForActor(context.Background(), actor, "TRANSFER")
@@ -134,7 +257,7 @@ func TestTransactionLimitService_ForActorUsesRoleLowercaseKeys(t *testing.T) {
 }
 
 func TestTransactionLimitService_DefaultWhenConfigMissing(t *testing.T) {
-	svc := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{}, businessDateStub())
 
 	limit, err := svc.ForActor(context.Background(), tellerActor(), "WITHDRAWAL")
 	if err != nil {
@@ -197,7 +320,7 @@ func seededLimitValue(t *testing.T, seeded map[string]string, role domain.StaffR
 // sama dengan nilai yang di-seed migrasi (sumbernya konfigurasi, bukan bawaan kode).
 func TestEffectiveLimitsComeFromSeedForEveryRoleAndType(t *testing.T) {
 	config := seedBackedLimitConfig(t)
-	svc := service.NewTransactionLimitService(config, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
 	seeded := parseSystemConfigSeed(t, filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations"))
 
 	for _, role := range service.TransactionLimitRoles() {
@@ -233,7 +356,7 @@ func TestEffectiveLimitsNotTakenFromPackageDefaults(t *testing.T) {
 			config.values[base+".approval_above"] = decimal.NewFromInt(333)
 		}
 	}
-	svc := service.NewTransactionLimitService(config, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
 
 	for _, role := range service.TransactionLimitRoles() {
 		for _, txType := range service.TransactionLimitTypes() {
@@ -254,7 +377,7 @@ func TestEffectiveLimitsNotTakenFromPackageDefaults(t *testing.T) {
 // (role_limit.<PERAN>) agar benar-benar berlaku di kunci baru.
 func TestSeedPreservesWrittenRoleLimitIntent(t *testing.T) {
 	config := seedBackedLimitConfig(t)
-	svc := service.NewTransactionLimitService(config, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
 
 	intent := map[domain.StaffRole]int64{
 		domain.RoleTeller:     50_000_000,
@@ -304,7 +427,7 @@ func TestSeedAlignsApprovalWithMakerCheckerThreshold(t *testing.T) {
 
 func TestListReportsConfiguredFromKeyPresence(t *testing.T) {
 	seededConfig := seedBackedLimitConfig(t)
-	svc := service.NewTransactionLimitService(seededConfig, &stubDailyDebit{})
+	svc := service.NewTransactionLimitService(seededConfig, &stubDailyDebit{}, businessDateStub())
 
 	views, err := svc.List(context.Background())
 	if err != nil {
@@ -320,7 +443,7 @@ func TestListReportsConfiguredFromKeyPresence(t *testing.T) {
 	}
 
 	// Tanpa kunci di konfigurasi, baris harus ditandai belum ditetapkan.
-	empty := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{})
+	empty := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{}, businessDateStub())
 	emptyViews, err := empty.List(context.Background())
 	if err != nil {
 		t.Fatalf("List tanpa kunci: %v", err)

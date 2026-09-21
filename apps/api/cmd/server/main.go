@@ -93,8 +93,8 @@ func main() {
 	// maker-checker mengeksekusi lewat registry, bukan memegang ledger secara langsung.
 	executors := service.NewExecutorRegistry()
 	mcRepo := postgres.NewMakerCheckerRepository(db)
-	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors)
-	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo)
+	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors, dateRepo)
+	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, dateRepo)
 
 	customerSvc := service.NewCustomerService(db, customerRepo, cipher, referenceGen, auditRepo)
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, configSvc, auditRepo)
@@ -119,7 +119,10 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	collectionSvc := service.NewCollectionService(ledgerSvc, loanSvc)
 	savingsSvc := service.NewSavingsInterestService(db, savingsRepo, accountRepo, productRepo, poster, postingSvc, ledgerRepo, configSvc)
-	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, auditRepo)
+	depositSvc := service.NewDepositService(db, depositRepo, productRepo, accountRepo, ledgerRepo, customerRepo, branchRepo, numberingRepo, poster, postingSvc, ledgerRepo, configSvc, limitSvc, mcSvc, auditRepo)
+	// Penempatan deposito di atas ambang persetujuan dieksekusi setelah disetujui,
+	// memakai penjaga batas dan alur maker-checker yang sama dengan setoran tunai.
+	executors.Register(service.ActionPlaceDeposit, depositSvc)
 	// Repositori agunan dipakai dua jalur: pencatatan agunan dan pengurangan eksposur PPAP.
 	collateralRepo := postgres.NewCollateralRepository(db)
 	// Penanda tanggal bisnis run PPAP terakhir dibagi ke PPAP (penulis) dan CKPN

@@ -60,9 +60,14 @@ type MakerCheckerRequest struct {
 	// Kosong berarti cabang tidak diketahui (data pra-migrasi) dan aksesnya
 	// mengikuti semantik Actor.CanAccessBranch.
 	BranchCode string
-	ReviewedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// BusinessDate adalah tanggal bisnis bank (WIB) saat pengajuan dibuat. Dipakai
+	// akumulasi batas harian untuk mengaitkan pengajuan PENDING ke hari bisnis yang
+	// benar; nol berarti tidak diketahui (data pra-migrasi) dan pembaca jatuh ke
+	// tanggal kalender WIB created_at.
+	BusinessDate time.Time
+	ReviewedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type CreateMakerCheckerInput struct {

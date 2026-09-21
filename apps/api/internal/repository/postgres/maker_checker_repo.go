@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
@@ -31,12 +32,15 @@ func (r *MakerCheckerRepository) CreateTx(ctx context.Context, tx any, req *doma
 	// Cabang pengajuan diisi lewat subquery di INSERT yang sama agar tidak
 	// menambah round-trip. Bila BranchCode kosong, subquery menghasilkan NULL —
 	// pengajuan tanpa cabang tetap sah dan terlihat semua cabang.
+	// business_date diisi dari tanggal bisnis saat pengajuan dibuat; NULL hanya untuk
+	// pengajuan yang dibuat saat sumber tanggal bisnis tidak tersedia (data lama), dan
+	// kueri akumulasi harian memakai fallback tanggal kalender WIB untuk baris itu.
 	_, err = sqlTx.ExecContext(ctx, `
 		INSERT INTO maker_checker_requests
-			(id, action_type, payload, status, maker_id, maker_notes, created_at, updated_at, branch_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT id FROM branches WHERE code = $9))`,
+			(id, action_type, payload, status, maker_id, maker_notes, created_at, updated_at, branch_id, business_date)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT id FROM branches WHERE code = $9), $10)`,
 		req.ID, req.ActionType, payload, req.Status, req.MakerID,
-		nullIfEmpty(req.MakerNotes), req.CreatedAt, req.UpdatedAt, req.BranchCode,
+		nullIfEmpty(req.MakerNotes), req.CreatedAt, req.UpdatedAt, req.BranchCode, nullDate(req.BusinessDate),
 	)
 	if err != nil {
 		return fmt.Errorf("maker-checker: menyimpan permintaan: %w", err)
@@ -44,11 +48,21 @@ func (r *MakerCheckerRepository) CreateTx(ctx context.Context, tx any, req *doma
 	return nil
 }
 
+// nullDate mengirim NULL ke kolom DATE ketika tanggal belum diisi, dan tanggal apa
+// adanya bila sudah. Dipisah agar pemanggil tidak perlu mengurus sql.NullTime.
+func nullDate(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
+}
+
 func (r *MakerCheckerRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.MakerCheckerRequest, error) {
 	var req domain.MakerCheckerRequest
 	var payload []byte
 	var checkerID sql.NullString
 	var reviewedAt sql.NullTime
+	var businessDate sql.NullTime
 
 	// branch_id diambil lewat join: pemeriksaan cabang di Approve/Reject
 	// bergantung padanya, dan bila kosong pemeriksaan lintas cabang akan lolos
@@ -56,14 +70,14 @@ func (r *MakerCheckerRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	err := r.db.QueryRowContext(ctx, `
 		SELECT mcr.id, mcr.action_type, mcr.payload, mcr.status, mcr.maker_id, mcr.checker_id,
 		       COALESCE(mcr.maker_notes, ''), COALESCE(mcr.checker_notes, ''), mcr.reviewed_at, mcr.created_at, mcr.updated_at,
-		       COALESCE(b.code, '')
+		       COALESCE(b.code, ''), mcr.business_date
 		FROM maker_checker_requests mcr
 		LEFT JOIN branches b ON b.id = mcr.branch_id
 		WHERE mcr.id = $1`, id,
 	).Scan(
 		&req.ID, &req.ActionType, &payload, &req.Status, &req.MakerID, &checkerID,
 		&req.MakerNotes, &req.CheckerNotes, &reviewedAt, &req.CreatedAt, &req.UpdatedAt,
-		&req.BranchCode,
+		&req.BranchCode, &businessDate,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrMakerCheckerNotFound
@@ -79,6 +93,9 @@ func (r *MakerCheckerRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	}
 	if reviewedAt.Valid {
 		req.ReviewedAt = &reviewedAt.Time
+	}
+	if businessDate.Valid {
+		req.BusinessDate = businessDate.Time
 	}
 	return &req, nil
 }
@@ -117,7 +134,7 @@ func buildPendingListQuery(actor domain.Actor) (string, []any) {
 
 	query := `
 		SELECT id, action_type, payload, status, maker_id, checker_id,
-		       COALESCE(maker_notes, ''), COALESCE(checker_notes, ''), reviewed_at, created_at, updated_at
+		       COALESCE(maker_notes, ''), COALESCE(checker_notes, ''), reviewed_at, created_at, updated_at, business_date
 		FROM maker_checker_requests
 		WHERE status = 'PENDING'`
 	if where != "" {
@@ -141,9 +158,11 @@ func (r *MakerCheckerRepository) ListPending(ctx context.Context, actor domain.A
 		var payload []byte
 		var checkerID sql.NullString
 		var reviewedAt sql.NullTime
+		var businessDate sql.NullTime
 		if err := rows.Scan(
 			&req.ID, &req.ActionType, &payload, &req.Status, &req.MakerID, &checkerID,
 			&req.MakerNotes, &req.CheckerNotes, &reviewedAt, &req.CreatedAt, &req.UpdatedAt,
+			&businessDate,
 		); err != nil {
 			return nil, err
 		}
@@ -155,6 +174,9 @@ func (r *MakerCheckerRepository) ListPending(ctx context.Context, actor domain.A
 		}
 		if reviewedAt.Valid {
 			req.ReviewedAt = &reviewedAt.Time
+		}
+		if businessDate.Valid {
+			req.BusinessDate = businessDate.Time
 		}
 		list = append(list, req)
 	}

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,8 +52,17 @@ type depositService struct {
 	posting      domain.PostingService
 	resolver     domain.AccountResolver
 	configSvc    domain.SystemConfigService
-	auditRepo    domain.AuditRepository
+	// limits dan approvals dipakai penjaga batas bersama. Boleh nil (mis. pada
+	// test): penjaga dilewati dan penempatan langsung berjalan seperti sebelumnya.
+	limits    domain.TransactionLimitService
+	approvals domain.MakerCheckerService
+	auditRepo domain.AuditRepository
 }
+
+// ActionPlaceDeposit adalah jenis aksi maker-checker untuk penempatan deposito yang
+// melewati ambang persetujuan. Berbeda dari ActionDeposit (setoran tunai ke rekening
+// yang sudah ada) karena eksekusinya membuka kontrak deposito sekaligus jurnalnya.
+const ActionPlaceDeposit = "PLACE_DEPOSIT"
 
 func NewDepositService(
 	db *sql.DB,
@@ -67,6 +77,8 @@ func NewDepositService(
 	posting domain.PostingService,
 	resolver domain.AccountResolver,
 	configSvc domain.SystemConfigService,
+	limits domain.TransactionLimitService,
+	approvals domain.MakerCheckerService,
 	auditSinks ...domain.AuditRepository,
 ) domain.DepositService {
 	var auditRepo domain.AuditRepository
@@ -86,19 +98,82 @@ func NewDepositService(
 		posting:      posting,
 		resolver:     resolver,
 		configSvc:    configSvc,
+		limits:       limits,
+		approvals:    approvals,
 		auditRepo:    auditRepo,
 	}
 }
 
+// depositPlacementPrep menampung hasil validasi dan perhitungan penempatan yang tidak
+// menulis apa pun. Dengan memisahkannya, penjaga batas dapat dijalankan SEBELUM
+// transaksi dibuka dan eksekutor persetujuan dapat memakai ulang jalur yang sama
+// persis saat pengajuan disetujui.
+type depositPlacementPrep struct {
+	product     *domain.BankingProduct
+	customer    *domain.CustomerRecord
+	branch      *domain.Branch
+	coa         *domain.ChartOfAccount
+	start       time.Time
+	maturity    time.Time
+	now         time.Time
+	profitType  domain.ProfitType
+	profitRate  decimal.Decimal
+	yieldRate   decimal.Decimal
+	taxRate     decimal.Decimal
+	instruction domain.AROInstruction
+}
+
+func normalizePlaceDepositInput(input *domain.PlaceDepositInput) {
+	if input.Currency == "" {
+		input.Currency = "IDR"
+	}
+}
+
 func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInput, actor domain.Actor) (*domain.Deposit, error) {
+	normalizePlaceDepositInput(&input)
+
+	prep, err := s.preparePlacement(ctx, input, actor)
+	if err != nil {
+		return nil, err
+	}
+
+	// Penempatan deposito tunduk pada penjaga batas dan alur maker-checker yang SAMA
+	// dengan transaksi setoran. Sebelumnya penempatan langsung menulis jurnal tanpa
+	// memeriksa limit.<peran>.deposit.approval_above, sehingga nominal 150 juta yang
+	// seharusnya butuh persetujuan bisa menempatkan dana lewat jalur deposit.
+	payload, err := placeDepositPayload(input, actor)
+	if err != nil {
+		return nil, err
+	}
+	if err := guardTransactionLimit(ctx, s.limits, s.approvals, actor, ActionPlaceDeposit, "deposit", input.PlacementAmount, payload); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	deposit, err := s.persistPlacement(ctx, tx, input, actor, prep)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return deposit, nil
+}
+
+// preparePlacement memvalidasi produk, nasabah, cabang, akun kewajiban, dan menghitung
+// syarat kontrak TANPA menulis. Semua jalur (langsung maupun setelah persetujuan)
+// melewatinya, sehingga aturan yang sama berlaku pada keduanya.
+func (s *depositService) preparePlacement(ctx context.Context, input domain.PlaceDepositInput, actor domain.Actor) (*depositPlacementPrep, error) {
 	if input.PlacementAmount.LessThanOrEqual(decimal.Zero) {
 		return nil, domain.ErrInvalidDepositAmount
 	}
 	if input.TermMonths <= 0 {
 		return nil, domain.ErrInvalidDepositTerm
-	}
-	if input.Currency == "" {
-		input.Currency = "IDR"
 	}
 
 	product, err := s.productRepo.GetByID(ctx, input.ProductID)
@@ -181,14 +256,27 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 		return nil, errors.New("instruksi ARO tidak dikenal")
 	}
 
-	now := time.Now().UTC()
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	return &depositPlacementPrep{
+		product:     product,
+		customer:    customer,
+		branch:      branch,
+		coa:         coa,
+		start:       start,
+		maturity:    maturity,
+		now:         time.Now().UTC(),
+		profitType:  profitType,
+		profitRate:  profitRate,
+		yieldRate:   yieldRate,
+		taxRate:     taxRate,
+		instruction: instruction,
+	}, nil
+}
 
-	accountNumber, err := s.numbering.NextAccountNumber(ctx, tx, product, branch.Code)
+// persistPlacement menulis rekening, kontrak deposito, jurnal penempatan, dan audit
+// memakai transaksi pemanggil. Tidak membuka transaksi sendiri supaya, saat dijalankan
+// dari maker-checker, status persetujuan dan efeknya commit bersama.
+func (s *depositService) persistPlacement(ctx context.Context, tx *sql.Tx, input domain.PlaceDepositInput, actor domain.Actor, prep *depositPlacementPrep) (*domain.Deposit, error) {
+	accountNumber, err := s.numbering.NextAccountNumber(ctx, tx, prep.product, prep.branch.Code)
 	if err != nil {
 		return nil, err
 	}
@@ -199,20 +287,20 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 	account := &domain.Account{
 		ID:               uuid.New(),
 		AccountNumber:    accountNumber,
-		CustomerID:       &customer.ID,
-		ProductID:        &product.ID,
-		BranchID:         &branch.ID,
-		COAID:            coa.ID,
-		AccountType:      accountTypeForFamily(product.Family),
+		CustomerID:       &prep.customer.ID,
+		ProductID:        &prep.product.ID,
+		BranchID:         &prep.branch.ID,
+		COAID:            prep.coa.ID,
+		AccountType:      accountTypeForFamily(prep.product.Family),
 		Currency:         input.Currency,
 		Balance:          decimal.Zero,
 		AvailableBalance: decimal.Zero,
 		HoldBalance:      decimal.Zero,
 		Status:           domain.AccountStatusActive,
 		Version:          1,
-		OpenedAt:         &now,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		OpenedAt:         &prep.now,
+		CreatedAt:        prep.now,
+		UpdatedAt:        prep.now,
 	}
 	if err := s.accountRepo.CreateTx(ctx, tx, account); err != nil {
 		return nil, fmt.Errorf("membuat rekening deposito: %w", err)
@@ -221,23 +309,23 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 	deposit := &domain.Deposit{
 		ID:              uuid.New(),
 		AccountNumber:   accountNumber,
-		CustomerID:      customer.ID,
-		ProductID:       product.ID,
-		BranchID:        &branch.ID,
+		CustomerID:      prep.customer.ID,
+		ProductID:       prep.product.ID,
+		BranchID:        &prep.branch.ID,
 		PlacementAmount: input.PlacementAmount,
 		Currency:        input.Currency,
 		TermMonths:      input.TermMonths,
-		StartDate:       start,
-		MaturityDate:    maturity,
-		ProfitRate:      profitRate,
-		YieldRate:       yieldRate,
-		ProfitType:      profitType,
-		TaxRate:         taxRate,
+		StartDate:       prep.start,
+		MaturityDate:    prep.maturity,
+		ProfitRate:      prep.profitRate,
+		YieldRate:       prep.yieldRate,
+		ProfitType:      prep.profitType,
+		TaxRate:         prep.taxRate,
 		ARO:             input.ARO,
-		AROInstruction:  instruction,
+		AROInstruction:  prep.instruction,
 		Status:          domain.DepositStatusPlaced,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		CreatedAt:       prep.now,
+		UpdatedAt:       prep.now,
 	}
 	if err := s.depositRepo.Create(ctx, tx, deposit); err != nil {
 		return nil, err
@@ -247,12 +335,20 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 	if idemKey == "" {
 		idemKey = "DEP-PLACE-" + deposit.ID.String()
 	}
-	_, err = s.poster.PostEventTx(ctx, tx, product, domain.EventDeposit, Amounts{
+	_, err = s.poster.PostEventTx(ctx, tx, prep.product, domain.EventDeposit, Amounts{
 		Principal: input.PlacementAmount,
 		Total:     input.PlacementAmount,
 	}, PostingMeta{
-		TransactionType: domain.TxTypeDeposit,
-		Description:     fmt.Sprintf("Penempatan deposito %s %s", product.Name, accountNumber),
+		// Penempatan deposito memakai jenis tersendiri (DEPOSIT_PLACEMENT) agar tidak
+		// lagi tercampur dengan setoran tunai teller (DEPOSIT) di laporan dan
+		// rekonsiliasi; prefix referensinya mengikuti jenis ini (DPL).
+		//
+		// Jurnal penempatan LAMA sengaja tetap bertipe DEPOSIT dan TIDAK
+		// direklasifikasi: baris lama tidak menyimpan penanda pasti untuk
+		// membedakan penempatan dari setoran tunai, sehingga menebak berdasarkan
+		// deskripsi/prefix justru berisiko salah kelompok pada data produksi.
+		TransactionType: domain.TxTypeDepositPlacement,
+		Description:     fmt.Sprintf("Penempatan deposito %s %s", prep.product.Name, accountNumber),
 		IdempotencyKey:  idemKey,
 		CreatedBy:       actor.DisplayName(),
 		BranchCode:      actor.BranchCode,
@@ -263,17 +359,107 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 
 	if err := writeAudit(ctx, s.auditRepo, tx, actor, "PLACE_DEPOSIT", "deposit", deposit.ID.String(), map[string]any{
 		"account_number": accountNumber,
-		"product":        product.Code,
+		"product":        prep.product.Code,
 		"amount":         input.PlacementAmount.String(),
 		"term_months":    input.TermMonths,
 	}); err != nil {
 		return nil, err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return deposit, nil
+}
+
+// placeDepositPayload mengubah input penempatan menjadi payload persetujuan yang dapat
+// dipulihkan utuh saat disetujui, plus identitas pembuat agar jurnal dan audit tetap
+// mencatat teller yang mengajukan, bukan pejabat yang menyetujui.
+func placeDepositPayload(input domain.PlaceDepositInput, actor domain.Actor) (map[string]any, error) {
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("menyiapkan payload persetujuan deposito: %w", err)
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("menyiapkan payload persetujuan deposito: %w", err)
+	}
+	payload["maker_id"] = actor.UserID.String()
+	payload["maker_username"] = actor.Username
+	payload["maker_role"] = string(actor.Role)
+	payload["maker_branch"] = actor.BranchCode
+	return payload, nil
+}
+
+// placeDepositInputFromPayload memulihkan input penempatan dan identitas pembuat dari
+// payload persetujuan. Identitas pembuat wajib: tanpa itu jurnal akan mencatat pejabat
+// yang menyetujui sebagai pencatat transaksi, menyesatkan penelusuran.
+func placeDepositInputFromPayload(payload map[string]any, fallback domain.Actor) (domain.PlaceDepositInput, domain.Actor, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return domain.PlaceDepositInput{}, fallback, fmt.Errorf("membaca payload persetujuan deposito: %w", err)
+	}
+	var input domain.PlaceDepositInput
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return domain.PlaceDepositInput{}, fallback, fmt.Errorf("membaca payload persetujuan deposito: %w", err)
+	}
+	if input.CustomerID == uuid.Nil || input.ProductID == uuid.Nil {
+		return domain.PlaceDepositInput{}, fallback, errors.New("payload persetujuan deposito tidak lengkap")
+	}
+	if !input.PlacementAmount.IsPositive() || input.TermMonths <= 0 {
+		return domain.PlaceDepositInput{}, fallback, errors.New("nominal atau tenor pada payload persetujuan deposito tidak valid")
+	}
+
+	maker := fallback
+	if v, ok := payload["maker_id"].(string); ok {
+		if id, err := uuid.Parse(v); err == nil {
+			maker.UserID = id
+		}
+	}
+	if v, ok := payload["maker_username"].(string); ok && v != "" {
+		maker.Username = v
+	}
+	if v, ok := payload["maker_role"].(string); ok && v != "" {
+		maker.Role = domain.StaffRole(v)
+	}
+	if v, ok := payload["maker_branch"].(string); ok && v != "" {
+		maker.BranchCode = v
+	}
+	return input, maker, nil
+}
+
+// ExecuteApproved menjalankan penempatan deposito yang sudah disetujui, di dalam
+// transaksi milik maker-checker service sehingga keputusan dan efeknya commit bersama.
+func (s *depositService) ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor domain.Actor) error {
+	if normalizeAction(actionType) != ActionPlaceDeposit {
+		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
+	}
+	input, maker, err := placeDepositInputFromPayload(payload, actor)
+	if err != nil {
+		return err
+	}
+	normalizePlaceDepositInput(&input)
+
+	// Persetujuan dijalankan di dalam transaksi milik maker-checker service. Transaksi
+	// diambil sebelum evaluasi batas agar evaluasi itu dapat dikunci serial di dalam
+	// transaksi yang sama.
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("transaksi persetujuan penempatan deposito tidak valid")
+	}
+
+	// Batas harian dievaluasi ULANG saat penempatan yang disetujui dieksekusi, sama
+	// seperti transaksi rekening lain: persetujuan pejabat tidak boleh melegalkan
+	// pelanggaran batas harian. Bila sudah melampaui, eksekusi gagal dan pengajuan
+	// tetap PENDING sehingga dapat ditolak/ditinjau.
+	if s.limits != nil {
+		if err := s.limits.CheckDailyAtExecution(ctx, sqlTx, maker, "deposit", input.PlacementAmount); err != nil {
+			return fmt.Errorf("pengajuan yang disetujui tidak dapat dieksekusi: %w", err)
+		}
+	}
+
+	prep, err := s.preparePlacement(ctx, input, maker)
+	if err != nil {
+		return err
+	}
+	_, err = s.persistPlacement(ctx, sqlTx, input, maker, prep)
+	return err
 }
 
 // Preview menghitung proyeksi deposito tanpa menyimpan apa pun, agar teller dapat

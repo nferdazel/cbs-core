@@ -34,10 +34,25 @@ type TransactionLimitView struct {
 	Configured      bool            `json:"configured"`
 }
 
-// DailyDebitSumReader menjumlahkan sisi debit jurnal milik satu pelaku pada satu
-// tanggal. Dipakai menghitung akumulasi harian tanpa memuat seluruh repository jurnal.
+// DailyDebitSumReader menyediakan bahan akumulasi harian penjaga batas tanpa memuat
+// seluruh repository jurnal. Dipakai menghitung akumulasi harian yang mengikat pelaku.
+//
+// Seluruh parameter businessDate adalah TANGGAL BISNIS bank (WIB), bukan tanggal
+// kalender UTC: jurnal membawa entry_date dari tanggal bisnis, sehingga menyaring
+// dengan created_at/tanggal UTC membuat jurnal hari bisnis berjalan tidak terhitung
+// saat tutup hari tertinggal.
 type DailyDebitSumReader interface {
-	SumDebitByCreatedByAndDate(ctx context.Context, createdBy string, date time.Time) (decimal.Decimal, error)
+	SumDebitByCreatedByAndDate(ctx context.Context, createdBy string, businessDate time.Time) (decimal.Decimal, error)
+	// SumPendingDebitByMakerAndAction menjumlahkan nominal pengajuan maker-checker yang
+	// masih PENDING milik satu pembuat untuk satu jenis aksi pada satu TANGGAL BISNIS.
+	// Tanpa ini N pengajuan yang masing-masing di bawah batas harian dapat disetujui
+	// semua sehingga total yang terposting hari itu melampaui batas.
+	SumPendingDebitByMakerAndAction(ctx context.Context, maker, actionType string, businessDate time.Time) (decimal.Decimal, error)
+	// LockDailyEvaluation menyerialkan evaluasi batas harian terhadap evaluasi lain
+	// untuk pembuat, jenis transaksi, dan tanggal bisnis yang sama, di dalam transaksi
+	// eksekusi. Kunci diambil SEBELUM jurnal ditulis; dua persetujuan bersamaan tidak
+	// boleh sama-sama membaca snapshot "masih di bawah batas" lalu sama-sama posting.
+	LockDailyEvaluation(ctx context.Context, tx any, maker, txType string, businessDate time.Time) error
 }
 
 type TransactionLimitService interface {
@@ -46,6 +61,14 @@ type TransactionLimitService interface {
 	// Check memvalidasi nominal terhadap batas per transaksi, akumulasi harian, dan
 	// ambang persetujuan. Pelanggaran dikembalikan sebagai sentinel error di domain.
 	Check(ctx context.Context, actor Actor, txType string, amount decimal.Decimal) error
+	// CheckDailyAtExecution mengevaluasi ULANG hanya batas harian ketika pengajuan yang
+	// sudah disetujui dieksekusi, di dalam transaksi eksekusi (tx). Persetujuan pejabat
+	// melegalkan nominal di atas ambang dan batas per transaksi, tetapi tidak boleh
+	// melegalkan pelanggaran batas harian; karena itu ambang persetujuan dan batas per
+	// transaksi tidak diperiksa di sini. maker adalah pembuat pengajuan, bukan pejabat
+	// yang menyetujui. tx dipakai mengunci evaluasi secara serial terhadap eksekusi lain
+	// untuk pembuat/jenis/tanggal bisnis yang sama; nil diperbolehkan hanya pada stub uji.
+	CheckDailyAtExecution(ctx context.Context, tx any, maker Actor, txType string, amount decimal.Decimal) error
 	// List mengembalikan batas efektif seluruh peran x jenis transaksi yang dijaga
 	// penjaga batas, beserta penanda configured. Dipakai endpoint baca system/limits.
 	List(ctx context.Context) ([]TransactionLimitView, error)

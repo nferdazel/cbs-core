@@ -96,22 +96,39 @@ const (
 // Aturan ini ditegakkan di service, bukan di handler, karena menyangkut kewenangan
 // pejabat bank dan tidak boleh bisa dilewati dengan memanggil service langsung.
 func (s *ledgerService) guardLimit(ctx context.Context, actor domain.Actor, action, txType string, amount decimal.Decimal, payload map[string]any) error {
-	if s.limits == nil {
+	return guardTransactionLimit(ctx, s.limits, s.approvals, actor, action, txType, amount, payload)
+}
+
+// guardTransactionLimit menegakkan batas transaksi dan mengalihkan transaksi yang
+// melewati ambang persetujuan ke antrean maker-checker. Dipisah dari ledgerService
+// agar penempatan deposito memakai penjaga yang SAMA PERSIS: satu tempat aturan,
+// satu perilaku. Tiga kemungkinan keluarannya:
+//   - lolos,
+//   - ditolak karena melebihi batas (dikembalikan sebagai error),
+//   - melewati ambang persetujuan, sehingga transaksi TIDAK diposting dan masuk
+//     antrean maker-checker; pemanggil menerima PendingApprovalError (HTTP 202).
+//
+// Aturan ini ditegakkan di service, bukan di handler, karena menyangkut kewenangan
+// pejabat bank dan tidak boleh bisa dilewati dengan memanggil service langsung.
+// limits/approvals boleh nil (mis. pada test): penjaga dilewati tanpa mengubah
+// perilaku bisnis.
+func guardTransactionLimit(ctx context.Context, limits domain.TransactionLimitService, approvals domain.MakerCheckerService, actor domain.Actor, action, txType string, amount decimal.Decimal, payload map[string]any) error {
+	if limits == nil {
 		return nil
 	}
 
-	err := s.limits.Check(ctx, actor, txType, amount)
+	err := limits.Check(ctx, actor, txType, amount)
 	if err == nil {
 		return nil
 	}
 	if !errors.Is(err, domain.ErrRequiresApproval) {
 		return err
 	}
-	if s.approvals == nil {
+	if approvals == nil {
 		return err
 	}
 
-	req, createErr := s.approvals.CreateRequest(ctx, domain.CreateMakerCheckerInput{
+	req, createErr := approvals.CreateRequest(ctx, domain.CreateMakerCheckerInput{
 		ActionType: action,
 		Amount:     amount,
 		Payload:    payload,
@@ -124,8 +141,10 @@ func (s *ledgerService) guardLimit(ctx context.Context, actor domain.Actor, acti
 }
 
 // ExecuteApproved mengeksekusi transaksi rekening yang sudah disetujui maker-checker.
-// Dipanggil di dalam transaksi milik maker-checker service; batas transaksi tidak
-// diperiksa ulang karena persetujuan itu sendiri yang menjadi kewenangannya.
+// Dipanggil di dalam transaksi milik maker-checker service. Batas per transaksi dan
+// ambang persetujuan TIDAK diperiksa ulang karena persetujuan itu sendiri yang menjadi
+// kewenangannya; batas harian tetap dievaluasi ulang (lihat guardApprovedDaily) karena
+// persetujuan tidak boleh melegalkannya.
 func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor domain.Actor) error {
 	if payload == nil {
 		return errors.New("payload persetujuan kosong")
@@ -147,6 +166,16 @@ func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType 
 	createdBy := actor.DisplayName()
 	if maker, ok := payload["maker_username"].(string); ok && maker != "" {
 		createdBy = maker
+	}
+
+	// Batas harian dievaluasi ULANG saat pengajuan dieksekusi. Persetujuan pejabat
+	// melegalkan nominal di atas ambang dan per transaksi, TETAPI tidak boleh melegalkan
+	// pelanggaran batas harian: N pengajuan yang masing-masing di bawah batas dapat
+	// disetujui semua sehingga total terposting hari itu melampaui batas. Bila sudah
+	// melampaui, eksekusi gagal dengan galat jelas dan pengajuan tetap PENDING sehingga
+	// dapat ditolak/ditinjau, bukan diam-diam jalan.
+	if err := s.guardApprovedDaily(ctx, tx, actionType, payload, amount, actor); err != nil {
+		return err
 	}
 
 	switch normalizeAction(actionType) {
@@ -179,6 +208,44 @@ func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType 
 	default:
 		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
 	}
+}
+
+// approvedLimitTxType memetakan jenis aksi maker-checker rekening ke jenis transaksi
+// batas (sufiks limit.<peran>.<jenis>). Aksi tanpa batas harian (mis. pembatalan
+// REVERSE_TRANSACTION, yang nominalnya diambil dari jurnal asal) mengembalikan "".
+func approvedLimitTxType(actionType string) string {
+	switch normalizeAction(actionType) {
+	case ActionDeposit:
+		return "deposit"
+	case ActionWithdraw:
+		return "withdrawal"
+	case ActionTransfer:
+		return "transfer"
+	default:
+		return ""
+	}
+}
+
+// guardApprovedDaily mengevaluasi ulang batas harian untuk pengajuan rekening yang
+// sudah disetujui. Pembuat permintaan dipulihkan dari payload (bukan pejabat yang
+// menyetujui) karena batas dihitung per pembuat. Batas per transaksi dan ambang
+// persetujuan tidak diperiksa ulang: persetujuan pejabat justru menjadi kewenangan
+// untuk melewatinya. tx diteruskan agar evaluasi batas dikunci secara serial di dalam
+// transaksi eksekusi yang sama. Untuk permintaan lama yang payload-nya belum memuat
+// maker_role, peran jatuh ke pemeriksa (perilaku kompatibilitas); pengajuan baru selalu
+// memuatnya.
+func (s *ledgerService) guardApprovedDaily(ctx context.Context, tx any, actionType string, payload map[string]any, amount decimal.Decimal, actor domain.Actor) error {
+	if s.limits == nil {
+		return nil
+	}
+	txType := approvedLimitTxType(actionType)
+	if txType == "" {
+		return nil
+	}
+	if err := s.limits.CheckDailyAtExecution(ctx, tx, makerFromPayload(payload, actor), txType, amount); err != nil {
+		return fmt.Errorf("pengajuan yang disetujui tidak dapat dieksekusi: %w", err)
+	}
+	return nil
 }
 
 // decimalFromPayload membaca nominal dari payload JSON, yang bisa berupa string

@@ -38,7 +38,7 @@ func TestIntegrasiBatasTransaksiDariKonfigurasi(t *testing.T) {
 	setLimitConfig(t, e, dailyKey, "0")    // 0 = tanpa batas harian
 	setLimitConfig(t, e, approvalKey, "0") // 0 = tanpa ambang persetujuan
 
-	limitSvc := service.NewTransactionLimitService(e.configSvc, postgres.NewLedgerRepository(e.db))
+	limitSvc := service.NewTransactionLimitService(e.configSvc, postgres.NewLedgerRepository(e.db), postgres.NewBusinessDateRepository(e.db))
 	actor := domain.Actor{
 		UserID:     e.actor.UserID,
 		Username:   "teller.ujibatas",

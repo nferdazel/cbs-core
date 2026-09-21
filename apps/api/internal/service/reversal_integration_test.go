@@ -65,9 +65,9 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	configSvc := service.NewSystemConfigService(configRepo)
 	referenceGen := postgres.NewReferenceGenerator(db)
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, postgres.NewBusinessDateRepository(db))
-	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo)
+	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, postgres.NewBusinessDateRepository(db))
 	executors := service.NewExecutorRegistry()
-	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors)
+	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors, postgres.NewBusinessDateRepository(db))
 	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc,
 		postgres.NewBusinessDateRepository(db), auditRepo)
 	// Pendaftaran eksekutor sama seperti produksi: tanpa ini persetujuan lintas hari

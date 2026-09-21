@@ -57,6 +57,10 @@ func (stubReferenceGen) NextTx(ctx context.Context, tx any, txType domain.Transa
 	return "REF-TEST-000001", nil
 }
 
+func (stubReferenceGen) NextLoanNumber(ctx context.Context, product *domain.BankingProduct, at time.Time) (string, error) {
+	return "KRD-TEST-000001", nil
+}
+
 func newPostingServiceForTest(repo *stubPostingRepo) *postingService {
 	return &postingService{
 		postingRepo: repo,

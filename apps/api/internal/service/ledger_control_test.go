@@ -11,7 +11,11 @@ import (
 )
 
 // stubLimits menggantikan pemeriksa batas: test cukup menentukan hasilnya.
-type stubLimits struct{ checkErr error }
+type stubLimits struct {
+	checkErr error
+	// dailyErr adalah hasil evaluasi ulang batas harian saat pengajuan dieksekusi.
+	dailyErr error
+}
 
 func (s stubLimits) ForActor(ctx context.Context, actor domain.Actor, txType string) (domain.TransactionLimit, error) {
 	return domain.TransactionLimit{}, nil
@@ -19,6 +23,10 @@ func (s stubLimits) ForActor(ctx context.Context, actor domain.Actor, txType str
 
 func (s stubLimits) Check(ctx context.Context, actor domain.Actor, txType string, amount decimal.Decimal) error {
 	return s.checkErr
+}
+
+func (s stubLimits) CheckDailyAtExecution(ctx context.Context, tx any, maker domain.Actor, txType string, amount decimal.Decimal) error {
+	return s.dailyErr
 }
 
 func (s stubLimits) List(ctx context.Context) ([]domain.TransactionLimitView, error) {
@@ -292,5 +300,41 @@ func TestExecuteApprovedFallsBackToActingUser(t *testing.T) {
 	}
 	if posting.last.CreatedBy != "supervisor01" {
 		t.Fatalf("created_by = %q, mau pelaku yang menyetujui", posting.last.CreatedBy)
+	}
+}
+
+// P1(b): eksekusi pengajuan yang sudah melampaui batas harian harus GAGAL dengan galat
+// jelas dan TIDAK memposting jurnal; pengajuan tetap dapat ditolak/ditinjau.
+func TestExecuteApprovedRechecksDailyLimit(t *testing.T) {
+	posting := &stubPostingSvc{}
+	svc := newLedgerForTest(stubLimits{dailyErr: domain.ErrLimitDaily}, &stubApprovals{}, posting)
+
+	err := svc.ExecuteApproved(context.Background(), "tx-handle", ActionDeposit, map[string]any{
+		"account_number": "0011010000000014",
+		"amount":         "150000000",
+		"maker_username": "teller01",
+		"maker_role":     string(domain.RoleTeller),
+	}, testActor())
+	if !errors.Is(err, domain.ErrLimitDaily) {
+		t.Fatalf("got %v, ingin ErrLimitDaily", err)
+	}
+	if posting.calls != 0 {
+		t.Fatalf("jurnal tidak boleh diposting saat batas harian dilampaui, dapat %d", posting.calls)
+	}
+}
+
+// Jenis transaksi batas untuk evaluasi ulang saat eksekusi: hanya aksi rekening yang
+// dijaga batas. Pembatalan tidak tunduk batas harian karena nominalnya dari jurnal asal.
+func TestApprovedLimitTxType(t *testing.T) {
+	cases := map[string]string{
+		ActionDeposit:  "deposit",
+		ActionWithdraw: "withdrawal",
+		ActionTransfer: "transfer",
+		ActionReverse:  "",
+	}
+	for action, want := range cases {
+		if got := approvedLimitTxType(action); got != want {
+			t.Fatalf("approvedLimitTxType(%q) = %q, ingin %q", action, got, want)
+		}
 	}
 }

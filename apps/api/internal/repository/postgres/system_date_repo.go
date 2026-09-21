@@ -19,6 +19,10 @@ func NewBusinessDateRepository(db *sql.DB) *BusinessDateRepository {
 	return &BusinessDateRepository{db: db}
 }
 
+// wibZone adalah zona waktu bank (Asia/Jakarta, UTC+7) tanpa ketergantungan tzdata
+// sistem. Indonesia tidak memakai daylight saving, sehingga offset tetap aman.
+var wibZone = time.FixedZone("WIB", 7*60*60)
+
 func (r *BusinessDateRepository) GetCurrentDate(ctx context.Context) (*domain.SystemBusinessDate, error) {
 	var dateStr, statusStr string
 	var updatedByStr sql.NullString
@@ -27,9 +31,10 @@ func (r *BusinessDateRepository) GetCurrentDate(ctx context.Context) (*domain.Sy
 		"SELECT value, description FROM system_config WHERE key = 'system.business_date'").Scan(&dateStr, &updatedByStr)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		// Tanggal bisnis belum pernah disetel (pemasangan baru): hari ini UTC dipakai
-		// sebagai titik awal.
-		dateStr = time.Now().UTC().Format("2006-01-02")
+		// Tanggal bisnis belum pernah disetel (pemasangan baru): hari ini menurut zona
+		// waktu bank (WIB) dipakai sebagai titik awal, bukan tanggal kalender UTC yang
+		// bisa berbeda sehari di pagi/malam WIB.
+		dateStr = time.Now().In(wibZone).Format("2006-01-02")
 	case err != nil:
 		// Kegagalan membaca tidak boleh berbuntut tanggal karangan: seluruh proses
 		// tutup buku memakai tanggal ini sebagai periode posting.
@@ -150,3 +155,15 @@ func (r *BusinessDateRepository) TryEODLock(ctx context.Context) (func() error, 
 }
 
 var _ domain.BusinessDateRepository = (*BusinessDateRepository)(nil)
+
+// CurrentBusinessDate mengembalikan tanggal bisnis berjalan sebagai time.Time untuk
+// pemakai yang tidak perlu status tanggal (mis. penjaga batas harian).
+func (r *BusinessDateRepository) CurrentBusinessDate(ctx context.Context) (time.Time, error) {
+	current, err := r.GetCurrentDate(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return current.CurrentDate, nil
+}
+
+var _ domain.BusinessDateProvider = (*BusinessDateRepository)(nil)

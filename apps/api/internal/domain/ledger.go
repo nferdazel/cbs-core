@@ -53,6 +53,11 @@ const (
 	TxTypeInterestAccrual  TransactionType = "INTEREST_ACCRUAL"
 	TxTypeReversal         TransactionType = "REVERSAL"
 	TxTypeAdjustment       TransactionType = "ADJUSTMENT"
+	// TxTypeDepositPlacement memisahkan jurnal penempatan deposito berjangka dari
+	// setoran tunai teller (TxTypeDeposit). Nilainya ada di enum transaction_type
+	// sejak migrasi 000057; jurnal lama tetap TxTypeDeposit karena tidak ada penanda
+	// pasti untuk membedakannya.
+	TxTypeDepositPlacement TransactionType = "DEPOSIT_PLACEMENT"
 )
 
 type JournalStatus string

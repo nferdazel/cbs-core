@@ -152,6 +152,11 @@ type DepositService interface {
 	// GetByID menolak deposito cabang lain dengan ErrCrossBranchAccess.
 	GetByID(ctx context.Context, id uuid.UUID, actor Actor) (*Deposit, error)
 	List(ctx context.Context, page, pageSize int, actor Actor) ([]Deposit, int, error)
+	// ExecuteApproved menjalankan penempatan deposito yang sudah disetujui
+	// maker-checker, di dalam transaksi milik pemanggil. Memenuhi antarmuka
+	// MakerCheckerExecutor sehingga service ini dapat didaftarkan sebagai eksekutor
+	// aksi PLACE_DEPOSIT.
+	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error
 }
 
 // depositDayBasis adalah basis hari per tahun untuk akrual harian proporsional.

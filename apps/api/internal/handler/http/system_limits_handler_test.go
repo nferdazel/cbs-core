@@ -27,6 +27,10 @@ func (s *stubLimitSvc) Check(context.Context, domain.Actor, string, decimal.Deci
 	return nil
 }
 
+func (s *stubLimitSvc) CheckDailyAtExecution(context.Context, any, domain.Actor, string, decimal.Decimal) error {
+	return nil
+}
+
 func (s *stubLimitSvc) List(context.Context) ([]domain.TransactionLimitView, error) {
 	return s.views, s.err
 }

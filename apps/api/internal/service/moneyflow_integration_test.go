@@ -101,7 +101,7 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 	executors := service.NewExecutorRegistry()
-	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors)
+	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, configSvc, executors, dateRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, dateRepo, auditRepo)
 	// Koreksi nominal dieksekusi setelah disetujui; daftarkan agar jalur persetujuan
 	// punya eksekutor yang sama seperti produksi.

@@ -139,7 +139,7 @@ func (p *ProductPoster) PostEventTx(
 }
 
 // PostingMeta membawa konteks non-nominal untuk jurnal. EntryDate nol berarti
-// posting engine memakai tanggal UTC hari ini.
+// posting engine memakai TANGGAL BISNIS berjalan (bukan tanggal kalender UTC).
 //
 // AccountOverrides mengganti tujuan satu kode COA dengan nomor rekening konkret.
 // Pemetaan produk memakai akun kontrol (mis. 20100 Tabungan), padahal untuk

@@ -20,11 +20,15 @@ func NewBatchActivityRepository(db *sql.DB) *BatchActivityRepository {
 // DailyActivity menghitung jumlah jurnal dan total setoran/penarikan satu tanggal.
 // Setoran diambil dari sisi KREDIT dan penarikan dari sisi DEBIT rekening nasabah
 // (transaksi DEPOSIT/WITHDRAWAL), sehingga sisi kas tidak menghitung ganda.
+//
+// DEPOSIT_PLACEMENT ikut dihitung sebagai setoran: sebelum jenis tersendiri ada,
+// jurnal penempatan deposito bertipe DEPOSIT dan sudah termasuk di sini. Tanpa
+// penyertaan itu, total setoran EOD turun diam-diam hanya karena pemisahan label.
 func (r *BatchActivityRepository) DailyActivity(ctx context.Context, date time.Time) (*domain.DailyActivitySummary, error) {
 	var summary domain.DailyActivitySummary
 	err := r.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT je.id),
-		       COALESCE(SUM(CASE WHEN je.transaction_type = 'DEPOSIT'    AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN je.transaction_type IN ('DEPOSIT', 'DEPOSIT_PLACEMENT') AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN je.transaction_type = 'WITHDRAWAL' AND jl.direction = 'DEBIT'  THEN jl.amount ELSE 0 END), 0)
 		FROM journal_entries je
 		JOIN journal_lines jl ON jl.journal_entry_id = je.id
