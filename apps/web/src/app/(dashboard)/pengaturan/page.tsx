@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { TransactionLimits } from "@/components/settings/TransactionLimits";
+import { BankProfileCard } from "@/components/settings/BankProfileCard";
 
 export default function PengaturanPage() {
   const { user } = useAuth();
@@ -111,6 +112,7 @@ export default function PengaturanPage() {
       </Card>
 
       <TransactionLimits />
+      <BankProfileCard />
     </>
   );
 }

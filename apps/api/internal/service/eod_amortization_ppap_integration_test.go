@@ -35,6 +35,7 @@ func (e *moneyEnv) newBatchSvcForTest(t *testing.T, ckpn domain.CKPNService) dom
 		nil,       // dormant runner
 		e.loanSvc, // akrual bunga + amortisasi saldo kerugian
 		ckpn,      // perbandingan CKPN
+		postgres.NewEODStepRepository(e.db),
 	)
 }
 

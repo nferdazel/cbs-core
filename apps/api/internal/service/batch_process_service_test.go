@@ -61,7 +61,7 @@ func TestBatchProcessService_RunEOD(t *testing.T) {
 	// Dependensi lain nil: RunEOD hanya butuh dateRepo; ringkasan tanpa batchRepo
 	// dikembalikan sebagai nol (di produksi batchRepo selalu terisi). Pekerjaan
 	// harian (ARO, PPAP, denda, dormant) juga nil sehingga dilewati tanpa peringatan.
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &eodDefRepoStub{})
 
 	executor := uuid.New()
 	res, err := svc.RunEOD(context.Background(), executor)
@@ -80,7 +80,7 @@ func TestBatchProcessService_RunEOD(t *testing.T) {
 func TestRunEODRejectsClosedBusinessDate(t *testing.T) {
 	initDate := time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC)
 	dateRepo := &stubBusinessDateRepo{currentDate: initDate, status: domain.BusinessDateStatusClosed}
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &eodDefRepoStub{})
 
 	if _, err := svc.RunEOD(context.Background(), uuid.New()); !errors.Is(err, domain.ErrEODAlreadyRunForDate) {
 		t.Fatalf("tanggal tertutup harus ditolak ErrEODAlreadyRunForDate, dapat %v", err)
@@ -103,7 +103,7 @@ func TestRunEODRejectsWhenAnotherRunHoldsLock(t *testing.T) {
 		status:      domain.BusinessDateStatusOpen,
 		lockHeld:    true,
 	}
-	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := service.NewBatchProcessService(dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &eodDefRepoStub{})
 
 	if _, err := svc.RunEOD(context.Background(), uuid.New()); !errors.Is(err, domain.ErrEODInProgress) {
 		t.Fatalf("tutup hari kedua harus ditolak ErrEODInProgress, dapat %v", err)
@@ -133,9 +133,19 @@ type stubDormantRunner struct {
 	marked  int
 	warning string
 	err     error
+	// order mencatat urutan pemanggilan lintas langkah bila diisi uji urutan definisi.
+	order *[]string
+	// called menandai pemanggilan agar uji langkah nonaktif membuktikan tidak dipanggil.
+	called *bool
 }
 
 func (s stubDormantRunner) MarkDormant(context.Context, time.Time, domain.Actor) (domain.DormantRunSummary, error) {
+	if s.called != nil {
+		*s.called = true
+	}
+	if s.order != nil {
+		*s.order = append(*s.order, "dormant")
+	}
 	return domain.DormantRunSummary{Marked: s.marked, Warning: s.warning}, s.err
 }
 
@@ -146,8 +156,7 @@ func TestRunEODReportsDormantMarking(t *testing.T) {
 	}
 	svc := service.NewBatchProcessService(
 		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		stubDormantRunner{marked: 7, warning: "ambang memakai fallback"}, nil, nil,
-	)
+		stubDormantRunner{marked: 7, warning: "ambang memakai fallback"}, nil, nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -276,8 +285,7 @@ func TestRunEODReportsLoanInterestAccrual(t *testing.T) {
 			amount:   decimal.NewFromInt(450_000),
 			warnings: []string{"produk X tanpa pemetaan"},
 		},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -317,8 +325,7 @@ func TestRunEODSkipsLossAmortizationWhenAccrualFails(t *testing.T) {
 			amortized:      9,
 			amortizeCalled: &amortizeCalled,
 		},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -365,8 +372,7 @@ func TestRunEODRunsLossAmortizationWhenAccrualSucceeds(t *testing.T) {
 			amortized:      7,
 			amortizeCalled: &amortizeCalled,
 		},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -399,8 +405,7 @@ func TestRunEODSkipsCKPNComparisonWhenPPAPFails(t *testing.T) {
 		// Amortisasi harus RAN agar PPAP benar-benar dicoba dan gagal; tanpa akrual,
 		// gerbang amortisasi lebih dulu yang melewati PPAP.
 		stubInterestAccrualRunner{},
-		stubCKPNService{called: &ckpnCalled},
-	)
+		stubCKPNService{called: &ckpnCalled}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -442,8 +447,7 @@ func TestRunEODComparesCKPNWhenPPAPRuns(t *testing.T) {
 				TotalCKPN:          decimal.NewFromInt(600_000),
 				ModalIntiDeduction: decimal.NewFromInt(400_000),
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -478,8 +482,7 @@ func TestRunEODRunsLossAmortizationBeforePPAP(t *testing.T) {
 		stubPPAPRunner{processed: 1, order: &order},
 		nil, nil,
 		stubInterestAccrualRunner{accrued: 1, amortized: 7, order: &order},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -510,8 +513,7 @@ func TestRunEODSkipsPPAPWhenLossAmortizationFails(t *testing.T) {
 		stubPPAPRunner{processed: 1, called: &ppapCalled},
 		nil, nil,
 		stubInterestAccrualRunner{accrued: 1, amortizeErr: errors.New("amortisasi gagal di tengah")},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -561,8 +563,7 @@ func TestRunEODSkipsAmortizationAndPPAPWhenAccrualFails(t *testing.T) {
 			err:            errors.New("akrual gagal di tengah"),
 			amortizeCalled: &amortizeCalled,
 		},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -601,8 +602,7 @@ func TestRunEODReportsDepositAndPlacementSeparately(t *testing.T) {
 		TotalDepositPlacementAmount: decimal.NewFromInt(50_000_000),
 	}}
 	svc := service.NewBatchProcessService(
-		dateRepo, batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		dateRepo, batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -635,8 +635,7 @@ func TestRunEODReportsPPAPProcessedAndAdjusted(t *testing.T) {
 		stubPPAPRunner{processed: 5, adjusted: 1},
 		nil, nil,
 		stubInterestAccrualRunner{accrued: 1},
-		nil,
-	)
+		nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -676,8 +675,7 @@ func TestRunEODReportsShadowCKPNWithoutJournaling(t *testing.T) {
 				Higher:      domain.CKPNLargerPPKA,
 				Assumptions: []string{"PD golongan 3 = 0.1"},
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -736,8 +734,7 @@ func TestRunEODLaporkanPengurangModalIntiBayanganPerKredit(t *testing.T) {
 				Higher:             domain.CKPNLargerSame,
 				ModalIntiDeduction: decimal.NewFromInt(500_000),
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -772,8 +769,7 @@ func TestRunEODShadowCKPNParameterKosongTidakMenggagalkanEOD(t *testing.T) {
 				Failed:        1,
 				ParameterGaps: []string{"ckpn.pd.3 (PD golongan Kurang Lancar belum diisi)", "ckpn.lgd (LGD belum diisi)"},
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -817,8 +813,7 @@ func TestRunEODKeduaSaklarCKPNMenyalaMemakaiJalurResmi(t *testing.T) {
 				TotalPPKA: decimal.NewFromInt(2_000_000),
 				TotalCKPN: decimal.NewFromInt(1_000_000),
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -864,8 +859,7 @@ func TestRunEODReportsPenaltyCapAndSyariahSocialFund(t *testing.T) {
 			SyariahSocialFund: 3,
 			Warning:           "plafon denda 10% dari pokok tunggakan tercapai pada 2 kredit",
 		}},
-		nil, nil, nil,
-	)
+		nil, nil, nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -903,8 +897,7 @@ func TestRunEODKeduaSaklarCKPNMatiTetapDilewati(t *testing.T) {
 		stubPPAPRunner{processed: 1},
 		nil, nil,
 		stubInterestAccrualRunner{accrued: 1},
-		stubCKPNService{summary: domain.CKPNComparisonSummary{}},
-	)
+		stubCKPNService{summary: domain.CKPNComparisonSummary{}}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -944,8 +937,7 @@ func TestRunEODShadowCKPNJelaskanTotalNolKarenaAsetBaik(t *testing.T) {
 				AsetBaikCount:       6,
 				AsetBaikOutstanding: decimal.NewFromInt(185_000_000),
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -1008,8 +1000,7 @@ func TestRunEODLaporkanDuaBasisCKPN(t *testing.T) {
 				SetaraPPKAHigher:             domain.CKPNLargerPPKA,
 				BasisNote:                    "DUA BASIS CKPN: ... Keduanya BUKAN kebijakan bank yang berlaku.",
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {
@@ -1070,8 +1061,7 @@ func TestRunEODPeringatkanBasisSetaraPPKAGagal(t *testing.T) {
 				SetaraPPKAProcessed: 2,
 				SetaraPPKAFailed:    1,
 			},
-		},
-	)
+		}, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {

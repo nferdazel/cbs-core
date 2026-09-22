@@ -229,6 +229,10 @@ type BusinessDateRepository interface {
 type BatchProcessService interface {
 	GetCurrentBusinessDate(ctx context.Context) (*SystemBusinessDate, error)
 	RunEOD(ctx context.Context, executedBy uuid.UUID) (*EODSummaryResult, error)
+	// RunScheduledEOD menjalankan tutup hari dari pemicu terjadwal (tabel
+	// eod_triggers). Jalur sambung bagi penjadwal yang belum dibangun; menolak bila
+	// tidak ada pemicu terjadwal yang jatuh tempo.
+	RunScheduledEOD(ctx context.Context, executedBy uuid.UUID) (*EODSummaryResult, error)
 	RunEOM(ctx context.Context, executedBy uuid.UUID) (*EOMSummaryResult, error)
 	// RunEOY menerima actor (bukan hanya id) karena parameter `book` dari body harus
 	// dibatasi pada buku aktor: aktor satu buku tidak boleh menutup buku lain.

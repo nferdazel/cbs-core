@@ -69,6 +69,13 @@ func (s *appInfoService) build(ctx context.Context) domain.AppInfo {
 		switch {
 		case err != nil:
 			slog.WarnContext(ctx, "gagal membaca bank_profile untuk identitas aplikasi; nama PT dikosongkan", "error", err)
+		case profile == nil || strings.TrimSpace(profile.Name) == "":
+			// Profil kosong tetap tidak menggagalkan endpoint publik (halaman login
+			// harus tampil), tetapi WAJIB berisik di log: inilah gejala instalasi
+			// yang belum mengisi identitas, dan perbaikannya bukan lewat SQL.
+			slog.WarnContext(ctx,
+				"profil bank belum diisi (bank_profile.bank_name kosong); perusahaan pada identitas aplikasi dan dokumen tampil kosong. Isi lewat Pengaturan > Identitas Bank (PUT /api/v1/system/bank-profile).",
+				"sumber", "bank_profile")
 		case profile != nil:
 			info.CompanyName = profile.Name
 		}

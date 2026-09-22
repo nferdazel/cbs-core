@@ -81,6 +81,8 @@ func main() {
 	savingsRepo := postgres.NewSavingsInterestRepository(db)
 	yearEndRepo := postgres.NewYearEndRepository(db)
 	bankProfileRepo := postgres.NewBankProfileRepository(db)
+	// Definisi & riwayat langkah EOD tinggal di database (keputusan pemilik sistem).
+	eodStepRepo := postgres.NewEODStepRepository(db)
 
 	slikGateway := service.NewMockSLIKGateway()
 	dukcapilGateway := service.NewMockDukcapilGateway()
@@ -147,11 +149,16 @@ func main() {
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
-	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc, ckpnSvc)
+	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc, ckpnSvc, eodStepRepo)
+	// Definisi langkah EOD (urutan/saklar/prasyarat) dikelola lewat API berizin
+	// system:config dan teraudit; riwayat per langkah dibaca di sini.
+	eodDefinitionSvc := service.NewEODDefinitionService(db, eodStepRepo, auditRepo)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, bankProfileRepo, cipher)
 	// Identitas aplikasi: nama PT dari bank_profile, branding dari system_config.
 	// Dipakai endpoint publik /app-info (halaman login + metadata web).
 	appInfoSvc := service.NewAppInfoService(bankProfileRepo, configSvc)
+	// Profil bank: bank mengisi identitasnya lewat API/web, teraudit, tanpa SQL.
+	bankProfileSvc := service.NewBankProfileService(db, bankProfileRepo, auditRepo)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
@@ -198,8 +205,10 @@ func main() {
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
+	eodDefinitionHandler := httpHandler.NewEODDefinitionHandler(eodDefinitionSvc)
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 	appInfoHandler := httpHandler.NewAppInfoHandler(appInfoSvc)
+	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
@@ -208,33 +217,35 @@ func main() {
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
-		CustomerHandler:     custHandler,
-		AccountHandler:      accHandler,
-		BranchHandler:       branchHandler,
-		ProductHandler:      productHandler,
-		LedgerHandler:       ledHandler,
-		AuthHandler:         authHandler,
-		StaffHandler:        staffHandler,
-		LoanHandler:         loanHandler,
-		MakerCheckerHandler: mcHandler,
-		ReportHandler:       reportHandler,
-		OJKReportHandler:    ojkReportHandler,
-		CollectionHandler:   collectionHandler,
-		IntegrationHandler:  integrationHandler,
-		BatchProcessHandler: batchHandler,
-		DocumentHandler:     docHandler,
-		DepositHandler:      depositHandler,
-		PPAPHandler:         ppapHandler,
-		CKPNHandler:         ckpnHandler,
-		LPSPlacementHandler: lpsPlacementHandler,
-		AuditHandler:        httpHandler.NewAuditHandler(auditRepo, limitSvc),
-		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
-		AppInfoHandler:      appInfoHandler,
-		AuthService:         authSvc,
-		ConfigService:       configSvc,
-		Cookies:             cookies,
-		Logger:              logger,
-		LoginRateLimiter:    loginLimiter,
+		CustomerHandler:      custHandler,
+		AccountHandler:       accHandler,
+		BranchHandler:        branchHandler,
+		ProductHandler:       productHandler,
+		LedgerHandler:        ledHandler,
+		AuthHandler:          authHandler,
+		StaffHandler:         staffHandler,
+		LoanHandler:          loanHandler,
+		MakerCheckerHandler:  mcHandler,
+		ReportHandler:        reportHandler,
+		OJKReportHandler:     ojkReportHandler,
+		CollectionHandler:    collectionHandler,
+		IntegrationHandler:   integrationHandler,
+		BatchProcessHandler:  batchHandler,
+		EODDefinitionHandler: eodDefinitionHandler,
+		DocumentHandler:      docHandler,
+		DepositHandler:       depositHandler,
+		PPAPHandler:          ppapHandler,
+		CKPNHandler:          ckpnHandler,
+		LPSPlacementHandler:  lpsPlacementHandler,
+		AuditHandler:         httpHandler.NewAuditHandler(auditRepo, limitSvc),
+		CollateralHandler:    httpHandler.NewCollateralHandler(collateralSvc),
+		AppInfoHandler:       appInfoHandler,
+		BankProfileHandler:   bankProfileHandler,
+		AuthService:          authSvc,
+		ConfigService:        configSvc,
+		Cookies:              cookies,
+		Logger:               logger,
+		LoginRateLimiter:     loginLimiter,
 	})
 
 	server := &http.Server{

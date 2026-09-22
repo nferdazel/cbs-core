@@ -24,8 +24,7 @@ func TestRunEODReportsSocialFundBalanceAndDepositLabel(t *testing.T) {
 		SocialFundBalance:  decimal.NewFromInt(60_000),
 	}}
 	svc := service.NewBatchProcessService(
-		dateRepo, batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		dateRepo, batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &eodDefRepoStub{})
 
 	res, err := svc.RunEOD(context.Background(), uuid.New())
 	if err != nil {

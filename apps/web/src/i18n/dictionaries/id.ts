@@ -245,6 +245,38 @@ export const dictionaryID = {
       default: "Bawaan aplikasi",
     },
   },
+  bankProfile: {
+    title: "Identitas Bank",
+    description:
+      "Nama dan alamat bank dipakai pada dokumen resmi (slip, surat perjanjian, struk) dan identitas aplikasi. Isi di sini tanpa perlu SQL.",
+    name: "Nama Bank / Nama PT",
+    namePlaceholder: "mis. PT BPR Syariah Contoh",
+    nameHint: "Nama badan hukum lengkap seperti pada akta.",
+    address: "Alamat",
+    addressPlaceholder: "Jalan, nomor, RT/RW, kelurahan, kecamatan",
+    city: "Kota/Kabupaten",
+    cityPlaceholder: "mis. Jakarta Selatan",
+    phone: "Nomor Telepon",
+    phonePlaceholder: "mis. +62 21 5551234",
+    npwp: "NPWP",
+    npwpHint: "Opsional. Angka, titik, dan tanda hubung.",
+    save: "Simpan Identitas",
+    saving: "Menyimpan...",
+    saved: "Identitas bank tersimpan.",
+    unconfiguredTitle: "Identitas bank belum diisi",
+    unconfiguredNotice:
+      "Nama bank masih kosong, sehingga identitas perusahaan tampil hampa pada dokumen dan aplikasi. Isi nama bank di bawah lalu simpan.",
+    lastUpdated: "Terakhir diperbarui",
+    neverUpdated: "Belum pernah diubah",
+    forbidden: "Anda tidak memiliki izin untuk melihat identitas bank (403).",
+    readOnly:
+      "Peran Anda hanya dapat melihat. Mengubah identitas bank memerlukan izin pengaturan sistem.",
+    loadError: "Gagal memuat identitas bank.",
+    saveForbidden:
+      "Anda tidak memiliki izin untuk mengubah identitas bank (403).",
+    saveError: "Gagal menyimpan identitas bank.",
+    requiredName: "Nama bank wajib diisi.",
+  },
 };
 
 export type Dictionary = typeof dictionaryID;

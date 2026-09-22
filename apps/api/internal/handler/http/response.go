@@ -113,6 +113,14 @@ var businessErrors = []error{
 	domain.ErrBranchNameRequired,
 	domain.ErrBranchHeadOfficeNotAllowed,
 	domain.ErrInvalidBranchCode,
+	// Validasi profil bank adalah aturan bisnis: pesannya menyebut bidang yang
+	// harus diperbaiki agar operator dapat mengisinya sendiri tanpa SQL.
+	domain.ErrBankProfileNameRequired,
+	domain.ErrBankProfileNameTooShort,
+	domain.ErrBankProfileEmpty,
+	domain.ErrBankProfileFieldTooLong,
+	domain.ErrBankProfileNPWPInvalid,
+	domain.ErrBankProfilePhoneInvalid,
 	domain.ErrLoanNotFound,
 	domain.ErrLoanAlreadyApproved,
 	// Syarat hapus buku adalah aturan bisnis/regulasi: pesannya harus menyebut syarat

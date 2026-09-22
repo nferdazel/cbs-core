@@ -77,7 +77,7 @@ func newBookWriteEnv(t *testing.T) *bookWriteEnv {
 
 	runMarker := service.NewPPAPRunMarker(configRepo)
 	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, runMarker)
-	batchSvc := service.NewBatchProcessService(dateRepo, nil, nil, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, nil, nil, nil, nil, nil, nil)
+	batchSvc := service.NewBatchProcessService(dateRepo, nil, nil, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, nil, nil, nil, nil, nil, nil, postgres.NewEODStepRepository(db))
 	collateralSvc := service.NewCollateralService(me.collateralRepo, configSvc, branchRepo, auditRepo)
 
 	cipher, err := crypto.NewCipher("e2e", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")), nil)

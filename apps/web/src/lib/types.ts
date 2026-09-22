@@ -62,6 +62,20 @@ export interface AppInfo {
   logo_url: string;
 }
 
+/**
+ * domain.BankProfile (apps/api/internal/domain/bank_profile.go). Identitas bank
+ * tingkat instalasi yang dipakai dokumen cetak dan endpoint /app-info. Nama kosong
+ * berarti profil belum dikonfigurasi, bukan nama yang boleh dikarang UI.
+ */
+export interface BankProfile {
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  npwp: string;
+  updated_at: string;
+}
+
 /** domain.SystemBusinessDate (system_date.go) */
 export interface SystemBusinessDate {
   current_date: string;

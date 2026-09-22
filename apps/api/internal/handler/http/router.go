@@ -47,16 +47,20 @@ type RouterParams struct {
 	IntegrationHandler  *IntegrationHandler
 	OJKReportHandler    *OJKReportHandler
 	BatchProcessHandler *BatchProcessHandler
-	DocumentHandler     *DocumentHandler
-	DepositHandler      *DepositHandler
-	PPAPHandler         *PPAPHandler
-	CKPNHandler         *CKPNHandler
-	LPSPlacementHandler *LPSPlacementHandler
-	AuditHandler        *AuditHandler
-	CollateralHandler   *CollateralHandler
+	// EODDefinitionHandler mengelola definisi urutan langkah EOD dan riwayatnya.
+	EODDefinitionHandler *EODDefinitionHandler
+	DocumentHandler      *DocumentHandler
+	DepositHandler       *DepositHandler
+	PPAPHandler          *PPAPHandler
+	CKPNHandler          *CKPNHandler
+	LPSPlacementHandler  *LPSPlacementHandler
+	AuditHandler         *AuditHandler
+	CollateralHandler    *CollateralHandler
 	// AppInfoHandler melayani identitas aplikasi publik untuk halaman login/web.
 	AppInfoHandler *AppInfoHandler
-	AuthService    domain.AuthService
+	// BankProfileHandler mengelola identitas bank tingkat instalasi (baca & ubah).
+	BankProfileHandler *BankProfileHandler
+	AuthService        domain.AuthService
 	// ConfigService membaca cakupan buku tingkat instalasi (institution.book_scope)
 	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
 	// seluruh aktor berperilaku DUAL seperti sebelum setelan ini ada.
@@ -314,6 +318,33 @@ func NewRouter(p RouterParams) *chi.Mux {
 
 			// ── Banking Business Date & EOD / EOM / EOY Batch Processes ──
 			r.Get("/system/business-date", p.BatchProcessHandler.GetBusinessDate)
+
+			// ── Definisi & riwayat langkah EOD (dikelola di database) ──
+			// Definisi urutan adalah konfigurasi keuangan: baca cukup
+			// system:config:read, ubah WAJIB system:config penuh (bukan yang read) dan
+			// teraudit di service.
+			if p.EODDefinitionHandler != nil {
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/system/eod-definitions", p.EODDefinitionHandler.List)
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Put("/system/eod-definitions", p.EODDefinitionHandler.Update)
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/system/eod-runs", p.EODDefinitionHandler.History)
+			}
+
+			// ── Identitas bank tingkat instalasi (profil bank) ──
+			// Bank boleh mengisi identitasnya sendiri tanpa SQL. Baca dijaga
+			// system:config:read (Superadmin/Admin/Supervisor/Auditor) dan ubah
+			// dijaga system:config, izin yang sama dengan setelan instalasi lain
+			// (EOD/state sistem) — tidak ada izin baru yang dibuat. Profil ini
+			// identitas instalasi, bukan data lini usaha, sehingga tidak mengikuti
+			// cakupan buku.
+			if p.BankProfileHandler != nil {
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/system/bank-profile", p.BankProfileHandler.Get)
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Put("/system/bank-profile", p.BankProfileHandler.Update)
+			}
 			r.Route("/batch", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Post("/eod", p.BatchProcessHandler.RunEOD)

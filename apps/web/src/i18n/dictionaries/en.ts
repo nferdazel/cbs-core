@@ -247,4 +247,36 @@ export const dictionaryEN: Dictionary = {
       default: "Application default",
     },
   },
+  bankProfile: {
+    title: "Bank Identity",
+    description:
+      "The bank name and address are used on official documents (slips, loan agreements, receipts) and as the application identity. Fill them in here without SQL.",
+    name: "Bank / Company Name",
+    namePlaceholder: "e.g. PT BPR Syariah Contoh",
+    nameHint: "Full legal name as stated in the deed.",
+    address: "Address",
+    addressPlaceholder: "Street, number, RT/RW, village, district",
+    city: "City/Regency",
+    cityPlaceholder: "e.g. South Jakarta",
+    phone: "Phone Number",
+    phonePlaceholder: "e.g. +62 21 5551234",
+    npwp: "Tax ID (NPWP)",
+    npwpHint: "Optional. Digits, dots, and hyphens.",
+    save: "Save Identity",
+    saving: "Saving...",
+    saved: "Bank identity saved.",
+    unconfiguredTitle: "Bank identity is not filled in",
+    unconfiguredNotice:
+      "The bank name is still empty, so the company identity appears blank on documents and in the application. Fill in the bank name below and save.",
+    lastUpdated: "Last updated",
+    neverUpdated: "Never changed",
+    forbidden: "You do not have permission to view the bank identity (403).",
+    readOnly:
+      "Your role can only view this. Changing the bank identity requires the system settings permission.",
+    loadError: "Failed to load the bank identity.",
+    saveForbidden:
+      "You do not have permission to change the bank identity (403).",
+    saveError: "Failed to save the bank identity.",
+    requiredName: "Bank name is required.",
+  },
 };

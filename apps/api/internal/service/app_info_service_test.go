@@ -1,8 +1,11 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -126,6 +129,27 @@ func TestAppInfoServiceCacheMenghematPembacaan(t *testing.T) {
 	fresh := service.NewAppInfoService(bank, config).Get(context.Background())
 	if fresh.DisplayName != "Nama Baru" || fresh.CompanyName != "Bank Baru" {
 		t.Fatalf("instance baru = %+v, mau Nama Baru/Bank Baru", fresh)
+	}
+}
+
+// TestAppInfoServicePeringatanProfilKosong memastikan profil yang belum diisi
+// tetap membuat endpoint berjalan (nama PT kosong, tidak panik) TETAPI meninggalkan
+// peringatan jelas di log agar instalasi tanpa identitas tidak lolos tanpa terlihat.
+func TestAppInfoServicePeringatanProfilKosong(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
+
+	svc := service.NewAppInfoService(&stubBankProfileRepo{}, &stubAppInfoConfig{values: map[string]string{}})
+	got := svc.Get(context.Background())
+
+	if got.CompanyName != "" {
+		t.Fatalf("company_name = %q, mau kosong saat profil belum diisi", got.CompanyName)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "bank_profile") || !strings.Contains(logged, "belum diisi") {
+		t.Fatalf("peringatan profil kosong tidak muncul di log: %q", logged)
 	}
 }
 
