@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Building2 } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { useTranslation } from "@/i18n/context";
 import { useAppInfo } from "@/components/AppInfoProvider";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import {
   Card,
@@ -96,15 +97,7 @@ export default function LoginPage() {
           </CardHeader>
 
           <CardContent>
-            {error && (
-              <div
-                className="flex items-center gap-2 rounded-md border border-debit-700/30 bg-debit-50 p-3 text-meta text-debit-700"
-                role="alert"
-              >
-                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <Alert variant="error">{error}</Alert>}
 
             <form onSubmit={handleLogin} className="space-y-4">
               <Input

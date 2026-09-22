@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
 import { ApiError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { BankProfile } from "@/lib/types";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -149,13 +149,9 @@ export function BankProfileCard() {
             <p className="text-body text-ink-600">{t.bankProfile.description}</p>
 
             {unconfigured && (
-              <div
-                className="flex items-start gap-2 rounded-md border border-debit-700/30 bg-debit-50 px-3 py-2 text-body text-ink-900"
-                role="status"
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-debit-700" aria-hidden />
-                <span>{t.bankProfile.unconfiguredNotice}</span>
-              </div>
+              <Alert variant="warning">
+                {t.bankProfile.unconfiguredNotice}
+              </Alert>
             )}
 
             <form onSubmit={onSubmit} className="space-y-4">

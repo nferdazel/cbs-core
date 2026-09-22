@@ -6,6 +6,7 @@ import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { AccountRecord } from "@/lib/types";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -145,12 +146,9 @@ export default function TransaksiPage() {
       />
 
       {successMessage && (
-        <div
-          role="status"
-          className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3 text-body text-credit-700"
-        >
+        <Alert variant="success" className="mb-4">
           {successMessage}
-        </div>
+        </Alert>
       )}
 
       <Card className="mb-4">

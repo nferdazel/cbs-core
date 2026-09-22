@@ -4,16 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Account, Customer } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
 import { formatDate, formatRate } from "@/lib/format";
+import { customerLabel, profitTypeLabel } from "@/lib/labels";
 import type {
   BankingProduct,
   COABook,
   Loan,
   LoanSchedule,
   OJKCollectibility,
-  ProfitType,
 } from "@/lib/operations-types";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -79,12 +80,6 @@ function CollectibilityBadge({ value }: { value: OJKCollectibility }) {
 }
 
 // Skema imbal hasil produk adalah kunci teknis (MURABAHAH dll.); labelnya dari kamus.
-function profitLabel(t: Dictionary["loans"], type: ProfitType): string {
-  if (type === "MARGIN") return t.profitMargin;
-  if (type === "BAGI_HASIL") return t.profitBagiHasil;
-  return t.profitInterest;
-}
-
 function schemeLabel(
   t: Dictionary["loans"],
   product?: BankingProduct
@@ -106,15 +101,6 @@ function schemeLabel(
   }
 }
 
-function customerLabel(
-  customerId: string,
-  names: Record<string, string>
-): React.ReactNode {
-  const name = names[customerId];
-  if (name) return name;
-  return <span className="font-mono">{customerId}</span>;
-}
-
 function ActionFeedback({
   feedback,
 }: {
@@ -122,16 +108,13 @@ function ActionFeedback({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3">
-      <p className="text-title font-medium text-credit-700">{feedback.title}</p>
-      <p className="mt-1 text-body text-ink-900">
-        {t.loans.referenceLabel}{" "}
-        <span className="font-mono">{feedback.reference}</span>
-      </p>
+    <Alert variant="success" title={feedback.title}>
+      {t.loans.referenceLabel}{" "}
+      <span className="font-mono">{feedback.reference}</span>
       {feedback.description && (
         <p className="mt-0.5 text-meta text-ink-600">{feedback.description}</p>
       )}
-    </div>
+    </Alert>
   );
 }
 
@@ -547,7 +530,7 @@ function LoanDetailPanel({
     },
     {
       header: loan?.schedules?.[0]
-        ? profitLabel(t.loans, loan.schedules[0].profit_type)
+        ? profitTypeLabel(t.loans, loan.schedules[0].profit_type)
         : syariah
           ? t.loans.colProfitSyariah
           : t.loans.colProfitConventional,

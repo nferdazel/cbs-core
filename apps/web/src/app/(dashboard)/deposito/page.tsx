@@ -4,16 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
 import { formatDate, formatRate } from "@/lib/format";
+import { customerLabel, profitTypeLabel } from "@/lib/labels";
 import type {
   AROInstruction,
   BankingProduct,
   Deposit,
   DepositPreview,
   DepositStatus,
-  ProfitType,
 } from "@/lib/operations-types";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -51,28 +52,11 @@ function DepositStatusBadge({ status }: { status: DepositStatus }) {
   return <Badge variant={DEPOSIT_STATUS[status]?.variant ?? "outline"}>{status}</Badge>;
 }
 
-// Skema imbal hasil disimpan sebagai kunci teknis (MARGIN dll.); hanya label
-// tampilannya yang diambil dari kamus.
-function profitTypeLabel(t: Dictionary["deposits"], type: ProfitType): string {
-  if (type === "MARGIN") return t.profitMargin;
-  if (type === "BAGI_HASIL") return t.profitBagiHasil;
-  return t.profitInterest;
-}
-
 // Instruksi ARO juga kunci teknis; labelnya dari kamus.
 function aroLabel(t: Dictionary["deposits"], instruction: AROInstruction): string {
   if (instruction === "PRINCIPAL_AND_PROFIT") return t.aroPrincipalAndProfitShort;
   if (instruction === "PRINCIPAL") return t.aroPrincipalShort;
   return t.aroNone;
-}
-
-function customerLabel(
-  customerId: string,
-  names: Record<string, string>
-): React.ReactNode {
-  const name = names[customerId];
-  if (name) return name;
-  return <span className="font-mono">{customerId}</span>;
 }
 
 interface PlaceFormProps {
@@ -536,16 +520,11 @@ function DepositDetailPanel({
       </CardHeader>
       <CardContent>
         {feedback && (
-          <div className="rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3">
-            <p className="text-title font-medium text-credit-700">
-              {feedback.title}
-            </p>
-            <p className="mt-1 text-body text-ink-900">
-              {t.deposits.referenceLabel}{" "}
-              <span className="font-mono">{feedback.reference}</span>
-            </p>
+          <Alert variant="success" title={feedback.title}>
+            {t.deposits.referenceLabel}{" "}
+            <span className="font-mono">{feedback.reference}</span>
             {feedback.detail && <div className="mt-2">{feedback.detail}</div>}
-          </div>
+          </Alert>
         )}
 
         {actionError && (
@@ -555,17 +534,15 @@ function DepositDetailPanel({
         )}
 
         {early && (
-          <div className="rounded-md border border-accent-600/30 bg-accent-50 px-4 py-3">
-            <p className="text-body text-accent-600">
-              {t.deposits.earlyPrefix}{" "}
-              <span className="font-mono">{formatDate(deposit.maturity_date)}</span>
-              . {t.deposits.earlyPenalty}
-              {product
-                ? ` ${formatRate(product.early_withdrawal_penalty_rate)} ${t.deposits.earlyPenaltyOfPrincipal}`
-                : ""}
-              .
-            </p>
-          </div>
+          <Alert variant="warning">
+            {t.deposits.earlyPrefix}{" "}
+            <span className="font-mono">{formatDate(deposit.maturity_date)}</span>.
+            {" "}{t.deposits.earlyPenalty}
+            {product
+              ? ` ${formatRate(product.early_withdrawal_penalty_rate)} ${t.deposits.earlyPenaltyOfPrincipal}`
+              : ""}
+            .
+          </Alert>
         )}
 
         <DefinitionList
@@ -859,24 +836,16 @@ export default function DepositoPage() {
       />
 
       {feedback && (
-        <div className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3">
-          <p className="text-title font-medium text-credit-700">
-            {feedback.title}
-          </p>
-          <p className="mt-1 text-body text-ink-900">
-            {t.deposits.referenceLabel}{" "}
-            <span className="font-mono">{feedback.reference}</span>
-          </p>
-        </div>
+        <Alert variant="success" className="mb-4" title={feedback.title}>
+          {t.deposits.referenceLabel}{" "}
+          <span className="font-mono">{feedback.reference}</span>
+        </Alert>
       )}
 
       {aroError && (
-        <div
-          className="mb-4 rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3"
-          role="alert"
-        >
-          <p className="text-body text-debit-700">{aroError}</p>
-        </div>
+        <Alert variant="error" className="mb-4">
+          {aroError}
+        </Alert>
       )}
 
       {formOpen && (

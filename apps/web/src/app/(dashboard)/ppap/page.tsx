@@ -5,6 +5,7 @@ import { ApiError, newIdempotencyKey, request } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { PPAPRunItem, PPAPRunSummary } from "@/lib/operations-types";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -148,19 +149,14 @@ export default function PPAPPage() {
         }
       />
 
-      <div className="mb-4 rounded-md border border-border bg-canvas px-4 py-3">
-        <p className="text-body text-ink-600">
-          {t.ppap.notice}
-        </p>
-      </div>
+      <Alert variant="info" className="mb-4">
+        {t.ppap.notice}
+      </Alert>
 
       {runError && (
-        <div
-          className="mb-4 rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3"
-          role="alert"
-        >
-          <p className="text-body text-debit-700">{runError}</p>
-        </div>
+        <Alert variant="error" className="mb-4">
+          {runError}
+        </Alert>
       )}
 
       {runSummary && (
@@ -196,19 +192,16 @@ export default function PPAPPage() {
               ]}
             />
             {runSummary.failures && runSummary.failures.length > 0 && (
-              <div className="rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3">
-                <p className="text-title font-medium text-debit-700">
-                  {t.ppap.failuresTitle}
-                </p>
-                <ul className="mt-2 space-y-1">
+              <Alert variant="error" title={t.ppap.failuresTitle}>
+                <ul className="space-y-1">
                   {runSummary.failures.map((failure) => (
-                    <li key={failure.loan_id} className="text-body text-ink-900">
+                    <li key={failure.loan_id} className="text-ink-900">
                       <span className="font-mono">{failure.loan_number}</span>:{" "}
                       {failure.error}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Alert>
             )}
           </CardContent>
         </Card>

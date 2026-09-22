@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -62,9 +63,9 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
       </CardHeader>
       <CardContent>
         {eod.ckpn_shadow_note && (
-          <p className="mb-4 rounded-md border border-accent-600/40 bg-accent-50 px-4 py-3 text-body text-ink-900">
+          <Alert variant="warning" className="mb-4">
             {eod.ckpn_shadow_note}
-          </p>
+          </Alert>
         )}
         <DefinitionList
           items={[
@@ -299,28 +300,25 @@ export default function TutupHariPage() {
       />
 
       {!canRun && (
-        <div className="mb-4 rounded-md border border-border bg-canvas px-4 py-3">
-          <p className="text-body font-medium text-ink-900">
-            {t.dayClose.restrictedPrefix}
-            {t.dayClose.restrictedPermission}
-            {t.dayClose.restrictedSuffix}
-          </p>
-          <p className="mt-1 text-body text-ink-600">
-            {t.dayClose.restrictedHint}
-          </p>
-        </div>
+        <Alert
+          variant="info"
+          className="mb-4"
+          title={
+            <>
+              {t.dayClose.restrictedPrefix}
+              {t.dayClose.restrictedPermission}
+              {t.dayClose.restrictedSuffix}
+            </>
+          }
+        >
+          {t.dayClose.restrictedHint}
+        </Alert>
       )}
 
       {actionError && (
-        <div
-          className="mb-4 rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3"
-          role="alert"
-        >
-          <p className="text-title font-medium text-debit-700">
-            {t.dayClose.actionErrorTitle}
-          </p>
-          <p className="mt-1 text-body text-debit-700">{actionError}</p>
-        </div>
+        <Alert variant="error" className="mb-4" title={t.dayClose.actionErrorTitle}>
+          {actionError}
+        </Alert>
       )}
 
       <Card className="mb-4">
@@ -370,22 +368,16 @@ export default function TutupHariPage() {
       {eod && (
         <>
           {eod.warnings && eod.warnings.length > 0 && (
-            <div
-              className="mb-4 rounded-md border border-accent-600/40 bg-accent-50 px-4 py-3"
-              role="alert"
-            >
-              <p className="text-title font-semibold text-accent-600">
-                {t.dayClose.warningsTitle}
-              </p>
-              <p className="mt-1 text-body text-ink-900">
+            <Alert variant="warning" className="mb-4" title={t.dayClose.warningsTitle}>
+              <p>
                 {eod.warnings.length} {t.dayClose.warningsDesc}
               </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-body text-ink-900">
+              <ul className="mt-2 list-disc space-y-1 pl-5">
                 {eod.warnings.map((warning, index) => (
                   <li key={index}>{warning}</li>
                 ))}
               </ul>
-            </div>
+            </Alert>
           )}
 
           <Card className="mb-4">

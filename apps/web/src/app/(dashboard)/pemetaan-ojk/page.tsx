@@ -10,6 +10,7 @@ import type {
 import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -267,12 +268,9 @@ export default function PemetaanOJKPage() {
       </Card>
 
       {feedback && (
-        <div
-          className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3"
-          role="status"
-        >
-          <p className="text-body text-credit-700">{feedback}</p>
-        </div>
+        <Alert variant="success" className="mb-4">
+          {feedback}
+        </Alert>
       )}
 
       <Card className="mb-4">

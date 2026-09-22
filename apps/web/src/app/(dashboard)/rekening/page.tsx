@@ -8,6 +8,7 @@ import type { AccountRecord } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -169,12 +170,9 @@ export default function RekeningPage() {
       />
 
       {successMessage && (
-        <div
-          role="status"
-          className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3 text-body text-credit-700"
-        >
+        <Alert variant="success" className="mb-4">
           {successMessage}
-        </div>
+        </Alert>
       )}
 
       {formOpen && (

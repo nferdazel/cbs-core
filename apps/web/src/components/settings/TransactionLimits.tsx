@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import type { Dictionary } from "@/i18n/dictionaries/id";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -180,12 +181,9 @@ export function TransactionLimits() {
             </p>
 
             {unconfiguredCount > 0 ? (
-              <p
-                className="rounded-md border border-debit-700/30 bg-debit-50 px-3 py-2 text-body text-ink-900"
-                role="status"
-              >
+              <Alert variant="warning">
                 {t.limits.unconfiguredNotice}
-              </p>
+              </Alert>
             ) : (
               <p className="text-body text-credit-700" role="status">
                 {t.limits.allConfigured}

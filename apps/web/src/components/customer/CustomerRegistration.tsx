@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Customer } from "@cbs/shared-types";
 import { ApiError, request, unwrap } from "@/lib/api";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -145,11 +146,7 @@ export function CustomerRegistration({
           </Button>
         </CardHeader>
         <CardContent>
-          <div
-            role="status"
-            aria-live="polite"
-            className="rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3"
-          >
+          <Alert variant="success">
             <p className="text-meta text-ink-600">
               {t.customerRegistration.successCifLabel}
             </p>
@@ -160,7 +157,7 @@ export function CustomerRegistration({
             <p className="mt-1 text-meta text-ink-600">
               {t.customerRegistration.successHint}
             </p>
-          </div>
+          </Alert>
           <div className="flex gap-2">
             {onOpenAccount && (
               <Button onClick={() => onOpenAccount(registered)}>

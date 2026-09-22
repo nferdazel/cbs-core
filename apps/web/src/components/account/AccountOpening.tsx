@@ -7,6 +7,7 @@ import type { AccountRecord } from "@/lib/types";
 import type { BankingProduct } from "@/lib/operations-types";
 import { useAuth } from "@/lib/useAuth";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -206,14 +207,7 @@ export function AccountOpening({
       <CardContent>
         {opened ? (
           <div className="space-y-4">
-            <div
-              role="status"
-              aria-live="polite"
-              className="rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3"
-            >
-              <p className="text-title font-medium text-credit-700">
-                {t.accountOpening.successTitle}
-              </p>
+            <Alert variant="success" title={t.accountOpening.successTitle}>
               <p className="mt-2 text-meta text-ink-600">
                 {t.accountOpening.successNumberLabel}
               </p>
@@ -226,7 +220,7 @@ export function AccountOpening({
               <p className="mt-1 text-meta text-ink-600">
                 {t.accountOpening.successHint}
               </p>
-            </div>
+            </Alert>
             <div className="flex gap-2">
               <Button onClick={resetForNew}>{t.accountOpening.againButton}</Button>
               <Button variant="secondary" onClick={onClose}>
@@ -364,20 +358,16 @@ export function AccountOpening({
             </div>
 
             {productError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3"
+              <Alert
+                variant="error"
+                title={`${t.accountOpening.productLoadError} ${productError}`}
               >
-                <p className="text-body text-debit-700">
-                  {t.accountOpening.productLoadError} {productError}
-                </p>
                 {productForbidden && (
-                  <p className="mt-1 text-meta text-debit-700">
+                  <p className="mt-1 text-meta">
                     {t.accountOpening.productForbidden}
                   </p>
                 )}
-              </div>
+              </Alert>
             )}
 
             <div className="w-80 space-y-1">

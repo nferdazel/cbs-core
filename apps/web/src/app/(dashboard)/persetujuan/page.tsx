@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/format";
 import type { MakerCheckerRequest } from "@/lib/operations-types";
 import { useAuth } from "@/lib/useAuth";
 import { useTranslation } from "@/i18n/context";
+import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -189,24 +190,16 @@ export default function PersetujuanPage() {
       />
 
       {feedback && (
-        <div className="mb-4 rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3">
-          <p className="text-title font-medium text-credit-700">
-            {feedback.title}
-          </p>
-          <p className="mt-1 text-body text-ink-900">
-            {t.approvals.referenceLabel}{" "}
-            <span className="font-mono">{feedback.reference}</span>
-          </p>
-        </div>
+        <Alert variant="success" className="mb-4" title={feedback.title}>
+          {t.approvals.referenceLabel}{" "}
+          <span className="font-mono">{feedback.reference}</span>
+        </Alert>
       )}
 
       {actionError && (
-        <div
-          className="mb-4 rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3"
-          role="alert"
-        >
-          <p className="text-body text-debit-700">{actionError}</p>
-        </div>
+        <Alert variant="error" className="mb-4">
+          {actionError}
+        </Alert>
       )}
 
       {error && !loading ? (
