@@ -27,9 +27,9 @@ var defaultDepositTaxRate = decimal.NewFromInt(20)
 var defaultDepositTaxExemptAmount = decimal.NewFromInt(7_500_000)
 
 const (
-	depositTaxRateConfigKey  = "tax.deposit.rate"
+	depositTaxRateConfigKey  = "tax.deposit.rate_pct"
 	taxExemptAmountConfigKey = "tax.deposit.exempt_amount"
-	mudharabahYieldConfigKey = "deposit.mudharabah.yield_annual"
+	mudharabahYieldConfigKey = "deposit.mudharabah.yield_annual_pct"
 
 	// depositPenaltyCOAConfigKey menimpa akun pendapatan denda pencairan.
 	// Migrasi 000005 menyediakan 40500 "Pendapatan Denda" hanya untuk buku

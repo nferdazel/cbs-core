@@ -205,14 +205,14 @@ func calculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy, excludeAsetBaik boo
 	}
 	pd, ok := policy.PD[snap.Collectibility]
 	if !ok {
-		return out, fmt.Errorf("%w: probability of default golongan %s (kunci ckpn.pd.%d) belum diisi",
+		return out, fmt.Errorf("%w: probability of default golongan %s (kunci ckpn.pd_frac.gol_%d) belum diisi",
 			ErrCKPNParameterMissing, snap.Collectibility.Label(), int(snap.Collectibility))
 	}
 	if policy.LGDError != nil {
 		return out, policy.LGDError
 	}
 	if !policy.LGDIsSet {
-		return out, fmt.Errorf("%w: loss given default (kunci ckpn.lgd) belum diisi", ErrCKPNParameterMissing)
+		return out, fmt.Errorf("%w: loss given default (kunci ckpn.lgd_frac) belum diisi", ErrCKPNParameterMissing)
 	}
 
 	out.PD = pd

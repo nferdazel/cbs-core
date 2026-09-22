@@ -16,7 +16,7 @@ import (
 // fallback di sini hanya agar batch tetap berjalan di lingkungan yang belum
 // di-provision. Kode COA mengikuti bagan baku BPR di migrasi 000005.
 const (
-	configSavingsRateAnnual      = "savings.interest.rate_annual"
+	configSavingsRateAnnual      = "savings.interest.rate_annual_pct"
 	configSavingsExpenseCOAConv  = "savings.interest.expense.coa.conventional"
 	configSavingsExpenseCOASyar  = "savings.interest.expense.coa.syariah"
 	configSavingsPayableCOAConv  = "savings.interest.payable.coa.conventional"
@@ -27,7 +27,7 @@ const (
 	configAdminFeeRevenueCOASyar = "fee.admin.income.coa.syariah"
 	// PPh final atas bunga tabungan (PP 131/2000). Tarif dan ambang pembebasan
 	// dibandingkan dengan SALDO tabungan, bukan bunga yang dibayarkan.
-	configSavingsTaxRate       = "tax.savings.rate"
+	configSavingsTaxRate       = "tax.savings.rate_pct"
 	configSavingsTaxExempt     = "tax.savings.exempt_amount"
 	configSavingsTaxPayableCOA = "tax.savings.payable.coa"
 
@@ -732,7 +732,7 @@ func (s *savingsInterestService) configDecimal(ctx context.Context, key string, 
 	if s.configSvc == nil {
 		return fallback
 	}
-	// Kunci yang sengaja di-seed kosong (mis. savings.interest.rate_annual,
+	// Kunci yang sengaja di-seed kosong (mis. savings.interest.rate_annual_pct,
 	// fee.admin.monthly) berarti "pakai nilai produk", bukan angka nol. GetDecimal
 	// gagal mengurai string kosong dan mencatat peringatan; keadaan itu normal di sini,
 	// jadi kekosongan diperiksa lewat pembaca mentah bila service menyediakannya.

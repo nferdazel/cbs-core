@@ -112,13 +112,13 @@ func TestCollateral_HaircutBawaanTidakMengurangiEksposur(t *testing.T) {
 
 func TestCollateral_HaircutConfigKeyPerJenis(t *testing.T) {
 	cases := map[domain.CollateralType]string{
-		domain.CollateralTanahBangunan:  "collateral.haircut.tanah_bangunan",
-		domain.CollateralKendaraan:      "collateral.haircut.kendaraan",
-		domain.CollateralDeposit:        "collateral.haircut.deposit",
-		domain.CollateralMesinPeralatan: "collateral.haircut.mesin_peralatan",
-		domain.CollateralLainnya:        "collateral.haircut.lainnya",
+		domain.CollateralTanahBangunan:  "collateral.haircut.tanah_bangunan_pct",
+		domain.CollateralKendaraan:      "collateral.haircut.kendaraan_pct",
+		domain.CollateralDeposit:        "collateral.haircut.deposit_pct",
+		domain.CollateralMesinPeralatan: "collateral.haircut.mesin_peralatan_pct",
+		domain.CollateralLainnya:        "collateral.haircut.lainnya_pct",
 		// Jenis tak dikenal tidak boleh diam-diam memakai kebijakan jenis lain.
-		domain.CollateralType("TIDAK_DIKENAL"): "collateral.haircut.lainnya",
+		domain.CollateralType("TIDAK_DIKENAL"): "collateral.haircut.lainnya_pct",
 	}
 
 	for jenis, want := range cases {

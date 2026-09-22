@@ -84,7 +84,7 @@ ON CONFLICT (account_number) DO NOTHING;
 INSERT INTO system_config (key, value, description) VALUES
     ('loan.restructure.loss.enabled', 'false',
      'Aktifkan perhitungan & jurnal kerugian restrukturisasi kredit (Pasal 32 POJK 1/2024). false = tidak ada perhitungan, jurnal, atau perubahan perilaku.'),
-    ('loan.restructure.loss.discount_rate_annual', '',
+    ('loan.restructure.loss.discount_rate_annual_pct', '',
      'Override suku bunga diskonto tahunan dalam persen (0 < x <= 100) untuk nilai kini arus kas restrukturisasi. Kosong = pakai EIR orisinal tersimpan.'),
     ('loan.restructure.loss.coa.expense', '',
      'Kode COA beban kerugian restrukturisasi. Kosong = fallback per buku: 50401 konvensional, 15902 syariah (di-seed migrasi 000043).'),

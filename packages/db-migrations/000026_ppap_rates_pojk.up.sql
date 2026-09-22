@@ -19,26 +19,26 @@ UPDATE system_config
 SET value = '0.03',
     description = 'Tarif PPAP khusus kolektibilitas 2 - Dalam Perhatian Khusus (POJK 33/2018 Pasal 16)',
     updated_at = NOW()
-WHERE key = 'ppap.rate.2' AND value = '0.1';
+WHERE key = 'ppap.rate_frac.gol_2' AND value = '0.1';
 
 UPDATE system_config
 SET value = '0.10',
     description = 'Tarif PPAP khusus kolektibilitas 3 - Kurang Lancar (POJK 33/2018 Pasal 16)',
     updated_at = NOW()
-WHERE key = 'ppap.rate.3' AND value = '0.15';
+WHERE key = 'ppap.rate_frac.gol_3' AND value = '0.15';
 
 -- Deskripsi tarif lain diberi rujukan pasalnya agar tidak lagi ambigu.
 UPDATE system_config
 SET description = 'Tarif PPAP umum kolektibilitas 1 - Lancar (POJK 33/2018 Pasal 16 ayat 2)',
     updated_at = NOW()
-WHERE key = 'ppap.rate.1';
+WHERE key = 'ppap.rate_frac.gol_1';
 
 UPDATE system_config
 SET description = 'Tarif PPAP khusus kolektibilitas 4 - Diragukan (POJK 33/2018 Pasal 16)',
     updated_at = NOW()
-WHERE key = 'ppap.rate.4';
+WHERE key = 'ppap.rate_frac.gol_4';
 
 UPDATE system_config
 SET description = 'Tarif PPAP khusus kolektibilitas 5 - Macet (POJK 33/2018 Pasal 16)',
     updated_at = NOW()
-WHERE key = 'ppap.rate.5';
+WHERE key = 'ppap.rate_frac.gol_5';

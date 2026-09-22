@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +19,7 @@ import (
 const (
 	cfgCKPNEnabled        = "ckpn.enabled"
 	cfgCKPNShadowEnabled  = "ckpn.shadow_mode.enabled"
-	cfgCKPNLGD            = "ckpn.lgd"
+	cfgCKPNLGD            = "ckpn.lgd_frac"
 	cfgCKPNAsetBaikMaxDPD = "ckpn.aset_baik.max_dpd"
 	cfgCKPNExpenseCOA     = "ckpn.coa.expense"
 	cfgCKPNReserveCOA     = "ckpn.coa.reserve"
@@ -32,7 +31,7 @@ const (
 )
 
 // ckpnCollectibilityOrder adalah urutan golongan kolektibilitas untuk enumerasi PD
-// (kunci ckpn.pd.<n>) dan penyusunan asumsi mode bayangan. Urutannya tetap agar pesan
+// (kunci ckpn.pd_frac.gol_<n>) dan penyusunan asumsi mode bayangan. Urutannya tetap agar pesan
 // yang dibaca bank konsisten.
 var ckpnCollectibilityOrder = []domain.Collectibility{
 	domain.KolLancar, domain.KolDPK, domain.KolKurangLancar, domain.KolDiragukan, domain.KolMacet,
@@ -633,7 +632,7 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 }
 
 func ckpnPDKey(c domain.Collectibility) string {
-	return "ckpn.pd." + strconv.Itoa(int(c))
+	return fmt.Sprintf("ckpn.pd_frac.gol_%d", int(c))
 }
 
 // configDecimal membaca nilai desimal dan membedakan tiga keadaan: kunci kosong/tidak

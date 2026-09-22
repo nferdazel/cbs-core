@@ -83,11 +83,11 @@ COMMENT ON COLUMN loan_collaterals.bound_amount IS
 -- Kebijakan haircut per jenis agunan. Bawaan 100 = tanpa pengurangan, sengaja: PPAP
 -- berhenti dihitung atas pokok penuh sampai bank mengisi kebijakannya sendiri.
 INSERT INTO system_config (key, value, description) VALUES
-    ('collateral.haircut.tanah_bangunan', '100', 'Bagian nilai taksasi agunan tanah dan bangunan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
-    ('collateral.haircut.kendaraan',      '100', 'Bagian nilai taksasi agunan kendaraan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
-    ('collateral.haircut.deposit',        '100', 'Bagian nilai taksasi agunan deposito yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
-    ('collateral.haircut.mesin_peralatan','100', 'Bagian nilai taksasi agunan mesin/peralatan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
-    ('collateral.haircut.lainnya',        '100', 'Bagian nilai taksasi agunan jenis lain yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).')
+    ('collateral.haircut.tanah_bangunan_pct', '100', 'Bagian nilai taksasi agunan tanah dan bangunan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
+    ('collateral.haircut.kendaraan_pct',      '100', 'Bagian nilai taksasi agunan kendaraan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
+    ('collateral.haircut.deposit_pct',        '100', 'Bagian nilai taksasi agunan deposito yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
+    ('collateral.haircut.mesin_peralatan_pct','100', 'Bagian nilai taksasi agunan mesin/peralatan yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).'),
+    ('collateral.haircut.lainnya_pct',        '100', 'Bagian nilai taksasi agunan jenis lain yang tidak dihitung sebagai pengurang PPAP (100 = tanpa pengurangan).')
 ON CONFLICT (key) DO NOTHING;
 
 -- Saklar utama pengurangan agunan pada perhitungan PPAP. Selama false, agunan boleh

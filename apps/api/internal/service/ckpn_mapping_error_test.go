@@ -23,9 +23,9 @@ func TestCKPN_GalatPembacaanPemetaanMenggagalkanKredit(t *testing.T) {
 	snap.BranchCode = "001"
 	snap.RequiredCKPN = decimal.NewFromInt(100_000)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}

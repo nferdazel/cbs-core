@@ -162,7 +162,7 @@ func TestCollateralCreate_HaircutBawaanTanpaPengurangan(t *testing.T) {
 func TestCollateralCreate_MemakaiKebijakanHaircutDariKonfigurasi(t *testing.T) {
 	repo := &collateralRepoStub{}
 	audit := &reversalAuditRepo{}
-	config := &collateralConfigStub{values: map[string]string{"collateral.haircut.tanah_bangunan": "80"}}
+	config := &collateralConfigStub{values: map[string]string{"collateral.haircut.tanah_bangunan_pct": "80"}}
 	svc := NewCollateralService(repo, config, collateralBranchRepo(), audit)
 
 	c, err := svc.Create(context.Background(), collateralInput(), collateralActor("001"))
@@ -193,8 +193,8 @@ func TestCollateralCreate_MenolakHaircutDanKebijakanTidakSah(t *testing.T) {
 		wantValid bool
 	}{
 		{name: "operator mengisi 120 persen", haircut: &operator},
-		{name: "kebijakan konfigurasi rusak", config: map[string]string{"collateral.haircut.tanah_bangunan": "delapan puluh"}},
-		{name: "kebijakan konfigurasi di luar rentang", config: map[string]string{"collateral.haircut.tanah_bangunan": "150"}},
+		{name: "kebijakan konfigurasi rusak", config: map[string]string{"collateral.haircut.tanah_bangunan_pct": "delapan puluh"}},
+		{name: "kebijakan konfigurasi di luar rentang", config: map[string]string{"collateral.haircut.tanah_bangunan_pct": "150"}},
 	}
 
 	for _, tc := range cases {

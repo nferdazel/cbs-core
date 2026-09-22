@@ -84,7 +84,7 @@ func HaircutConfigKey(t CollateralType) string {
 	case CollateralMesinPeralatan:
 		suffix = "mesin_peralatan"
 	}
-	return "collateral.haircut." + suffix
+	return "collateral.haircut." + suffix + "_pct"
 }
 
 // PPAPCollateralEnabledKey adalah saklar pengurangan agunan pada perhitungan PPAP. Selama

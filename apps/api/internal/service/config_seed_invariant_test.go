@@ -125,15 +125,17 @@ func runtimeGeneratedConfigKeys() []string {
 		}
 	}
 
-	// HaircutConfigKey(): collateral.haircut.<jenis>; jenis tak dikenal jatuh ke "lainnya".
+	// HaircutConfigKey(): collateral.haircut.<jenis>_pct (nilai persen 0..100); jenis
+	// tak dikenal jatuh ke "lainnya".
 	for _, kind := range []string{"deposit", "kendaraan", "lainnya", "mesin_peralatan", "tanah_bangunan"} {
-		keys = append(keys, "collateral.haircut."+kind)
+		keys = append(keys, "collateral.haircut."+kind+"_pct")
 	}
 
-	// ckpnPDKey() dan collectibilityRates(): lima golongan kolektibilitas.
+	// ckpnPDKey() dan collectibilityRates(): lima golongan kolektibilitas, satuan
+	// fraksi dinyatakan lewat _frac dan indeks memakai nama gol_<n>.
 	for i := 1; i <= 5; i++ {
-		keys = append(keys, fmt.Sprintf("ckpn.pd.%d", i))
-		keys = append(keys, fmt.Sprintf("ppap.rate.%d", i))
+		keys = append(keys, fmt.Sprintf("ckpn.pd_frac.gol_%d", i))
+		keys = append(keys, fmt.Sprintf("ppap.rate_frac.gol_%d", i))
 	}
 
 	// maker_checkerService.Threshold(): maker_checker.<aksi>.threshold. Daftar aksi

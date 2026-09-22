@@ -103,9 +103,9 @@ func newCKPNSyariahSvc(snap domain.CKPNLoanSnapshot, cfg *ckpnConfigStub) (*ckpn
 // ckpnSyariahConfig adalah parameter kebijakan minimum agar satu kredit dapat diposting.
 func ckpnSyariahConfig(extra map[string]string) *ckpnConfigStub {
 	values := map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}
 	for k, v := range extra {
 		values[k] = v

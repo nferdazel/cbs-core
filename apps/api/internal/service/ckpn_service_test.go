@@ -175,9 +175,9 @@ func ckpnLoan() domain.CKPNLoanSnapshot {
 func TestCKPN_ParameterKebijakanDibacaDariKonfigurasi(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 
 	// 10.000.000 x 10% x 50% = 500.000
@@ -195,7 +195,7 @@ func TestCKPN_ParameterKebijakanDibacaDariKonfigurasi(t *testing.T) {
 	}
 
 	// PD dinaikkan menjadi 20% lewat konfigurasi: hasil harus 1.000.000.
-	cfg.values["ckpn.pd.3"] = "0.20"
+	cfg.values["ckpn.pd_frac.gol_3"] = "0.20"
 	svc2, _, _ := newTestCKPNService(repo, cfg)
 	summary2, err := svc2.Compare(context.Background(), asOf, domain.Actor{})
 	if err != nil {
@@ -272,9 +272,9 @@ func TestCKPN_SaklarMatiTidakAdaQueryDanTidakMengubahApaPun(t *testing.T) {
 func TestCKPN_PerbandinganDenganPPKA(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 	// Target CKPN = 10.000.000 x 10% x 50% = 500.000.
 	cases := []struct {
@@ -321,8 +321,8 @@ func TestCKPN_PengurangModalIntiPerKreditBukanAgregat(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true", // murni pelaporan; tak ada jurnal
-		"ckpn.pd.3":                "0.10",
-		"ckpn.lgd":                 "0.50",
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.lgd_frac":            "0.50",
 	}}
 
 	// Kredit A: PPKA 1.000.000 > CKPN 500.000 -> pengurang 500.000.
@@ -359,8 +359,8 @@ func TestCKPN_ParameterBelumDiisiGagalJelas(t *testing.T) {
 
 	t.Run("PD golongan belum diisi", func(t *testing.T) {
 		cfg := &ckpnConfigStub{values: map[string]string{
-			"ckpn.enabled": "true",
-			"ckpn.lgd":     "0.50", // PD golongan 3 sengaja kosong
+			"ckpn.enabled":  "true",
+			"ckpn.lgd_frac": "0.50", // PD golongan 3 sengaja kosong
 		}}
 		repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 		svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -373,7 +373,7 @@ func TestCKPN_ParameterBelumDiisiGagalJelas(t *testing.T) {
 			t.Fatalf("mau 1 gagal tanpa item, dapat failed=%d items=%d", summary.Failed, len(summary.Items))
 		}
 		msg := summary.Failures[0].Error
-		if !strings.Contains(msg, "ckpn.pd.3") || !strings.Contains(msg, domain.ErrCKPNParameterMissing.Error()) {
+		if !strings.Contains(msg, "ckpn.pd_frac.gol_3") || !strings.Contains(msg, domain.ErrCKPNParameterMissing.Error()) {
 			t.Fatalf("pesan gagal %q harus menyebut parameter yang belum diisi", msg)
 		}
 		if len(posting.requests) != 0 || len(repo.updates) != 0 {
@@ -383,8 +383,8 @@ func TestCKPN_ParameterBelumDiisiGagalJelas(t *testing.T) {
 
 	t.Run("LGD belum diisi", func(t *testing.T) {
 		cfg := &ckpnConfigStub{values: map[string]string{
-			"ckpn.enabled": "true",
-			"ckpn.pd.3":    "0.10", // LGD sengaja kosong
+			"ckpn.enabled":       "true",
+			"ckpn.pd_frac.gol_3": "0.10", // LGD sengaja kosong
 		}}
 		repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 		svc, _, _ := newTestCKPNService(repo, cfg)
@@ -396,8 +396,8 @@ func TestCKPN_ParameterBelumDiisiGagalJelas(t *testing.T) {
 		if summary.Failed != 1 {
 			t.Fatalf("mau 1 gagal, dapat %d", summary.Failed)
 		}
-		if !strings.Contains(summary.Failures[0].Error, "ckpn.lgd") {
-			t.Fatalf("pesan gagal %q harus menyebut ckpn.lgd", summary.Failures[0].Error)
+		if !strings.Contains(summary.Failures[0].Error, "ckpn.lgd_frac") {
+			t.Fatalf("pesan gagal %q harus menyebut ckpn.lgd_frac", summary.Failures[0].Error)
 		}
 	})
 }
@@ -472,9 +472,9 @@ func TestCKPN_RunMempostingSelisihDanMenyimpanTarget(t *testing.T) {
 	snap := ckpnLoan()
 	snap.RequiredCKPN = decimal.NewFromInt(100_000) // target 500.000 -> selisih 400.000
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
@@ -518,9 +518,9 @@ func TestCKPN_RunPemulihanMembalikArahJurnal(t *testing.T) {
 	snap := ckpnLoan()
 	snap.RequiredCKPN = decimal.NewFromInt(900_000) // target 500.000 -> selisih -400.000
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
@@ -549,9 +549,9 @@ func TestCKPN_SnapshotBasiTidakDipakaiSetelahKunci(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	snap := ckpnLoan() // DISBURSED, sisa pokok 10jt, tanpa CKPN tersimpan
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
 	svc, posting, locker := newTestCKPNService(repo, cfg)
@@ -584,9 +584,9 @@ func TestCKPN_TargetSamaTidakAdaPostingDanTidakAdaUpdate(t *testing.T) {
 	// Target = 10.000.000 x 10% x 50% = 500.000, sama dengan yang tersimpan.
 	snap.RequiredCKPN = decimal.NewFromInt(500_000)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
 	svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -654,12 +654,12 @@ func TestCKPN_ParameterSalahDitolak(t *testing.T) {
 		values  map[string]string
 		wantMsg string
 	}{
-		{"PD negatif", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "-0.1", "ckpn.lgd": "0.50"}, "di luar rentang"},
-		{"PD di atas 1", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "1.5", "ckpn.lgd": "0.50"}, "di luar rentang"},
-		{"PD salah format koma", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "0,5", "ckpn.lgd": "0.50"}, "bukan angka desimal"},
-		{"LGD negatif", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "0.10", "ckpn.lgd": "-0.10"}, "di luar rentang"},
-		{"LGD format persen", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "0.10", "ckpn.lgd": "14.23"}, "di luar rentang"},
-		{"LGD huruf", map[string]string{"ckpn.enabled": "true", "ckpn.pd.3": "0.10", "ckpn.lgd": "abc"}, "bukan angka desimal"},
+		{"PD negatif", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "-0.1", "ckpn.lgd_frac": "0.50"}, "di luar rentang"},
+		{"PD di atas 1", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "1.5", "ckpn.lgd_frac": "0.50"}, "di luar rentang"},
+		{"PD salah format koma", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "0,5", "ckpn.lgd_frac": "0.50"}, "bukan angka desimal"},
+		{"LGD negatif", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "0.10", "ckpn.lgd_frac": "-0.10"}, "di luar rentang"},
+		{"LGD format persen", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "0.10", "ckpn.lgd_frac": "14.23"}, "di luar rentang"},
+		{"LGD huruf", map[string]string{"ckpn.enabled": "true", "ckpn.pd_frac.gol_3": "0.10", "ckpn.lgd_frac": "abc"}, "bukan angka desimal"},
 	}
 
 	for _, tc := range cases {
@@ -697,9 +697,9 @@ func TestCKPN_ParameterSalahDitolak(t *testing.T) {
 func TestCKPN_ParameterBatasNolSah(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0",
-		"ckpn.lgd":     "0",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0",
+		"ckpn.lgd_frac":      "0",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 	svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -756,9 +756,9 @@ var _ domain.PPAPRunMarker = ckpnRunMarkerStub{}
 func TestCKPN_MenolakPPAPBasi(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled": "true",
-		"ckpn.pd.3":    "0.10",
-		"ckpn.lgd":     "0.50",
+		"ckpn.enabled":       "true",
+		"ckpn.pd_frac.gol_3": "0.10",
+		"ckpn.lgd_frac":      "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 	svc, _, _ := newTestCKPNService(repo, cfg)
@@ -808,12 +808,12 @@ func TestCKPN_ModeBayanganMenghitungTanpaMenjurnal(t *testing.T) {
 	cfg := &ckpnConfigStub{values: map[string]string{
 		// ckpn.enabled sengaja TIDAK ada -> false; yang menyala hanya mode bayangan.
 		"ckpn.shadow_mode.enabled": "true",
-		"ckpn.pd.1":                "0.005",
-		"ckpn.pd.2":                "0.05",
-		"ckpn.pd.3":                "0.10",
-		"ckpn.pd.4":                "0.30",
-		"ckpn.pd.5":                "0.50",
-		"ckpn.lgd":                 "0.50",
+		"ckpn.pd_frac.gol_1":       "0.005",
+		"ckpn.pd_frac.gol_2":       "0.05",
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.pd_frac.gol_4":       "0.30",
+		"ckpn.pd_frac.gol_5":       "0.50",
+		"ckpn.lgd_frac":            "0.50",
 	}}
 	snap := ckpnLoan() // PPKA 1.000.000, target CKPN 10.000.000 x 10% x 50% = 500.000
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
@@ -888,8 +888,8 @@ func TestCKPN_ModeBayanganParameterKosongDilaporkan(t *testing.T) {
 		t.Fatalf("processed=%d failed=%d, mau 0/1", summary.Processed, summary.Failed)
 	}
 	joined := strings.Join(summary.ParameterGaps, " ")
-	if !strings.Contains(joined, "ckpn.pd.3") || !strings.Contains(joined, "ckpn.lgd") {
-		t.Fatalf("gap parameter %v harus menyebut ckpn.pd.3 dan ckpn.lgd", summary.ParameterGaps)
+	if !strings.Contains(joined, "ckpn.pd_frac.gol_3") || !strings.Contains(joined, "ckpn.lgd_frac") {
+		t.Fatalf("gap parameter %v harus menyebut ckpn.pd_frac.gol_3 dan ckpn.lgd_frac", summary.ParameterGaps)
 	}
 	if len(posting.requests) != 0 || len(repo.updates) != 0 {
 		t.Fatal("parameter kosong tidak boleh memposting atau menulis state")
@@ -903,8 +903,8 @@ func TestCKPN_KeduaSaklarMenyalaModeResmiBerlaku(t *testing.T) {
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.enabled":             "true",
 		"ckpn.shadow_mode.enabled": "true",
-		"ckpn.pd.3":                "0.10",
-		"ckpn.lgd":                 "0.50",
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.lgd_frac":            "0.50",
 	}}
 	snap := ckpnLoan()
 	snap.RequiredCKPN = decimal.NewFromInt(100_000) // selisih 400.000 -> 1 jurnal
@@ -954,16 +954,16 @@ func TestCKPN_ModeBayanganMeneruskanAktorUntukFilterCabang(t *testing.T) {
 	}
 }
 
-// Parameter yang diisi dalam PERSEN (mis. ckpn.lgd = 45) harus ditolak sebagai nilai
+// Parameter yang diisi dalam PERSEN (mis. ckpn.lgd_frac = 45) harus ditolak sebagai nilai
 // tidak sah dan dilaporkan sebagai kekurangan parameter dengan satuan yang benar
 // (fraksi 0..1), bukan diam-diam dijatuhkan menjadi nol.
 func TestCKPN_ModeBayanganParameterPersenDilaporkanSatuanFraksi(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati
-		"ckpn.pd.1":                "1",    // 1% dimaksud bank, dibaca 100% oleh mesin fraksi
-		"ckpn.pd.3":                "0.10",
-		"ckpn.lgd":                 "45", // persen, di luar fraksi 0..1
+		"ckpn.pd_frac.gol_1":       "1",    // 1% dimaksud bank, dibaca 100% oleh mesin fraksi
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.lgd_frac":            "45", // persen, di luar fraksi 0..1
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}} // golongan 3
 	svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -976,8 +976,8 @@ func TestCKPN_ModeBayanganParameterPersenDilaporkanSatuanFraksi(t *testing.T) {
 		t.Fatalf("LGD persen harus menolak perhitungan: processed=%d failed=%d", summary.Processed, summary.Failed)
 	}
 	joined := strings.Join(summary.ParameterGaps, " ")
-	if !strings.Contains(joined, "ckpn.lgd") || !strings.Contains(joined, "FRAKSI") {
-		t.Fatalf("gap harus menyebut ckpn.lgd dan satuan FRAKSI, dapat %v", summary.ParameterGaps)
+	if !strings.Contains(joined, "ckpn.lgd_frac") || !strings.Contains(joined, "FRAKSI") {
+		t.Fatalf("gap harus menyebut ckpn.lgd_frac dan satuan FRAKSI, dapat %v", summary.ParameterGaps)
 	}
 	if len(posting.requests) != 0 || len(repo.updates) != 0 {
 		t.Fatal("mode bayangan tidak boleh memposting atau menulis state")
@@ -994,8 +994,8 @@ func TestCKPN_ModeBayanganMenghitungAsetBaik(t *testing.T) {
 	snap.Collectibility = domain.KolLancar
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true",
-		"ckpn.pd.1":                "0.005",
-		"ckpn.lgd":                 "0.45",
+		"ckpn.pd_frac.gol_1":       "0.005",
+		"ckpn.lgd_frac":            "0.45",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
 	svc, _, _ := newTestCKPNService(repo, cfg)
@@ -1027,9 +1027,9 @@ func TestCKPN_DuaBasisSetaraPPKAPortofolioCampuran(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati: murni pelaporan
-		"ckpn.pd.1":                "0.005",
-		"ckpn.pd.3":                "0.10",
-		"ckpn.lgd":                 "0.50",
+		"ckpn.pd_frac.gol_1":       "0.005",
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.lgd_frac":            "0.50",
 	}}
 
 	// A: tidak lancar (bukan aset baik). 10.000.000 x 10% x 50% = 500.000; PPKA 1.000.000.
@@ -1109,9 +1109,9 @@ func TestCKPN_DuaBasisSetaraPPKAParameterAsetBaikKosong(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true",
-		"ckpn.pd.3":                "0.10",
-		"ckpn.lgd":                 "0.50",
-		// ckpn.pd.1 sengaja kosong: hanya dibutuhkan basis setara untuk aset baik.
+		"ckpn.pd_frac.gol_3":       "0.10",
+		"ckpn.lgd_frac":            "0.50",
+		// ckpn.pd_frac.gol_1 sengaja kosong: hanya dibutuhkan basis setara untuk aset baik.
 	}}
 	snap := ckpnLoan()
 	snap.Collectibility = domain.KolLancar

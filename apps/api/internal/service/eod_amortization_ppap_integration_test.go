@@ -64,8 +64,8 @@ func TestIntegrasiEODAmortisasiSebelumPPAP(t *testing.T) {
 	// urutan amortisasi tidak tercampur pengurang agunan.
 	setRestructureLossConfig(t, e, "ppap.collateral.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "true")
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
-	setCKPNConfig(t, e, "ckpn.lgd", "0.50")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 
 	branchCode := ckpnTestBranchCode("X")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji EOD")
@@ -186,8 +186,8 @@ func TestIntegrasiEODAmortisasiSebelumPPAP(t *testing.T) {
 func TestIntegrasiCKPNMenolakPPAPTanggalLain(t *testing.T) {
 	e := newMoneyEnv(t)
 	setCKPNConfig(t, e, "ckpn.enabled", "true")
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
-	setCKPNConfig(t, e, "ckpn.lgd", "0.50")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 
 	// Jalur tutup hari pada tanggal bisnis tertentu berjalan normal.
 	ckpnSvc := newCKPNSvcForTest(e)
@@ -240,12 +240,12 @@ func TestIntegrasiCKPNModeBayanganTidakMenjurnal(t *testing.T) {
 		setCKPNConfig(t, e, "ckpn.enabled", "false")
 	})
 	// Semua PD + LGD diisi agar CKPN dapat dihitung, bukan dilaporkan sebagai gap.
-	setCKPNConfig(t, e, "ckpn.pd.1", "0.005")
-	setCKPNConfig(t, e, "ckpn.pd.2", "0.05")
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
-	setCKPNConfig(t, e, "ckpn.pd.4", "0.30")
-	setCKPNConfig(t, e, "ckpn.pd.5", "0.50")
-	setCKPNConfig(t, e, "ckpn.lgd", "0.50")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_1", "0.005")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_2", "0.05")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_4", "0.30")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_5", "0.50")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 
 	branchCode := ckpnTestBranchCode("S")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji Bayangan")

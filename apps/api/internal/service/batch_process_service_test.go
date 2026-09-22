@@ -767,7 +767,7 @@ func TestRunEODShadowCKPNParameterKosongTidakMenggagalkanEOD(t *testing.T) {
 			summary: domain.CKPNComparisonSummary{
 				ShadowMode:    true,
 				Failed:        1,
-				ParameterGaps: []string{"ckpn.pd.3 (PD golongan Kurang Lancar belum diisi)", "ckpn.lgd (LGD belum diisi)"},
+				ParameterGaps: []string{"ckpn.pd_frac.gol_3 (PD golongan Kurang Lancar belum diisi)", "ckpn.lgd_frac (LGD belum diisi)"},
 			},
 		}, &eodDefRepoStub{})
 
@@ -780,7 +780,7 @@ func TestRunEODShadowCKPNParameterKosongTidakMenggagalkanEOD(t *testing.T) {
 	}
 	warned := false
 	for _, w := range res.Warnings {
-		if strings.Contains(w, "ckpn.pd.3") && strings.Contains(w, "ckpn.lgd") {
+		if strings.Contains(w, "ckpn.pd_frac.gol_3") && strings.Contains(w, "ckpn.lgd_frac") {
 			warned = true
 		}
 	}

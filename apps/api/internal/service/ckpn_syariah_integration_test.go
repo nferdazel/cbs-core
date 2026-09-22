@@ -58,8 +58,8 @@ func syariahCKPNEnv(t *testing.T, productCode string) (*moneyEnv, domain.CKPNSer
 	}
 
 	setCKPNConfig(t, e, "ckpn.enabled", "true")
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
-	setCKPNConfig(t, e, "ckpn.lgd", "0.50")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 	setCKPNConfig(t, e, "ckpn.coa.expense", syariahGlobalExpense)
 	setCKPNConfig(t, e, "ckpn.coa.reserve", syariahGlobalReserve)
 	t.Cleanup(func() {

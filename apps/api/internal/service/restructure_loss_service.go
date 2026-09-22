@@ -26,7 +26,7 @@ import (
 // kredit yang cair sebelum bank menyalakan saklar tetap punya EIR.
 const (
 	cfgRestructureLossEnabled      = "loan.restructure.loss.enabled"
-	cfgRestructureLossDiscountRate = "loan.restructure.loss.discount_rate_annual"
+	cfgRestructureLossDiscountRate = "loan.restructure.loss.discount_rate_annual_pct"
 	cfgRestructureLossExpenseCOA   = "loan.restructure.loss.coa.expense"
 	cfgRestructureLossLoanCOA      = "loan.restructure.loss.coa.loan"
 	// cfgRestructureLossAmortIncomeCOA adalah sisi KREDIT jurnal amortisasi

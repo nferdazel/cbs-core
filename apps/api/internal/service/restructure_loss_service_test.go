@@ -166,8 +166,8 @@ func TestRestructureLoss_ParameterSalahDitolak(t *testing.T) {
 			loan, product, _ := lossLoan()
 			repo := &lossLoanRepoStub{loan: loan}
 			cfg := &ckpnConfigStub{values: map[string]string{
-				"loan.restructure.loss.enabled":              "true",
-				"loan.restructure.loss.discount_rate_annual": value,
+				"loan.restructure.loss.enabled":                  "true",
+				"loan.restructure.loss.discount_rate_annual_pct": value,
 			}}
 			svc := newLossService(repo, &stubProductRepo{product: product}, &stubPosting{}, cfg)
 
@@ -178,7 +178,7 @@ func TestRestructureLoss_ParameterSalahDitolak(t *testing.T) {
 			if !errors.Is(err, domain.ErrRestructureLossParamInvalid) {
 				t.Fatalf("mau ErrRestructureLossParamInvalid, dapat %v", err)
 			}
-			if !strings.Contains(err.Error(), "loan.restructure.loss.discount_rate_annual") {
+			if !strings.Contains(err.Error(), "loan.restructure.loss.discount_rate_annual_pct") {
 				t.Fatalf("pesan harus menyebut kunci konfigurasi, dapat %q", err.Error())
 			}
 		})

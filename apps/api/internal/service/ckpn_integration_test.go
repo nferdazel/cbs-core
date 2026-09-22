@@ -41,8 +41,8 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 
 	// Parameter kebijakan dibaca dari konfigurasi, bukan dari angka di kode.
 	setConfig("ckpn.enabled", "true", "uji integrasi CKPN")
-	setConfig("ckpn.pd.3", "0.10", "uji integrasi CKPN")
-	setConfig("ckpn.lgd", "0.50", "uji integrasi CKPN")
+	setConfig("ckpn.pd_frac.gol_3", "0.10", "uji integrasi CKPN")
+	setConfig("ckpn.lgd_frac", "0.50", "uji integrasi CKPN")
 
 	// Cabang uji sendiri supaya kredit dari uji lain (cabang 001) tidak masuk ringkasan.
 	branchCode := ckpnTestBranchCode("C")
@@ -132,7 +132,7 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 
 	// CKPN turun: PD diubah ke 5% sehingga target 250.000 < 500.000 yang sudah diakui.
 	// Selisihnya harus diposting sebagai pemulihan (debit CKPN, kredit beban).
-	setConfig("ckpn.pd.3", "0.05", "uji integrasi CKPN")
+	setConfig("ckpn.pd_frac.gol_3", "0.05", "uji integrasi CKPN")
 	asOf2 := asOf.Add(24 * time.Hour)
 	e.recordPPAPRun(t, asOf2)
 	if _, err := ckpnSvc.Run(e.ctx, asOf2, actor); err != nil {
@@ -155,7 +155,7 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 // kredit di cabang uji.
 func TestIntegrasiCKPNPelepasanCadanganKreditLunas(t *testing.T) {
 	e := newMoneyEnv(t)
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
 
 	branchCode := ckpnTestBranchCode("D")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Lunas")
@@ -208,7 +208,7 @@ func TestIntegrasiCKPNPelepasanCadanganKreditLunas(t *testing.T) {
 // required_ckpn-nya ditulis dari angka basi.
 func TestIntegrasiCKPNSnapshotBasiTidakDipakai(t *testing.T) {
 	e := newMoneyEnv(t)
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
 
 	branchCode := ckpnTestBranchCode("E")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Basi")

@@ -20,7 +20,7 @@
 --
 -- ALASAN (masalah 2): 18 kunci dibaca kode (GetDecimal/GetInt/GetString) tetapi tidak
 -- ada di seed. Dua di antaranya jatuh ke nol secara senyap:
---   deposit.mudharabah.yield_annual (bagi hasil nol) dan
+--   deposit.mudharabah.yield_annual_pct (bagi hasil nol) dan
 --   loan.penalty.rate.daily.per_mille (denda nol).
 -- Kuncinya di-seed eksplisit; yang nilainya masih perlu ditinjau bank disebutkan pada
 -- deskripsi. Kunci yang kosong ('') berarti "pakai nilai produk/fallback per buku",
@@ -119,7 +119,7 @@ INSERT INTO system_config (key, value, description) VALUES
     ('account.dormant.after_months', '12', 'Ambang bulan tanpa aktivitas sebelum rekening ditandai DORMANT. Nilai = bawaan aplikasi (12); bank harus meninjau kebijakan dormantnya.'),
     ('cash.coa.conventional', '10101', 'Kode COA kas teller buku konvensional sebagai lawan jurnal transaksi rekening. Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
     ('cash.coa.syariah', '11100', 'Kode COA kas buku syariah sebagai lawan jurnal transaksi rekening. Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
-    ('deposit.mudharabah.yield_annual', '0', 'Proyeksi imbal hasil tahunan deposito bagi hasil (desimal, mis. 0.06 untuk 6% per tahun). Nilai 0 = bagi hasil nol; bank WAJIB meninjau dan mengisi tarif proyeksinya.'),
+    ('deposit.mudharabah.yield_annual_pct', '0', 'Proyeksi imbal hasil tahunan deposito bagi hasil (desimal, mis. 0.06 untuk 6% per tahun). Nilai 0 = bagi hasil nol; bank WAJIB meninjau dan mengisi tarif proyeksinya.'),
     ('fee.admin.income.coa.conventional', '40400', 'Kode COA pendapatan administrasi buku konvensional. Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
     ('fee.admin.income.coa.syariah', '14500', 'Kode COA pendapatan administrasi buku syariah. Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
     ('fee.admin.monthly', '', 'Biaya administrasi bulanan global (IDR). Kosong = pakai admin_fee produk tiap rekening; isi untuk menimpa. Bank wajib meninjau kebijakannya.'),
@@ -132,7 +132,7 @@ INSERT INTO system_config (key, value, description) VALUES
     ('savings.interest.expense.coa.syariah', '15100', 'Kode COA bagi hasil tabungan buku syariah. Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
     ('savings.interest.payable.coa.conventional', '20400', 'Kode COA bunga tabungan yang masih harus dibayar (konvensional). Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
     ('savings.interest.payable.coa.syariah', '12400', 'Kode COA bagi hasil tabungan yang masih harus dibayar (syariah). Nilai = bawaan aplikasi; bank harus meninjau bagan akunnya.'),
-    ('savings.interest.rate_annual', '', 'Suku bunga tabungan tahunan global dalam persen. Kosong = pakai rate_annual produk tiap rekening; isi untuk menimpa. Bank harus meninjau kebijakannya.'),
+    ('savings.interest.rate_annual_pct', '', 'Suku bunga tabungan tahunan global dalam persen. Kosong = pakai rate_annual produk tiap rekening; isi untuk menimpa. Bank harus meninjau kebijakannya.'),
     ('savings.mudharabah.distributable_profit', '0', 'Laba yang didistribusikan untuk bagi hasil tabungan mudharabah per periode (IDR). 0 = bagi hasil nihil. Bank WAJIB meninjau dan mengisi porsi labanya.')
 ON CONFLICT (key) DO NOTHING;
 

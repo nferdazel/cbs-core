@@ -15,7 +15,7 @@
 -- pajaknya menunggu keputusan bank dan dicatat sebagai pekerjaan terbuka di backlog.
 INSERT INTO system_config (key, value, description)
 VALUES (
-    'tax.savings.rate',
+    'tax.savings.rate_pct',
     '20',
     'Tarif PPh final atas bunga tabungan dalam persen dari bruto (PP 131/2000 Pasal 2).'
 )

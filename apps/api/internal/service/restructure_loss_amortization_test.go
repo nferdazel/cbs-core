@@ -276,8 +276,8 @@ func TestAmortizeRestructureLoss_SaklarMatiTidakMenghitung(t *testing.T) {
 func TestAmortizeRestructureLoss_ParameterSalahDitolak(t *testing.T) {
 	repo, posting, products, _ := amortFixture()
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"loan.restructure.loss.enabled":              "true",
-		"loan.restructure.loss.discount_rate_annual": "bukan angka",
+		"loan.restructure.loss.enabled":                  "true",
+		"loan.restructure.loss.discount_rate_annual_pct": "bukan angka",
 	}}
 	svc := newAmortService(repo, products, posting, cfg)
 
@@ -285,7 +285,7 @@ func TestAmortizeRestructureLoss_ParameterSalahDitolak(t *testing.T) {
 	if !errors.Is(err, domain.ErrRestructureLossParamInvalid) {
 		t.Fatalf("mau ErrRestructureLossParamInvalid, dapat %v", err)
 	}
-	if !strings.Contains(err.Error(), "loan.restructure.loss.discount_rate_annual") {
+	if !strings.Contains(err.Error(), "loan.restructure.loss.discount_rate_annual_pct") {
 		t.Fatalf("pesan harus menyebut kunci konfigurasi, dapat %q", err.Error())
 	}
 	if len(posting.requests) != 0 {

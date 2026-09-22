@@ -23,9 +23,9 @@ INSERT INTO system_config (key, value, description) VALUES
     ('ppap.dpd.dpk',           '30',    'Batas atas DPD (hari) kolektibilitas 2 - Dalam Perhatian Khusus'),
     ('ppap.dpd.kurang_lancar', '90',    'Batas atas DPD (hari) kolektibilitas 3 - Kurang Lancar'),
     ('ppap.dpd.diragukan',     '180',   'Batas atas DPD (hari) kolektibilitas 4 - Diragukan'),
-    ('ppap.rate.1',            '0.005', 'Tarif PPAP minimum kolektibilitas 1 - Lancar'),
-    ('ppap.rate.2',            '0.1',   'Tarif PPAP minimum kolektibilitas 2 - Dalam Perhatian Khusus'),
-    ('ppap.rate.3',            '0.15',  'Tarif PPAP minimum kolektibilitas 3 - Kurang Lancar'),
-    ('ppap.rate.4',            '0.5',   'Tarif PPAP minimum kolektibilitas 4 - Diragukan'),
-    ('ppap.rate.5',            '1.0',   'Tarif PPAP minimum kolektibilitas 5 - Macet')
+    ('ppap.rate_frac.gol_1',            '0.005', 'Tarif PPAP minimum kolektibilitas 1 - Lancar'),
+    ('ppap.rate_frac.gol_2',            '0.1',   'Tarif PPAP minimum kolektibilitas 2 - Dalam Perhatian Khusus'),
+    ('ppap.rate_frac.gol_3',            '0.15',  'Tarif PPAP minimum kolektibilitas 3 - Kurang Lancar'),
+    ('ppap.rate_frac.gol_4',            '0.5',   'Tarif PPAP minimum kolektibilitas 4 - Diragukan'),
+    ('ppap.rate_frac.gol_5',            '1.0',   'Tarif PPAP minimum kolektibilitas 5 - Macet')
 ON CONFLICT (key) DO NOTHING;

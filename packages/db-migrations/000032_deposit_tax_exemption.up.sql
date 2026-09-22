@@ -26,7 +26,7 @@ ON CONFLICT (key) DO NOTHING;
 -- default kode. Nilainya sama dengan default aplikasi (20%).
 INSERT INTO system_config (key, value, description)
 VALUES (
-    'tax.deposit.rate',
+    'tax.deposit.rate_pct',
     '20',
     'Tarif PPh final atas bunga deposito dalam persen dari bruto (PP 131/2000 Pasal 2).'
 )

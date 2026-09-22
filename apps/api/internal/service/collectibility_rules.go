@@ -19,7 +19,7 @@ const (
 	cfgCollectDPKDays          = "ppap.dpd.dpk"
 	cfgCollectKurangLancarDays = "ppap.dpd.kurang_lancar"
 	cfgCollectDiragukanDays    = "ppap.dpd.diragukan"
-	cfgCollectRatePrefix       = "ppap.rate." // ppap.rate.1 .. ppap.rate.5
+	cfgCollectRateKeyFormat    = "ppap.rate_frac.gol_%d" // ppap.rate_frac.gol_1 .. ppap.rate_frac.gol_5
 )
 
 // collectibilityThresholds membaca ambang DPD dari konfigurasi. Fallback POJK
@@ -41,7 +41,7 @@ func collectibilityRates(ctx context.Context, config domain.SystemConfigService)
 	def := domain.DefaultPPAPRates()
 	out := make(domain.PPAPRates, len(def))
 	for c, r := range def {
-		key := fmt.Sprintf("%s%d", cfgCollectRatePrefix, int(c))
+		key := fmt.Sprintf(cfgCollectRateKeyFormat, int(c))
 		out[c] = domain.PPAPRate(configDecimalOr(ctx, config, key, decimal.Decimal(r)))
 	}
 	return out

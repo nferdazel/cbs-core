@@ -35,12 +35,12 @@ func TestIntegrasiCKPNModeBayanganPortofolioCampuran(t *testing.T) {
 	e := newMoneyEnv(t)
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "true")
-	setCKPNConfig(t, e, "ckpn.pd.1", "0.005")
-	setCKPNConfig(t, e, "ckpn.pd.2", "0.05")
-	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
-	setCKPNConfig(t, e, "ckpn.pd.4", "0.30")
-	setCKPNConfig(t, e, "ckpn.pd.5", "0.60")
-	setCKPNConfig(t, e, "ckpn.lgd", "0.45")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_1", "0.005")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_2", "0.05")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_4", "0.30")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_5", "0.60")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.45")
 
 	branchCode := ckpnTestBranchCode("M")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Campuran")
@@ -164,12 +164,12 @@ func TestIntegrasiCKPNModeBayanganParameterPersenDilaporkan(t *testing.T) {
 	e := newMoneyEnv(t)
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "true")
-	setCKPNConfig(t, e, "ckpn.pd.1", "1")
-	setCKPNConfig(t, e, "ckpn.pd.2", "5")
-	setCKPNConfig(t, e, "ckpn.pd.3", "15")
-	setCKPNConfig(t, e, "ckpn.pd.4", "35")
-	setCKPNConfig(t, e, "ckpn.pd.5", "60")
-	setCKPNConfig(t, e, "ckpn.lgd", "45")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_1", "1")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_2", "5")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "15")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_4", "35")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_5", "60")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "45")
 
 	branchCode := ckpnTestBranchCode("P")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Persen")
@@ -218,8 +218,8 @@ func TestIntegrasiCKPNModeBayanganParameterPersenDilaporkan(t *testing.T) {
 	// Parameter persen di luar 0..1 wajib muncul sebagai kekurangan parameter beserta
 	// satuan yang benar, bukan menghasilkan nol tanpa penjelasan.
 	joined := strings.Join(summary.ParameterGaps, " ")
-	if !strings.Contains(joined, "ckpn.lgd") || !strings.Contains(joined, "ckpn.pd.2") || !strings.Contains(joined, "FRAKSI") {
-		t.Fatalf("gap harus menyebut ckpn.lgd/ckpn.pd.2 dan satuan FRAKSI, dapat %v", summary.ParameterGaps)
+	if !strings.Contains(joined, "ckpn.lgd_frac") || !strings.Contains(joined, "ckpn.pd_frac.gol_2") || !strings.Contains(joined, "FRAKSI") {
+		t.Fatalf("gap harus menyebut ckpn.lgd_frac/ckpn.pd_frac.gol_2 dan satuan FRAKSI, dapat %v", summary.ParameterGaps)
 	}
 
 	if after := e.countCKPNJournals(t); after != beforeJournals {

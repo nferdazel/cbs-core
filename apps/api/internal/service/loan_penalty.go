@@ -16,7 +16,7 @@ const cfgLoanPenaltyDailyRatePerMille = "loan.penalty.rate.daily.per_mille"
 
 // Kunci plafon denda: persen dari pokok tunggakan yang menjadi batas atas denda
 // terakru per kredit. Nilai aplikasi 10 (10%). 0 = plafon dimatikan.
-const cfgLoanPenaltyCapPercent = "loan.penalty.cap.percent"
+const cfgLoanPenaltyCapPercent = "loan.penalty.cap_pct"
 
 // Sikap sementara menunggu keputusan DPS: denda pembiayaan syariah (ta'zir) TIDAK
 // diakui sebagai pendapatan bank, melainkan dana sosial (Dana Kebajikan). Akun
