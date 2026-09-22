@@ -434,8 +434,10 @@ diposting ke GL, dan kebijakan plafon LPS (serta apakah kelebihan jaminan ditola
 ## 5. Kepemilikan database dan kredensial
 Kepemilikan database `cbs` **sudah dipindahkan** dari role aplikasi `cbs_app` ke `qouver`
 (22 Sep 2026; §7.7), sehingga role aplikasi tidak lagi dapat mengubah struktur di luar migrasi.
-Sisa higiene produksi yang belum dikerjakan: rotasi kata sandi superadmin, penghapusan
-`reset-superadmin.txt` dan dua berkas `cbs-*.env.bak.*`, serta salinan cadangan offsite.
+Higiene produksi: kepemilikan database sudah berpindah ke `qouver`. Rotasi kata sandi
+superadmin serta salinan cadangan offsite **dicabut dari daftar kerja** pada 22 Sep 2026 atas
+keputusan pemilik sistem — risiko diterima secara sadar, bukan terlewat. `reset-superadmin.txt`
+dan dua berkas `cbs-*.env.bak.*` juga dibiarkan apa adanya dengan alasan yang sama.
 **Menghalangi:** tata kelola akses produksi (sisa higiene).
 
 ## 6. Kredit yang tertahan di luar push
@@ -627,6 +629,7 @@ di produksi atau **masih menunggu** persetujuan bank/DPS.
 ### 7.7 Kepemilikan database produksi — berlaku
 
 - Kepemilikan database `cbs` dipindahkan dari role aplikasi `cbs_app` ke `qouver` (22 Sep 2026).
-- **Sisa higiene produksi yang belum dikerjakan:** rotasi kata sandi superadmin, penghapusan
-  `reset-superadmin.txt` dan dua berkas `cbs-*.env.bak.*`, serta salinan cadangan offsite.
+  - **Higiene produksi:** kepemilikan database sudah berpindah ke `qouver`. Rotasi kata sandi
+  superadmin dan salinan cadangan offsite dicabut dari daftar kerja pada 22 Sep 2026 atas
+  keputusan pemilik sistem (risiko diterima, bukan terlewat).
 - Memperbarui butir 5 "KEPUTUSAN YANG MENUNGGU BANK".
