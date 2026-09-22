@@ -65,3 +65,6 @@ go.work.sum
 
 # Host SSH VPS (lokal, tidak untuk repo publik)
 scripts/.ssh-host
+
+# Backlog kerja (lokal, tidak untuk publikasi)
+/docs/BACKLOG.md
