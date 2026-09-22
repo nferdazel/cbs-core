@@ -5,8 +5,10 @@ export interface SelectOption {
   label: string;
 }
 
-export interface SelectProps
-  extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children"> {
+export interface SelectProps extends Omit<
+  React.SelectHTMLAttributes<HTMLSelectElement>,
+  "children"
+> {
   label?: string;
   error?: string;
   helperText?: string;
@@ -16,8 +18,16 @@ export interface SelectProps
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   (
-    { label, error, helperText, options, placeholder, className = "", ...props },
-    ref
+    {
+      label,
+      error,
+      helperText,
+      options,
+      placeholder,
+      className = "",
+      ...props
+    },
+    ref,
   ) => {
     // Label harus terhubung ke select lewat htmlFor/id agar pembaca layar
     // membacakan nama field, bukan sekadar teks visual di sebelahnya.
@@ -56,7 +66,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         ) : null}
       </div>
     );
-  }
+  },
 );
 
 Select.displayName = "Select";

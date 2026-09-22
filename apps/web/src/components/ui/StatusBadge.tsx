@@ -128,7 +128,9 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   }
   const resolved =
     tone ??
-    (domain ? DOMAIN_TONE[domain][status] ?? "outline" : GENERIC_TONE[status]) ??
+    (domain
+      ? (DOMAIN_TONE[domain][status] ?? "outline")
+      : GENERIC_TONE[status]) ??
     "outline";
   return <Badge variant={resolved}>{status}</Badge>;
 };

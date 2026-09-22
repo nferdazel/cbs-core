@@ -1,7 +1,6 @@
 import React, { useId } from "react";
 
-export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
   helperText?: string;
@@ -9,7 +8,10 @@ export interface TextareaProps
 }
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ label, error, helperText, isMono = false, className = "", ...props }, ref) => {
+  (
+    { label, error, helperText, isMono = false, className = "", ...props },
+    ref,
+  ) => {
     // Label harus terhubung ke textarea lewat htmlFor/id agar pembaca layar
     // membacakan nama field, bukan sekadar teks visual di sebelahnya. id pemanggil dipakai bila ada.
     const generatedId = useId();
@@ -40,7 +42,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         ) : null}
       </div>
     );
-  }
+  },
 );
 
 Textarea.displayName = "Textarea";

@@ -17,7 +17,9 @@ export const DEFAULT_APP_INFO: AppInfo = {
  * Menggabungkan identitas dari server dengan bawaan, agar field yang belum ada di
  * respons tidak menjadi `undefined` di UI.
  */
-export function mergeAppInfo(data: Partial<AppInfo> | null | undefined): AppInfo {
+export function mergeAppInfo(
+  data: Partial<AppInfo> | null | undefined,
+): AppInfo {
   if (!data) return DEFAULT_APP_INFO;
   return {
     company_name: data.company_name ?? DEFAULT_APP_INFO.company_name,

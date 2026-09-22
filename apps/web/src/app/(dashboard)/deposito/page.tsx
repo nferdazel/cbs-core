@@ -41,8 +41,12 @@ interface Meta {
 // normal (netral), berbeda dari CLOSED rekening yang berarti terminal.
 
 // Instruksi ARO juga kunci teknis; labelnya dari kamus.
-function aroLabel(t: Dictionary["deposits"], instruction: AROInstruction): string {
-  if (instruction === "PRINCIPAL_AND_PROFIT") return t.aroPrincipalAndProfitShort;
+function aroLabel(
+  t: Dictionary["deposits"],
+  instruction: AROInstruction,
+): string {
+  if (instruction === "PRINCIPAL_AND_PROFIT")
+    return t.aroPrincipalAndProfitShort;
   if (instruction === "PRINCIPAL") return t.aroPrincipalShort;
   return t.aroNone;
 }
@@ -113,7 +117,7 @@ function DepositPlaceForm({
     } catch (err) {
       setPreview(null);
       setFormError(
-        err instanceof ApiError ? err.message : t.deposits.previewError
+        err instanceof ApiError ? err.message : t.deposits.previewError,
       );
     } finally {
       setPreviewLoading(false);
@@ -142,7 +146,7 @@ function DepositPlaceForm({
       setConfirmOpen(false);
     } catch (err) {
       setFormError(
-        err instanceof ApiError ? err.message : t.deposits.placeError
+        err instanceof ApiError ? err.message : t.deposits.placeError,
       );
       setConfirmOpen(false);
     } finally {
@@ -198,14 +202,19 @@ function DepositPlaceForm({
               <MoneyText value={selectedProduct.max_amount} />,{" "}
               {t.deposits.termLabel}{" "}
               <span className="font-mono">
-                {selectedProduct.min_term_months}-{selectedProduct.max_term_months}
+                {selectedProduct.min_term_months}-
+                {selectedProduct.max_term_months}
               </span>{" "}
               {t.deposits.termSuffix}.
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <CurrencyInput label={t.deposits.principal} value={amount} onChange={setAmount} />
+            <CurrencyInput
+              label={t.deposits.principal}
+              value={amount}
+              onChange={setAmount}
+            />
             <Input
               label={t.deposits.termMonths}
               type="number"
@@ -270,9 +279,7 @@ function DepositPlaceForm({
         description={
           preview ? (
             <>
-              <p>
-                {t.deposits.confirmPlaceDesc}
-              </p>
+              <p>{t.deposits.confirmPlaceDesc}</p>
               <dl className="mt-2 space-y-1">
                 <div className="flex justify-between">
                   <dt className="text-ink-600">{t.deposits.labelProduct}</dt>
@@ -320,7 +327,9 @@ function DepositPlaceForm({
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">{t.deposits.labelEstimatedTax}</dt>
+                  <dt className="text-ink-600">
+                    {t.deposits.labelEstimatedTax}
+                  </dt>
                   <dd>
                     <MoneyText value={preview.estimated_tax} />
                   </dd>
@@ -379,7 +388,7 @@ function DepositDetailPanel({
       setDeposit(unwrap(response));
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : t.deposits.detailLoadError
+        err instanceof ApiError ? err.message : t.deposits.detailLoadError,
       );
     } finally {
       setLoading(false);
@@ -405,7 +414,10 @@ function DepositDetailPanel({
     try {
       const response = await request<Deposit>(
         `/deposits/${deposit.id}/${pending}`,
-        { method: "POST", idempotencyKey: newIdempotencyKey() }
+        {
+          method: "POST",
+          idempotencyKey: newIdempotencyKey(),
+        },
       );
       const updated = unwrap(response);
       if (pending === "withdraw") {
@@ -459,7 +471,7 @@ function DepositDetailPanel({
       onChanged();
     } catch (err) {
       setActionError(
-        err instanceof ApiError ? err.message : t.deposits.actionFailed
+        err instanceof ApiError ? err.message : t.deposits.actionFailed,
       );
       setPending(null);
     } finally {
@@ -524,8 +536,10 @@ function DepositDetailPanel({
         {early && (
           <Alert variant="warning">
             {t.deposits.earlyPrefix}{" "}
-            <span className="font-mono">{formatDate(deposit.maturity_date)}</span>.
-            {" "}{t.deposits.earlyPenalty}
+            <span className="font-mono">
+              {formatDate(deposit.maturity_date)}
+            </span>
+            . {t.deposits.earlyPenalty}
             {product
               ? ` ${formatRate(product.early_withdrawal_penalty_rate)} ${t.deposits.earlyPenaltyOfPrincipal}`
               : ""}
@@ -547,7 +561,10 @@ function DepositDetailPanel({
               label: t.common.status,
               value: <StatusBadge status={deposit.status} domain="deposit" />,
             },
-            { label: t.deposits.principal, value: <MoneyText value={deposit.placement_amount} /> },
+            {
+              label: t.deposits.principal,
+              value: <MoneyText value={deposit.placement_amount} />,
+            },
             {
               label: t.deposits.labelStartDate,
               value: formatDate(deposit.start_date),
@@ -611,7 +628,9 @@ function DepositDetailPanel({
               : []),
             {
               label: t.deposits.labelAro,
-              value: deposit.aro ? aroLabel(t.deposits, deposit.aro_instruction) : t.deposits.notAro,
+              value: deposit.aro
+                ? aroLabel(t.deposits, deposit.aro_instruction)
+                : t.deposits.notAro,
             },
           ]}
         />
@@ -667,8 +686,7 @@ function DepositDetailPanel({
           ) : (
             <p>
               {t.deposits.accrueDescPrefix}{" "}
-              <span className="font-mono">{deposit.account_number}</span>
-              .
+              <span className="font-mono">{deposit.account_number}</span>.
             </p>
           )
         }
@@ -690,36 +708,40 @@ export default function DepositoPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const customerNames = useMemo(
     () => Object.fromEntries(customers.map((c) => [c.id, c.full_name])),
-    [customers]
+    [customers],
   );
 
   const [formOpen, setFormOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ title: string; reference: string } | null>(
-    null
-  );
+  const [feedback, setFeedback] = useState<{
+    title: string;
+    reference: string;
+  } | null>(null);
 
   const [aroOpen, setAroOpen] = useState(false);
   const [aroSubmitting, setAroSubmitting] = useState(false);
   const [aroError, setAroError] = useState<string | null>(null);
 
-  const loadDeposits = useCallback(async (targetPage: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await request<Deposit[]>(
-        `/deposits?page=${targetPage}&page_size=${PAGE_SIZE}`
-      );
-      setDeposits(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.deposits.listLoadError
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const loadDeposits = useCallback(
+    async (targetPage: number) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await request<Deposit[]>(
+          `/deposits?page=${targetPage}&page_size=${PAGE_SIZE}`,
+        );
+        setDeposits(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : t.deposits.listLoadError,
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     loadDeposits(page);
@@ -743,19 +765,21 @@ export default function DepositoPage() {
   }, []);
 
   const depositProducts = useMemo(
-    () =>
-      products.filter((p) => p.family === "TIME_DEPOSIT" && p.is_active),
-    [products]
+    () => products.filter((p) => p.family === "TIME_DEPOSIT" && p.is_active),
+    [products],
   );
 
   const runAro = async () => {
     setAroSubmitting(true);
     setAroError(null);
     try {
-      const response = await request<{ processed: number }>("/deposits/run-aro", {
-        method: "POST",
-        idempotencyKey: newIdempotencyKey(),
-      });
+      const response = await request<{ processed: number }>(
+        "/deposits/run-aro",
+        {
+          method: "POST",
+          idempotencyKey: newIdempotencyKey(),
+        },
+      );
       const processed = response.data?.processed ?? 0;
       setFeedback({
         title: t.deposits.aroRunTitle,
@@ -765,7 +789,7 @@ export default function DepositoPage() {
       setListReloadKey((key) => key + 1);
     } catch (err) {
       setAroError(
-        err instanceof ApiError ? err.message : t.deposits.aroRunError
+        err instanceof ApiError ? err.message : t.deposits.aroRunError,
       );
       setAroOpen(false);
     } finally {
@@ -774,7 +798,11 @@ export default function DepositoPage() {
   };
 
   const columns: Column<Deposit>[] = [
-    { header: t.deposits.colAccountNumber, accessorKey: "account_number", isMono: true },
+    {
+      header: t.deposits.colAccountNumber,
+      accessorKey: "account_number",
+      isMono: true,
+    },
     {
       header: t.deposits.customer,
       cell: (row) => customerLabel(row.customer_id, customerNames),
@@ -908,11 +936,7 @@ export default function DepositoPage() {
         confirmLabel={t.deposits.runAroButton}
         onCancel={() => setAroOpen(false)}
         onConfirm={runAro}
-        description={
-          <p>
-            {t.deposits.aroConfirmDesc}
-          </p>
-        }
+        description={<p>{t.deposits.aroConfirmDesc}</p>}
       />
     </>
   );

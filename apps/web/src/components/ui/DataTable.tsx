@@ -5,11 +5,7 @@ import type { StatusDomain } from "./StatusBadge";
 import { useTranslation } from "@/i18n/context";
 
 export type DataTableColumnType =
-  | "text"
-  | "money"
-  | "account"
-  | "date"
-  | "status";
+  "text" | "money" | "account" | "date" | "status";
 
 export interface Column<T> {
   header: string;
@@ -36,7 +32,11 @@ export interface DataTableProps<T> {
 }
 
 const alignClass = (align?: Column<unknown>["align"]) =>
-  align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  align === "right"
+    ? "text-right"
+    : align === "center"
+      ? "text-center"
+      : "text-left";
 
 /**
  * Tabel data dengan header sticky dan state kosong/memuat/galat di dalam tabel.
@@ -74,7 +74,10 @@ export function DataTable<T>({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center text-ink-600">
+              <td
+                colSpan={columns.length}
+                className="px-3 py-8 text-center text-ink-600"
+              >
                 {t.states.loading}
               </td>
             </tr>
@@ -90,7 +93,10 @@ export function DataTable<T>({
             </tr>
           ) : data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center text-ink-600">
+              <td
+                colSpan={columns.length}
+                className="px-3 py-8 text-center text-ink-600"
+              >
                 {emptyMessage ?? t.states.emptyTitle}
               </td>
             </tr>
@@ -103,13 +109,17 @@ export function DataTable<T>({
                 }`}
               >
                 {columns.map((col, colIdx) => {
-                  const raw = col.accessorKey ? (row[col.accessorKey] as unknown) : null;
+                  const raw = col.accessorKey
+                    ? (row[col.accessorKey] as unknown)
+                    : null;
                   let content: React.ReactNode = raw as React.ReactNode;
 
                   if (col.cell) {
                     content = col.cell(row, rowIdx);
                   } else if (col.type === "money") {
-                    content = <MoneyText value={raw as string | number | null} />;
+                    content = (
+                      <MoneyText value={raw as string | number | null} />
+                    );
                   } else if (col.type === "status") {
                     content = (
                       <StatusBadge
@@ -124,7 +134,9 @@ export function DataTable<T>({
                       key={colIdx}
                       style={col.width ? { width: col.width } : undefined}
                       className={`px-3 py-2 align-top text-ink-900 ${
-                        col.type === "money" ? "text-right" : alignClass(col.align)
+                        col.type === "money"
+                          ? "text-right"
+                          : alignClass(col.align)
                       } ${col.isMono ? "font-mono" : ""}`}
                     >
                       {content}

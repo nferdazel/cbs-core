@@ -127,7 +127,8 @@ export const dictionaryEN: Dictionary = {
     customer: "Customer",
     searchCustomerLabel: "Search Customer",
     searchCustomerPlaceholder: "CIF number or national ID",
-    searchCustomerHint: "Type a CIF number prefix, or the full 16-digit national ID.",
+    searchCustomerHint:
+      "Type a CIF number prefix, or the full 16-digit national ID.",
     searching: "Searching customers...",
     searchMin: "Type at least 2 characters to search.",
     searchEmpty: "No customers match.",
@@ -251,8 +252,7 @@ export const dictionaryEN: Dictionary = {
     empty: "No transaction limits are registered yet.",
     emptyFiltered: "No limits match the filter.",
     loadError: "Failed to load transaction limits.",
-    forbidden:
-      "You do not have permission to view transaction limits (403).",
+    forbidden: "You do not have permission to view transaction limits (403).",
     unavailable:
       "Transaction limit data is not available on the server yet (endpoint inactive or not found).",
     resultCount: "rows shown",
@@ -319,7 +319,8 @@ export const dictionaryEN: Dictionary = {
       "A parent must be a higher level: a region parents areas, an area parents branches.",
     code: "Code",
     codePlaceholder: "e.g. 002 or AREA-1",
-    codeHint: "Branches need 3 digits; area/region are free, without spaces or commas.",
+    codeHint:
+      "Branches need 3 digits; area/region are free, without spaces or commas.",
     name: "Name",
     namePlaceholder: "e.g. South Jakarta Area",
     level: "Level",
@@ -333,7 +334,8 @@ export const dictionaryEN: Dictionary = {
     created: "Organization unit saved.",
     loadError: "Failed to load organization units.",
     createError: "Failed to save the organization unit.",
-    forbidden: "You do not have permission to change the organization structure (403).",
+    forbidden:
+      "You do not have permission to change the organization structure (403).",
     requiredFields: "Code, name, and level are required.",
   },
   loans: {
@@ -466,7 +468,8 @@ export const dictionaryEN: Dictionary = {
   },
   home: {
     title: "Home",
-    description: "A summary of your session. Use the sidebar to move between modules.",
+    description:
+      "A summary of your session. Use the sidebar to move between modules.",
     sessionTitle: "User Session",
   },
   ledger: {
@@ -540,8 +543,7 @@ export const dictionaryEN: Dictionary = {
     syariah: "sharia",
     conventional: "conventional",
     reasonPrefix: "The",
-    reasonMiddle:
-      "book is not active on this installation (book scope:",
+    reasonMiddle: "book is not active on this installation (book scope:",
     reasonSuffix:
       "). Contact an administrator if this line of business should be active.",
   },
@@ -1072,6 +1074,7 @@ export const dictionaryEN: Dictionary = {
     submitted:
       "Request submitted. The change takes effect only after another reviewer approves it.",
     requestError: "Failed to submit the permission change request.",
-    forbidden: "You do not have permission to request permission changes (403).",
+    forbidden:
+      "You do not have permission to request permission changes (403).",
   },
 };

@@ -1,7 +1,10 @@
 import React, { useId } from "react";
-import { Input, InputProps } from "./Input";
+import { InputProps } from "./Input";
 
-export interface CurrencyInputProps extends Omit<InputProps, "onChange" | "value"> {
+export interface CurrencyInputProps extends Omit<
+  InputProps,
+  "onChange" | "value"
+> {
   value: number | string;
   onChange: (value: number) => void;
   currencyPrefix?: string;
@@ -47,7 +50,9 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
         </label>
       )}
       <div className="flex h-9 items-center rounded-md border border-border-strong bg-surface focus-within:border-navy-600 focus-within:ring-1 focus-within:ring-navy-600">
-        <span className="pl-3 font-mono text-body text-ink-600">{currencyPrefix}</span>
+        <span className="pl-3 font-mono text-body text-ink-600">
+          {currencyPrefix}
+        </span>
         <input
           id={inputId}
           type="text"

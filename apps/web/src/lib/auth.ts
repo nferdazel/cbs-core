@@ -54,7 +54,7 @@ export function getCsrfToken(): string | null {
   if (!isBrowser()) return null;
   const escaped = CSRF_COOKIE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = document.cookie.match(
-    new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`)
+    new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`),
   );
   return match ? decodeURIComponent(match[1]) : null;
 }

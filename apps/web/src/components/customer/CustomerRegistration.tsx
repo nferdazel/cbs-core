@@ -85,8 +85,10 @@ export function CustomerRegistration({
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
-    if (!fullName.trim()) errors.full_name = t.customerRegistration.requiredFullName;
-    if (!idCardNumber.trim()) errors.id_card_number = t.customerRegistration.requiredIdCard;
+    if (!fullName.trim())
+      errors.full_name = t.customerRegistration.requiredFullName;
+    if (!idCardNumber.trim())
+      errors.id_card_number = t.customerRegistration.requiredIdCard;
     if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
       errors.email = t.customerRegistration.invalidEmail;
     }
@@ -126,7 +128,9 @@ export function CustomerRegistration({
       onRegistered(customer);
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : t.customerRegistration.submitError;
+        err instanceof ApiError
+          ? err.message
+          : t.customerRegistration.submitError;
       const field = fieldForApiMessage(message);
       setFieldErrors(field ? { [field]: message } : {});
       setFormError(field ? null : message);
@@ -153,7 +157,9 @@ export function CustomerRegistration({
             <p className="font-mono text-page text-ink-900">
               {registered.cif_number}
             </p>
-            <p className="mt-1 text-body text-ink-900">{registered.full_name}</p>
+            <p className="mt-1 text-body text-ink-900">
+              {registered.full_name}
+            </p>
             <p className="mt-1 text-meta text-ink-600">
               {t.customerRegistration.successHint}
             </p>
@@ -229,7 +235,11 @@ export function CustomerRegistration({
           />
 
           {formError && (
-            <p className="text-meta text-debit-700" role="alert" aria-live="assertive">
+            <p
+              className="text-meta text-debit-700"
+              role="alert"
+              aria-live="assertive"
+            >
               {formError}
             </p>
           )}
@@ -250,18 +260,24 @@ export function CustomerRegistration({
             <p>{t.customerRegistration.confirmDescription}</p>
             <dl className="mt-2 space-y-1">
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-600">{t.customerRegistration.fullName}</dt>
+                <dt className="text-ink-600">
+                  {t.customerRegistration.fullName}
+                </dt>
                 <dd className="text-right text-ink-900">{fullName.trim()}</dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-600">
                   {t.customerRegistration.idCardNumber}
                 </dt>
-                <dd className="font-mono text-ink-900">{idCardNumber.trim()}</dd>
+                <dd className="font-mono text-ink-900">
+                  {idCardNumber.trim()}
+                </dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-600">{t.customerRegistration.email}</dt>
-                <dd className="text-right text-ink-900">{email.trim() || "-"}</dd>
+                <dd className="text-right text-ink-900">
+                  {email.trim() || "-"}
+                </dd>
               </div>
             </dl>
           </>

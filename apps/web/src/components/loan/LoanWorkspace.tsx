@@ -53,7 +53,7 @@ const COLLECTIBILITY_VARIANT: Record<
 
 function collectibilityLabel(
   t: Dictionary["loans"],
-  value: OJKCollectibility
+  value: OJKCollectibility,
 ): string {
   switch (value) {
     case "1_LANCAR":
@@ -80,10 +80,7 @@ function CollectibilityBadge({ value }: { value: OJKCollectibility }) {
 }
 
 // Skema imbal hasil produk adalah kunci teknis (MURABAHAH dll.); labelnya dari kamus.
-function schemeLabel(
-  t: Dictionary["loans"],
-  product?: BankingProduct
-): string {
+function schemeLabel(t: Dictionary["loans"], product?: BankingProduct): string {
   if (!product) return t.unknown;
   switch (product.profit_scheme) {
     case "MURABAHAH":
@@ -163,7 +160,7 @@ function LoanApplyForm({
       .then((res) => {
         if (cancelled) return;
         setAccounts(
-          (res.data ?? []).filter((acc) => acc.customer_id === customerId)
+          (res.data ?? []).filter((acc) => acc.customer_id === customerId),
         );
         setAccountId("");
       })
@@ -223,9 +220,7 @@ function LoanApplyForm({
       onApplied(unwrap(response));
       setConfirmOpen(false);
     } catch (err) {
-      setFormError(
-        err instanceof ApiError ? err.message : t.loans.applyError
-      );
+      setFormError(err instanceof ApiError ? err.message : t.loans.applyError);
       setConfirmOpen(false);
     } finally {
       setSubmitting(false);
@@ -310,12 +305,12 @@ function LoanApplyForm({
           {selectedProduct && (
             <p className="text-meta text-ink-600">
               {t.loans.productRange}{" "}
-              <MoneyText value={selectedProduct.min_amount} />{" "}
-              {t.loans.toRange}{" "}
+              <MoneyText value={selectedProduct.min_amount} /> {t.loans.toRange}{" "}
               <MoneyText value={selectedProduct.max_amount} />,{" "}
               {t.loans.termLabel}{" "}
               <span className="font-mono">
-                {selectedProduct.min_term_months}-{selectedProduct.max_term_months}
+                {selectedProduct.min_term_months}-
+                {selectedProduct.max_term_months}
               </span>{" "}
               {t.loans.termSuffix}.
             </p>
@@ -440,9 +435,7 @@ function LoanDetailPanel({
       const response = await request<Loan>(`/loans/${loanId}`);
       setLoan(unwrap(response));
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.loans.detailLoadError
-      );
+      setError(err instanceof ApiError ? err.message : t.loans.detailLoadError);
     } finally {
       setLoading(false);
     }
@@ -454,12 +447,12 @@ function LoanDetailPanel({
 
   const productById = useMemo(
     () => Object.fromEntries(products.map((p) => [p.id, p])),
-    [products]
+    [products],
   );
   const product = loan?.product_id ? productById[loan.product_id] : undefined;
 
   const unpaidSchedules = (loan?.schedules ?? []).filter(
-    (s) => s.status !== "PAID"
+    (s) => s.status !== "PAID",
   );
 
   const openAction = (kind: ActionKind) => {
@@ -483,7 +476,7 @@ function LoanDetailPanel({
             method: "POST",
             idempotencyKey,
             body: { installment_no: Number(installmentNo) },
-          }
+          },
         );
         const schedule = unwrap(response);
         setFeedback({
@@ -508,7 +501,7 @@ function LoanDetailPanel({
       onChanged();
     } catch (err) {
       setActionError(
-        err instanceof ApiError ? err.message : t.loans.actionFailed
+        err instanceof ApiError ? err.message : t.loans.actionFailed,
       );
       setPending(null);
     } finally {
@@ -517,7 +510,11 @@ function LoanDetailPanel({
   };
 
   const scheduleColumns: Column<LoanSchedule>[] = [
-    { header: t.loans.colInstallmentNo, accessorKey: "installment_no", isMono: true },
+    {
+      header: t.loans.colInstallmentNo,
+      accessorKey: "installment_no",
+      isMono: true,
+    },
     {
       header: t.loans.colDueDate,
       cell: (row) => formatDate(row.due_date),
@@ -609,14 +606,23 @@ function LoanDetailPanel({
 
         <DefinitionList
           items={[
-            { label: t.loans.customer, value: customerLabel(loan.customer_id, customerNames) },
-            { label: t.loans.labelProduct, value: product ? `${product.code} - ${product.name}` : "-" },
+            {
+              label: t.loans.customer,
+              value: customerLabel(loan.customer_id, customerNames),
+            },
+            {
+              label: t.loans.labelProduct,
+              value: product ? `${product.code} - ${product.name}` : "-",
+            },
             { label: t.common.status, value: loan.status },
             {
               label: t.loans.labelScheme,
               value: schemeLabel(t.loans, product),
             },
-            { label: t.loans.principal, value: <MoneyText value={loan.principal_amount} /> },
+            {
+              label: t.loans.principal,
+              value: <MoneyText value={loan.principal_amount} />,
+            },
             {
               label: t.loans.labelRemainingPrincipal,
               value: <MoneyText value={loan.outstanding_principal} />,
@@ -648,7 +654,7 @@ function LoanDetailPanel({
               ? {
                   label: t.loans.labelProfitSharing,
                   value: formatRate(
-                    String(Number(loan.profit_sharing_ratio) * 100)
+                    String(Number(loan.profit_sharing_ratio) * 100),
                   ),
                   isMono: true,
                 }
@@ -657,7 +663,11 @@ function LoanDetailPanel({
               label: t.loans.labelCollectibility,
               value: <CollectibilityBadge value={loan.collectibility} />,
             },
-            { label: t.loans.labelDpd, value: `${loan.dpd} ${t.loans.dpdSuffix}`, isMono: true },
+            {
+              label: t.loans.labelDpd,
+              value: `${loan.dpd} ${t.loans.dpdSuffix}`,
+              isMono: true,
+            },
             { label: t.loans.labelPurpose, value: loan.purpose || "-" },
           ].filter((item) => item !== null)}
         />
@@ -737,7 +747,9 @@ function LoanDetailPanel({
         title={pending ? actionLabel(t.loans, pending) : t.common.confirm}
         destructive={pending === "reject"}
         loading={submitting}
-        confirmLabel={pending ? actionLabel(t.loans, pending) : t.common.confirm}
+        confirmLabel={
+          pending ? actionLabel(t.loans, pending) : t.common.confirm
+        }
         onCancel={() => setPending(null)}
         onConfirm={runAction}
         description={
@@ -796,29 +808,30 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const customerNames = useMemo(
     () => Object.fromEntries(customers.map((c) => [c.id, c.full_name])),
-    [customers]
+    [customers],
   );
   const [formOpen, setFormOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [listReloadKey, setListReloadKey] = useState(0);
 
-  const loadLoans = useCallback(async (targetPage: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await request<Loan[]>(
-        `/loans?page=${targetPage}&page_size=${PAGE_SIZE}`
-      );
-      setLoans(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.loans.listLoadError
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const loadLoans = useCallback(
+    async (targetPage: number) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await request<Loan[]>(
+          `/loans?page=${targetPage}&page_size=${PAGE_SIZE}`,
+        );
+        setLoans(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : t.loans.listLoadError);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     loadLoans(page);
@@ -843,22 +856,22 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
 
   const productById = useMemo(
     () => Object.fromEntries(products.map((p) => [p.id, p])),
-    [products]
+    [products],
   );
 
   const applyProducts = useMemo(
     () =>
       products.filter(
-        (p) => p.family === "LOAN" && p.book === book && p.is_active
+        (p) => p.family === "LOAN" && p.book === book && p.is_active,
       ),
-    [products, book]
+    [products, book],
   );
 
   const productsReady = products.length > 0;
   const visibleLoans = useMemo(() => {
     if (!productsReady) return loans;
     return loans.filter(
-      (loan) => loan.product_id && productById[loan.product_id]?.book === book
+      (loan) => loan.product_id && productById[loan.product_id]?.book === book,
     );
   }, [loans, productsReady, productById, book]);
 
@@ -889,7 +902,10 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
           {
             header: t.loans.labelScheme,
             cell: (row: Loan) =>
-              schemeLabel(t.loans, row.product_id ? productById[row.product_id] : undefined),
+              schemeLabel(
+                t.loans,
+                row.product_id ? productById[row.product_id] : undefined,
+              ),
           } as Column<Loan>,
         ]
       : []),
@@ -934,7 +950,9 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
         <Card>
           <CardHeader>
             <CardTitle>
-              {syariah ? t.loans.listTitleSyariah : t.loans.listTitleConventional}
+              {syariah
+                ? t.loans.listTitleSyariah
+                : t.loans.listTitleConventional}
             </CardTitle>
             <Button size="sm" onClick={() => setFormOpen((open) => !open)}>
               {t.loans.applyButton}
@@ -952,9 +970,7 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
               keyExtractor={(row) => row.id}
               loading={loading}
               emptyMessage={
-                syariah
-                  ? t.loans.emptySyariah
-                  : t.loans.emptyConventional
+                syariah ? t.loans.emptySyariah : t.loans.emptyConventional
               }
               zebra
             />

@@ -8,7 +8,10 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, isMono = false, className = "", ...props }, ref) => {
+  (
+    { label, error, helperText, isMono = false, className = "", ...props },
+    ref,
+  ) => {
     // Label harus terhubung ke input lewat htmlFor/id agar pembaca layar membacakan
     // nama field, bukan sekadar teks visual di sebelahnya. id pemanggil dipakai bila ada.
     const generatedId = useId();
@@ -39,7 +42,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         ) : null}
       </div>
     );
-  }
+  },
 );
 
 Input.displayName = "Input";

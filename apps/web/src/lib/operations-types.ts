@@ -27,7 +27,9 @@ export interface PendingApprovalResult {
 }
 
 /** Membedakan respons 202 maker-checker dari jurnal yang benar-benar diposting. */
-export function isPendingApproval(value: unknown): value is PendingApprovalResult {
+export function isPendingApproval(
+  value: unknown,
+): value is PendingApprovalResult {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -38,30 +40,18 @@ export function isPendingApproval(value: unknown): value is PendingApprovalResul
 
 /** domain.ProductFamily (product.go) */
 export type ProductFamily =
-  | "SAVINGS"
-  | "TIME_DEPOSIT"
-  | "LOAN"
-  | "CURRENT_ACCOUNT";
+  "SAVINGS" | "TIME_DEPOSIT" | "LOAN" | "CURRENT_ACCOUNT";
 
 /** domain.COABook (product.go) */
 export type COABook = "CONVENTIONAL" | "SYARIAH";
 
 /** domain.ProfitScheme (product.go) */
 export type ProfitScheme =
-  | "INTEREST"
-  | "MURABAHAH"
-  | "MUDHARABAH"
-  | "MUSYARAKAH"
-  | "IJARAH"
-  | "WADIAH";
+  "INTEREST" | "MURABAHAH" | "MUDHARABAH" | "MUSYARAKAH" | "IJARAH" | "WADIAH";
 
 /** domain.ScheduleMethod (product.go) */
 export type ScheduleMethod =
-  | "FLAT"
-  | "ANNUITY"
-  | "SLIDING"
-  | "BAGI_HASIL"
-  | "NONE";
+  "FLAT" | "ANNUITY" | "SLIDING" | "BAGI_HASIL" | "NONE";
 
 /** domain.BankingProduct (product.go) */
 export interface BankingProduct {
@@ -103,11 +93,7 @@ export type InstallmentStatus = "PENDING" | "PAID" | "OVERDUE" | "PARTIAL";
 
 /** domain.OJKCollectibility (loan.go) */
 export type OJKCollectibility =
-  | "1_LANCAR"
-  | "2_DPK"
-  | "3_KURANG_LANCAR"
-  | "4_DIRAGUKAN"
-  | "5_MACET";
+  "1_LANCAR" | "2_DPK" | "3_KURANG_LANCAR" | "4_DIRAGUKAN" | "5_MACET";
 
 /** domain.AccrualStatus (loan.go) */
 export type AccrualStatus = "ACCRUAL_PERFORMING" | "CASH_BASIS_NPL";

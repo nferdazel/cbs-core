@@ -48,7 +48,7 @@ export function AccountOpening({
   const { user } = useAuth();
 
   const [selected, setSelected] = useState<SelectedCustomer | null>(
-    initialCustomer ?? null
+    initialCustomer ?? null,
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState<Customer[]>([]);
@@ -82,7 +82,7 @@ export function AccountOpening({
     const timer = setTimeout(async () => {
       try {
         const response = await request<Customer[]>(
-          `/customers?page=1&page_size=8&q=${encodeURIComponent(term)}`
+          `/customers?page=1&page_size=8&q=${encodeURIComponent(term)}`,
         );
         if (cancelled) return;
         setResults(response.data ?? []);
@@ -91,7 +91,7 @@ export function AccountOpening({
         if (cancelled) return;
         setResults([]);
         setSearchError(
-          err instanceof ApiError ? err.message : t.accountOpening.searchError
+          err instanceof ApiError ? err.message : t.accountOpening.searchError,
         );
       } finally {
         if (!cancelled) setSearching(false);
@@ -113,8 +113,8 @@ export function AccountOpening({
         if (cancelled) return;
         setProducts(
           (response.data ?? []).filter((product) =>
-            OPENABLE_FAMILIES.has(product.family)
-          )
+            OPENABLE_FAMILIES.has(product.family),
+          ),
         );
         setProductError(null);
         setProductForbidden(false);
@@ -122,7 +122,9 @@ export function AccountOpening({
       .catch((err) => {
         if (cancelled) return;
         setProductError(
-          err instanceof ApiError ? err.message : t.accountOpening.productLoadError
+          err instanceof ApiError
+            ? err.message
+            : t.accountOpening.productLoadError,
         );
         setProductForbidden(err instanceof ApiError && err.status === 403);
       })
@@ -174,7 +176,7 @@ export function AccountOpening({
       onOpened?.(account);
     } catch (err) {
       setFormError(
-        err instanceof ApiError ? err.message : t.accountOpening.openError
+        err instanceof ApiError ? err.message : t.accountOpening.openError,
       );
       setConfirmOpen(false);
     } finally {
@@ -214,15 +216,15 @@ export function AccountOpening({
               <p className="font-mono text-page text-ink-900">
                 {opened.account_number}
               </p>
-              <p className="mt-1 text-body text-ink-900">
-                {customerLabel}
-              </p>
+              <p className="mt-1 text-body text-ink-900">{customerLabel}</p>
               <p className="mt-1 text-meta text-ink-600">
                 {t.accountOpening.successHint}
               </p>
             </Alert>
             <div className="flex gap-2">
-              <Button onClick={resetForNew}>{t.accountOpening.againButton}</Button>
+              <Button onClick={resetForNew}>
+                {t.accountOpening.againButton}
+              </Button>
               <Button variant="secondary" onClick={onClose}>
                 {t.accountOpening.closeButton}
               </Button>
@@ -230,7 +232,9 @@ export function AccountOpening({
           </div>
         ) : (
           <form onSubmit={openConfirm} className="space-y-4">
-            <p className="text-meta text-ink-600">{t.accountOpening.description}</p>
+            <p className="text-meta text-ink-600">
+              {t.accountOpening.description}
+            </p>
 
             {selected ? (
               <div className="space-y-1">
@@ -270,7 +274,10 @@ export function AccountOpening({
                     />
                   </div>
                 </div>
-                <p id="account-customer-search-hint" className="text-meta text-ink-600">
+                <p
+                  id="account-customer-search-hint"
+                  className="text-meta text-ink-600"
+                >
                   {t.accountOpening.searchCustomerHint}
                 </p>
 
@@ -280,7 +287,11 @@ export function AccountOpening({
                   </p>
                 )}
                 {searchError && (
-                  <p className="text-meta text-debit-700" role="alert" aria-live="assertive">
+                  <p
+                    className="text-meta text-debit-700"
+                    role="alert"
+                    aria-live="assertive"
+                  >
                     {searchError}
                   </p>
                 )}
@@ -292,11 +303,12 @@ export function AccountOpening({
                       {t.accountOpening.searchEmpty}
                     </p>
                   )}
-                {searchTerm.trim().length > 0 && searchTerm.trim().length < 2 && (
-                  <p className="text-meta text-ink-600" role="status">
-                    {t.accountOpening.searchMin}
-                  </p>
-                )}
+                {searchTerm.trim().length > 0 &&
+                  searchTerm.trim().length < 2 && (
+                    <p className="text-meta text-ink-600" role="status">
+                      {t.accountOpening.searchMin}
+                    </p>
+                  )}
 
                 {results.length > 0 && (
                   <ul className="divide-y divide-border rounded-md border border-border">
@@ -321,7 +333,10 @@ export function AccountOpening({
                               {customer.full_name}
                             </span>
                           </span>
-                          <StatusBadge status={customer.status} domain="customer" />
+                          <StatusBadge
+                            status={customer.status}
+                            domain="customer"
+                          />
                         </button>
                       </li>
                     ))}
@@ -352,7 +367,9 @@ export function AccountOpening({
                 label={t.accountOpening.currency}
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value)}
-                options={[{ value: "IDR", label: t.accountOpening.currencyIdr }]}
+                options={[
+                  { value: "IDR", label: t.accountOpening.currencyIdr },
+                ]}
                 helperText={t.accountOpening.currencyHint}
               />
             </div>
@@ -377,11 +394,17 @@ export function AccountOpening({
               <p className="flex h-9 items-center rounded-md border border-border bg-canvas px-3 font-mono text-body text-ink-900">
                 {branchCode}
               </p>
-              <p className="text-meta text-ink-600">{t.accountOpening.branchHint}</p>
+              <p className="text-meta text-ink-600">
+                {t.accountOpening.branchHint}
+              </p>
             </div>
 
             {formError && (
-              <p className="text-meta text-debit-700" role="alert" aria-live="assertive">
+              <p
+                className="text-meta text-debit-700"
+                role="alert"
+                aria-live="assertive"
+              >
                 {formError}
               </p>
             )}

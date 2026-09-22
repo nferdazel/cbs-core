@@ -24,12 +24,10 @@ export const Button: React.FC<ButtonProps> = ({
   const variantStyles = {
     primary:
       "bg-navy-700 text-white border-navy-700 hover:bg-navy-600 hover:border-navy-600",
-    secondary:
-      "bg-surface text-ink-900 border-border-strong hover:bg-canvas",
+    secondary: "bg-surface text-ink-900 border-border-strong hover:bg-canvas",
     ghost:
       "bg-transparent text-ink-600 border-transparent hover:bg-canvas hover:text-ink-900",
-    danger:
-      "bg-debit-700 text-white border-debit-700 hover:opacity-90",
+    danger: "bg-debit-700 text-white border-debit-700 hover:opacity-90",
   };
 
   const sizeStyles = {

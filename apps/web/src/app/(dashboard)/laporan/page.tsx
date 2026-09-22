@@ -56,7 +56,7 @@ export default function LaporanPage() {
       { value: "income-statement", label: t.reports.kindIncomeStatement },
       { value: "cash-flow", label: t.reports.kindCashFlow },
     ],
-    [t]
+    [t],
   );
 
   const load = useCallback(async () => {
@@ -69,22 +69,22 @@ export default function LaporanPage() {
     try {
       if (kind === "trial-balance") {
         const res = await request<TrialBalanceRow[]>(
-          `/reports/trial-balance?from=${from}&to=${to}`
+          `/reports/trial-balance?from=${from}&to=${to}`,
         );
         setTrial(res.data ?? []);
       } else if (kind === "balance-sheet") {
         const res = await request<BalanceSheet>(
-          `/reports/balance-sheet?as_of=${asOf}`
+          `/reports/balance-sheet?as_of=${asOf}`,
         );
         setBalance(res.data ?? null);
       } else if (kind === "income-statement") {
         const res = await request<IncomeStatement>(
-          `/reports/income-statement?from=${from}&to=${to}`
+          `/reports/income-statement?from=${from}&to=${to}`,
         );
         setIncome(res.data ?? null);
       } else {
         const res = await request<CashFlow>(
-          `/reports/cash-flow?from=${from}&to=${to}`
+          `/reports/cash-flow?from=${from}&to=${to}`,
         );
         setCash(res.data ?? null);
       }
@@ -135,10 +135,7 @@ export default function LaporanPage() {
 
   return (
     <>
-      <PageHeader
-        title={t.reports.title}
-        description={t.reports.description}
-      />
+      <PageHeader title={t.reports.title} description={t.reports.description} />
 
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-end gap-4">
@@ -153,10 +150,18 @@ export default function LaporanPage() {
           {usesRange ? (
             <>
               <div className="w-44">
-                <DateInput label={t.reports.from} value={from} onChange={(e) => setFrom(e.target.value)} />
+                <DateInput
+                  label={t.reports.from}
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
               </div>
               <div className="w-44">
-                <DateInput label={t.reports.to} value={to} onChange={(e) => setTo(e.target.value)} />
+                <DateInput
+                  label={t.reports.to}
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
               </div>
             </>
           ) : (
@@ -168,7 +173,10 @@ export default function LaporanPage() {
               />
             </div>
           )}
-          <Button onClick={() => setReloadKey((key) => key + 1)} loading={loading}>
+          <Button
+            onClick={() => setReloadKey((key) => key + 1)}
+            loading={loading}
+          >
             {t.reports.show}
           </Button>
         </CardContent>
@@ -179,7 +187,9 @@ export default function LaporanPage() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{reportOptions.find((o) => o.value === kind)?.label}</CardTitle>
+            <CardTitle>
+              {reportOptions.find((o) => o.value === kind)?.label}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading && kind !== "trial-balance" && <LoadingState />}
@@ -208,9 +218,27 @@ export default function LaporanPage() {
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: t.reports.totalRevenue, value: <MoneyText value={income.total_revenue} /> },
-                      { label: t.reports.totalExpense, value: <MoneyText value={income.total_expense} /> },
-                      { label: t.reports.netIncome, value: <MoneyText value={income.net_income} tone={Number(income.net_income) >= 0 ? "credit" : "debit"} /> },
+                      {
+                        label: t.reports.totalRevenue,
+                        value: <MoneyText value={income.total_revenue} />,
+                      },
+                      {
+                        label: t.reports.totalExpense,
+                        value: <MoneyText value={income.total_expense} />,
+                      },
+                      {
+                        label: t.reports.netIncome,
+                        value: (
+                          <MoneyText
+                            value={income.net_income}
+                            tone={
+                              Number(income.net_income) >= 0
+                                ? "credit"
+                                : "debit"
+                            }
+                          />
+                        ),
+                      },
                     ]}
                   />
                 </div>
@@ -230,10 +258,22 @@ export default function LaporanPage() {
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: t.reports.totalAssets, value: <MoneyText value={balance.total_assets} /> },
-                      { label: t.reports.totalLiabilities, value: <MoneyText value={balance.total_liabilities} /> },
-                      { label: t.reports.totalEquity, value: <MoneyText value={balance.total_equity} /> },
-                      { label: t.reports.netIncomeCurrent, value: <MoneyText value={balance.net_income} /> },
+                      {
+                        label: t.reports.totalAssets,
+                        value: <MoneyText value={balance.total_assets} />,
+                      },
+                      {
+                        label: t.reports.totalLiabilities,
+                        value: <MoneyText value={balance.total_liabilities} />,
+                      },
+                      {
+                        label: t.reports.totalEquity,
+                        value: <MoneyText value={balance.total_equity} />,
+                      },
+                      {
+                        label: t.reports.netIncomeCurrent,
+                        value: <MoneyText value={balance.net_income} />,
+                      },
                     ]}
                   />
                 </div>
@@ -253,10 +293,22 @@ export default function LaporanPage() {
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: t.reports.operating, value: <MoneyText value={cash.operating} /> },
-                      { label: t.reports.investing, value: <MoneyText value={cash.investing} /> },
-                      { label: t.reports.financing, value: <MoneyText value={cash.financing} /> },
-                      { label: t.reports.netChange, value: <MoneyText value={cash.net_change} /> },
+                      {
+                        label: t.reports.operating,
+                        value: <MoneyText value={cash.operating} />,
+                      },
+                      {
+                        label: t.reports.investing,
+                        value: <MoneyText value={cash.investing} />,
+                      },
+                      {
+                        label: t.reports.financing,
+                        value: <MoneyText value={cash.financing} />,
+                      },
+                      {
+                        label: t.reports.netChange,
+                        value: <MoneyText value={cash.net_change} />,
+                      },
                     ]}
                   />
                 </div>

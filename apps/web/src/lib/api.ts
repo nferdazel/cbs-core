@@ -131,7 +131,7 @@ async function refreshSession(): Promise<boolean> {
 
 async function performFetch(
   path: string,
-  options: RequestOptions
+  options: RequestOptions,
 ): Promise<Response> {
   const { body, idempotencyKey, headers, ...init } = options;
   const method = (init.method ?? "GET").toString().toUpperCase();
@@ -172,7 +172,7 @@ async function performFetch(
  */
 export async function request<T = unknown>(
   path: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<APIResponse<T>> {
   let response = await performFetch(path, options);
 
@@ -200,7 +200,10 @@ export async function request<T = unknown>(
   if (!response.ok || !payload?.success) {
     throw new ApiError({
       status: response.status,
-      message: payload?.error || payload?.message || defaultErrorMessage(response.status),
+      message:
+        payload?.error ||
+        payload?.message ||
+        defaultErrorMessage(response.status),
       data: payload,
     });
   }

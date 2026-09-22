@@ -20,10 +20,21 @@ export default function BerandaPage() {
         <CardContent>
           <DefinitionList
             items={[
-              { label: t.common.name, value: user?.full_name || user?.username || "-" },
-              { label: t.common.username, value: user?.username || "-", isMono: true },
+              {
+                label: t.common.name,
+                value: user?.full_name || user?.username || "-",
+              },
+              {
+                label: t.common.username,
+                value: user?.username || "-",
+                isMono: true,
+              },
               { label: t.common.role, value: user?.role || "-" },
-              { label: t.common.branch, value: user?.branch_code || "-", isMono: true },
+              {
+                label: t.common.branch,
+                value: user?.branch_code || "-",
+                isMono: true,
+              },
             ]}
           />
         </CardContent>

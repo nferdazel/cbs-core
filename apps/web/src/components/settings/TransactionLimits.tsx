@@ -62,7 +62,8 @@ export function TransactionLimits() {
     setLoading(true);
     setError(null);
     try {
-      const response = await request<TransactionLimitsResponse>("/system/limits");
+      const response =
+        await request<TransactionLimitsResponse>("/system/limits");
       setData(response.data ?? null);
     } catch (err) {
       setError(loadErrorMessage(err, t));
@@ -86,7 +87,7 @@ export function TransactionLimits() {
         const haystack =
           `${row.role} ${row.transaction_type} ${transactionTypeLabel(
             row.transaction_type,
-            t
+            t,
           )}`.toLowerCase();
         if (!haystack.includes(term)) return false;
       }
@@ -107,14 +108,14 @@ export function TransactionLimits() {
       .map(([role, groupRows]) => ({
         role,
         rows: [...groupRows].sort((a, b) =>
-          a.transaction_type.localeCompare(b.transaction_type, "id")
+          a.transaction_type.localeCompare(b.transaction_type, "id"),
         ),
       }));
   }, [filtered]);
 
   const unconfiguredCount = useMemo(
     () => rows.filter((row) => !row.configured).length,
-    [rows]
+    [rows],
   );
 
   const columns: Column<TransactionLimitRow>[] = [
@@ -183,9 +184,7 @@ export function TransactionLimits() {
             </p>
 
             {unconfiguredCount > 0 ? (
-              <Alert variant="warning">
-                {t.limits.unconfiguredNotice}
-              </Alert>
+              <Alert variant="warning">{t.limits.unconfiguredNotice}</Alert>
             ) : (
               <p className="text-body text-credit-700" role="status">
                 {t.limits.allConfigured}
@@ -211,7 +210,10 @@ export function TransactionLimits() {
                   options={[
                     { value: "ALL", label: t.limits.filterAll },
                     { value: "CONFIGURED", label: t.limits.filterConfigured },
-                    { value: "UNCONFIGURED", label: t.limits.filterUnconfigured },
+                    {
+                      value: "UNCONFIGURED",
+                      label: t.limits.filterUnconfigured,
+                    },
                   ]}
                 />
               </div>
@@ -237,7 +239,9 @@ export function TransactionLimits() {
                   <DataTable
                     columns={columns}
                     data={group.rows}
-                    keyExtractor={(row) => `${row.role}/${row.transaction_type}`}
+                    keyExtractor={(row) =>
+                      `${row.role}/${row.transaction_type}`
+                    }
                     emptyMessage={t.limits.empty}
                     zebra
                   />

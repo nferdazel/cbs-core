@@ -158,10 +158,7 @@ export interface CashFlow {
 }
 
 export type ReportKind =
-  | "trial-balance"
-  | "balance-sheet"
-  | "income-statement"
-  | "cash-flow";
+  "trial-balance" | "balance-sheet" | "income-statement" | "cash-flow";
 
 /**
  * Peninjauan pemetaan COA ke pos laporan OJK

@@ -29,23 +29,26 @@ export default function BukuBesarPage() {
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
 
-  const load = useCallback(async (targetPage: number) => {
-    setLoading(true);
-    setError(null);
-    setForbidden(false);
-    try {
-      const response = await request<JournalEntryWithBranch[]>(
-        `/transactions/journals?page=${targetPage}&page_size=${PAGE_SIZE}`
-      );
-      setJournals(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      setForbidden(isCrossBranchError(err));
-      setError(err instanceof ApiError ? err.message : t.ledger.loadError);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (targetPage: number) => {
+      setLoading(true);
+      setError(null);
+      setForbidden(false);
+      try {
+        const response = await request<JournalEntryWithBranch[]>(
+          `/transactions/journals?page=${targetPage}&page_size=${PAGE_SIZE}`,
+        );
+        setJournals(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        setForbidden(isCrossBranchError(err));
+        setError(err instanceof ApiError ? err.message : t.ledger.loadError);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     load(page);
@@ -79,10 +82,7 @@ export default function BukuBesarPage() {
 
   return (
     <>
-      <PageHeader
-        title={t.ledger.title}
-        description={t.ledger.description}
-      />
+      <PageHeader title={t.ledger.title} description={t.ledger.description} />
       {error && !loading ? (
         <ErrorState
           title={forbidden ? t.ledger.forbiddenTitle : t.ledger.errorTitle}

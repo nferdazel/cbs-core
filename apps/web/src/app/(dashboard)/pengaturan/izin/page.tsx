@@ -59,7 +59,9 @@ export default function IzinPage() {
       if (err instanceof ApiError && err.status === 403) {
         setError(t.permissionsPage.restricted);
       } else {
-        setError(err instanceof ApiError ? err.message : t.permissionsPage.loadError);
+        setError(
+          err instanceof ApiError ? err.message : t.permissionsPage.loadError,
+        );
       }
     } finally {
       setLoading(false);
@@ -71,15 +73,24 @@ export default function IzinPage() {
     else setLoading(false);
   }, [load, reloadKey, canReview]);
 
-  const groups = catalog?.groups ?? [];
+  // Identitas `groups` dijaga stabil agar useMemo hilir tidak dihitung ulang tiap render.
+  const groups = useMemo(() => catalog?.groups ?? [], [catalog]);
 
   const groupOptions = useMemo(
-    () => groups.map((group) => ({ value: group.code, label: `${group.code} - ${group.name}` })),
-    [groups]
+    () =>
+      groups.map((group) => ({
+        value: group.code,
+        label: `${group.code} - ${group.name}`,
+      })),
+    [groups],
   );
   const permissionOptions = useMemo(
-    () => (catalog?.available_permissions ?? []).map((p) => ({ value: p, label: p })),
-    [catalog]
+    () =>
+      (catalog?.available_permissions ?? []).map((p) => ({
+        value: p,
+        label: p,
+      })),
+    [catalog],
   );
 
   const onSubmit = async (event: React.FormEvent) => {
@@ -94,16 +105,19 @@ export default function IzinPage() {
 
     setSubmitting(true);
     try {
-      const response = await request<{ request_id: string }>("/permissions/requests", {
-        method: "POST",
-        body: {
-          group_code: groupCode,
-          permission,
-          operation,
-          confirm_access_loss: confirmAccessLoss,
-          notes: notes.trim(),
+      const response = await request<{ request_id: string }>(
+        "/permissions/requests",
+        {
+          method: "POST",
+          body: {
+            group_code: groupCode,
+            permission,
+            operation,
+            confirm_access_loss: confirmAccessLoss,
+            notes: notes.trim(),
+          },
         },
-      });
+      );
       const requestId = response.data?.request_id ?? "";
       setFeedback(`${t.permissionsPage.submitted} (${requestId})`);
       setPermission("");
@@ -115,7 +129,9 @@ export default function IzinPage() {
         setFormError(t.permissionsPage.forbidden);
       } else {
         setFormError(
-          err instanceof ApiError ? err.message : t.permissionsPage.requestError
+          err instanceof ApiError
+            ? err.message
+            : t.permissionsPage.requestError,
         );
       }
     } finally {
@@ -158,7 +174,9 @@ export default function IzinPage() {
       header: t.permissionsPage.colPermissions,
       cell: (row) =>
         row.permissions.length === 0 ? (
-          <span className="text-ink-600">{t.permissionsPage.noPermissions}</span>
+          <span className="text-ink-600">
+            {t.permissionsPage.noPermissions}
+          </span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {row.permissions.map((p) => (
@@ -195,7 +213,10 @@ export default function IzinPage() {
           title={t.permissionsPage.loadError}
           description={error}
           action={
-            <Button variant="secondary" onClick={() => setReloadKey((key) => key + 1)}>
+            <Button
+              variant="secondary"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
               {t.common.retry}
             </Button>
           }
@@ -246,11 +267,16 @@ export default function IzinPage() {
                 <Select
                   label={t.permissionsPage.operation}
                   value={operation}
-                  onChange={(event) => setOperation(event.target.value as "" | Operation)}
+                  onChange={(event) =>
+                    setOperation(event.target.value as "" | Operation)
+                  }
                   placeholder={t.permissionsPage.operationPlaceholder}
                   options={[
                     { value: "GRANT", label: t.permissionsPage.operationGrant },
-                    { value: "REVOKE", label: t.permissionsPage.operationRevoke },
+                    {
+                      value: "REVOKE",
+                      label: t.permissionsPage.operationRevoke,
+                    },
                   ]}
                 />
               </div>
@@ -265,20 +291,26 @@ export default function IzinPage() {
                   type="checkbox"
                   className="h-4 w-4 rounded-sm border border-border-strong"
                   checked={confirmAccessLoss}
-                  onChange={(event) => setConfirmAccessLoss(event.target.checked)}
+                  onChange={(event) =>
+                    setConfirmAccessLoss(event.target.checked)
+                  }
                 />
                 {t.permissionsPage.confirmAccessLoss}
               </label>
               <div className="flex items-center gap-3">
                 <Button type="submit" loading={submitting}>
-                  {submitting ? t.permissionsPage.submitting : t.permissionsPage.submit}
+                  {submitting
+                    ? t.permissionsPage.submitting
+                    : t.permissionsPage.submit}
                 </Button>
                 {formError && (
                   <span className="text-meta text-debit-700" role="alert">
                     {formError}
                   </span>
                 )}
-                {feedback && <span className="text-meta text-credit-700">{feedback}</span>}
+                {feedback && (
+                  <span className="text-meta text-credit-700">{feedback}</span>
+                )}
               </div>
             </form>
           </CardContent>

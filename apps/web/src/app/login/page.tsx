@@ -69,7 +69,9 @@ export default function LoginPage() {
               aria-pressed={language === "id"}
               onClick={() => setLanguage("id")}
               className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
-                language === "id" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"
+                language === "id"
+                  ? "bg-navy-700 font-medium text-white"
+                  : "text-ink-600 hover:text-ink-900"
               }`}
             >
               ID
@@ -79,7 +81,9 @@ export default function LoginPage() {
               aria-pressed={language === "en"}
               onClick={() => setLanguage("en")}
               className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
-                language === "en" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"
+                language === "en"
+                  ? "bg-navy-700 font-medium text-white"
+                  : "text-ink-600 hover:text-ink-900"
               }`}
             >
               EN

@@ -26,7 +26,11 @@ export interface AppSidebarProps {
  * menu harus ada di daftar yang diberikan server. Menyembunyikan menu BUKAN batas
  * keamanan; setiap endpoint tetap dijaga izin di API.
  */
-function isItemVisible(item: NavItem, menus?: string[] | null, activeBooks?: string[] | null): boolean {
+function isItemVisible(
+  item: NavItem,
+  menus?: string[] | null,
+  activeBooks?: string[] | null,
+): boolean {
   if (item.book && activeBooks && !activeBooks.includes(item.book)) {
     return false;
   }
@@ -41,7 +45,10 @@ function isItemVisible(item: NavItem, menus?: string[] | null, activeBooks?: str
  * di sisi kiri (bukan warna saja). Item yang tidak dibuka izin backend
  * (mis. Tutup Hari) disembunyikan, bukan ditampilkan lalu ditolak.
  */
-export const AppSidebar: React.FC<AppSidebarProps> = ({ menus, activeBooks }) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({
+  menus,
+  activeBooks,
+}) => {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -62,7 +69,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ menus, activeBooks }) =>
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
-                    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    : pathname === item.href ||
+                      pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>

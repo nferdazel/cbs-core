@@ -50,15 +50,13 @@ export function AccountReactivation({
     try {
       const response = await request<AccountRecord>(
         `/accounts/${encodeURIComponent(account.account_number)}/reactivate`,
-        { method: "POST", body: { notes: notes.trim() || undefined } }
+        { method: "POST", body: { notes: notes.trim() || undefined } },
       );
       setOpen(false);
       setNotes("");
       onReactivated(response.data ?? { ...account, status: "ACTIVE" });
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.reactivation.error
-      );
+      setError(err instanceof ApiError ? err.message : t.reactivation.error);
     } finally {
       setSubmitting(false);
     }

@@ -42,26 +42,31 @@ export default function TransaksiPage() {
   const [accountInfo, setAccountInfo] = useState<AccountRecord | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const load = useCallback(async (accNumber: string, targetPage: number) => {
-    setLoading(true);
-    setError(null);
-    setForbidden(false);
-    try {
-      const response = await request<JournalLine[]>(
-        `/accounts/${encodeURIComponent(accNumber)}/statements?page=${targetPage}&page_size=${PAGE_SIZE}`
-      );
-      setLines(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      // Rekening cabang lain dibalas 403, bukan daftar mutasi kosong. Tampilkan
-      // sebabnya agar tidak disalahartikan sebagai "tidak ada transaksi".
-      setForbidden(isCrossBranchError(err));
-      setError(err instanceof ApiError ? err.message : t.transactions.loadError);
-      setLines([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (accNumber: string, targetPage: number) => {
+      setLoading(true);
+      setError(null);
+      setForbidden(false);
+      try {
+        const response = await request<JournalLine[]>(
+          `/accounts/${encodeURIComponent(accNumber)}/statements?page=${targetPage}&page_size=${PAGE_SIZE}`,
+        );
+        setLines(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        // Rekening cabang lain dibalas 403, bukan daftar mutasi kosong. Tampilkan
+        // sebabnya agar tidak disalahartikan sebagai "tidak ada transaksi".
+        setForbidden(isCrossBranchError(err));
+        setError(
+          err instanceof ApiError ? err.message : t.transactions.loadError,
+        );
+        setLines([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     if (account) load(account, page);
@@ -71,7 +76,7 @@ export default function TransaksiPage() {
     setAccountInfo(null);
     try {
       const response = await request<AccountRecord>(
-        `/accounts/${encodeURIComponent(accNumber)}`
+        `/accounts/${encodeURIComponent(accNumber)}`,
       );
       setAccountInfo(response.data ?? null);
     } catch {
@@ -97,7 +102,7 @@ export default function TransaksiPage() {
   const handleReactivated = (updated: AccountRecord) => {
     setAccountInfo(updated);
     setSuccessMessage(
-      `${t.transactions.reactivatedPrefix}${updated.account_number}${t.transactions.reactivatedSuffix}`
+      `${t.transactions.reactivatedPrefix}${updated.account_number}${t.transactions.reactivatedSuffix}`,
     );
   };
 

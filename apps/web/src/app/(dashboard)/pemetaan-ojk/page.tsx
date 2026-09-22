@@ -3,10 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type {
-  OJKMappingReview,
-  OJKMappingReviewRow,
-} from "@/lib/types";
+import type { OJKMappingReview, OJKMappingReviewRow } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
@@ -73,13 +70,11 @@ export default function PemetaanOJKPage() {
       if (queryPeriod) params.set("period", queryPeriod);
       if (queryBook) params.set("book", queryBook);
       const response = await request<OJKMappingReview>(
-        `/reports/ojk/mapping?${params.toString()}`
+        `/reports/ojk/mapping?${params.toString()}`,
       );
       setData(response.data ?? null);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.ojkMapping.loadError
-      );
+      setError(err instanceof ApiError ? err.message : t.ojkMapping.loadError);
     } finally {
       setLoading(false);
     }
@@ -89,7 +84,8 @@ export default function PemetaanOJKPage() {
     load();
   }, [load]);
 
-  const rows = data?.rows ?? [];
+  // Identitas `rows` dijaga stabil agar useMemo hilir tidak dihitung ulang tiap render.
+  const rows = useMemo(() => data?.rows ?? [], [data]);
 
   const counts = useMemo(() => {
     let approved = 0;
@@ -110,8 +106,10 @@ export default function PemetaanOJKPage() {
     const term = search.trim().toLowerCase();
     return rows.filter((row) => {
       if (decisionFilter === "PENDING" && row.decision) return false;
-      if (decisionFilter === "APPROVED" && row.decision !== "DISETUJUI") return false;
-      if (decisionFilter === "NOTED" && row.decision !== "DICATAT") return false;
+      if (decisionFilter === "APPROVED" && row.decision !== "DISETUJUI")
+        return false;
+      if (decisionFilter === "NOTED" && row.decision !== "DICATAT")
+        return false;
       if (term) {
         const haystack = `${row.coa_code} ${row.coa_name}`.toLowerCase();
         if (!haystack.includes(term)) return false;
@@ -154,14 +152,14 @@ export default function PemetaanOJKPage() {
       setFeedback(
         target.kind === "approve"
           ? t.ojkMapping.feedbackApproved
-          : t.ojkMapping.feedbackNoted
+          : t.ojkMapping.feedbackNoted,
       );
       setTarget(null);
       setReloadKey((key) => key + 1);
     } catch (err) {
       // Dialog dibiarkan terbuka agar catatan yang sudah ditulis tidak hilang.
       setActionError(
-        err instanceof ApiError ? err.message : t.ojkMapping.actionFailed
+        err instanceof ApiError ? err.message : t.ojkMapping.actionFailed,
       );
     } finally {
       setSubmitting(false);
@@ -216,10 +214,13 @@ export default function PemetaanOJKPage() {
           {decisionBadge(row)}
           {row.decided_by && (
             <p className="text-meta text-ink-600">
-              {t.ojkMapping.colDecidedBy}: <span className="font-mono">{row.decided_by}</span>
+              {t.ojkMapping.colDecidedBy}:{" "}
+              <span className="font-mono">{row.decided_by}</span>
             </p>
           )}
-          {row.review_note && <p className="text-meta text-ink-600">{row.review_note}</p>}
+          {row.review_note && (
+            <p className="text-meta text-ink-600">{row.review_note}</p>
+          )}
         </div>
       ),
     },
@@ -237,7 +238,11 @@ export default function PemetaanOJKPage() {
                 <Button size="sm" onClick={() => openApprove(row)}>
                   {t.ojkMapping.approve}
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => openNote(row)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => openNote(row)}
+                >
                   {t.ojkMapping.note}
                 </Button>
               </div>
@@ -252,13 +257,18 @@ export default function PemetaanOJKPage() {
 
   return (
     <>
-      <PageHeader title={t.ojkMapping.title} description={t.ojkMapping.description} />
+      <PageHeader
+        title={t.ojkMapping.title}
+        description={t.ojkMapping.description}
+      />
 
       <Card className="mb-4">
         <CardContent>
           <p className="text-body text-ink-900">{t.ojkMapping.draftNotice}</p>
           {!canDecide && (
-            <p className="text-meta text-ink-600">{t.ojkMapping.readOnlyHint}</p>
+            <p className="text-meta text-ink-600">
+              {t.ojkMapping.readOnlyHint}
+            </p>
           )}
           {data?.source_unbalanced && (
             <p className="text-body text-debit-700" role="alert">
@@ -342,14 +352,19 @@ export default function PemetaanOJKPage() {
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: t.ojkMapping.totalLabel, value: counts.total },
-              { label: t.ojkMapping.approvedCountLabel, value: counts.approved },
+              {
+                label: t.ojkMapping.approvedCountLabel,
+                value: counts.approved,
+              },
               { label: t.ojkMapping.notedCountLabel, value: counts.noted },
               { label: t.ojkMapping.pendingCountLabel, value: counts.pending },
             ].map((item) => (
               <Card key={item.label}>
                 <CardContent className="p-4">
                   <p className="text-meta text-ink-600">{item.label}</p>
-                  <p className="text-title font-semibold text-ink-900">{item.value}</p>
+                  <p className="text-title font-semibold text-ink-900">
+                    {item.value}
+                  </p>
                 </CardContent>
               </Card>
             ))}
@@ -364,16 +379,26 @@ export default function PemetaanOJKPage() {
               <CardTitle>{t.ojkMapping.unmappedCoaTitle}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-meta text-ink-600">{t.ojkMapping.unmappedCoaDesc}</p>
+              <p className="text-meta text-ink-600">
+                {t.ojkMapping.unmappedCoaDesc}
+              </p>
               {unmappedCoa.length === 0 ? (
-                <p className="text-body text-ink-600">{t.ojkMapping.unmappedCoaEmpty}</p>
+                <p className="text-body text-ink-600">
+                  {t.ojkMapping.unmappedCoaEmpty}
+                </p>
               ) : (
                 <ul className="space-y-1">
                   {unmappedCoa.map((item) => (
-                    <li key={`${item.form}/${item.coa_code}`} className="text-body text-ink-900">
+                    <li
+                      key={`${item.form}/${item.coa_code}`}
+                      className="text-body text-ink-900"
+                    >
                       <span className="font-mono">{item.coa_code}</span>
                       {item.coa_name ? ` — ${item.coa_name}` : ""}
-                      <span className="text-meta text-ink-600"> ({item.form})</span>
+                      <span className="text-meta text-ink-600">
+                        {" "}
+                        ({item.form})
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -386,15 +411,26 @@ export default function PemetaanOJKPage() {
               <CardTitle>{t.ojkMapping.unmappedPosTitle}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-meta text-ink-600">{t.ojkMapping.unmappedPosDesc}</p>
+              <p className="text-meta text-ink-600">
+                {t.ojkMapping.unmappedPosDesc}
+              </p>
               {unmappedPositions.length === 0 ? (
-                <p className="text-body text-ink-600">{t.ojkMapping.unmappedPosEmpty}</p>
+                <p className="text-body text-ink-600">
+                  {t.ojkMapping.unmappedPosEmpty}
+                </p>
               ) : (
                 <ul className="space-y-1">
                   {unmappedPositions.map((item) => (
-                    <li key={`${item.form}/${item.sandi}`} className="text-body text-ink-900">
-                      <span className="font-mono">{item.sandi}</span> — {item.pos_name}
-                      <span className="text-meta text-ink-600"> ({item.form})</span>
+                    <li
+                      key={`${item.form}/${item.sandi}`}
+                      className="text-body text-ink-900"
+                    >
+                      <span className="font-mono">{item.sandi}</span> —{" "}
+                      {item.pos_name}
+                      <span className="text-meta text-ink-600">
+                        {" "}
+                        ({item.form})
+                      </span>
                     </li>
                   ))}
                 </ul>

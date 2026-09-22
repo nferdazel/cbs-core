@@ -56,7 +56,7 @@ export default function PPAPPage() {
       setPreview(response.data ?? null);
     } catch (err) {
       setPreviewError(
-        err instanceof ApiError ? err.message : t.ppap.previewLoadError
+        err instanceof ApiError ? err.message : t.ppap.previewLoadError,
       );
     } finally {
       setPreviewLoading(false);
@@ -80,11 +80,7 @@ export default function PPAPPage() {
       // Perhitungan mengubah kolektibilitas dan cadangan, jadi pratinjau dimuat ulang.
       await loadPreview();
     } catch (err) {
-      setRunError(
-        err instanceof ApiError
-          ? err.message
-          : t.ppap.runError
-      );
+      setRunError(err instanceof ApiError ? err.message : t.ppap.runError);
       setConfirmOpen(false);
     } finally {
       setRunning(false);
@@ -168,15 +164,29 @@ export default function PPAPPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-body text-credit-700">
-              {t.ppap.runSuccess}
-            </p>
+            <p className="text-body text-credit-700">{t.ppap.runSuccess}</p>
             <DefinitionList
               items={[
-                { label: t.ppap.totalLoans, value: runSummary.total, isMono: true },
-                { label: t.ppap.processedLabel, value: runSummary.processed, isMono: true },
-                { label: t.ppap.failedLabel, value: runSummary.failed, isMono: true },
-                { label: t.ppap.skippedLabel, value: runSummary.skipped, isMono: true },
+                {
+                  label: t.ppap.totalLoans,
+                  value: runSummary.total,
+                  isMono: true,
+                },
+                {
+                  label: t.ppap.processedLabel,
+                  value: runSummary.processed,
+                  isMono: true,
+                },
+                {
+                  label: t.ppap.failedLabel,
+                  value: runSummary.failed,
+                  isMono: true,
+                },
+                {
+                  label: t.ppap.skippedLabel,
+                  value: runSummary.skipped,
+                  isMono: true,
+                },
                 {
                   label: t.ppap.totalAdjustment,
                   value: <MoneyText value={runSummary.total_adjustment} />,
@@ -246,8 +256,16 @@ export default function PPAPPage() {
                       value: `${preview.processed} ${t.common.of} ${preview.total}`,
                       isMono: true,
                     },
-                    { label: t.ppap.failedLabel, value: preview.failed, isMono: true },
-                    { label: t.ppap.skippedLabel, value: preview.skipped, isMono: true },
+                    {
+                      label: t.ppap.failedLabel,
+                      value: preview.failed,
+                      isMono: true,
+                    },
+                    {
+                      label: t.ppap.skippedLabel,
+                      value: preview.skipped,
+                      isMono: true,
+                    },
                     {
                       label: t.ppap.totalAdjustment,
                       value: <MoneyText value={preview.total_adjustment} />,
@@ -292,9 +310,7 @@ export default function PPAPPage() {
         onConfirm={runDaily}
         description={
           <>
-            <p>
-              {t.ppap.confirmDesc}
-            </p>
+            <p>{t.ppap.confirmDesc}</p>
             {preview ? (
               <dl className="space-y-1">
                 <div className="flex justify-between">
@@ -308,16 +324,16 @@ export default function PPAPPage() {
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">{t.ppap.totalAdjustmentShort}</dt>
+                  <dt className="text-ink-600">
+                    {t.ppap.totalAdjustmentShort}
+                  </dt>
                   <dd>
                     <MoneyText value={preview.total_adjustment} />
                   </dd>
                 </div>
               </dl>
             ) : (
-              <p className="text-accent-600">
-                {t.ppap.amountsUnavailable}
-              </p>
+              <p className="text-accent-600">{t.ppap.amountsUnavailable}</p>
             )}
           </>
         }

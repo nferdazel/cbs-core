@@ -83,8 +83,14 @@ export default function CabangPage() {
   const parentOptions = useMemo(() => {
     if (form.level === "") return [];
     return units
-      .filter((unit) => LEVEL_RANK[unit.unit_level] > LEVEL_RANK[form.level as OrgUnitLevel])
-      .map((unit) => ({ value: unit.code, label: `${unit.code} - ${unit.name}` }));
+      .filter(
+        (unit) =>
+          LEVEL_RANK[unit.unit_level] > LEVEL_RANK[form.level as OrgUnitLevel],
+      )
+      .map((unit) => ({
+        value: unit.code,
+        label: `${unit.code} - ${unit.name}`,
+      }));
   }, [units, form.level]);
 
   const parentName = useMemo(() => {
@@ -119,9 +125,13 @@ export default function CabangPage() {
             units.some(
               (unit) =>
                 unit.code === prev.parentCode &&
-                LEVEL_RANK[unit.unit_level] > LEVEL_RANK[next as OrgUnitLevel]
+                LEVEL_RANK[unit.unit_level] > LEVEL_RANK[next as OrgUnitLevel],
             ));
-        return { ...prev, level: next, parentCode: stillValid ? prev.parentCode : "" };
+        return {
+          ...prev,
+          level: next,
+          parentCode: stillValid ? prev.parentCode : "",
+        };
       }
       return { ...prev, [field]: value };
     });
@@ -157,7 +167,9 @@ export default function CabangPage() {
       if (err instanceof ApiError && err.status === 403) {
         setFormError(t.orgUnits.forbidden);
       } else {
-        setFormError(err instanceof ApiError ? err.message : t.orgUnits.createError);
+        setFormError(
+          err instanceof ApiError ? err.message : t.orgUnits.createError,
+        );
       }
     } finally {
       setSaving(false);
@@ -170,14 +182,20 @@ export default function CabangPage() {
     {
       header: t.orgUnits.colLevel,
       cell: (row) => (
-        <Badge variant={LEVEL_BADGE[row.unit_level]}>{levelLabel(row.unit_level)}</Badge>
+        <Badge variant={LEVEL_BADGE[row.unit_level]}>
+          {levelLabel(row.unit_level)}
+        </Badge>
       ),
     },
     {
       header: t.orgUnits.colParent,
       cell: (row) => {
         const parent = parentName(row);
-        return parent ? <span className="font-mono text-meta">{parent}</span> : <span className="text-ink-600">{t.orgUnits.topLevel}</span>;
+        return parent ? (
+          <span className="font-mono text-meta">{parent}</span>
+        ) : (
+          <span className="text-ink-600">{t.orgUnits.topLevel}</span>
+        );
       },
     },
     {
@@ -195,7 +213,10 @@ export default function CabangPage() {
 
   return (
     <>
-      <PageHeader title={t.orgUnits.title} description={t.orgUnits.description} />
+      <PageHeader
+        title={t.orgUnits.title}
+        description={t.orgUnits.description}
+      />
 
       {canManage && (
         <Card className="mb-4">
@@ -203,7 +224,9 @@ export default function CabangPage() {
             <CardTitle>{t.orgUnits.addTitle}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="mb-3 text-meta text-ink-600">{t.orgUnits.addDescription}</p>
+            <p className="mb-3 text-meta text-ink-600">
+              {t.orgUnits.addDescription}
+            </p>
             <form onSubmit={onSubmit} className="space-y-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <Input
@@ -240,7 +263,9 @@ export default function CabangPage() {
                   placeholder={t.orgUnits.parentPlaceholder}
                   options={parentOptions}
                   disabled={form.level === "" || parentOptions.length === 0}
-                  helperText={form.level === "" ? t.orgUnits.levelPlaceholder : undefined}
+                  helperText={
+                    form.level === "" ? t.orgUnits.levelPlaceholder : undefined
+                  }
                 />
                 <Input
                   label={t.orgUnits.address}
@@ -258,8 +283,12 @@ export default function CabangPage() {
                 <Button type="submit" loading={saving}>
                   {saving ? t.orgUnits.submitting : t.orgUnits.submit}
                 </Button>
-                {formError && <span className="text-meta text-debit-700">{formError}</span>}
-                {feedback && <span className="text-meta text-credit-700">{feedback}</span>}
+                {formError && (
+                  <span className="text-meta text-debit-700">{formError}</span>
+                )}
+                {feedback && (
+                  <span className="text-meta text-credit-700">{feedback}</span>
+                )}
               </div>
             </form>
           </CardContent>
@@ -271,7 +300,10 @@ export default function CabangPage() {
           title={t.orgUnits.loadError}
           description={error}
           action={
-            <Button variant="secondary" onClick={() => setReloadKey((key) => key + 1)}>
+            <Button
+              variant="secondary"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
               {t.common.retry}
             </Button>
           }

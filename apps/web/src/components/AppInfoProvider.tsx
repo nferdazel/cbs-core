@@ -21,7 +21,10 @@ interface AppInfoProviderProps {
   children: React.ReactNode;
 }
 
-export const AppInfoProvider: React.FC<AppInfoProviderProps> = ({ initial, children }) => {
+export const AppInfoProvider: React.FC<AppInfoProviderProps> = ({
+  initial,
+  children,
+}) => {
   const [info, setInfo] = useState<AppInfo>(initial ?? DEFAULT_APP_INFO);
 
   useEffect(() => {
@@ -44,5 +47,7 @@ export const AppInfoProvider: React.FC<AppInfoProviderProps> = ({ initial, child
     };
   }, []);
 
-  return <AppInfoContext.Provider value={info}>{children}</AppInfoContext.Provider>;
+  return (
+    <AppInfoContext.Provider value={info}>{children}</AppInfoContext.Provider>
+  );
 };

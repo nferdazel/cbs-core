@@ -47,8 +47,12 @@ export default function JatuhTempoPage() {
   const [days, setDays] = useState("30");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
+  // Hanya nilai yang dibaca; tidak ada aksi muat ulang di halaman ini, jadi setter
+  // tidak pernah dipakai (temuan @typescript-eslint/no-unused-vars).
+  const [reloadKey] = useState(0);
+  const [customerNames, setCustomerNames] = useState<Record<string, string>>(
+    {},
+  );
 
   const horizonOptions = useMemo(
     () =>
@@ -56,7 +60,7 @@ export default function JatuhTempoPage() {
         value,
         label: `${value} ${t.dueDates.daysAhead}`,
       })),
-    [t]
+    [t],
   );
 
   const kindLabel = useCallback(
@@ -64,25 +68,26 @@ export default function JatuhTempoPage() {
       kind === "LOAN_INSTALLMENT"
         ? t.dueDates.kindLoan
         : t.dueDates.kindDeposit,
-    [t]
+    [t],
   );
 
-  const load = useCallback(async (horizon: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await request<DueObligation[]>(
-        `/reports/due-obligations?days=${encodeURIComponent(horizon)}`
-      );
-      setItems(response.data ?? []);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : t.dueDates.loadError
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (horizon: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await request<DueObligation[]>(
+          `/reports/due-obligations?days=${encodeURIComponent(horizon)}`,
+        );
+        setItems(response.data ?? []);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : t.dueDates.loadError);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     load(days);
@@ -96,7 +101,7 @@ export default function JatuhTempoPage() {
       .then((res) => {
         if (cancelled) return;
         setCustomerNames(
-          Object.fromEntries((res.data ?? []).map((c) => [c.id, c.full_name]))
+          Object.fromEntries((res.data ?? []).map((c) => [c.id, c.full_name])),
         );
       })
       .catch(() => undefined);
@@ -107,7 +112,7 @@ export default function JatuhTempoPage() {
 
   const overdueCount = useMemo(
     () => items.filter((item) => item.overdue).length,
-    [items]
+    [items],
   );
 
   const columns: Column<DueObligation>[] = [
@@ -185,7 +190,9 @@ export default function JatuhTempoPage() {
             <DataTable
               columns={columns}
               data={items}
-              keyExtractor={(row) => `${row.kind}-${row.reference}-${row.due_date}`}
+              keyExtractor={(row) =>
+                `${row.kind}-${row.reference}-${row.due_date}`
+              }
               loading={loading}
               emptyMessage={t.dueDates.empty}
               zebra

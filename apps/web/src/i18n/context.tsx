@@ -18,7 +18,9 @@ const LanguageContext = createContext<LanguageContextType>({
   t: dictionaryID,
 });
 
-export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [language, setLanguageState] = useState<Language>("id");
 
   useEffect(() => {

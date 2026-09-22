@@ -36,7 +36,10 @@ export default async function RootLayout({
 }>) {
   const info = await fetchAppInfo();
   return (
-    <html lang="id" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
+    <html
+      lang="id"
+      className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}
+    >
       <body className="min-h-screen bg-canvas font-sans text-ink-900 antialiased">
         <AppInfoProvider initial={info}>
           <LanguageProvider>{children}</LanguageProvider>

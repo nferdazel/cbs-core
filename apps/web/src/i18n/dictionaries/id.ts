@@ -249,8 +249,7 @@ export const dictionaryID = {
     empty: "Belum ada batas transaksi yang terdaftar.",
     emptyFiltered: "Tidak ada batas yang cocok dengan saringan.",
     loadError: "Gagal memuat batas transaksi.",
-    forbidden:
-      "Anda tidak memiliki izin untuk melihat batas transaksi (403).",
+    forbidden: "Anda tidak memiliki izin untuk melihat batas transaksi (403).",
     unavailable:
       "Data batas transaksi belum tersedia di server (endpoint belum aktif atau tidak ditemukan).",
     resultCount: "baris ditampilkan",
@@ -317,7 +316,8 @@ export const dictionaryID = {
       "Jenjang atasan wajib lebih tinggi: wilayah membawahi area, area membawahi cabang.",
     code: "Kode",
     codePlaceholder: "mis. 002 atau AREA-1",
-    codeHint: "Cabang wajib 3 angka; area/wilayah bebas, tanpa spasi atau koma.",
+    codeHint:
+      "Cabang wajib 3 angka; area/wilayah bebas, tanpa spasi atau koma.",
     name: "Nama",
     namePlaceholder: "mis. Area Jakarta Selatan",
     level: "Jenjang",
@@ -507,8 +507,7 @@ export const dictionaryID = {
   },
   settingsPage: {
     title: "Pengaturan",
-    description:
-      "Profil pengguna, tanggal bisnis sistem, dan batas transaksi.",
+    description: "Profil pengguna, tanggal bisnis sistem, dan batas transaksi.",
     profileTitle: "Profil Pengguna",
     businessDateTitle: "Tanggal Bisnis",
     loadingBusinessDate: "Memuat tanggal bisnis...",
@@ -539,8 +538,7 @@ export const dictionaryID = {
     syariah: "syariah",
     conventional: "konvensional",
     reasonPrefix: "Buku",
-    reasonMiddle:
-      "tidak aktif pada instalasi ini (cakupan buku:",
+    reasonMiddle: "tidak aktif pada instalasi ini (cakupan buku:",
     reasonSuffix:
       "). Hubungi administrator bila lini usaha ini seharusnya aktif.",
   },
@@ -600,8 +598,7 @@ export const dictionaryID = {
     errorTitle: "Gagal memuat mutasi",
     forbiddenTitle: "Akses lintas cabang ditolak",
     emptyNoAccountTitle: "Belum ada rekening dipilih",
-    emptyNoAccountDesc:
-      "Masukkan nomor rekening lalu tekan Tampilkan Mutasi.",
+    emptyNoAccountDesc: "Masukkan nomor rekening lalu tekan Tampilkan Mutasi.",
     empty: "Tidak ada mutasi untuk rekening ini.",
   },
   approvals: {
@@ -779,8 +776,7 @@ export const dictionaryID = {
     destAccountShort: "Rekening tujuan",
     accountShort: "Rekening",
     amountShort: "Nominal",
-    irreversible:
-      "Jurnal yang diposting tidak dapat dibatalkan sembarangan.",
+    irreversible: "Jurnal yang diposting tidak dapat dibatalkan sembarangan.",
   },
   ppap: {
     title: "PPAP",
@@ -940,7 +936,8 @@ export const dictionaryID = {
     eomButton: "Tutup Bulan (EOM)",
     eoyButton: "Tutup Tahun (EOY)",
     eodButton: "Jalankan Tutup Hari (EOD)",
-    restrictedPrefix: "Tutup hari hanya dapat dijalankan oleh pengguna dengan izin ",
+    restrictedPrefix:
+      "Tutup hari hanya dapat dijalankan oleh pengguna dengan izin ",
     restrictedPermission: "system:config",
     restrictedSuffix: ".",
     restrictedHint:
@@ -1041,7 +1038,8 @@ export const dictionaryID = {
     listTitle: "Grup Pengguna",
     empty: "Belum ada grup pengguna.",
     loadError: "Gagal memuat katalog grup dan izin.",
-    restricted: "Anda tidak memiliki izin meninjau katalog grup dan izin (403).",
+    restricted:
+      "Anda tidak memiliki izin meninjau katalog grup dan izin (403).",
     colCode: "Kode",
     colName: "Nama",
     colKind: "Jenis",

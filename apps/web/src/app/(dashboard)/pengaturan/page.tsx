@@ -21,7 +21,7 @@ export default function PengaturanPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +31,12 @@ export default function PengaturanPage() {
     setError(null);
     try {
       const response = await request<SystemBusinessDate>(
-        "/system/business-date"
+        "/system/business-date",
       );
       setBusinessDate(response.data ?? null);
     } catch (err) {
       setError(
-        err instanceof ApiError
-          ? err.message
-          : t.settingsPage.loadError
+        err instanceof ApiError ? err.message : t.settingsPage.loadError,
       );
     } finally {
       setLoading(false);
@@ -69,10 +67,21 @@ export default function PengaturanPage() {
         <CardContent>
           <DefinitionList
             items={[
-              { label: t.common.name, value: user?.full_name || user?.username || "-" },
-              { label: t.common.username, value: user?.username || "-", isMono: true },
+              {
+                label: t.common.name,
+                value: user?.full_name || user?.username || "-",
+              },
+              {
+                label: t.common.username,
+                value: user?.username || "-",
+                isMono: true,
+              },
               { label: t.common.role, value: user?.role || "-" },
-              { label: t.common.branch, value: user?.branch_code || "-", isMono: true },
+              {
+                label: t.common.branch,
+                value: user?.branch_code || "-",
+                isMono: true,
+              },
             ]}
           />
         </CardContent>

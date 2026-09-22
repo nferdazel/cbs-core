@@ -1,7 +1,9 @@
 import React, { useId } from "react";
 
-export interface DateInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
+export interface DateInputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "type"
+> {
   label?: string;
   error?: string;
   helperText?: string;
@@ -41,7 +43,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
         ) : null}
       </div>
     );
-  }
+  },
 );
 
 DateInput.displayName = "DateInput";

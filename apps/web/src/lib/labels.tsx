@@ -9,7 +9,7 @@ import type { ProfitType } from "@/lib/operations-types";
 /** Nama nasabah dari peta id->nama; bila tak ada, id ditampilkan sebagai kode. */
 export function customerLabel(
   customerId: string,
-  names: Record<string, string>
+  names: Record<string, string>,
 ): React.ReactNode {
   const name = names[customerId];
   if (name) return name;
@@ -27,7 +27,7 @@ export function profitTypeLabel(
     profitBagiHasil: string;
     profitInterest: string;
   },
-  type: ProfitType
+  type: ProfitType,
 ): string {
   if (type === "MARGIN") return labels.profitMargin;
   if (type === "BAGI_HASIL") return labels.profitBagiHasil;

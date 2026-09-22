@@ -41,9 +41,8 @@ export default function NasabahPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [accountCustomer, setAccountCustomer] = useState<SelectedCustomer | null>(
-    null
-  );
+  const [accountCustomer, setAccountCustomer] =
+    useState<SelectedCustomer | null>(null);
 
   // Debounce: kata kunci baru dikirim setelah pengguna berhenti mengetik.
   useEffect(() => {
@@ -54,24 +53,31 @@ export default function NasabahPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const load = useCallback(async (targetPage: number, term: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        page_size: String(PAGE_SIZE),
-      });
-      if (term) params.set("q", term);
-      const response = await request<Customer[]>(`/customers?${params.toString()}`);
-      setCustomers(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.customerPage.loadError);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (targetPage: number, term: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          page: String(targetPage),
+          page_size: String(PAGE_SIZE),
+        });
+        if (term) params.set("q", term);
+        const response = await request<Customer[]>(
+          `/customers?${params.toString()}`,
+        );
+        setCustomers(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : t.customerPage.loadError,
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     load(page, query);
@@ -87,7 +93,11 @@ export default function NasabahPage() {
   const columns: Column<Customer>[] = [
     { header: t.customerPage.colCif, accessorKey: "cif_number", isMono: true },
     { header: t.common.name, accessorKey: "full_name" },
-    { header: t.customerPage.colPhone, accessorKey: "phone_number", isMono: true },
+    {
+      header: t.customerPage.colPhone,
+      accessorKey: "phone_number",
+      isMono: true,
+    },
     { header: t.customerPage.colEmail, accessorKey: "email" },
     {
       header: t.common.status,

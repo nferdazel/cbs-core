@@ -11,7 +11,9 @@ import { LoadingState } from "@/components/ui/States";
  * Kerangka aplikasi: header 56px, sidebar 240px, area konten maks 1440px.
  * Desktop-only: lebar minimum 1024px.
  */
-export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppShell: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { user, ready, logout } = useAuth();
   const { t } = useTranslation();
 

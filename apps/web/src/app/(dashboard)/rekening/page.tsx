@@ -46,7 +46,7 @@ export default function RekeningPage() {
       { value: "FROZEN", label: t.accountPage.statusFrozen },
       { value: "CLOSED", label: t.accountPage.statusClosed },
     ],
-    [t]
+    [t],
   );
 
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
@@ -70,24 +70,31 @@ export default function RekeningPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const load = useCallback(async (targetPage: number, term: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        page_size: String(PAGE_SIZE),
-      });
-      if (term) params.set("q", term);
-      const response = await request<AccountRecord[]>(`/accounts?${params.toString()}`);
-      setAccounts(response.data ?? []);
-      if (response.meta) setMeta(response.meta as Meta);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t.accountPage.loadError);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (targetPage: number, term: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          page: String(targetPage),
+          page_size: String(PAGE_SIZE),
+        });
+        if (term) params.set("q", term);
+        const response = await request<AccountRecord[]>(
+          `/accounts?${params.toString()}`,
+        );
+        setAccounts(response.data ?? []);
+        if (response.meta) setMeta(response.meta as Meta);
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.message : t.accountPage.loadError,
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     load(page, query);
@@ -100,7 +107,7 @@ export default function RekeningPage() {
       statusFilter === "ALL"
         ? accounts
         : accounts.filter((account) => account.status === statusFilter),
-    [accounts, statusFilter]
+    [accounts, statusFilter],
   );
 
   // Izin efektif dari GET /auth/me, bukan peran. API tetap penjaga sebenarnya
@@ -111,10 +118,10 @@ export default function RekeningPage() {
   const handleReactivated = (updated: AccountRecord) => {
     // Perbarui baris di tempat, lalu muat ulang halaman agar sinkron dengan server.
     setAccounts((prev) =>
-      prev.map((account) => (account.id === updated.id ? updated : account))
+      prev.map((account) => (account.id === updated.id ? updated : account)),
     );
     setSuccessMessage(
-      `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`
+      `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`,
     );
     load(page, query);
   };
@@ -127,10 +134,18 @@ export default function RekeningPage() {
   const resetSearch = () => setSearch("");
 
   const columns: Column<AccountRecord>[] = [
-    { header: t.accountPage.colAccountNumber, accessorKey: "account_number", isMono: true },
+    {
+      header: t.accountPage.colAccountNumber,
+      accessorKey: "account_number",
+      isMono: true,
+    },
     { header: t.accountPage.colOwner, cell: (row) => row.customer_name || "-" },
     { header: t.accountPage.colType, accessorKey: "account_type" },
-    { header: t.accountPage.colCurrency, accessorKey: "currency", isMono: true },
+    {
+      header: t.accountPage.colCurrency,
+      accessorKey: "currency",
+      isMono: true,
+    },
     {
       header: t.accountPage.colBalance,
       type: "money",

@@ -141,29 +141,70 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
      dan `posting_service.go:71`).
    - Rekonsiliasi saldo GL COA CKPN dengan jumlah `required_ckpn`.
 
-## (f) Apa yang belum dibangun
+## (f) KPMM/ATMR — verifikasi bobot risiko & penyambungan ke Form 00.08
 
-- **KPMM/ATMR: modul dasar sudah ada, belum dipakai di Form 00.08.** Modul baru
-  (`apps/api/internal/ojkreport/kpmm.go`, `internal/service/kpmm_service.go`,
-  `internal/domain/kpmm.go`) menghitung modal inti (ekuitas + laba/rugi tahun
-  berjalan dikurangi selisih PPKA–CKPN), ATMR aset neraca berbobot risiko, dan
-  rasio KPMM/modal inti; disajikan baca-saja lewat
-  `GET /api/v1/reports/kpmm?period=YYYY-MM` (izin `reports:financial:read`, hanya
-  peran lintas cabang). Parameter ada di konfigurasi (migrasi `000082`), bukan
-  ditanam di kode. Yang **belum**:
-  - Form 00.08 sandi `0101` masih ditandai tidak tersedia
-    (`ojkreport/ratios.go:74-79`); angkanya belum disalurkan ke ekspor APOLO.
-  - **Modal pelengkap** (instrumen dengan persetujuan OJK, surplus revaluasi aset
-    tetap, PPKA umum ≤1,25% ATMR) belum dipisah dari data, sehingga total modal dan
-    rasio adalah batas bawah (konservatif).
-  - **Pengurang modal inti lain** (AYDA/properti terbengkalai >1 tahun, pajak
-    tangguhan, goodwill, disagio) belum dapat dihitung dari data agregat.
-  - **Bobot risiko kredit** masih satu nilai agregat (`kpmm.rwa_frac.kredit`)
-    karena jenis agunan per kredit belum tersedia pada perhitungan ATMR; idealnya
-    30% (agunan tanah), 70% (kendaraan), 50% (BUMN/BUMD), dst.
-  - **Tafsir pengurang PPKA–CKPN** per-kredit vs agregat masih setelan
-    `kpmm.deduction_basis` (nilai awal `per_kredit`, konservatif). Putuskan
-    bersama OJK/akuntan sebelum dipakai untuk laporan resmi.
+Modul KPMM (`apps/api/internal/ojkreport/kpmm.go`,
+`internal/service/kpmm_service.go`, `internal/domain/kpmm.go`) menghitung modal
+inti (ekuitas + laba/rugi tahun berjalan dikurangi selisih PPKA–CKPN), ATMR aset
+neraca berbobot risiko, dan rasio KPMM/modal inti; disajikan baca-saja lewat
+`GET /api/v1/reports/kpmm?period=YYYY-MM` (izin `reports:financial:read`, hanya
+peran lintas cabang). Parameter ada di konfigurasi (migrasi `000082`), bukan
+ditanam di kode.
+
+### Verifikasi bobot risiko (putaran ini)
+
+Dibandingkan terhadap **SEOJK No. 2/SEOJK.03/2025 Lampiran II** ("Perhitungan
+ATMR"), disimpan di `/tmp/ojk/seojk2_2025.txt` (tidak ikut dirilis). Ambang modal
+dibandingkan terhadap **POJK No. 5/POJK.03/2015**, yang disempurnakan **POJK
+No. 7 Tahun 2026** (berlaku 30 Juni 2026).
+
+| Kunci / komponen | Nilai | Hasil | Rujukan |
+|---|---|---|---|
+| `kpmm.min_frac` | 0,12 | benar | POJK 5/2015 Pasal 2 (KPMM ≥12% ATMR) |
+| `kpmm.modal_inti_min_frac` | 0,08 | benar | POJK 5/2015 Pasal 4 (modal inti ≥8% ATMR) |
+| `kpmm.modal_inti_min_amount` | 6.000.000.000 | benar nilainya; **sitasi diperbaiki** | POJK 5/2015 **Pasal 13**, bukan Pasal 14 (dikoreksi `000084`) |
+| `kpmm.modal_pelengkap_max_frac` | 1,00 | benar | POJK 5/2015 Pasal 3 ayat (2) (modal pelengkap ≤100% modal inti); sub-batas 50% komponen tertentu (Pasal 10 ayat (2)) belum diterapkan |
+| `kpmm.ppka_umum_rwa_max_frac` | 0,0125 | benar | POJK 5/2015 Pasal 10 ayat (1) huruf c; SEOJK 2/2025 II.1.c.3 |
+| `kpmm.deduction_basis` | `per_kredit` | **tidak dapat diverifikasi** (tafsir) | PA BPR 1.1.6 tidak menegaskan tingkat perhitungan; tetap setelan bank/OJK |
+| `kpmm.rwa_frac.kas` | 0,00 | benar | Lampiran II no. 1 (Kas 0%) |
+| `kpmm.rwa_frac.antar_bank` | 0,20 | benar (posisi performing) | Lampiran II no. 9 (penempatan bank lain 20%); penempatan macet seharusnya 100% (no. 22) dan belum dipisah |
+| `kpmm.rwa_frac.kredit` | 1,00 | **konservatif** (granular tidak dapat diverifikasi) | Lampiran II no. 21/22 (100%); bobot lebih rendah per agunan (0/15/20/30/50/70%, no. 5/8/10/12/18/19) belum diterapkan |
+| `kpmm.rwa_frac.ayda` | 1,00 | **konservatif** | Lampiran II no. 24 (AYDA <1 tahun 100%); AYDA >1 tahun seharusnya 0% (no. 6) + pengurang modal, belum dipisah |
+| `kpmm.rwa_frac.aset_tetap` | 1,00 | benar | Lampiran II no. 23 (aset tetap/inventaris/aset tak berwujud 100%) |
+| `kpmm.rwa_frac.antar_kantor` | 1,00 | **konservatif** | tidak ada pos khusus; sebagai "aset lain" no. 26 = 100% |
+| `kpmm.rwa_frac.lainnya` | 1,00 | benar | Lampiran II no. 26 (aset lain 100%) |
+
+**Tidak ada bobot yang lebih rendah dari ketentuan**, sehingga tidak ada rasio
+yang membesar secara keliru; nilai yang belum granular sudah konservatif (ATMR
+lebih tinggi, rasio lebih rendah). Karena itu tidak ada **nilai** kunci yang
+diubah — hanya perbaikan sitasi Pasal 13 lewat migrasi
+`packages/db-migrations/000084_kpmm_config_verify.up.sql`.
+
+### Penyambungan ke pelaporan OJK
+
+Form 00.08 sandi **0101 (KPMM)** kini **terisi** dari modul KPMM yang sama:
+kontrak `ojkreport.KPMMSource` (diimplementasikan `RepoSource.KPMMModalATMR`)
+mengalir lewat builder ke `RasioKeuangan`; buku dan aktor diteruskan apa adanya
+sehingga cakupan Form 00.08 sama dengan `GET /reports/kpmm`. Bila CKPN belum
+dihitung atau ATMR belum lengkap, baris ditulis "-" beserta alasan, bukan 0. Ini
+menggantikan catatan lama "belum disalurkan ke Form 00.08".
+
+Yang **belum** tersambung/tersedia:
+- **Modal pelengkap** (instrumen dengan persetujuan OJK, surplus revaluasi aset
+  tetap, PPKA umum) belum dipisah dari data, sehingga total modal dan rasio adalah
+  batas bawah (konservatif).
+- **Pengurang modal inti lain** (AYDA/properti terbengkalai >1 tahun, pajak
+  tangguhan, goodwill, disagio) belum dapat dihitung dari data agregat.
+- **Bobot risiko kredit per agunan** serta AYDA/antar-bank granular (tabel di atas).
+- **Tafsir pengurang PPKA–CKPN** per-kredit vs agregat masih setelan
+  `kpmm.deduction_basis` (nilai awal `per_kredit`). Putuskan bersama OJK/akuntan
+  sebelum dipakai untuk laporan resmi.
+- **Pemetaan COA → pos OJK** yang dipakai ATMR masih
+  `DRAF-BELUM-TERVERIFIKASI` (`coa_mapping.go`); COA bersaldo yang belum
+  terpetakan menandai ATMR belum lengkap dan rasio tidak disajikan.
+- **Cakupan buku**: KPMM mengikuti pola laporan keuangan — `book` kosong =
+  konsolidasi seluruh bank, `book` terisi = satu lini; tidak ada aturan cakupan
+  baru. Untuk pelaporan OJK gunakan konsolidasi (tanpa `book`).
 - **CKPN individual** (DCF/nilai realisasi agunan) belum ada (`domain/ckpn.go:146-152`).
 - **Perhitungan PD/LGD dari data historis** belum ada; bank mengisinya manual.
 - **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** belum tersedia di jalur

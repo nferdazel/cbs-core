@@ -88,7 +88,7 @@ export default function ProdukPage() {
     const active = user?.active_books;
     if (!active) return options;
     return options.filter(
-      (option) => option.value === "" || active.includes(option.value)
+      (option) => option.value === "" || active.includes(option.value),
     );
   }, [user?.active_books, t]);
 
@@ -100,7 +100,7 @@ export default function ProdukPage() {
       { value: "LOAN", label: t.products.familyLoan },
       { value: "CURRENT_ACCOUNT", label: t.products.familyCurrent },
     ],
-    [t]
+    [t],
   );
 
   const load = useCallback(async () => {
@@ -125,9 +125,9 @@ export default function ProdukPage() {
       products.filter(
         (product) =>
           (book === "" || product.book === book) &&
-          (family === "" || product.family === family)
+          (family === "" || product.family === family),
       ),
-    [products, book, family]
+    [products, book, family],
   );
 
   const columns: Column<BankingProduct>[] = [
@@ -210,7 +210,10 @@ export default function ProdukPage() {
           title={t.products.errorTitle}
           description={error}
           action={
-            <Button variant="secondary" onClick={() => setReloadKey((key) => key + 1)}>
+            <Button
+              variant="secondary"
+              onClick={() => setReloadKey((key) => key + 1)}
+            >
               {t.common.retry}
             </Button>
           }
@@ -234,7 +237,10 @@ export default function ProdukPage() {
       )}
 
       {selectedId && (
-        <ProductDetail productId={selectedId} onClose={() => setSelectedId(null)} />
+        <ProductDetail
+          productId={selectedId}
+          onClose={() => setSelectedId(null)}
+        />
       )}
     </>
   );
@@ -259,7 +265,7 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
       setProduct(response.data ?? null);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : t.products.detailLoadError
+        err instanceof ApiError ? err.message : t.products.detailLoadError,
       );
     } finally {
       setLoading(false);
@@ -346,12 +352,22 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
           <DefinitionList
             columns={2}
             items={[
-              { label: t.products.labelCode, value: product.code, isMono: true },
+              {
+                label: t.products.labelCode,
+                value: product.code,
+                isMono: true,
+              },
               { label: t.products.labelName, value: product.name },
-              { label: t.products.labelFamily, value: familyLabel(product.family) },
+              {
+                label: t.products.labelFamily,
+                value: familyLabel(product.family),
+              },
               {
                 label: t.products.labelBook,
-                value: product.book === "SYARIAH" ? t.products.bookSyariah : t.products.bookConventional,
+                value:
+                  product.book === "SYARIAH"
+                    ? t.products.bookSyariah
+                    : t.products.bookConventional,
               },
               {
                 label: t.products.labelProfitScheme,
@@ -361,7 +377,11 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
                 label: t.products.labelScheduleMethod,
                 value: scheduleLabel(product.schedule_method),
               },
-              { label: t.products.labelRateAnnual, value: formatRate(product.rate_annual), isMono: true },
+              {
+                label: t.products.labelRateAnnual,
+                value: formatRate(product.rate_annual),
+                isMono: true,
+              },
               {
                 label: t.products.labelProfitSharingRatio,
                 value: ratioLabel(product.profit_sharing_ratio),
@@ -385,16 +405,25 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
                 value: `${product.max_term_months} ${t.products.termSuffix}`,
                 isMono: true,
               },
-              { label: t.products.labelAdminFee, value: <MoneyText value={product.admin_fee} /> },
+              {
+                label: t.products.labelAdminFee,
+                value: <MoneyText value={product.admin_fee} />,
+              },
               {
                 label: t.products.labelEarlyWithdrawalPenalty,
                 value: formatRate(product.early_withdrawal_penalty_rate),
                 isMono: true,
               },
-              { label: t.products.labelTaxRate, value: formatRate(product.tax_rate), isMono: true },
+              {
+                label: t.products.labelTaxRate,
+                value: formatRate(product.tax_rate),
+                isMono: true,
+              },
               {
                 label: t.products.labelPartialPayment,
-                value: product.allow_partial_payment ? t.products.yes : t.products.no,
+                value: product.allow_partial_payment
+                  ? t.products.yes
+                  : t.products.no,
               },
               {
                 label: t.common.status,

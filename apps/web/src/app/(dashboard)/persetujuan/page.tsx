@@ -42,9 +42,10 @@ export default function PersetujuanPage() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ title: string; reference: string } | null>(
-    null
-  );
+  const [feedback, setFeedback] = useState<{
+    title: string;
+    reference: string;
+  } | null>(null);
 
   // Jenis aksi disimpan sebagai kunci (DEPOSIT dll.); hanya tampilannya dipetakan
   // ke kamus. Jenis yang tidak dikenal ditampilkan apa adanya.
@@ -71,15 +72,11 @@ export default function PersetujuanPage() {
     setError(null);
     try {
       const response = await request<MakerCheckerRequest[]>(
-        "/maker-checker/pending"
+        "/maker-checker/pending",
       );
       setRequests(response.data ?? []);
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : t.approvals.loadError
-      );
+      setError(err instanceof ApiError ? err.message : t.approvals.loadError);
     } finally {
       setLoading(false);
     }
@@ -123,7 +120,7 @@ export default function PersetujuanPage() {
               target.kind === "approve"
                 ? t.approvals.cannotApprove
                 : t.approvals.cannotReject
-            }${t.approvals.cannotSuffix}${err.message}`
+            }${t.approvals.cannotSuffix}${err.message}`,
           );
         } else {
           setActionError(err.message);
@@ -138,7 +135,10 @@ export default function PersetujuanPage() {
   };
 
   const columns: Column<MakerCheckerRequest>[] = [
-    { header: t.approvals.colActionType, cell: (row) => actionLabel(row.action_type) },
+    {
+      header: t.approvals.colActionType,
+      cell: (row) => actionLabel(row.action_type),
+    },
     {
       header: t.approvals.colAmount,
       type: "money",
@@ -242,7 +242,9 @@ export default function PersetujuanPage() {
               </p>
               <dl className="space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">{t.approvals.labelActionType}</dt>
+                  <dt className="text-ink-600">
+                    {t.approvals.labelActionType}
+                  </dt>
                   <dd>{actionLabel(target.request.action_type)}</dd>
                 </div>
                 <div className="flex justify-between">

@@ -29,7 +29,10 @@ import { ErrorState, LoadingState } from "@/components/ui/States";
 type BatchKind = "eod" | "eom" | "eoy";
 
 // Buku adalah kunci teknis (CONVENTIONAL/SYARIAH); hanya label tampilannya dari kamus.
-function bookLabel(t: Dictionary["dayClose"], book: EOYBookResult["book"]): string {
+function bookLabel(
+  t: Dictionary["dayClose"],
+  book: EOYBookResult["book"],
+): string {
   if (book === "SYARIAH") return t.bookSyariah;
   if (book === "CONVENTIONAL") return t.bookConventional;
   return book;
@@ -38,7 +41,7 @@ function bookLabel(t: Dictionary["dayClose"], book: EOYBookResult["book"]): stri
 /** Nama pihak yang lebih tinggi pada perbandingan bayangan (domain.CKPNLarger). */
 function ckpnShadowHigherLabel(
   t: Dictionary["dayClose"],
-  higher: string
+  higher: string,
 ): string {
   if (higher === "PPKA") return t.higherPpka;
   if (higher === "CKPN") return t.higherCkpn;
@@ -132,7 +135,7 @@ export default function TutupHariPage() {
   const canRun = hasPermission(user, "system:config");
 
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
-    null
+    null,
   );
   const [dateLoading, setDateLoading] = useState(true);
   const [dateError, setDateError] = useState<string | null>(null);
@@ -150,14 +153,12 @@ export default function TutupHariPage() {
     setDateError(null);
     try {
       const response = await request<SystemBusinessDate>(
-        "/system/business-date"
+        "/system/business-date",
       );
       setBusinessDate(response.data ?? null);
     } catch (err) {
       setDateError(
-        err instanceof ApiError
-          ? err.message
-          : t.dayClose.dateError
+        err instanceof ApiError ? err.message : t.dayClose.dateError,
       );
     } finally {
       setDateLoading(false);
@@ -196,9 +197,7 @@ export default function TutupHariPage() {
       await loadBusinessDate();
     } catch (err) {
       setActionError(
-        err instanceof ApiError
-          ? err.message
-          : t.dayClose.actionError
+        err instanceof ApiError ? err.message : t.dayClose.actionError,
       );
       setConfirmKind(null);
     } finally {
@@ -254,7 +253,9 @@ export default function TutupHariPage() {
     {
       header: t.dayClose.retainedEarningsCoa,
       cell: (row) => (
-        <span className="font-mono">{row.retained_earnings_coa_code || "-"}</span>
+        <span className="font-mono">
+          {row.retained_earnings_coa_code || "-"}
+        </span>
       ),
     },
     {
@@ -316,7 +317,11 @@ export default function TutupHariPage() {
       )}
 
       {actionError && (
-        <Alert variant="error" className="mb-4" title={t.dayClose.actionErrorTitle}>
+        <Alert
+          variant="error"
+          className="mb-4"
+          title={t.dayClose.actionErrorTitle}
+        >
           {actionError}
         </Alert>
       )}
@@ -349,7 +354,10 @@ export default function TutupHariPage() {
                 {
                   label: t.common.status,
                   value: (
-                    <StatusBadge status={businessDate.status} domain="businessDate" />
+                    <StatusBadge
+                      status={businessDate.status}
+                      domain="businessDate"
+                    />
                   ),
                 },
                 {
@@ -360,9 +368,7 @@ export default function TutupHariPage() {
               ]}
             />
           ) : (
-            <p className="text-body text-ink-600">
-              {t.dayClose.unavailable}
-            </p>
+            <p className="text-body text-ink-600">{t.dayClose.unavailable}</p>
           )}
         </CardContent>
       </Card>
@@ -370,7 +376,11 @@ export default function TutupHariPage() {
       {eod && (
         <>
           {eod.warnings && eod.warnings.length > 0 && (
-            <Alert variant="warning" className="mb-4" title={t.dayClose.warningsTitle}>
+            <Alert
+              variant="warning"
+              className="mb-4"
+              title={t.dayClose.warningsTitle}
+            >
               <p>
                 {eod.warnings.length} {t.dayClose.warningsDesc}
               </p>
@@ -384,9 +394,7 @@ export default function TutupHariPage() {
 
           <Card className="mb-4">
             <CardHeader>
-              <CardTitle>
-                {t.dayClose.eodTitle}
-              </CardTitle>
+              <CardTitle>{t.dayClose.eodTitle}</CardTitle>
               <span className="text-meta text-ink-600">
                 {t.dayClose.completed} {formatDateTime(eod.completed_at)}
               </span>
@@ -416,9 +424,7 @@ export default function TutupHariPage() {
                   },
                   {
                     label: t.dayClose.totalDeposits,
-                    value: (
-                      <MoneyText value={eod.total_deposit_amount_today} />
-                    ),
+                    value: <MoneyText value={eod.total_deposit_amount_today} />,
                   },
                   {
                     label: t.dayClose.depositPlacements,
@@ -478,7 +484,9 @@ export default function TutupHariPage() {
                     },
                     {
                       label: t.dayClose.interestAccruedAmount,
-                      value: <MoneyText value={eod.loan_interest_accrued_amount} />,
+                      value: (
+                        <MoneyText value={eod.loan_interest_accrued_amount} />
+                      ),
                     },
                     {
                       label: t.dayClose.markedDormant,
@@ -617,7 +625,9 @@ export default function TutupHariPage() {
         confirmLabel={confirmLabel}
         destructive={confirmKind === "eoy"}
         loading={running !== null}
-        requireKeyword={confirmKind === "eoy" ? t.dayClose.confirmKeyword : undefined}
+        requireKeyword={
+          confirmKind === "eoy" ? t.dayClose.confirmKeyword : undefined
+        }
         onCancel={() => setConfirmKind(null)}
         onConfirm={() => {
           if (confirmKind) runBatch(confirmKind);
@@ -625,24 +635,16 @@ export default function TutupHariPage() {
         description={
           confirmKind === "eod" ? (
             <>
-              <p>
-                {t.dayClose.descEod1}
-              </p>
-              <p>
-                {t.dayClose.descEod2}
-              </p>
+              <p>{t.dayClose.descEod1}</p>
+              <p>{t.dayClose.descEod2}</p>
             </>
           ) : confirmKind === "eom" ? (
             <>
-              <p>
-                {t.dayClose.descEom}
-              </p>
+              <p>{t.dayClose.descEom}</p>
             </>
           ) : (
             <>
-              <p>
-                {t.dayClose.descEoy}
-              </p>
+              <p>{t.dayClose.descEoy}</p>
               <p className="font-medium text-debit-700">
                 {t.dayClose.descEoyWarning}
               </p>

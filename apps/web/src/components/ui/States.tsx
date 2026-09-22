@@ -22,7 +22,9 @@ export const EmptyState: React.FC<StateMessageProps> = ({
   <div className={`${shell} ${className}`}>
     <Inbox className="h-6 w-6 text-ink-400" aria-hidden />
     <p className="text-title font-medium text-ink-900">{title}</p>
-    {description && <p className="max-w-md text-body text-ink-600">{description}</p>}
+    {description && (
+      <p className="max-w-md text-body text-ink-600">{description}</p>
+    )}
     {action && <div className="mt-2">{action}</div>}
   </div>
 );
@@ -51,7 +53,9 @@ export const ErrorState: React.FC<StateMessageProps> = ({
   <div className={`${shell} ${className}`} role="alert">
     <AlertCircle className="h-6 w-6 text-debit-700" aria-hidden />
     <p className="text-title font-medium text-ink-900">{title}</p>
-    {description && <p className="max-w-md text-body text-ink-600">{description}</p>}
+    {description && (
+      <p className="max-w-md text-body text-ink-600">{description}</p>
+    )}
     {action && <div className="mt-2">{action}</div>}
   </div>
 );

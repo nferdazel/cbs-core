@@ -1,0 +1,9 @@
+# Berkas hasil build / generate — bukan sumber yang ditulis tangan.
+.next/
+node_modules/
+next-env.d.ts
+tsconfig.tsbuildinfo
+public/
+
+# Lockfile dikelola pnpm, bukan prettier.
+pnpm-lock.yaml

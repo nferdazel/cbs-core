@@ -19,7 +19,13 @@ type FormState = {
   npwp: string;
 };
 
-const EMPTY_FORM: FormState = { name: "", address: "", city: "", phone: "", npwp: "" };
+const EMPTY_FORM: FormState = {
+  name: "",
+  address: "",
+  city: "",
+  phone: "",
+  npwp: "",
+};
 
 function toForm(profile: BankProfile | null): FormState {
   if (!profile) return EMPTY_FORM;
@@ -62,7 +68,9 @@ export function BankProfileCard() {
       if (err instanceof ApiError && err.status === 403) {
         setForbidden(true);
       } else {
-        setError(err instanceof ApiError ? err.message : t.bankProfile.loadError);
+        setError(
+          err instanceof ApiError ? err.message : t.bankProfile.loadError,
+        );
       }
     } finally {
       setLoading(false);
@@ -112,7 +120,9 @@ export function BankProfileCard() {
         // Pesan validasi server sudah menyebut bidang yang harus diperbaiki.
         setFieldError(err.message);
       } else {
-        setSaveError(err instanceof ApiError ? err.message : t.bankProfile.saveError);
+        setSaveError(
+          err instanceof ApiError ? err.message : t.bankProfile.saveError,
+        );
       }
     } finally {
       setSaving(false);
@@ -146,7 +156,9 @@ export function BankProfileCard() {
           />
         ) : (
           <>
-            <p className="text-body text-ink-600">{t.bankProfile.description}</p>
+            <p className="text-body text-ink-600">
+              {t.bankProfile.description}
+            </p>
 
             {unconfigured && (
               <Alert variant="warning">

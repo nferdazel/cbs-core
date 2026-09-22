@@ -75,13 +75,17 @@ function STATS_IS_DIR(path) {
 
 /** Buang komentar agar tidak salah menandai teks di dalamnya. */
 function stripComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 const hasLetters = (s) => /[A-Za-z]/.test(s);
 const isAllCapsOrCode = (s) => /^[A-Z0-9 _.-]+$/.test(s);
 const looksLikeCode = (s) =>
-  /[;{}()=>]|^(export|import|interface|type|const|let|var|function|return|class)\b|className|from "/.test(s);
+  /[;{}()=>]|^(export|import|interface|type|const|let|var|function|return|class)\b|className|from "/.test(
+    s,
+  );
 const wordCount = (s) => (s.match(/[A-Za-z]{2,}/g) || []).length;
 const isFrase = (s) => wordCount(s) >= 2;
 const isSingleWordLabel = (s) => /^[A-Z][a-z]+$/.test(s.trim());
@@ -158,11 +162,13 @@ function main() {
   if (failures > 0) {
     console.error(
       `\nGagal: ${failures} literal teks pengguna. Pindahkan ke kamus id.ts/en.ts ` +
-        `atau daftarkan pengecualian yang beralasan di scripts/check-i18n.mjs.`
+        `atau daftarkan pengecualian yang beralasan di scripts/check-i18n.mjs.`,
     );
     process.exit(1);
   }
-  console.log(`OK: ${files.length} berkas halaman/komponen bebas literal teks pengguna.`);
+  console.log(
+    `OK: ${files.length} berkas halaman/komponen bebas literal teks pengguna.`,
+  );
 }
 
 main();

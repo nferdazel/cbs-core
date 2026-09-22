@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+# unrs-resolver adalah dependensi transitif linter (eslint-import-resolver-typescript).
+# Build script-nya memasang binding native agar resolusi impor bekerja. Disetujui
+# secara eksplisit; pnpm 11 menolak build yang tidak dinyatakan.
+allowBuilds:
+  unrs-resolver: true

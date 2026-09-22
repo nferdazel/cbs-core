@@ -10,7 +10,7 @@ import type { StaffUser } from "./types";
  */
 export function hasPermission(
   user: Pick<StaffUser, "permissions"> | null | undefined,
-  permission: string
+  permission: string,
 ): boolean {
   return user?.permissions?.includes(permission) ?? false;
 }

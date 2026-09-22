@@ -38,7 +38,8 @@ export const BookScopeGuard: React.FC<BookScopeGuardProps> = ({
 
   const activeBooks = user?.active_books;
   if (activeBooks && !activeBooks.includes(book)) {
-    const label = book === "SYARIAH" ? t.bookScope.syariah : t.bookScope.conventional;
+    const label =
+      book === "SYARIAH" ? t.bookScope.syariah : t.bookScope.conventional;
     return (
       <FeatureUnavailable
         title={title}

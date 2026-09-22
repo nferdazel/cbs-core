@@ -46,7 +46,9 @@ export function formatDate(value: string | Date | null | undefined): string {
 }
 
 /** dd MMM yyyy HH:mm menurut locale id-ID. */
-export function formatDateTime(value: string | Date | null | undefined): string {
+export function formatDateTime(
+  value: string | Date | null | undefined,
+): string {
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";

@@ -54,7 +54,7 @@ export default function TellerPage() {
       { value: "withdraw", label: t.teller.trxWithdraw },
       { value: "transfer", label: t.teller.trxTransfer },
     ],
-    [t]
+    [t],
   );
 
   const trxLabel = (value: TrxType): string =>
@@ -113,7 +113,7 @@ export default function TellerPage() {
           method: "POST",
           body: payload,
           idempotencyKey,
-        }
+        },
       );
       // Transaksi di atas ambang limit dibalas 202: masuk antrean maker-checker dan
       // BELUM diposting, sehingga tidak boleh ditampilkan sebagai bukti posting.
@@ -128,7 +128,9 @@ export default function TellerPage() {
       setDescription("");
       setConfirmOpen(false);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : t.teller.submitError);
+      setFormError(
+        err instanceof ApiError ? err.message : t.teller.submitError,
+      );
       setConfirmOpen(false);
     } finally {
       setSubmitting(false);
@@ -136,7 +138,11 @@ export default function TellerPage() {
   };
 
   const lineColumns: Column<JournalLine>[] = [
-    { header: t.teller.colAccount, accessorKey: "account_number", isMono: true },
+    {
+      header: t.teller.colAccount,
+      accessorKey: "account_number",
+      isMono: true,
+    },
     { header: t.teller.colDirection, accessorKey: "direction" },
     {
       header: t.teller.colAmount,
@@ -158,10 +164,7 @@ export default function TellerPage() {
 
   return (
     <>
-      <PageHeader
-        title={t.teller.title}
-        description={t.teller.description}
-      />
+      <PageHeader title={t.teller.title} description={t.teller.description} />
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
@@ -231,12 +234,13 @@ export default function TellerPage() {
             <Card>
               <CardHeader>
                 <CardTitle>{t.teller.pendingTitle}</CardTitle>
-                <StatusBadge status={pendingApproval.status} domain="approval" />
+                <StatusBadge
+                  status={pendingApproval.status}
+                  domain="approval"
+                />
               </CardHeader>
               <CardContent>
-                <p className="text-body text-ink-600">
-                  {t.teller.pendingDesc}
-                </p>
+                <p className="text-body text-ink-600">{t.teller.pendingDesc}</p>
                 <DefinitionList
                   columns={1}
                   items={[
@@ -270,7 +274,10 @@ export default function TellerPage() {
                       value: result.reference_number,
                       isMono: true,
                     },
-                    { label: t.teller.typeLabel, value: result.transaction_type },
+                    {
+                      label: t.teller.typeLabel,
+                      value: result.transaction_type,
+                    },
                     {
                       label: t.teller.timeLabel,
                       value: formatDateTime(result.posted_at),
@@ -334,11 +341,15 @@ export default function TellerPage() {
               {type === "transfer" ? (
                 <>
                   <div className="flex justify-between">
-                    <dt className="text-ink-600">{t.teller.sourceAccountShort}</dt>
+                    <dt className="text-ink-600">
+                      {t.teller.sourceAccountShort}
+                    </dt>
                     <dd className="font-mono">{sourceAccount || "-"}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-ink-600">{t.teller.destAccountShort}</dt>
+                    <dt className="text-ink-600">
+                      {t.teller.destAccountShort}
+                    </dt>
                     <dd className="font-mono">{destinationAccount || "-"}</dd>
                   </div>
                 </>

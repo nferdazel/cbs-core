@@ -53,8 +53,18 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/", labelKey: "beranda", icon: Home, menuKey: "beranda" },
       { href: "/teller", labelKey: "teller", icon: Wallet, menuKey: "teller" },
-      { href: "/transaksi", labelKey: "transaksi", icon: CreditCard, menuKey: "transaksi" },
-      { href: "/deposito", labelKey: "deposito", icon: PiggyBank, menuKey: "deposito" },
+      {
+        href: "/transaksi",
+        labelKey: "transaksi",
+        icon: CreditCard,
+        menuKey: "transaksi",
+      },
+      {
+        href: "/deposito",
+        labelKey: "deposito",
+        icon: PiggyBank,
+        menuKey: "deposito",
+      },
       {
         href: "/jatuh-tempo",
         labelKey: "jatuhTempo",
@@ -98,10 +108,25 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     titleKey: "groupMaster",
     items: [
-      { href: "/nasabah", labelKey: "nasabah", icon: Users, menuKey: "nasabah" },
-      { href: "/rekening", labelKey: "rekening", icon: Briefcase, menuKey: "rekening" },
+      {
+        href: "/nasabah",
+        labelKey: "nasabah",
+        icon: Users,
+        menuKey: "nasabah",
+      },
+      {
+        href: "/rekening",
+        labelKey: "rekening",
+        icon: Briefcase,
+        menuKey: "rekening",
+      },
       { href: "/produk", labelKey: "produk", icon: Package, menuKey: "produk" },
-      { href: "/cabang", labelKey: "cabang", icon: Building2, menuKey: "cabang" },
+      {
+        href: "/cabang",
+        labelKey: "cabang",
+        icon: Building2,
+        menuKey: "cabang",
+      },
     ],
   },
   {
@@ -113,7 +138,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BookOpenCheck,
         menuKey: "buku_besar",
       },
-      { href: "/laporan", labelKey: "laporan", icon: BarChart3, menuKey: "laporan" },
+      {
+        href: "/laporan",
+        labelKey: "laporan",
+        icon: BarChart3,
+        menuKey: "laporan",
+      },
       {
         href: "/pemetaan-ojk",
         labelKey: "pemetaanOjk",
@@ -124,6 +154,13 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     titleKey: "groupSettings",
-    items: [{ href: "/pengaturan", labelKey: "pengaturan", icon: Settings, menuKey: "pengaturan" }],
+    items: [
+      {
+        href: "/pengaturan",
+        labelKey: "pengaturan",
+        icon: Settings,
+        menuKey: "pengaturan",
+      },
+    ],
   },
 ];

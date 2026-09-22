@@ -22,7 +22,9 @@ interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
   const { language, setLanguage, t } = useTranslation();
   const appInfo = useAppInfo();
-  const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(null);
+  const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
+    null,
+  );
   const [dateUnavailable, setDateUnavailable] = useState(false);
   // Nama bank dari identitas instalasi. Bila profil bank belum diisi, bidang ini
   // kosong dan header jatuh kembali ke keterangan aplikasi, bukan bidang kosong.
@@ -59,7 +61,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
           )}
         </div>
         <div title={bankName || undefined}>
-          <div className="text-title font-semibold leading-tight">{appInfo.display_name}</div>
+          <div className="text-title font-semibold leading-tight">
+            {appInfo.display_name}
+          </div>
           <div className="text-meta text-white/60">
             {bankName || appInfo.description}
           </div>
@@ -78,7 +82,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
             </>
           ) : (
             <span className="font-mono text-white/70">
-              {dateUnavailable ? t.header.businessDateUnknown : t.common.loading}
+              {dateUnavailable
+                ? t.header.businessDateUnknown
+                : t.common.loading}
             </span>
           )}
         </div>
@@ -93,7 +99,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
             aria-pressed={language === "id"}
             onClick={() => setLanguage("id")}
             className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
-              language === "id" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"
+              language === "id"
+                ? "bg-white text-navy-800 font-medium"
+                : "text-white/70 hover:text-white"
             }`}
           >
             ID
@@ -103,7 +111,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
             aria-pressed={language === "en"}
             onClick={() => setLanguage("en")}
             className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
-              language === "en" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"
+              language === "en"
+                ? "bg-white text-navy-800 font-medium"
+                : "text-white/70 hover:text-white"
             }`}
           >
             EN
