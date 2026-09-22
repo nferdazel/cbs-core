@@ -24,6 +24,11 @@ const (
 	cfgCKPNAsetBaikMaxDPD = "ckpn.aset_baik.max_dpd"
 	cfgCKPNExpenseCOA     = "ckpn.coa.expense"
 	cfgCKPNReserveCOA     = "ckpn.coa.reserve"
+	// Kunci per unit syariah. KOSONG = ikut kunci global di atas, sehingga bank yang
+	// belum mengisinya tidak mengalami perubahan perilaku. Diisi bank hanya bila akun
+	// beban/cadangan CKPN pembiayaan berbeda dari akun konvensional.
+	cfgCKPNExpenseCOASyariah = "ckpn.coa.expense.syariah"
+	cfgCKPNReserveCOASyariah = "ckpn.coa.reserve.syariah"
 )
 
 // ckpnCollectibilityOrder adalah urutan golongan kolektibilitas untuk enumerasi PD
@@ -648,20 +653,35 @@ func configDecimal(ctx context.Context, config domain.SystemConfigService, key s
 	return d, true, nil
 }
 
-func (s *ckpnService) expenseCOA(ctx context.Context, book domain.COABook) string {
-	fallback := fallbackCKPNExpenseConventional
+// resolveCKPNCOA memilih kode COA satu sisi jurnal CKPN. Urutannya: kunci unit
+// syariah (hanya bila buku kredit SYARIAH dan nilainya tidak kosong), lalu kunci
+// global. Bila kedua kunci kosong, fallback per buku dipertahankan — perilaku
+// sebelum kunci syariah ada. Selama kunci syariah kosong, hasilnya karena itu
+// identik dengan sebelumnya.
+//
+// Fungsi ini murni memilih kode; pemeriksaan apakah kode itu benar-benar ada di
+// bagan akun dilakukan ResolveGLAccount di pemanggil (postAdjustmentFallback),
+// supaya pemetaan yang salah ditolak, bukan terjurnal ke akun yang tidak ada.
+func resolveCKPNCOA(ctx context.Context, config domain.SystemConfigService, book domain.COABook, syariahKey, globalKey, syariahFallback, conventionalFallback string) string {
 	if book == domain.BookSyariah {
-		fallback = fallbackCKPNExpenseSyariah
+		if v := strings.TrimSpace(configStringOr(ctx, config, syariahKey, "")); v != "" {
+			return v
+		}
+		return configStringOr(ctx, config, globalKey, syariahFallback)
 	}
-	return configStringOr(ctx, s.config, cfgCKPNExpenseCOA, fallback)
+	return configStringOr(ctx, config, globalKey, conventionalFallback)
+}
+
+func (s *ckpnService) expenseCOA(ctx context.Context, book domain.COABook) string {
+	return resolveCKPNCOA(ctx, s.config, book,
+		cfgCKPNExpenseCOASyariah, cfgCKPNExpenseCOA,
+		fallbackCKPNExpenseSyariah, fallbackCKPNExpenseConventional)
 }
 
 func (s *ckpnService) reserveCOA(ctx context.Context, book domain.COABook) string {
-	fallback := fallbackCKPNReserveConventional
-	if book == domain.BookSyariah {
-		fallback = fallbackCKPNReserveSyariah
-	}
-	return configStringOr(ctx, s.config, cfgCKPNReserveCOA, fallback)
+	return resolveCKPNCOA(ctx, s.config, book,
+		cfgCKPNReserveCOASyariah, cfgCKPNReserveCOA,
+		fallbackCKPNReserveSyariah, fallbackCKPNReserveConventional)
 }
 
 var _ domain.CKPNService = (*ckpnService)(nil)

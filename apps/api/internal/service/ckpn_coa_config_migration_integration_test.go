@@ -18,16 +18,25 @@ import (
 
 const ckpnCOAMigration = "000069_ckpn_coa_config.up.sql"
 
+// ckpnCOASyariahMigration menambahkan kunci per unit syariah dengan nilai KOSONG.
+const ckpnCOASyariahMigration = "000071_ckpn_coa_syariah.up.sql"
+
 // jalankanMigrasiCkpnCOA menjalankan berkas migrasi apa adanya.
 func jalankanMigrasiCkpnCOA(t *testing.T, e *moneyEnv) {
 	t.Helper()
-	path := filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations", ckpnCOAMigration)
+	jalankanMigrasiCkpnCOABerkas(t, e, ckpnCOAMigration)
+}
+
+// jalankanMigrasiCkpnCOABerkas menjalankan satu berkas migrasi COA CKPN apa adanya.
+func jalankanMigrasiCkpnCOABerkas(t *testing.T, e *moneyEnv, nama string) {
+	t.Helper()
+	path := filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations", nama)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("membaca migrasi %s: %v", ckpnCOAMigration, err)
+		t.Fatalf("membaca migrasi %s: %v", nama, err)
 	}
 	if _, err := e.db.ExecContext(e.ctx, string(data)); err != nil {
-		t.Fatalf("menjalankan migrasi %s: %v", ckpnCOAMigration, err)
+		t.Fatalf("menjalankan migrasi %s: %v", nama, err)
 	}
 }
 
@@ -125,5 +134,47 @@ func TestIntegrasiMigrasiCOACKPNIdempotent(t *testing.T) {
 	jalankanMigrasiCkpnCOA(t, e)
 	if got := bacaConfigCKPNCOA(t, e, "ckpn.coa.reserve"); got != "10950" {
 		t.Fatalf("ckpn.coa.reserve kosong tidak diisi: %q", got)
+	}
+}
+
+// Uji migrasi 000071 terhadap PostgreSQL sungguhan: kunci unit syariah di-seed
+// KOSONG (artinya mengikuti kunci global), idempotent, dan nilai operator tidak
+// ditimpa. Kosongnya nilai seed penting: bank yang belum mengisi kunci syariah
+// harus mendapat perilaku yang sama seperti sebelum kunci ini ada.
+func TestIntegrasiMigrasiCOACKPNSyariahIdempotent(t *testing.T) {
+	e := newMoneyEnv(t)
+
+	// Kembalikan ke nilai seed (kosong) agar tidak mengganggu uji lain.
+	t.Cleanup(func() {
+		setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "")
+		setConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah", "")
+	})
+
+	// Tiru keadaan sesudah migrasi: kedua kunci ada dan kosong.
+	setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "")
+	setConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah", "")
+
+	assertKosong := func(tahap string) {
+		t.Helper()
+		if got := bacaConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah"); got != "" {
+			t.Fatalf("%s: ckpn.coa.expense.syariah = %q, mau kosong (ikut kunci global)", tahap, got)
+		}
+		if got := bacaConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah"); got != "" {
+			t.Fatalf("%s: ckpn.coa.reserve.syariah = %q, mau kosong (ikut kunci global)", tahap, got)
+		}
+	}
+
+	jalankanMigrasiCkpnCOABerkas(t, e, ckpnCOASyariahMigration)
+	assertKosong("setelah jalan pertama")
+
+	// Jalan kedua tetap kosong, tidak mengubah apa pun.
+	jalankanMigrasiCkpnCOABerkas(t, e, ckpnCOASyariahMigration)
+	assertKosong("setelah jalan kedua")
+
+	// Nilai yang sudah disesuaikan operator tidak boleh ditimpa.
+	setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "15901")
+	jalankanMigrasiCkpnCOABerkas(t, e, ckpnCOASyariahMigration)
+	if got := bacaConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah"); got != "15901" {
+		t.Fatalf("nilai operator ckpn.coa.expense.syariah ditimpa menjadi %q, mau tetap 15901", got)
 	}
 }
