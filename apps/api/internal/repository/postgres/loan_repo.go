@@ -585,7 +585,9 @@ func updateOutstanding(ctx context.Context, exec execer, id uuid.UUID, outstandi
 // listPenaltyCandidatesQuery mengambil kredit aktif beserta pokok angsuran yang lewat
 // jatuh tempo. Dasar denda adalah pokok angsuran yang belum dibayar, bukan seluruh
 // sisa pokok: GREATEST(principal_amount - paid_principal, 0) tetap benar untuk
-// angsuran sebagian. Cast ::text wajib untuk kolom enum status.
+// angsuran sebagian. Cast ::text wajib untuk kolom enum status. final_due_date
+// (jatuh tempo angsuran terakhir) ikut diambil karena penentuan kolektibilitas
+// memakai dimensi jatuh tempo Kredit, sama seperti kandidat akrual bunga.
 const listPenaltyCandidatesQuery = `
 	SELECT
 		l.id,
@@ -595,7 +597,9 @@ const listPenaltyCandidatesQuery = `
 		l.status::text,
 		COALESCE(SUM(GREATEST(s.principal_amount - s.paid_principal, 0)), 0) AS overdue_principal,
 		MIN(s.due_date) AS oldest_due_date,
-		l.penalty_last_accrued_on
+		l.penalty_last_accrued_on,
+		(SELECT MAX(sf.due_date) FROM loan_schedules sf
+			WHERE sf.loan_id = l.id) AS final_due_date
 	FROM loans l
 	JOIN loan_schedules s
 		ON s.loan_id = l.id
@@ -618,11 +622,11 @@ func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Ti
 		var c domain.LoanPenaltyCandidate
 		var productID sql.NullString
 		var status string
-		var oldestDue, lastAccrued sql.NullTime
+		var oldestDue, lastAccrued, finalDue sql.NullTime
 
 		if err := rows.Scan(
 			&c.LoanID, &c.LoanNumber, &productID, &c.DisbursementAccountID, &status,
-			&c.OverduePrincipal, &oldestDue, &lastAccrued,
+			&c.OverduePrincipal, &oldestDue, &lastAccrued, &finalDue,
 		); err != nil {
 			return nil, err
 		}
@@ -641,6 +645,10 @@ func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Ti
 		if lastAccrued.Valid {
 			t := lastAccrued.Time
 			c.LastAccruedOn = &t
+		}
+		if finalDue.Valid {
+			t := finalDue.Time
+			c.FinalDueDate = &t
 		}
 		list = append(list, c)
 	}

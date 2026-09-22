@@ -61,6 +61,11 @@ type LoanPenaltyCandidate struct {
 	// OldestDueDate adalah jatuh tempo angsuran tertua yang belum dibayar; nil bila
 	// tidak ada tunggakan.
 	OldestDueDate *time.Time
+	// FinalDueDate adalah jatuh tempo Kredit (angsuran terakhir), dipakai menilai
+	// dimensi "Kredit telah jatuh tempo" POJK 1/2024 Lampiran II saat menentukan
+	// kolektibilitas. nil berarti jadwal belum diketahui dan dimensi jatuh tempo
+	// dianggap belum lewat.
+	FinalDueDate *time.Time
 	// LastAccruedOn adalah tanggal akrual denda terakhir kredit ini; nil bila belum
 	// pernah diakru. Dipakai untuk menghitung selisih hari yang belum diakru.
 	LastAccruedOn *time.Time

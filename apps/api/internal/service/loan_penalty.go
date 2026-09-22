@@ -110,6 +110,23 @@ func (s *loanService) accruePenaltyForLoan(
 		return skipPenalty(item, "tunggakan belum melewati jatuh tempo")
 	}
 
+	// Kolektibilitas memakai jalur yang sama dengan akrual bunga dan PPAP harian.
+	// Akrual denda dihentikan untuk kredit tidak lancar (kolektibilitas 3-5): denda
+	// atas kredit macet tidak boleh diakui sebagai pendapatan secara akrual, sejalan
+	// dengan penghentian akrual bunga (cash basis). Selama NPL, tidak ada akruan baru
+	// dan LastAccruedOn tidak maju; akruan yang sudah terbentuk tidak dibalik.
+	//
+	// Konsekuensi saat kredit SEMBUH dari NPL: gerbang ini tidak lagi menahan, dan
+	// daysToAccrue di bawah mengejar seluruh hari sejak akrual terakhir — TERMASUK
+	// hari-hari masa NPL. Ini disengaja dan konsisten dengan pola akrual bunga: yang
+	// dihentikan hanyalah PENGAKUAN selama masa NPL, bukan hak atas denda setelah
+	// kualitas membaik. Karena itu kalimat di atas tidak berarti "hanya akruan ke depan
+	// yang dihentikan".
+	col := CollectibilityForPosition(ctx, s.config, dpd, DaysPastMaturity(day, c.FinalDueDate))
+	if col.IsNPL() {
+		return skipPenalty(item, "kolektibilitas "+col.Label()+" (NPL): akrual denda dihentikan")
+	}
+
 	// Delta berbasis tanggal: hanya hari yang belum diakru yang ditagih. Akrual
 	// pertama (belum pernah diakru) mengejar seluruh DPD karena penalty_accrued
 	// masih 0; setelah itu selisih sejak akrual terakhir. Tanpa ini, EOD harian

@@ -221,6 +221,101 @@ func TestAccruePenalties_AccruesToPenaltyReceivable(t *testing.T) {
 	}
 }
 
+// Kredit tidak lancar (kolektibilitas 3-5) tidak mengakru denda meskipun tarif
+// denda diisi > 0: pendapatan denda atas kredit macet tidak diakui, konsisten
+// dengan penghentian akrual bunga. Akruan yang sudah terbentuk tidak dibalik.
+func TestAccruePenalties_SkipsNPL(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	// DPD 100 masuk Kurang Lancar (NPL) menurut ambang POJK default.
+	f.candidate.OldestDueDate = timePtr(asOf.AddDate(0, 0, -100))
+	f.candidate.LastAccruedOn = nil
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 || summary.Failed != 0 {
+		t.Fatalf("NPL harus dilewati: accrued=%d skipped=%d failed=%d", summary.Accrued, summary.Skipped, summary.Failed)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatal("NPL tidak boleh memposting jurnal denda (pendapatan 40500)")
+	}
+	if len(f.repo.added) != 0 {
+		t.Fatal("NPL tidak boleh menambah penalty_accrued")
+	}
+}
+
+// Dimensi jatuh tempo Kredit juga menentukan: DPD angsuran kecil (Lancar) tetapi
+// Kredit sudah lewat jatuh tempo cukup lama tetap NPL, sehingga denda tidak diakru.
+// Ini membuktikan FinalDueDate benar-benar dipakai, bukan hanya DPD.
+func TestAccruePenalties_SkipsNPLByMaturity(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	// DPD 5 (Lancar menurut tunggakan), tetapi jatuh tempo Kredit 40 hari lalu
+	// -> Diragukan (NPL) menurut dimensi maturity POJK.
+	f.candidate.OldestDueDate = timePtr(asOf.AddDate(0, 0, -5))
+	f.candidate.FinalDueDate = timePtr(asOf.AddDate(0, 0, -40))
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 0 || summary.Skipped != 1 {
+		t.Fatalf("NPL via maturity harus dilewati: accrued=%d skipped=%d", summary.Accrued, summary.Skipped)
+	}
+	if len(f.posting.requests) != 0 || len(f.repo.added) != 0 {
+		t.Fatal("NPL via maturity tidak boleh mengakru denda")
+	}
+}
+
+// Kredit lancar (kol 1-2) tetap mengakru denda meskipun tanggal jatuh tempo Kredit
+// sudah diketahui dan masih jauh; gerbang NPL tidak boleh menyaingi kredit sehat.
+func TestAccruePenalties_AccruesForPerformingLoanWithFinalDueDate(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	f.candidate.OldestDueDate = timePtr(asOf.AddDate(0, 0, -10))
+	f.candidate.FinalDueDate = timePtr(asOf.AddDate(0, 12, 0))
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 1 || summary.Skipped != 0 || summary.Failed != 0 {
+		t.Fatalf("kredit lancar harus diakru: accrued=%d skipped=%d failed=%d", summary.Accrued, summary.Skipped, summary.Failed)
+	}
+	if !summary.TotalPenalty.Equal(decimal.NewFromInt(10_000)) {
+		t.Fatalf("total denda %s, ingin 10.000", summary.TotalPenalty)
+	}
+}
+
+// Tarif 0 tidak mengakru apa pun, termasuk untuk kredit NPL: peringatan tarif tetap
+// muncul karena ada tunggakan, dan tidak ada jurnal/penambahan.
+func TestAccruePenalties_ZeroRateSkipsNPL(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	f.candidate.OldestDueDate = timePtr(asOf.AddDate(0, 0, -100))
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.Zero)
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 0 || len(f.posting.requests) != 0 || len(f.repo.added) != 0 {
+		t.Fatal("tarif 0 tidak boleh mengakru denda apa pun, termasuk NPL")
+	}
+	if summary.Warning == "" || summary.Overdue != 1 {
+		t.Fatalf("peringatan tarif 0 harus tetap muncul: warning=%q overdue=%d", summary.Warning, summary.Overdue)
+	}
+}
+
 // Menjalankan batch dua kali pada tanggal yang sama tidak menggandakan denda.
 func TestAccruePenalties_IdempotentOnSameDate(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
