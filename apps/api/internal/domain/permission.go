@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,6 +55,20 @@ type UserGroup struct {
 	// jenjang kewenangan grup ini. Kosong berarti peran pengguna sendiri.
 	ApprovalLimitRole StaffRole
 	Permissions       []Permission
+	// Members adalah pengguna yang tergabung dalam grup ini. Ditampilkan halaman
+	// pengelolaan izin agar bank dapat melihat siapa yang terdampak sebelum
+	// mengubah pemetaan; keanggotaan bersifat aditif dan tidak mengikat pekerjaan.
+	Members []GroupMember
+}
+
+// GroupMember adalah satu pengguna yang tergabung dalam sebuah grup. Dibaca dari
+// staff_users; hanya field yang aman ditampilkan (tanpa kata sandi).
+type GroupMember struct {
+	UserID   uuid.UUID
+	Username string
+	FullName string
+	Role     StaffRole
+	IsActive bool
 }
 
 // MenuDefinition adalah satu menu aplikasi beserta izin yang membukanya. Nol izin
@@ -95,6 +110,25 @@ func KnownPermission(p Permission) bool {
 		}
 	}
 	return false
+}
+
+// KnownPermissions mengembalikan seluruh izin yang ditegakkan kode, terurut dan
+// tanpa duplikat. Dipakai halaman pengelolaan izin sebagai daftar pilihan sehingga
+// web tidak menyimpan salinan izin di kode dan hanya bisa mengajukan izin yang
+// benar-benar diperiksa rute.
+func KnownPermissions() []Permission {
+	seen := map[Permission]bool{}
+	out := []Permission{}
+	for _, perms := range RolePermissions {
+		for _, p := range perms {
+			if !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // NormalizePermissionOperation memvalidasi dan menormalkan operasi perubahan.

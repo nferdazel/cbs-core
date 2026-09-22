@@ -14,17 +14,6 @@ import { Select } from "@/components/ui/Select";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-/**
- * Peran berwenang memegang accounts:open menurut domain/staff.go (RolePermissions):
- * SUPERADMIN, ADMIN, TELLER. Backend menegakkannya lewat middleware
- * RequirePermission, jadi tombol disembunyikan untuk peran lain.
- */
-const OPEN_ACCOUNT_ROLES = new Set(["SUPERADMIN", "ADMIN", "TELLER"]);
-
-export function canOpenAccount(role: string | null | undefined): boolean {
-  return role ? OPEN_ACCOUNT_ROLES.has(role) : false;
-}
-
 /** Keluarga produk yang dibuka lewat POST /accounts/open, bukan lewat deposito/kredit. */
 const OPENABLE_FAMILIES = new Set(["SAVINGS", "CURRENT_ACCOUNT"]);
 

@@ -28,10 +28,38 @@ type transactionLimitService struct {
 	// tanggal bisnis, sehingga saat tutup hari tertinggal, menyaring hari kalender UTC
 	// membuat jurnal hari bisnis berjalan tidak terhitung (dan batas harian lolos).
 	dates domain.BusinessDateProvider
+	// approvalRoles menyelesaikan peran matriks limit yang menjadi jenjang kewenangan
+	// persetujuan pelaku dari grup pengguna (alur W7). nilai nil berarti peran pelaku
+	// sendiri yang dipakai, yaitu perilaku sebelum kaitan ditegakkan.
+	approvalRoles domain.ApprovalLimitRoleResolver
 }
 
-func NewTransactionLimitService(config domain.SystemConfigService, daily domain.DailyDebitSumReader, dates domain.BusinessDateProvider) domain.TransactionLimitService {
-	return &transactionLimitService{config: config, daily: daily, dates: dates}
+func NewTransactionLimitService(config domain.SystemConfigService, daily domain.DailyDebitSumReader, dates domain.BusinessDateProvider, approvalRoles ...domain.ApprovalLimitRoleResolver) domain.TransactionLimitService {
+	svc := &transactionLimitService{config: config, daily: daily, dates: dates}
+	if len(approvalRoles) > 0 {
+		svc.approvalRoles = approvalRoles[0]
+	}
+	return svc
+}
+
+// effectiveRole menentukan peran matriks limit yang berlaku bagi pelaku. Bila
+// pengguna tergabung dalam grup yang menunjuk peran lain (user_groups.
+// approval_limit_role), peran itulah yang dibaca dari matriks limit yang sama:
+// tidak ada matriks kedua, hanya baris limit.<peran>.* yang dipilih.
+//
+// Kegagalan resolusi TIDAK mengunci pengguna: bila grup tidak terbaca, peran
+// pelaku sendiri dipakai sehingga perilaku lama (dan aksesnya) tetap utuh. Ini
+// sejalan dengan BranchScopeMiddleware yang juga tidak memasang cakupan saat
+// resolusi gagal.
+func (s *transactionLimitService) effectiveRole(ctx context.Context, actor domain.Actor) domain.StaffRole {
+	if s.approvalRoles == nil {
+		return actor.Role
+	}
+	role, err := s.approvalRoles.ResolveApprovalLimitRole(ctx, actor.UserID, actor.Role)
+	if err != nil || role == "" {
+		return actor.Role
+	}
+	return role
 }
 
 // currentBusinessDate membaca tanggal bisnis berjalan dari repositori tanggal, bukan
@@ -84,15 +112,19 @@ func (s *transactionLimitService) requiredLimit(ctx context.Context, key string)
 }
 
 func (s *transactionLimitService) ForActor(ctx context.Context, actor domain.Actor, txType string) (domain.TransactionLimit, error) {
-	perTransaction, err := s.requiredLimit(ctx, limitKey(actor, txType, "per_transaction"))
+	// Peran efektif (dari grup pengguna) memilih baris matriks limit yang sama;
+	// tanpa kaitan grup, hasilnya persis peran pelaku.
+	lookup := actor
+	lookup.Role = s.effectiveRole(ctx, actor)
+	perTransaction, err := s.requiredLimit(ctx, limitKey(lookup, txType, "per_transaction"))
 	if err != nil {
 		return domain.TransactionLimit{}, err
 	}
-	daily, err := s.requiredLimit(ctx, limitKey(actor, txType, "daily"))
+	daily, err := s.requiredLimit(ctx, limitKey(lookup, txType, "daily"))
 	if err != nil {
 		return domain.TransactionLimit{}, err
 	}
-	approvalAbove, err := s.requiredLimit(ctx, limitKey(actor, txType, "approval_above"))
+	approvalAbove, err := s.requiredLimit(ctx, limitKey(lookup, txType, "approval_above"))
 	if err != nil {
 		return domain.TransactionLimit{}, err
 	}
@@ -279,8 +311,11 @@ func (s *transactionLimitService) CheckDailyAtExecution(ctx context.Context, tx 
 	}
 	// Hanya batas harian yang dibutuhkan di sini; membaca seluruh batas akan menolak
 	// eksekusi yang sah hanya karena kunci per_transaction/approval_above tidak ada,
-	// padahal keduanya sengaja tidak diperiksa ulang saat eksekusi.
-	dailyLimit, err := s.requiredLimit(ctx, limitKey(maker, txType, "daily"))
+	// padahal keduanya sengaja tidak diperiksa ulang saat eksekusi. Peran efektif
+	// grup dipakai agar batas harian yang diperiksa sama dengan saat pengajuan.
+	lookup := maker
+	lookup.Role = s.effectiveRole(ctx, maker)
+	dailyLimit, err := s.requiredLimit(ctx, limitKey(lookup, txType, "daily"))
 	if err != nil {
 		return err
 	}

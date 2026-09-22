@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -53,6 +54,16 @@ type DailyDebitSumReader interface {
 	// eksekusi. Kunci diambil SEBELUM jurnal ditulis; dua persetujuan bersamaan tidak
 	// boleh sama-sama membaca snapshot "masih di bawah batas" lalu sama-sama posting.
 	LockDailyEvaluation(ctx context.Context, tx any, maker, txType string, businessDate time.Time) error
+}
+
+// ApprovalLimitRoleResolver menyelesaikan peran pada matriks limit 000051 yang
+// menjadi jenjang kewenangan persetujuan seorang pelaku, dibaca dari grup pengguna
+// (user_groups.approval_limit_role, migrasi 000079). Ini KAIT ke matriks yang sudah
+// ada, bukan matriks limit kedua: nilai batas tetap dibaca dari kunci
+// limit.<peran>.<jenis>.* yang sama. Bila tidak ada grup yang menunjuk peran lain,
+// peran pelaku sendiri yang dipakai, sehingga perilaku lama tidak berubah.
+type ApprovalLimitRoleResolver interface {
+	ResolveApprovalLimitRole(ctx context.Context, userID uuid.UUID, role StaffRole) (StaffRole, error)
 }
 
 type TransactionLimitService interface {

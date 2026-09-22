@@ -342,3 +342,83 @@ func TestIntegrasiMenuMengikutiIzin(t *testing.T) {
 		t.Fatalf("menu kredit belum terbuka setelah izin diberikan: %v", menusAfter)
 	}
 }
+
+// TestIntegrasiPeranLimitSeedMenyamaiPeran membuktikan kaitan
+// user_groups.approval_limit_role (000079) mereproduksi pemetaan efektif sekarang:
+// untuk tiap peran, resolusi grup dari database mengembalikan peran itu sendiri,
+// dan batas efektif sesudah kaitan identik dengan sebelum kaitan. Tidak ada
+// transaksi yang berubah persetujuannya.
+func TestIntegrasiPeranLimitSeedMenyamaiPeran(t *testing.T) {
+	db, ctx := newPermissionDB(t)
+	permRepo := postgres.NewPermissionRepository(db)
+	configSvc := service.NewSystemConfigService(postgres.NewSystemConfigRepository(db))
+
+	roles := []domain.StaffRole{
+		domain.RoleSuperAdmin, domain.RoleAdmin, domain.RoleSupervisor,
+		domain.RoleTeller, domain.RoleCS, domain.RoleAO, domain.RoleAuditor,
+	}
+	for _, role := range roles {
+		t.Run(string(role), func(t *testing.T) {
+			userID, _ := seedTempUser(t, db, ctx, role)
+
+			resolved, err := permRepo.ResolveApprovalLimitRole(ctx, userID, role)
+			if err != nil {
+				t.Fatalf("ResolveApprovalLimitRole: %v", err)
+			}
+			if resolved != role {
+				t.Fatalf("peran limit %s = %s, ingin %s (seed harus menyamai peran)", role, resolved, role)
+			}
+
+			sebelum := service.NewTransactionLimitService(configSvc, nil, nil)
+			sesudah := service.NewTransactionLimitService(configSvc, nil, nil, permRepo)
+			for _, txType := range service.TransactionLimitTypes() {
+				actor := domain.Actor{UserID: userID, Username: string(role), Role: role}
+				a, err := sebelum.ForActor(ctx, actor, txType)
+				if err != nil {
+					t.Fatalf("sebelum %s: %v", txType, err)
+				}
+				b, err := sesudah.ForActor(ctx, actor, txType)
+				if err != nil {
+					t.Fatalf("sesudah %s: %v", txType, err)
+				}
+				if !a.PerTransaction.Equal(b.PerTransaction) ||
+					!a.DailyAmount.Equal(b.DailyAmount) ||
+					!a.RequiresApprovalAbove.Equal(b.RequiresApprovalAbove) {
+					t.Fatalf("%s/%s berubah: sebelum %+v, sesudah %+v", role, txType, a, b)
+				}
+				if txType == "DEPOSIT" {
+					t.Logf("%-11s per_transaksi sebelum=%s sesudah=%s | ambang sebelum=%s sesudah=%s",
+						role, a.PerTransaction, b.PerTransaction, a.RequiresApprovalAbove, b.RequiresApprovalAbove)
+				}
+			}
+		})
+	}
+}
+
+// TestIntegrasiPeranLimitGrupTertinggiMenang membuktikan keanggotaan grup lain
+// (aditif) dapat menaikkan jenjang kewenangan: TELLER yang dijadikan anggota grup
+// SUPERVISOR memakai baris matriks SUPERVISOR. Peran tertinggi yang menang, sejalan
+// dengan semantik izin efektif yang juga aditif.
+func TestIntegrasiPeranLimitGrupTertinggiMenang(t *testing.T) {
+	db, ctx := newPermissionDB(t)
+	permRepo := postgres.NewPermissionRepository(db)
+
+	userID, _ := seedTempUser(t, db, ctx, domain.RoleTeller)
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO user_group_members (user_id, group_id)
+		SELECT $1, id FROM user_groups WHERE code = 'ROLE_SUPERVISOR'
+		ON CONFLICT DO NOTHING`, userID); err != nil {
+		t.Fatalf("menambah keanggotaan grup: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM user_group_members WHERE user_id = $1`, userID)
+	})
+
+	resolved, err := permRepo.ResolveApprovalLimitRole(ctx, userID, domain.RoleTeller)
+	if err != nil {
+		t.Fatalf("ResolveApprovalLimitRole: %v", err)
+	}
+	if resolved != domain.RoleSupervisor {
+		t.Fatalf("peran limit = %s, ingin SUPERVISOR (peran tertinggi dari grup yang diikuti)", resolved)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 )
 
 // PermissionRepository membaca & mengubah pemetaan grup/izin dan katalog menu.
@@ -21,6 +22,7 @@ func NewPermissionRepository(db *sql.DB) *PermissionRepository {
 }
 
 var _ domain.PermissionRepository = (*PermissionRepository)(nil)
+var _ domain.ApprovalLimitRoleResolver = (*PermissionRepository)(nil)
 
 // ListGroups mengembalikan seluruh grup beserta izinnya. Dua kueri (grup dan izin)
 // lalu digabung di Go agar tidak ada kueri per grup.
@@ -70,7 +72,37 @@ func (r *PermissionRepository) ListGroups(ctx context.Context) ([]domain.UserGro
 			groups[i].Permissions = append(groups[i].Permissions, domain.Permission(permission))
 		}
 	}
-	return groups, permRows.Err()
+	if err := permRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Anggota dibaca sekali untuk seluruh grup, lalu ditempelkan di Go. Halaman
+	// pengelolaan izin memakainya untuk melihat siapa yang terdampak sebelum
+	// pemetaan diubah; tanpa gambar anggota, perubahan berisiko tak terlihat.
+	memberRows, err := r.db.QueryContext(ctx, `
+		SELECT g.code, u.id, u.username, u.full_name, u.role::text, u.is_active
+		FROM user_group_members m
+		JOIN user_groups g ON g.id = m.group_id
+		JOIN staff_users u ON u.id = m.user_id
+		ORDER BY g.code, u.username`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca anggota grup: %w", err)
+	}
+	defer memberRows.Close()
+	for memberRows.Next() {
+		var code string
+		var m domain.GroupMember
+		if err := memberRows.Scan(&code, &m.UserID, &m.Username, &m.FullName, &m.Role, &m.IsActive); err != nil {
+			return nil, err
+		}
+		if i, ok := index[code]; ok {
+			groups[i].Members = append(groups[i].Members, m)
+		}
+	}
+	if err := memberRows.Err(); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 // ListMenus mengembalikan katalog menu beserta izin yang membukanya. Menu tanpa
@@ -115,6 +147,49 @@ func (r *PermissionRepository) ListMenus(ctx context.Context) ([]domain.MenuDefi
 		}
 	}
 	return menus, permRows.Err()
+}
+
+// ResolveApprovalLimitRole mengembalikan peran pada matriks limit 000051 yang
+// menjadi jenjang kewenangan persetujuan pengguna. Sumbernya: grup peran bawaan
+// (ROLE_<peran>, selalu berlaku) digabung keanggotaan grup lain (aditif). Bila
+// beberapa grup menunjuk peran berbeda, peran dengan kewenangan tertinggi yang
+// menang — sejalan dengan semantik izin efektif yang juga aditif.
+//
+// userID uuid.Nil (mis. pemanggilan List yang hanya punya peran) tetap membaca
+// grup ROLE_<peran>; anggota grup lain tidak ada sehingga hasilnya peran itu.
+// Tidak ada grup yang menunjuk peran valid -> peran pelaku dikembalikan apa adanya.
+func (r *PermissionRepository) ResolveApprovalLimitRole(ctx context.Context, userID uuid.UUID, role domain.StaffRole) (domain.StaffRole, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT g.approval_limit_role::text
+		FROM user_groups g
+		WHERE g.approval_limit_role IS NOT NULL
+		  AND (g.code = 'ROLE_' || $2
+		       OR EXISTS (
+		           SELECT 1 FROM user_group_members m
+		           WHERE m.user_id = $1 AND m.group_id = g.id))`, userID, string(role))
+	if err != nil {
+		return "", fmt.Errorf("membaca peran limit grup: %w", err)
+	}
+	defer rows.Close()
+
+	best := domain.StaffRole("")
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return "", err
+		}
+		candidate := domain.StaffRole(raw)
+		if candidate.PrivilegeRank() > best.PrivilegeRank() {
+			best = candidate
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if best == "" {
+		return role, nil
+	}
+	return best, nil
 }
 
 func (r *PermissionRepository) GroupExists(ctx context.Context, groupCode string) (bool, error) {

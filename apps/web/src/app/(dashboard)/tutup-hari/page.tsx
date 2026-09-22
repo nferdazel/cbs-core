@@ -11,6 +11,7 @@ import type {
   SystemBusinessDate,
 } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -25,9 +26,6 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 
 type BatchKind = "eod" | "eom" | "eoy";
-
-/** Permission `system:config` (domain.RolePermissions) hanya dimiliki SUPERADMIN. */
-const CLOSING_ROLE = "SUPERADMIN";
 
 // Buku adalah kunci teknis (CONVENTIONAL/SYARIAH); hanya label tampilannya dari kamus.
 function bookLabel(t: Dictionary["dayClose"], book: EOYBookResult["book"]): string {
@@ -129,7 +127,8 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
 export default function TutupHariPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const canRun = user?.role === CLOSING_ROLE;
+  // Aksi EOD/EOM/EOY dijaga izin system:config di API; izin efektif dari /auth/me.
+  const canRun = hasPermission(user, "system:config");
 
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
     null
@@ -303,7 +302,7 @@ export default function TutupHariPage() {
         <div className="mb-4 rounded-md border border-border bg-canvas px-4 py-3">
           <p className="text-body font-medium text-ink-900">
             {t.dayClose.restrictedPrefix}
-            {CLOSING_ROLE}
+            {t.dayClose.restrictedPermission}
             {t.dayClose.restrictedSuffix}
           </p>
           <p className="mt-1 text-body text-ink-600">

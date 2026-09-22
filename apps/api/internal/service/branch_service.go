@@ -192,7 +192,13 @@ func (s *branchService) CreateOrgUnit(ctx context.Context, input domain.CreateOr
 // puncak bila parentCode kosong. Atasan wajib berjenjang lebih tinggi; karena
 // jenjang mengikat dan menurun, siklus tidak mungkin terbentuk (pindah ke diri
 // sendiri pun ditolak sebagai atasan setingkat).
-func (s *branchService) SetOrgUnitParent(ctx context.Context, code, parentCode string, actor domain.Actor) (*domain.Branch, error) {
+//
+// Pengaman cakupan (W14): pemindahan mengubah siapa yang melihat cabang mana.
+// Bila ada pengguna aktif yang akan kehilangan atau mendapat cakupan, perubahan
+// DITOLAK kecuali ConfirmScopeChange disetel, sehingga reorg tidak mengubah akses
+// secara tak sengaja. Pengaman ini tidak mengunci siapa pun: staf di unit target
+// selalu mempertahankan cakupannya (cakupan dimulai dari unit sendiri).
+func (s *branchService) SetOrgUnitParent(ctx context.Context, code string, input domain.SetOrgUnitParentInput, actor domain.Actor) (*domain.Branch, error) {
 	targetCode := strings.ToUpper(strings.TrimSpace(code))
 	target, err := s.repo.GetByCode(ctx, targetCode)
 	if err != nil {
@@ -200,7 +206,7 @@ func (s *branchService) SetOrgUnitParent(ctx context.Context, code, parentCode s
 	}
 
 	var parentID *uuid.UUID
-	parentCode = strings.ToUpper(strings.TrimSpace(parentCode))
+	parentCode := strings.ToUpper(strings.TrimSpace(input.ParentCode))
 	if parentCode != "" {
 		parent, err := s.repo.GetByCode(ctx, parentCode)
 		if err != nil {
@@ -212,13 +218,23 @@ func (s *branchService) SetOrgUnitParent(ctx context.Context, code, parentCode s
 		parentID = &parent.ID
 	}
 
+	losing, gaining, err := s.repo.ScopeImpactUsers(ctx, target.ID, target.ParentID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if (losing > 0 || gaining > 0) && !input.ConfirmScopeChange {
+		return nil, &domain.ScopeChangeError{Losing: losing, Gaining: gaining}
+	}
+
 	err = s.txRunner.Run(ctx, func(tx any) error {
 		if err := s.repo.SetParentTx(ctx, tx, target.ID, parentID); err != nil {
 			return err
 		}
 		return writeAudit(ctx, s.auditRepo, tx, actor, "SET_ORG_UNIT_PARENT", "branch", target.ID.String(), map[string]any{
-			"code":        target.Code,
-			"parent_code": parentCode,
+			"code":             target.Code,
+			"parent_code":      parentCode,
+			"affected_losing":  losing,
+			"affected_gaining": gaining,
 		})
 	})
 	if err != nil {

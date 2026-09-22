@@ -10,15 +10,10 @@ import { Input } from "@/components/ui/Input";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
- * Peran berwenang memegang customers:create menurut domain/staff.go
- * (RolePermissions): SUPERADMIN, ADMIN, TELLER, CS, AO. Backend menegakkannya
- * lewat middleware RequirePermission, jadi tombol disembunyikan untuk peran lain.
+ * Tombol pendaftaran hanya tampil bila pengguna memegang izin customers:create
+ * dari GET /auth/me (bukan salinan peran di web). Backend menegakkannya lewat
+ * middleware RequirePermission; menyembunyikan tombol bukan batas keamanan.
  */
-const REGISTRATION_ROLES = new Set(["SUPERADMIN", "ADMIN", "TELLER", "CS", "AO"]);
-
-export function canCreateCustomer(role: string | null | undefined): boolean {
-  return role ? REGISTRATION_ROLES.has(role) : false;
-}
 
 type FieldKey = "full_name" | "id_card_number" | "email";
 
@@ -50,7 +45,7 @@ export interface CustomerRegistrationProps {
   onRegistered: (customer: Customer) => void;
   /**
    * Bila diisi, panel sukses menampilkan aksi lanjut membuka rekening. Hanya
-   * diberikan kepada peran yang berwenang accounts:open.
+   * diberikan kepada pengguna yang memegang izin accounts:open.
    */
   onOpenAccount?: (customer: Customer) => void;
 }

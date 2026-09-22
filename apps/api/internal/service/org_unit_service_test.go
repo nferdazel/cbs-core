@@ -29,6 +29,11 @@ func (s *stubBranchRepo) SetParentTx(_ context.Context, _ any, id uuid.UUID, par
 	return domain.ErrBranchNotFound
 }
 
+// scopeImpact membuat stub dapat mensimulasikan dampak cakupan tanpa database.
+func (s *stubBranchRepo) ScopeImpactUsers(_ context.Context, _ uuid.UUID, _, _ *uuid.UUID) (int, int, error) {
+	return s.scopeLosing, s.scopeGaining, nil
+}
+
 func orgUnitFixture() (domain.BranchService, *stubBranchRepo, *stubAuditRepo) {
 	areaID := uuid.New()
 	repo := &stubBranchRepo{branches: map[string]*domain.Branch{
@@ -120,7 +125,7 @@ func TestCreateOrgUnit_CabangTetapTigaDigit(t *testing.T) {
 func TestSetOrgUnitParent_MenolakDiriSendiri(t *testing.T) {
 	svc, _, _ := orgUnitFixture()
 	actor := domain.Actor{Role: domain.RoleSuperAdmin}
-	if _, err := svc.SetOrgUnitParent(context.Background(), "810", "810", actor); !errors.Is(err, domain.ErrOrgUnitParentInvalid) {
+	if _, err := svc.SetOrgUnitParent(context.Background(), "810", domain.SetOrgUnitParentInput{ParentCode: "810"}, actor); !errors.Is(err, domain.ErrOrgUnitParentInvalid) {
 		t.Fatalf("err = %v, ingin ErrOrgUnitParentInvalid", err)
 	}
 }
@@ -130,7 +135,7 @@ func TestSetOrgUnitParent_Sukses(t *testing.T) {
 	svc, repo, audit := orgUnitFixture()
 	actor := domain.Actor{Username: "super.uji", Role: domain.RoleSuperAdmin}
 	// 811 (cabang) semula di bawah area 810: lepas menjadi puncak.
-	unit, err := svc.SetOrgUnitParent(context.Background(), "811", "", actor)
+	unit, err := svc.SetOrgUnitParent(context.Background(), "811", domain.SetOrgUnitParentInput{}, actor)
 	if err != nil {
 		t.Fatalf("SetOrgUnitParent: %v", err)
 	}
@@ -142,5 +147,41 @@ func TestSetOrgUnitParent_Sukses(t *testing.T) {
 	}
 	if len(audit.events) != 1 || audit.events[0].Action != "SET_ORG_UNIT_PARENT" {
 		t.Fatalf("audit = %+v, ingin satu event SET_ORG_UNIT_PARENT", audit.events)
+	}
+}
+
+// Pemindahan yang mengubah cakupan pengguna aktif ditolak tanpa konfirmasi, dan
+// diterima setelah dikonfirmasi. Unit target sendiri tidak pernah kehilangan
+// cakupan, sehingga pengaman ini tidak mengunci pengguna.
+func TestSetOrgUnitParent_KonfirmasiDampakCakupan(t *testing.T) {
+	svc, repo, audit := orgUnitFixture()
+	repo.scopeLosing = 2
+	repo.scopeGaining = 1
+	actor := domain.Actor{Username: "super.uji", Role: domain.RoleSuperAdmin}
+
+	_, err := svc.SetOrgUnitParent(context.Background(), "811", domain.SetOrgUnitParentInput{}, actor)
+	var scope *domain.ScopeChangeError
+	if !errors.As(err, &scope) {
+		t.Fatalf("err = %v, ingin ScopeChangeError", err)
+	}
+	if scope.Losing != 2 || scope.Gaining != 1 {
+		t.Fatalf("dampak = kehilangan %d/mendapat %d, ingin 2/1", scope.Losing, scope.Gaining)
+	}
+	if repo.branches["811"].ParentID == nil {
+		t.Fatal("pemindahan ditolak tetapi parent sudah berubah")
+	}
+	if len(audit.events) != 0 {
+		t.Fatalf("tidak boleh ada audit saat ditolak: %+v", audit.events)
+	}
+
+	unit, err := svc.SetOrgUnitParent(context.Background(), "811", domain.SetOrgUnitParentInput{ConfirmScopeChange: true}, actor)
+	if err != nil {
+		t.Fatalf("dengan konfirmasi seharusnya diterima: %v", err)
+	}
+	if unit.ParentID != nil {
+		t.Fatalf("parent_id = %v, ingin nil", unit.ParentID)
+	}
+	if len(audit.events) != 1 || audit.events[0].Action != "SET_ORG_UNIT_PARENT" {
+		t.Fatalf("audit = %+v, ingin satu SET_ORG_UNIT_PARENT", audit.events)
 	}
 }

@@ -6,6 +6,7 @@ import { ApiError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { AccountRecord } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -16,14 +17,8 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { ErrorState } from "@/components/ui/States";
-import {
-  AccountReactivation,
-  canReactivateAccount,
-} from "@/components/account/AccountReactivation";
-import {
-  AccountOpening,
-  canOpenAccount,
-} from "@/components/account/AccountOpening";
+import { AccountReactivation } from "@/components/account/AccountReactivation";
+import { AccountOpening } from "@/components/account/AccountOpening";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -107,8 +102,10 @@ export default function RekeningPage() {
     [accounts, statusFilter]
   );
 
-  const authorized = canReactivateAccount(user?.role);
-  const canOpen = canOpenAccount(user?.role);
+  // Izin efektif dari GET /auth/me, bukan peran. API tetap penjaga sebenarnya
+  // (accounts:freeze untuk reaktivasi, accounts:open untuk pembukaan rekening).
+  const authorized = hasPermission(user, "accounts:freeze");
+  const canOpen = hasPermission(user, "accounts:open");
 
   const handleReactivated = (updated: AccountRecord) => {
     // Perbarui baris di tempat, lalu muat ulang halaman agar sinkron dengan server.

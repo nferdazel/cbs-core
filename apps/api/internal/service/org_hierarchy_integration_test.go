@@ -1,12 +1,15 @@
 package service_test
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
+	"github.com/google/uuid"
 )
 
 // seedOrgHierarchy menyiapkan jenjang wilayah -> area -> cabang yang dipakai uji
@@ -234,5 +237,72 @@ func TestIntegrasiCreateOrgUnitProduksi(t *testing.T) {
 	}
 	if len(resolved) != 3 {
 		t.Fatalf("wilayah produksi harus mencakup wilayah+area+cabang, dapat %v", resolved)
+	}
+}
+
+// seedOrgStaffAt menyisipkan pengguna aktif di cabang tertentu (memakai penyisip
+// pengguna uji izin) lalu memindahkan cabangnya. Dibersihkan otomatis.
+func seedOrgStaffAt(t *testing.T, db *sql.DB, ctx context.Context, branchCode string) uuid.UUID {
+	t.Helper()
+	userID, _ := seedTempUser(t, db, ctx, domain.RoleSupervisor)
+	if _, err := db.ExecContext(ctx, `UPDATE staff_users SET branch_code = $2 WHERE id = $1`, userID, branchCode); err != nil {
+		t.Fatalf("memindahkan cabang pengguna uji: %v", err)
+	}
+	return userID
+}
+
+// Pemindahan cabang yang punya pengguna TIDAK mengunci pengguna di cabang itu,
+// tetapi mengubah cakupan pengguna di unit atasan. Perubahan itu wajib dikonfirmasi
+// agar tidak mengubah akses secara tak sengaja; setelah dikonfirmasi, staf di
+// cabang yang dipindah tetap dapat mengakses cabangnya sendiri.
+func TestIntegrasiPemindahanUnitKonfirmasiCakupanTanpaMengunci(t *testing.T) {
+	e := newActorBranchEnv(t)
+	seedOrgHierarchy(t, e)
+	db, ctx := e.money.db, e.money.ctx
+	branchSvc := service.NewBranchService(db, postgres.NewBranchRepository(db), postgres.NewAuditRepository(db))
+	actor := domain.Actor{UserID: e.money.actor.UserID, Username: "super.uji", Role: domain.RoleSuperAdmin, BranchCode: "001"}
+
+	// Pengguna di area A810 akan kehilangan cabang 811; pengguna di 811 tetap.
+	seedOrgStaffAt(t, db, ctx, "A810")
+	branchUser := seedOrgStaffAt(t, db, ctx, "811")
+
+	// Kembalikan hierarki setelah uji agar tidak mempengaruhi uji lain.
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(),
+			`UPDATE branches SET parent_id = (SELECT id FROM branches WHERE code='A810') WHERE code='811'`)
+	})
+
+	_, err := branchSvc.SetOrgUnitParent(ctx, "811", domain.SetOrgUnitParentInput{ParentCode: "R900"}, actor)
+	var scope *domain.ScopeChangeError
+	if !errors.As(err, &scope) {
+		t.Fatalf("err = %v, ingin ScopeChangeError", err)
+	}
+	if scope.Losing < 1 {
+		t.Fatalf("harus ada pengguna yang kehilangan cakupan, dapat %+v", scope)
+	}
+	if scope.Gaining != 0 {
+		t.Fatalf("tidak ada yang mendapat cakupan, dapat gaining=%d", scope.Gaining)
+	}
+	t.Logf("dampak pemindahan 811: kehilangan=%d mendapat=%d", scope.Losing, scope.Gaining)
+
+	var stillOldParent bool
+	if err := db.QueryRowContext(ctx, `
+		SELECT (SELECT parent_id FROM branches WHERE code='811') = (SELECT id FROM branches WHERE code='A810')`).Scan(&stillOldParent); err != nil {
+		t.Fatalf("membaca parent: %v", err)
+	}
+	if !stillOldParent {
+		t.Fatal("pemindahan ditolak tetapi parent sudah berubah")
+	}
+
+	if _, err := branchSvc.SetOrgUnitParent(ctx, "811", domain.SetOrgUnitParentInput{ParentCode: "R900", ConfirmScopeChange: true}, actor); err != nil {
+		t.Fatalf("dengan konfirmasi seharusnya diterima: %v", err)
+	}
+	codes, err := postgres.NewBranchRepository(db).ResolveScopeCodes(ctx, "811")
+	if err != nil {
+		t.Fatalf("ResolveScopeCodes: %v", err)
+	}
+	userActor := domain.Actor{UserID: branchUser, Username: "spv.811", Role: domain.RoleSupervisor, BranchCode: "811", BranchScope: domain.NewBranchScope(codes)}
+	if !userActor.CanAccessBranch("811") {
+		t.Fatalf("staf di cabang yang dipindah kehilangan cakupan cabangnya sendiri: %v", codes)
 	}
 }

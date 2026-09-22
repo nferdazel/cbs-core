@@ -103,12 +103,14 @@ func main() {
 	executors := service.NewExecutorRegistry()
 	mcRepo := postgres.NewMakerCheckerRepository(db)
 	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors, dateRepo, branchRepo)
-	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, dateRepo)
-
 	// Grup pengguna & pemetaan izin tinggal di database (keputusan pemilik sistem).
 	// Perubahan izin diajukan lewat maker-checker dan diterapkan eksekutor ini saat
-	// disetujui; kode hanya menjadi seed awal migrasi 000079.
+	// disetujui; kode hanya menjadi seed awal migrasi 000079. Repositori yang sama
+	// menjadi kait peran limit grup (user_groups.approval_limit_role) ke matriks
+	// limit 000051, tanpa matriks kedua.
 	permissionRepo := postgres.NewPermissionRepository(db)
+	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, dateRepo, permissionRepo)
+
 	permissionSvc := service.NewPermissionService(permissionRepo, auditRepo, mcSvc)
 	executors.Register(service.ActionPermissionChange, permissionSvc)
 

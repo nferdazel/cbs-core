@@ -1,19 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ApiError, request } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
 import type { SystemBusinessDate } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { TransactionLimits } from "@/components/settings/TransactionLimits";
 import { BankProfileCard } from "@/components/settings/BankProfileCard";
 
 export default function PengaturanPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { t } = useTranslation();
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
@@ -44,6 +48,12 @@ export default function PengaturanPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Izin efektif dari GET /auth/me: meninjau katalog butuh system:config:read,
+  // mengajukan perubahan butuh permissions:manage. API tetap penjaga sebenarnya.
+  const canReviewPermissions =
+    hasPermission(user, "system:config:read") ||
+    hasPermission(user, "permissions:manage");
 
   return (
     <>
@@ -112,6 +122,25 @@ export default function PengaturanPage() {
           )}
         </CardContent>
       </Card>
+
+      {canReviewPermissions && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>{t.settingsPage.permissionsTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-start justify-between gap-4">
+            <p className="text-body text-ink-600">
+              {t.settingsPage.permissionsDescription}
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/pengaturan/izin")}
+            >
+              {t.settingsPage.permissionsAction}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <TransactionLimits />
       <BankProfileCard />

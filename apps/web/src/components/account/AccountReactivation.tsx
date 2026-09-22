@@ -4,22 +4,11 @@ import { useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import type { AccountRecord } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
-
-/**
- * Peran berwenang memegang accounts:freeze menurut domain/staff.go
- * (RolePermissions): SUPERADMIN, ADMIN, SUPERVISOR. Backend menegakkannya lewat
- * middleware RequirePermission, jadi tombol disembunyikan untuk peran lain agar
- * tidak ada kontrol yang pasti gagal.
- */
-const REACTIVATION_ROLES = new Set(["SUPERADMIN", "ADMIN", "SUPERVISOR"]);
-
-export function canReactivateAccount(role: string | null | undefined): boolean {
-  return role ? REACTIVATION_ROLES.has(role) : false;
-}
 
 export interface AccountReactivationProps {
   account: AccountRecord;
@@ -43,7 +32,9 @@ export function AccountReactivation({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (account.status !== "DORMANT" || !canReactivateAccount(user?.role)) {
+  // Tombol hanya tampil bila pengguna memegang izin accounts:freeze dari
+  // GET /auth/me (bukan salinan peran). API tetap penjaga sebenarnya.
+  if (account.status !== "DORMANT" || !hasPermission(user, "accounts:freeze")) {
     return null;
   }
 

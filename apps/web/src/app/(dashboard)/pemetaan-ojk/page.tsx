@@ -8,6 +8,7 @@ import type {
   OJKMappingReviewRow,
 } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -57,7 +58,8 @@ export default function PemetaanOJKPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const canDecide = user?.role === "SUPERADMIN" || user?.role === "ADMIN";
+  // Keputusan pemetaan dijaga coa:manage di API; izin efektif dari /auth/me.
+  const canDecide = hasPermission(user, "coa:manage");
 
   const load = useCallback(async () => {
     setLoading(true);

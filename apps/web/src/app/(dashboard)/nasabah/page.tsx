@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Customer } from "@cbs/shared-types";
 import { ApiError, request } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { hasPermission } from "@/lib/permissions";
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -12,13 +13,9 @@ import { Input } from "@/components/ui/Input";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { Pagination } from "@/components/ui/Pagination";
 import { ErrorState } from "@/components/ui/States";
-import {
-  CustomerRegistration,
-  canCreateCustomer,
-} from "@/components/customer/CustomerRegistration";
+import { CustomerRegistration } from "@/components/customer/CustomerRegistration";
 import {
   AccountOpening,
-  canOpenAccount,
   type SelectedCustomer,
 } from "@/components/account/AccountOpening";
 
@@ -80,8 +77,10 @@ export default function NasabahPage() {
     load(page, query);
   }, [page, query, reloadKey, load]);
 
-  const canRegister = canCreateCustomer(user?.role);
-  const canOpen = canOpenAccount(user?.role);
+  // Izin efektif dari GET /auth/me, bukan peran. Menyembunyikan aksi bukan batas
+  // keamanan: API menolak pengguna tanpa izin (customers:create / accounts:open).
+  const canRegister = hasPermission(user, "customers:create");
+  const canOpen = hasPermission(user, "accounts:open");
 
   const resetSearch = () => setSearch("");
 

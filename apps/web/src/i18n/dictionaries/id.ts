@@ -518,6 +518,10 @@ export const dictionaryID = {
     lastUpdated: "Terakhir Diperbarui",
     updatedBy: "Diperbarui Oleh",
     unavailable: "Tanggal bisnis belum tersedia.",
+    permissionsTitle: "Grup & Izin",
+    permissionsDescription:
+      "Tinjau grup pengguna, anggotanya, dan izin per grup. Perubahan diajukan lewat maker-checker.",
+    permissionsAction: "Kelola Grup & Izin",
   },
   reactivation: {
     error: "Reaktivasi gagal diproses.",
@@ -936,7 +940,8 @@ export const dictionaryID = {
     eomButton: "Tutup Bulan (EOM)",
     eoyButton: "Tutup Tahun (EOY)",
     eodButton: "Jalankan Tutup Hari (EOD)",
-    restrictedPrefix: "Tutup hari hanya dapat dijalankan oleh peran ",
+    restrictedPrefix: "Tutup hari hanya dapat dijalankan oleh pengguna dengan izin ",
+    restrictedPermission: "system:config",
     restrictedSuffix: ".",
     restrictedHint:
       "Tanggal bisnis berjalan tetap ditampilkan di bawah ini. Minta superadmin menjalankan EOD, EOM, atau EOY.",
@@ -1028,6 +1033,47 @@ export const dictionaryID = {
     higherPpka: "PPKA lebih tinggi",
     higherCkpn: "CKPN lebih tinggi",
     higherSame: "Keduanya sama",
+  },
+  permissionsPage: {
+    title: "Grup & Izin",
+    description:
+      "Grup pengguna menentukan akses menu dan jenjang kewenangan persetujuan. Perubahan pemetaan izin diajukan lewat maker-checker dan baru berlaku setelah disetujui pemeriksa lain.",
+    listTitle: "Grup Pengguna",
+    empty: "Belum ada grup pengguna.",
+    loadError: "Gagal memuat katalog grup dan izin.",
+    restricted: "Anda tidak memiliki izin meninjau katalog grup dan izin (403).",
+    colCode: "Kode",
+    colName: "Nama",
+    colKind: "Jenis",
+    colApprovalRole: "Peran Limit",
+    colMembers: "Anggota",
+    colPermissions: "Izin",
+    systemBadge: "Bawaan sistem",
+    ownApprovalRole: "Peran pengguna",
+    noMembers: "Tidak ada anggota.",
+    noPermissions: "Tidak ada izin.",
+    requestTitle: "Ajukan Perubahan Izin",
+    requestDescription:
+      "Perubahan tidak langsung berlaku: pengajuan masuk antrean Persetujuan dan diterapkan setelah disetujui pemeriksa lain.",
+    group: "Grup",
+    groupPlaceholder: "Pilih grup",
+    permission: "Izin",
+    permissionPlaceholder: "Pilih izin",
+    operation: "Operasi",
+    operationPlaceholder: "Pilih operasi",
+    operationGrant: "Tambah izin (GRANT)",
+    operationRevoke: "Cabut izin (REVOKE)",
+    notes: "Catatan (opsional)",
+    notesPlaceholder: "Alasan perubahan pemetaan izin",
+    confirmAccessLoss:
+      "Saya memahami bahwa pencabutan ini dapat membuat pengguna kehilangan akses.",
+    requiredFields: "Grup, izin, dan operasi wajib dipilih.",
+    submit: "Ajukan Perubahan",
+    submitting: "Mengajukan...",
+    submitted:
+      "Pengajuan terkirim. Perubahan baru berlaku setelah disetujui pemeriksa lain.",
+    requestError: "Pengajuan perubahan izin gagal.",
+    forbidden: "Anda tidak memiliki izin mengajukan perubahan izin (403).",
   },
 };
 

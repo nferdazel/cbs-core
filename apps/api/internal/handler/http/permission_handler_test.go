@@ -100,3 +100,50 @@ func TestPermissionHandlerRequestChangeMemetakanError(t *testing.T) {
 		})
 	}
 }
+
+// Katalog harus memuat anggota grup (agar bank melihat siapa yang terdampak) dan
+// daftar seluruh izin yang ditegakkan kode (agar web tidak menyalin daftar izin).
+func TestPermissionHandlerCatalogMemuatAnggotaDanDaftarIzin(t *testing.T) {
+	userID := uuid.New()
+	h := NewPermissionHandler(&fakePermissionService{
+		groups: []domain.UserGroup{{
+			Code:        "ROLE_TELLER",
+			Name:        "Teller",
+			Permissions: []domain.Permission{domain.PermLedgerRead},
+			Members: []domain.GroupMember{{
+				UserID: userID, Username: "teller01", FullName: "Teller Uji", Role: domain.RoleTeller, IsActive: true,
+			}},
+		}},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/permissions/catalog", nil)
+	rec := httptest.NewRecorder()
+	h.Catalog(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, mau 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data struct {
+			Groups               []permissionGroupResponse `json:"groups"`
+			AvailablePermissions []string                  `json:"available_permissions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("respons bukan JSON: %v", err)
+	}
+	if len(body.Data.Groups) != 1 || len(body.Data.Groups[0].Members) != 1 {
+		t.Fatalf("anggota grup tidak ikut: %s", rec.Body.String())
+	}
+	if body.Data.Groups[0].Members[0].Username != "teller01" {
+		t.Fatalf("anggota salah: %s", rec.Body.String())
+	}
+	found := false
+	for _, p := range body.Data.AvailablePermissions {
+		if p == string(domain.PermLedgerRead) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("daftar izin tersedia tidak memuat ledger:read: %s", rec.Body.String())
+	}
+}

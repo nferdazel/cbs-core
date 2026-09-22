@@ -14,6 +14,10 @@ type stubBranchRepo struct {
 	domain.BranchRepository
 	branches map[string]*domain.Branch
 	lastTx   any
+	// scopeLosing/scopeGaining mensimulasikan dampak cakupan pemindahan unit (W14)
+	// tanpa database; nol berarti tidak ada pengguna terdampak.
+	scopeLosing  int
+	scopeGaining int
 }
 
 func (s *stubBranchRepo) GetByCode(_ context.Context, code string) (*domain.Branch, error) {

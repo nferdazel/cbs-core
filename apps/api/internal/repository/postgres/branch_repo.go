@@ -115,6 +115,36 @@ func (r *BranchRepository) SetParentTx(ctx context.Context, tx any, id uuid.UUID
 	return err
 }
 
+// ScopeImpactUsers menghitung pengguna aktif yang cakupannya berubah bila target
+// dipindahkan ke atasan baru. Cakupan seorang staf adalah cabangnya ditambah seluruh
+// turunannya, jadi hanya staf pada leluhur target yang berubah: leluhur lama yang
+// bukan leluhur baru kehilangan target, dan sebaliknya. Staf di unit target sendiri
+// (dan turunannya) selalu memuat target, sehingga tidak pernah ikut kehilangan.
+func (r *BranchRepository) ScopeImpactUsers(ctx context.Context, targetID uuid.UUID, oldParentID, newParentID *uuid.UUID) (int, int, error) {
+	var losing, gaining int
+	err := r.db.QueryRowContext(ctx, `
+		WITH RECURSIVE old_chain AS (
+			SELECT id, code, parent_id FROM branches WHERE id = $1
+			UNION ALL
+			SELECT b.id, b.code, b.parent_id FROM branches b JOIN old_chain c ON b.id = c.parent_id
+		),
+		new_chain AS (
+			SELECT id, code, parent_id FROM branches WHERE id = $2
+			UNION ALL
+			SELECT b.id, b.code, b.parent_id FROM branches b JOIN new_chain c ON b.id = c.parent_id
+		),
+		losing AS (SELECT code FROM old_chain EXCEPT SELECT code FROM new_chain),
+		gaining AS (SELECT code FROM new_chain EXCEPT SELECT code FROM old_chain)
+		SELECT
+			(SELECT COUNT(*) FROM staff_users u WHERE u.is_active AND u.branch_code IN (SELECT code FROM losing)),
+			(SELECT COUNT(*) FROM staff_users u WHERE u.is_active AND u.branch_code IN (SELECT code FROM gaining))`,
+		oldParentID, newParentID).Scan(&losing, &gaining)
+	if err != nil {
+		return 0, 0, err
+	}
+	return losing, gaining, nil
+}
+
 func (r *BranchRepository) scanOne(ctx context.Context, query string, arg any) (*domain.Branch, error) {
 	return scanBranch(r.db.QueryRowContext(ctx, query, arg))
 }

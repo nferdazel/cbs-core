@@ -326,3 +326,48 @@ export interface MakerCheckerRequest {
   reviewed_at?: string;
   created_at: string;
 }
+
+/**
+ * permission_handler.go: satu anggota grup pengguna (dari staff_users). Hanya
+ * field yang aman ditampilkan; kata sandi tidak pernah dikirim.
+ */
+export interface PermissionGroupMember {
+  user_id: string;
+  username: string;
+  full_name: string;
+  role: string;
+  is_active: boolean;
+}
+
+/**
+ * domain.UserGroup lewat permission_handler.go: grup pengguna untuk akses menu
+ * dan jenjang kewenangan persetujuan (approval_limit_role). Izin efektif = izin
+ * grup ini digabung grup lain (aditif).
+ */
+export interface PermissionGroup {
+  code: string;
+  name: string;
+  description: string;
+  is_system: boolean;
+  /** Peran pada matriks limit 000051 yang menjadi jenjang grup; kosong = peran pengguna. */
+  approval_limit_role?: string;
+  permissions: string[];
+  members: PermissionGroupMember[];
+}
+
+/** permission_handler.go: pemetaan menu ke izin yang membukanya. */
+export interface PermissionMenu {
+  menu_key: string;
+  permissions: string[];
+}
+
+/**
+ * Respons permission_handler.go untuk GET /permissions/catalog.
+ * available_permissions = seluruh izin yang ditegakkan kode, dikirim server agar
+ * web tidak menyimpan salinan daftar izin.
+ */
+export interface PermissionCatalog {
+  groups: PermissionGroup[];
+  menus: PermissionMenu[];
+  available_permissions: string[];
+}

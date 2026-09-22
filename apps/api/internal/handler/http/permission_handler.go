@@ -22,12 +22,21 @@ func NewPermissionHandler(svc domain.PermissionService) *PermissionHandler {
 }
 
 type permissionGroupResponse struct {
-	Code              string   `json:"code"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	IsSystem          bool     `json:"is_system"`
-	ApprovalLimitRole string   `json:"approval_limit_role,omitempty"`
-	Permissions       []string `json:"permissions"`
+	Code              string                          `json:"code"`
+	Name              string                          `json:"name"`
+	Description       string                          `json:"description"`
+	IsSystem          bool                            `json:"is_system"`
+	ApprovalLimitRole string                          `json:"approval_limit_role,omitempty"`
+	Permissions       []string                        `json:"permissions"`
+	Members           []permissionGroupMemberResponse `json:"members"`
+}
+
+type permissionGroupMemberResponse struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	FullName string `json:"full_name"`
+	Role     string `json:"role"`
+	IsActive bool   `json:"is_active"`
 }
 
 type permissionMenuResponse struct {
@@ -51,6 +60,16 @@ func (h *PermissionHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 
 	groupList := make([]permissionGroupResponse, 0, len(groups))
 	for _, g := range groups {
+		members := make([]permissionGroupMemberResponse, 0, len(g.Members))
+		for _, m := range g.Members {
+			members = append(members, permissionGroupMemberResponse{
+				UserID:   m.UserID.String(),
+				Username: m.Username,
+				FullName: m.FullName,
+				Role:     string(m.Role),
+				IsActive: m.IsActive,
+			})
+		}
 		groupList = append(groupList, permissionGroupResponse{
 			Code:              g.Code,
 			Name:              g.Name,
@@ -58,6 +77,7 @@ func (h *PermissionHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 			IsSystem:          g.IsSystem,
 			ApprovalLimitRole: string(g.ApprovalLimitRole),
 			Permissions:       permissionStrings(g.Permissions),
+			Members:           members,
 		})
 	}
 	menuList := make([]permissionMenuResponse, 0, len(menus))
@@ -68,9 +88,17 @@ func (h *PermissionHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Daftar seluruh izin yang ditegakkan kode dikirim agar halaman pengelolaan
+	// dapat menawarkan GRANT tanpa menyimpan salinan izin di web.
+	available := make([]string, 0, len(domain.KnownPermissions()))
+	for _, p := range domain.KnownPermissions() {
+		available = append(available, string(p))
+	}
+
 	Success(w, http.StatusOK, i18n.MsgPermissionCatalog, map[string]any{
-		"groups": groupList,
-		"menus":  menuList,
+		"groups":                groupList,
+		"menus":                 menuList,
+		"available_permissions": available,
 	})
 }
 

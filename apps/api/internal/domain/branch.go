@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -23,7 +24,27 @@ var (
 	// ErrOrgUnitParentInvalid menolak atasan yang jenjangnya tidak lebih tinggi
 	// dari unit anak. Hierarki wajib menurun: wilayah -> area -> cabang.
 	ErrOrgUnitParentInvalid = errors.New("atasan harus berjenjang lebih tinggi dari unit anak")
+	// ErrOrgUnitScopeChange menandai pemindahan unit yang akan mengubah cakupan
+	// pengguna aktif tanpa disadari. Pemanggil harus menyetel ConfirmScopeChange
+	// agar perubahan itu keputusan sadar, bukan efek samping tak terlihat.
+	ErrOrgUnitScopeChange = errors.New("pemindahan unit mengubah cakupan pengguna aktif; konfirmasi diperlukan")
 )
+
+// ScopeChangeError membawa jumlah pengguna yang kehilangan atau mendapat cakupan
+// bila pemindahan diteruskan, sehingga pesan ke operator menyebut angkanya.
+type ScopeChangeError struct {
+	Losing  int
+	Gaining int
+}
+
+func (e *ScopeChangeError) Error() string {
+	return fmt.Sprintf("%s: %d pengguna kehilangan cakupan, %d pengguna mendapat cakupan",
+		ErrOrgUnitScopeChange.Error(), e.Losing, e.Gaining)
+}
+
+func (e *ScopeChangeError) Is(target error) bool {
+	return target == ErrOrgUnitScopeChange
+}
 
 // OrgUnitLevel adalah jenjang unit organisasi. CABANG unit operasional yang
 // memegang penomoran rekening; AREA dan WILAYAH hanya mengelompokkan unit di
@@ -109,6 +130,11 @@ type CreateOrgUnitInput struct {
 // AREA/WILAYAH tanpa atasan tetap diperbolehkan pada jenjang mana pun).
 type SetOrgUnitParentInput struct {
 	ParentCode string `json:"parent_code"`
+	// ConfirmScopeChange wajib TRUE bila pemindahan akan mengubah cakupan
+	// pengguna aktif, agar perubahan susunan hierarki disengaja. Semantik aditif
+	// tidak berubah: staf di unit target selalu mempertahankan cakupannya, jadi
+	// tidak ada pengguna yang terkunci oleh pengaman ini.
+	ConfirmScopeChange bool `json:"confirm_scope_change"`
 }
 
 // ValidateOrgUnitCode menegakkan format kode unit non-operasional. Berbeda dari
@@ -146,6 +172,11 @@ type BranchRepository interface {
 	// SetParentTx memindahkan unit ke bawah atasan (parentID nil = puncak) di
 	// dalam transaksi pemanggil agar perubahan dan auditnya commit bersama.
 	SetParentTx(ctx context.Context, tx any, id uuid.UUID, parentID *uuid.UUID) error
+	// ScopeImpactUsers menghitung pengguna aktif yang cakupan unitnya berubah bila
+	// targetID dipindahkan dari oldParentID ke newParentID. losing = staf pada
+	// leluhur lama yang bukan leluhur baru; gaining = sebaliknya. Staf di unit
+	// target sendiri tidak terhitung karena cakupannya selalu memuat unit sendiri.
+	ScopeImpactUsers(ctx context.Context, targetID uuid.UUID, oldParentID, newParentID *uuid.UUID) (losing, gaining int, err error)
 }
 
 // BranchScopeResolver adalah kontrak yang dipakai middleware untuk memuat
@@ -164,5 +195,5 @@ type BranchService interface {
 	// CreateOrgUnit membuat cabang/area/wilayah beserta atasannya.
 	CreateOrgUnit(ctx context.Context, input CreateOrgUnitInput, actor Actor) (*Branch, error)
 	// SetOrgUnitParent memindahkan unit ke bawah atasan lain atau melepasnya ke puncak.
-	SetOrgUnitParent(ctx context.Context, code, parentCode string, actor Actor) (*Branch, error)
+	SetOrgUnitParent(ctx context.Context, code string, input SetOrgUnitParentInput, actor Actor) (*Branch, error)
 }

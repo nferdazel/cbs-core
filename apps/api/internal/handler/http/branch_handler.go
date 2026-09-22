@@ -106,7 +106,7 @@ func (h *BranchHandler) SetOrgUnitParent(w http.ResponseWriter, r *http.Request)
 		_ = json.NewDecoder(r.Body).Decode(&input)
 	}
 
-	unit, err := h.service.SetOrgUnitParent(r.Context(), chi.URLParam(r, "code"), input.ParentCode, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	unit, err := h.service.SetOrgUnitParent(r.Context(), chi.URLParam(r, "code"), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
