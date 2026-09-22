@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 )
 
 // resolveActorBranch memetakan kode cabang aktor ke baris cabang yang sah. Dipakai
@@ -52,4 +53,26 @@ func headOfficeBranch(ctx context.Context, repo domain.BranchRepository) (*domai
 		}
 	}
 	return nil, nil
+}
+
+// resolveCustomerBranch menegakkan cakupan unit aktor atas nasabah dan menentukan
+// cabang yang dipakai operasi lanjutan (rekening/deposito mengikuti cabang
+// nasabah). Aktor lintas cabang selalu boleh; nasabah tanpa cabang (data
+// pra-migrasi) dibiarkan agar operasional tidak terblokir.
+//
+// Pemeriksaan memakai Actor.CanAccessBranch sehingga aktor ber-cakupan area/wilayah
+// boleh melayani nasabah di cabang bawahannya (W14), bukan hanya cabangnya sendiri.
+// Inilah jalur tulis yang sebelumnya bocor bila cakupan hanya dicek di UI.
+func resolveCustomerBranch(ctx context.Context, repo domain.BranchRepository, actor domain.Actor, customerBranchID *uuid.UUID, actorBranch *domain.Branch) (*domain.Branch, error) {
+	if customerBranchID == nil {
+		return actorBranch, nil
+	}
+	customerBranch, err := repo.GetByID(ctx, *customerBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("cabang nasabah tidak valid: %w", err)
+	}
+	if !actor.IsCrossBranch() && !actor.CanAccessBranch(customerBranch.Code) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	return customerBranch, nil
 }

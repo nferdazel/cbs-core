@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -28,7 +29,7 @@ func (h *EODDefinitionHandler) List(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "definisi langkah EOD", defs)
+	Success(w, http.StatusOK, i18n.MsgEODDefinitions, defs)
 }
 
 // Update handles PUT /api/v1/system/eod-definitions
@@ -37,7 +38,7 @@ func (h *EODDefinitionHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *EODDefinitionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -45,7 +46,7 @@ func (h *EODDefinitionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Definitions []domain.EODStepDefinition `json:"definitions"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -55,7 +56,7 @@ func (h *EODDefinitionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "definisi langkah EOD diperbarui", defs)
+	Success(w, http.StatusOK, i18n.MsgEODDefinitionsUpdated, defs)
 }
 
 // History handles GET /api/v1/system/eod-runs?date=YYYY-MM-DD
@@ -65,7 +66,7 @@ func (h *EODDefinitionHandler) History(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("date"); raw != "" {
 		parsed, err := time.Parse("2006-01-02", raw)
 		if err != nil {
-			Error(w, http.StatusBadRequest, "format tanggal harus YYYY-MM-DD")
+			ErrorCode(w, http.StatusBadRequest, i18n.MsgDateFormatInvalid)
 			return
 		}
 		businessDate = parsed
@@ -76,5 +77,5 @@ func (h *EODDefinitionHandler) History(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "riwayat langkah EOD", runs)
+	Success(w, http.StatusOK, i18n.MsgEODRunHistory, runs)
 }

@@ -206,16 +206,32 @@ func (s *customerService) GetCustomer(ctx context.Context, id uuid.UUID, actor d
 }
 
 // canReadRecord menegakkan kepemilikan cabang untuk pembacaan satu nasabah.
-// CustomerRecord hanya menyimpan branch_id, bukan kode cabang, jadi id cabang
-// aktor dipetakan lewat resolveBranchID. Mengikuti semantik Actor.CanAccessBranch:
-// aktor lintas cabang selalu boleh, dan nasabah tanpa cabang (branch_id NULL, data
-// pra-migrasi) tetap boleh dibaca agar operasional atas data lama tidak terblokir.
+// CustomerRecord hanya menyimpan branch_id, bukan kode cabang. Bila cakupan unit
+// aktor sudah diresolusi (W14), kode cabang baris dipetakan lewat branches lalu
+// diperiksa Actor.CanAccessBranch sehingga area/wilayah mencakup cabang di
+// bawahannya; tanpa resolusi, perilaku lama dipertahankan (kesamaan id cabang).
+// Nasabah tanpa cabang (branch_id NULL, data pra-migrasi) tetap boleh dibaca agar
+// operasional atas data lama tidak terblokir.
 func (s *customerService) canReadRecord(ctx context.Context, actor domain.Actor, record *domain.CustomerRecord) (bool, error) {
 	if actor.IsCrossBranch() || record.BranchID == nil {
 		return true, nil
 	}
 	if actor.BranchCode == "" {
 		return false, nil
+	}
+	// Cakupan unit sudah diresolusi (W14): area/wilayah mencakup cabang di
+	// bawahannya, jadi akses ditentukan Actor.CanAccessBranch atas kode cabang
+	// baris, bukan kesamaan id cabang aktor. Satu baris tetap dipetakan ke kode
+	// lewat branches agar sumbu cakupan hanya satu.
+	if actor.HasResolvedBranchScope() {
+		var code string
+		if err := s.db.QueryRowContext(ctx, `SELECT code FROM branches WHERE id = $1`, *record.BranchID).Scan(&code); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return false, err
+		}
+		return actor.CanAccessBranch(code), nil
 	}
 	branchID, err := s.resolveBranchID(ctx, actor)
 	if err != nil {

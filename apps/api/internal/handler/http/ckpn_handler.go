@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
@@ -25,7 +26,7 @@ func NewCKPNHandler(ckpnSvc domain.CKPNService) *CKPNHandler {
 func (h *CKPNHandler) Compare(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -36,7 +37,7 @@ func (h *CKPNHandler) Compare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "perbandingan CKPN dan PPKA", summary)
+	Success(w, http.StatusOK, i18n.MsgCKPNPPKAComparison, summary)
 }
 
 // Run handles POST /api/v1/ckpn/run.
@@ -45,7 +46,7 @@ func (h *CKPNHandler) Compare(w http.ResponseWriter, r *http.Request) {
 func (h *CKPNHandler) Run(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -56,7 +57,7 @@ func (h *CKPNHandler) Run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "perhitungan CKPN selesai", summary)
+	Success(w, http.StatusOK, i18n.MsgCKPNCalculated, summary)
 }
 
 // RegisterRoutes memasang rute CKPN pada router yang sudah berada di dalam grup

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 )
 
 // AppInfoHandler melayani identitas aplikasi publik (GET /api/v1/app-info).
@@ -21,5 +22,5 @@ func NewAppInfoHandler(svc domain.AppInfoService) *AppInfoHandler {
 // menanyakan ulang tiap muat halaman; service juga menyimpan hasilnya sebentar.
 func (h *AppInfoHandler) Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	Success(w, http.StatusOK, "identitas aplikasi", h.svc.Get(r.Context()))
+	Success(w, http.StatusOK, i18n.MsgAppInfo, h.svc.Get(r.Context()))
 }

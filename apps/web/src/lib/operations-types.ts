@@ -287,7 +287,14 @@ export interface PPAPRunSummary {
   preview: boolean;
 }
 
-/** domain.Branch (branch.go). address & phone omitempty: bisa tidak dikirim. */
+/** domain.OrgUnitLevel (branch.go). CABANG operasional; AREA/WILAYAH opsional. */
+export type OrgUnitLevel = "CABANG" | "AREA" | "WILAYAH";
+
+/**
+ * domain.Branch (branch.go). address & phone omitempty: bisa tidak dikirim.
+ * parent_id & unit_level menandai hierarki organisasi (W14); parent_id kosong
+ * berarti unit puncak, dan semua cabang lama bernilai unit_level "CABANG".
+ */
 export interface Branch {
   id: string;
   code: string;
@@ -296,6 +303,8 @@ export interface Branch {
   phone?: string;
   is_head_office: boolean;
   is_active: boolean;
+  parent_id?: string;
+  unit_level: OrgUnitLevel;
 }
 
 /** domain.MakerCheckerStatus (maker_checker.go) */

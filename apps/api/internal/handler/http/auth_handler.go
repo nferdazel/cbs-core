@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 )
 
@@ -24,11 +25,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestBody)
 		return
 	}
 	if body.Username == "" || body.Password == "" {
-		Error(w, http.StatusBadRequest, "username and password are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgUsernamePasswordRequired)
 		return
 	}
 
@@ -49,14 +50,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case domain.ErrAccountInactiveUser:
 			Fail(w, r, http.StatusForbidden, err)
 		default:
-			Error(w, http.StatusInternalServerError, "login failed")
+			ErrorCode(w, http.StatusInternalServerError, i18n.MsgLoginFailed)
 		}
 		return
 	}
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "login failed")
+		ErrorCode(w, http.StatusInternalServerError, i18n.MsgLoginFailed)
 		return
 	}
 
@@ -64,7 +65,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.cookies.SetSessionCookies(w, r, resp.AccessToken, resp.RefreshToken, resp.ExpiresIn, resp.RefreshExpiresIn)
 	h.cookies.SetCSRFCookie(w, r, csrfToken, resp.RefreshExpiresIn)
 
-	Success(w, http.StatusOK, "login successful", resp)
+	Success(w, http.StatusOK, i18n.MsgLoginSuccessful, resp)
 }
 
 // Refresh handles POST /api/v1/auth/refresh
@@ -83,7 +84,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if refreshToken == "" {
-		Error(w, http.StatusBadRequest, "refresh_token is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgRefreshTokenRequired)
 		return
 	}
 
@@ -93,14 +94,14 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		case domain.ErrSessionExpired, domain.ErrSessionRevoked, domain.ErrInvalidToken:
 			Fail(w, r, http.StatusUnauthorized, err)
 		default:
-			Error(w, http.StatusInternalServerError, "token refresh failed")
+			ErrorCode(w, http.StatusInternalServerError, i18n.MsgTokenRefreshFailed)
 		}
 		return
 	}
 
 	csrfToken, err := middleware.GenerateCSRFToken()
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "token refresh failed")
+		ErrorCode(w, http.StatusInternalServerError, i18n.MsgTokenRefreshFailed)
 		return
 	}
 
@@ -108,7 +109,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	h.cookies.SetSessionCookies(w, r, resp.AccessToken, resp.RefreshToken, resp.ExpiresIn, resp.RefreshExpiresIn)
 	h.cookies.SetCSRFCookie(w, r, csrfToken, resp.RefreshExpiresIn)
 
-	Success(w, http.StatusOK, "token refreshed", resp)
+	Success(w, http.StatusOK, i18n.MsgTokenRefreshed, resp)
 }
 
 // Logout handles POST /api/v1/auth/logout.
@@ -125,14 +126,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.cookies.ClearSessionCookies(w, r)
-	Success(w, http.StatusOK, "logged out successfully", nil)
+	Success(w, http.StatusOK, i18n.MsgLoggedOut, nil)
 }
 
 // Me handles GET /api/v1/auth/me
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -160,7 +161,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		menus = []string{}
 	}
 
-	Success(w, http.StatusOK, "current user", map[string]any{
+	Success(w, http.StatusOK, i18n.MsgCurrentUser, map[string]any{
 		"user_id":      claims.UserID,
 		"username":     claims.Username,
 		"role":         claims.Role,

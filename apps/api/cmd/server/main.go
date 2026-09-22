@@ -252,9 +252,12 @@ func main() {
 		PermissionHandler:    permissionHandler,
 		AuthService:          authSvc,
 		ConfigService:        configSvc,
-		Cookies:              cookies,
-		Logger:               logger,
-		LoginRateLimiter:     loginLimiter,
+		// Cakupan unit organisasi (cabang/area/wilayah) diresolusi per permintaan
+		// dari tabel branches, sama seperti cakupan buku dibaca dari konfigurasi.
+		BranchScopeResolver: branchRepo,
+		Cookies:             cookies,
+		Logger:              logger,
+		LoginRateLimiter:    loginLimiter,
 	})
 
 	server := &http.Server{

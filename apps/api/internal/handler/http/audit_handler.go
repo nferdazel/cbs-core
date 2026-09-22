@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 )
 
@@ -67,7 +68,7 @@ type TransactionLimitsResponse struct {
 // sebagian nilai masih bawaan aplikasi dan bank belum menetapkannya.
 func (h *AuditHandler) ListTransactionLimits(w http.ResponseWriter, r *http.Request) {
 	if h.limits == nil {
-		Error(w, http.StatusServiceUnavailable, "layanan batas transaksi belum tersedia")
+		ErrorCode(w, http.StatusServiceUnavailable, i18n.MsgTransactionLimitsUnavailable)
 		return
 	}
 	views, err := h.limits.List(r.Context())
@@ -75,7 +76,7 @@ func (h *AuditHandler) ListTransactionLimits(w http.ResponseWriter, r *http.Requ
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "batas transaksi efektif", TransactionLimitsResponse{
+	Success(w, http.StatusOK, i18n.MsgTransactionLimitsEffective, TransactionLimitsResponse{
 		Source: "config",
 		Limits: views,
 	})
@@ -100,7 +101,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if from != nil && to != nil && !to.After(*from) {
-		Error(w, http.StatusBadRequest, "rentang waktu tidak sah: 'to' harus setelah 'from'")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidTimeRange)
 		return
 	}
 
@@ -133,7 +134,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SuccessWithMeta(w, http.StatusOK, "audit log", events, map[string]any{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgAuditLog, events, map[string]any{
 		"limit":  limit,
 		"offset": offset,
 		"count":  len(events),

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 )
@@ -25,7 +26,7 @@ func NewLedgerHandler(service domain.LedgerService) *LedgerHandler {
 func requireActor(w http.ResponseWriter, r *http.Request) (domain.Actor, bool) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return domain.Actor{}, false
 	}
 	return claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())), true
@@ -37,7 +38,7 @@ func requireActor(w http.ResponseWriter, r *http.Request) (domain.Actor, bool) {
 func writeTransactionError(w http.ResponseWriter, r *http.Request, err error) {
 	var pending *domain.PendingApprovalError
 	if errors.As(err, &pending) {
-		Success(w, http.StatusAccepted, "transaksi menunggu persetujuan pejabat berwenang", map[string]any{
+		Success(w, http.StatusAccepted, i18n.MsgTransactionPendingApproval, map[string]any{
 			"request_id":  pending.RequestID,
 			"action_type": pending.ActionType,
 			"status":      "PENDING_APPROVAL",
@@ -59,18 +60,18 @@ func (h *LedgerHandler) Reverse(w http.ResponseWriter, r *http.Request) {
 
 	reference := chi.URLParam(r, "reference")
 	if reference == "" {
-		Error(w, http.StatusBadRequest, "reference transaksi wajib diisi")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgTransactionReferenceRequired)
 		return
 	}
 
 	var req domain.ReversalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	req.Reason = strings.TrimSpace(req.Reason)
 	if req.Reason == "" {
-		Error(w, http.StatusBadRequest, "alasan pembatalan wajib diisi")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCancelReasonRequired)
 		return
 	}
 	req.Reference = reference
@@ -90,7 +91,7 @@ func (h *LedgerHandler) Reverse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "transaksi dibatalkan", entry)
+	Success(w, http.StatusCreated, i18n.MsgTransactionCancelled, entry)
 }
 
 func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
@@ -101,12 +102,12 @@ func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 
 	var req domain.DepositRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	if req.AccountNumber == "" || req.Amount.IsZero() {
-		Error(w, http.StatusBadRequest, "account_number and amount are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAccountNumberAmountRequired)
 		return
 	}
 	if req.Currency == "" {
@@ -127,7 +128,7 @@ func (h *LedgerHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "deposit processed successfully", entry)
+	Success(w, http.StatusCreated, i18n.MsgDepositProcessed, entry)
 }
 
 func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
@@ -138,12 +139,12 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 	var req domain.WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	if req.AccountNumber == "" || req.Amount.IsZero() {
-		Error(w, http.StatusBadRequest, "account_number and amount are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAccountNumberAmountRequired)
 		return
 	}
 	if req.Currency == "" {
@@ -164,7 +165,7 @@ func (h *LedgerHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "withdrawal processed successfully", entry)
+	Success(w, http.StatusCreated, i18n.MsgWithdrawalProcessed, entry)
 }
 
 func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
@@ -175,12 +176,12 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 	var req domain.TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	if req.SourceAccountNumber == "" || req.DestinationAccountNumber == "" || req.Amount.IsZero() {
-		Error(w, http.StatusBadRequest, "source_account_number, destination_account_number, and amount are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgTransferFieldsRequired)
 		return
 	}
 	if req.Currency == "" {
@@ -201,7 +202,7 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "transfer executed successfully", entry)
+	Success(w, http.StatusCreated, i18n.MsgTransferExecuted, entry)
 }
 
 func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +213,7 @@ func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) 
 
 	ref := chi.URLParam(r, "reference")
 	if ref == "" {
-		Error(w, http.StatusBadRequest, "reference is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgReferenceRequired)
 		return
 	}
 
@@ -237,7 +238,7 @@ func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	Success(w, http.StatusOK, "journal entry retrieved", entry)
+	Success(w, http.StatusOK, i18n.MsgJournalEntryRetrieved, entry)
 }
 
 func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +265,7 @@ func (h *LedgerHandler) ListJournals(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (total + pageSize - 1) / pageSize
 
-	SuccessWithMeta(w, http.StatusOK, "journals listed", journals, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgJournalsListed, journals, PaginationMeta{
 		Page:       page,
 		PageSize:   pageSize,
 		TotalItems: total,
@@ -298,7 +299,7 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (total + pageSize - 1) / pageSize
 
-	SuccessWithMeta(w, http.StatusOK, "account statement listed", lines, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgAccountStatementListed, lines, PaginationMeta{
 		Page:       page,
 		PageSize:   pageSize,
 		TotalItems: total,
@@ -313,5 +314,5 @@ func (h *LedgerHandler) ListCOA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "chart of accounts listed", list)
+	Success(w, http.StatusOK, i18n.MsgChartOfAccountsListed, list)
 }

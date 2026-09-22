@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -31,30 +32,44 @@ func JSON(w http.ResponseWriter, statusCode int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func Success(w http.ResponseWriter, statusCode int, message string, data any) {
+// Success membalas sukses dengan pesan dari katalog i18n. Pesan diterjemahkan di
+// sini, bukan di handler, sehingga hanya kode yang berserak dan bahasa respons
+// tetap satu sumber. Isi pesan lama (perilaku dan maknanya) tidak berubah.
+func Success(w http.ResponseWriter, statusCode int, code i18n.Code, data any) {
 	JSON(w, statusCode, APIResponse{
 		Success: true,
-		Message: message,
+		Message: i18n.Text(code),
 		Data:    data,
 	})
 }
 
-func SuccessWithMeta(w http.ResponseWriter, statusCode int, message string, data any, meta any) {
+func SuccessWithMeta(w http.ResponseWriter, statusCode int, code i18n.Code, data any, meta any) {
 	JSON(w, statusCode, APIResponse{
 		Success: true,
-		Message: message,
+		Message: i18n.Text(code),
 		Data:    data,
 		Meta:    meta,
 	})
 }
 
 // Error mengirim pesan yang sudah aman ditampilkan ke pengguna. Jangan lewatkan
-// error internal mentah ke sini; pakai InternalError untuk itu.
+// error internal mentah ke sini; pakai InternalError untuk itu. Untuk pesan tetap
+// dari katalog pakai ErrorCode; fungsi ini khusus pesan dinamis (mis. err.Error()).
 func Error(w http.ResponseWriter, statusCode int, errMessage string) {
 	JSON(w, statusCode, APIResponse{
 		Success: false,
 		Error:   errMessage,
 	})
+}
+
+// ErrorCode membalas galat dengan pesan tetap dari katalog i18n.
+func ErrorCode(w http.ResponseWriter, statusCode int, code i18n.Code) {
+	Error(w, statusCode, i18n.Text(code))
+}
+
+// ErrorCodef membalas galat dengan pesan berkode yang menyertakan detail dinamis.
+func ErrorCodef(w http.ResponseWriter, statusCode int, code i18n.Code, args ...any) {
+	Error(w, statusCode, i18n.Textf(code, args...))
 }
 
 // InternalError membalas pesan generik untuk kegagalan tak terduga, sementara detail
@@ -63,7 +78,7 @@ func Error(w http.ResponseWriter, statusCode int, errMessage string) {
 func InternalError(w http.ResponseWriter, r *http.Request, err error) {
 	observability.FromContext(r.Context()).Error("kegagalan internal saat menangani permintaan",
 		"method", r.Method, "path", r.URL.Path, "error", err)
-	Error(w, http.StatusInternalServerError, "terjadi kesalahan internal, silakan coba lagi")
+	Error(w, http.StatusInternalServerError, i18n.Text(i18n.MsgInternalError))
 }
 
 // businessErrors adalah error yang aman ditampilkan ke pengguna karena maknanya

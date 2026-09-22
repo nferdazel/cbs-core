@@ -68,6 +68,7 @@ func (s *branchService) CreateBranch(ctx context.Context, input domain.CreateBra
 		Phone:        strings.TrimSpace(input.Phone),
 		IsHeadOffice: false,
 		IsActive:     true,
+		UnitLevel:    domain.UnitLevelBranch,
 	}
 	err := s.txRunner.Run(ctx, func(tx any) error {
 		if err := s.repo.CreateTx(ctx, tx, branch); err != nil {
@@ -86,4 +87,146 @@ func (s *branchService) CreateBranch(ctx context.Context, input domain.CreateBra
 		return nil, err
 	}
 	return branch, nil
+}
+
+// ListOrgUnits mengembalikan seluruh unit organisasi (CABANG/AREA/WILAYAH) untuk
+// pengelolaan susunan. Bila bank tidak memakai area/wilayah, isinya sama dengan
+// daftar cabang biasa sehingga tidak ada perilaku baru.
+func (s *branchService) ListOrgUnits(ctx context.Context) ([]domain.Branch, error) {
+	return s.repo.List(ctx)
+}
+
+// validOrgUnitCode menegakkan kode unit yang aman untuk disimpan dan digabung ke
+// cakupan aktor: tanpa pemisah cakupan (koma) dan tanpa spasi, panjang wajar.
+// Cabang tetap wajib 3 digit karena dipakai mengawali nomor rekening.
+func validOrgUnitCode(code string, level domain.OrgUnitLevel) bool {
+	if level == domain.UnitLevelBranch {
+		return domain.ValidateBranchCode(code) == nil
+	}
+	if err := domain.ValidateOrgUnitCode(code); err != nil {
+		return false
+	}
+	if len(code) > 16 {
+		return false
+	}
+	for _, r := range code {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// CreateOrgUnit membuat unit organisasi (cabang/area/wilayah) beserta atasannya.
+// Kode unik, jenjang dikenal, dan atasan (bila ada) wajib berjenjang lebih tinggi.
+// Area/wilayah tanpa atasan diizinkan karena bank boleh memakai hanya salah satu
+// jenjang (keputusan pemilik: area dan wilayah keduanya opsional).
+//
+// Penulisan unit dan audit dibungkus satu transaksi, sama seperti CreateBranch.
+func (s *branchService) CreateOrgUnit(ctx context.Context, input domain.CreateOrgUnitInput, actor domain.Actor) (*domain.Branch, error) {
+	level := domain.OrgUnitLevel(strings.ToUpper(strings.TrimSpace(string(input.Level))))
+	if !level.Valid() {
+		return nil, domain.ErrOrgUnitLevelInvalid
+	}
+	code := strings.ToUpper(strings.TrimSpace(input.Code))
+	if !validOrgUnitCode(code, level) {
+		return nil, domain.ErrInvalidBranchCode
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return nil, domain.ErrBranchNameRequired
+	}
+
+	if existing, err := s.repo.GetByCode(ctx, code); err == nil && existing != nil {
+		return nil, domain.ErrBranchCodeExists
+	} else if err != nil && !errors.Is(err, domain.ErrBranchNotFound) {
+		return nil, err
+	}
+
+	var parentID *uuid.UUID
+	parentCode := strings.ToUpper(strings.TrimSpace(input.ParentCode))
+	if parentCode != "" {
+		parent, err := s.repo.GetByCode(ctx, parentCode)
+		if err != nil {
+			return nil, err
+		}
+		if !parent.UnitLevel.CanBeParentOf(level) {
+			return nil, domain.ErrOrgUnitParentInvalid
+		}
+		parentID = &parent.ID
+	}
+
+	unit := &domain.Branch{
+		ID:        uuid.New(),
+		Code:      code,
+		Name:      name,
+		Address:   strings.TrimSpace(input.Address),
+		Phone:     strings.TrimSpace(input.Phone),
+		IsActive:  true,
+		UnitLevel: level,
+		ParentID:  parentID,
+	}
+	err := s.txRunner.Run(ctx, func(tx any) error {
+		if err := s.repo.CreateTx(ctx, tx, unit); err != nil {
+			if isUniqueViolation(err) {
+				return domain.ErrBranchCodeExists
+			}
+			return err
+		}
+		return writeAudit(ctx, s.auditRepo, tx, actor, "CREATE_ORG_UNIT", "branch", unit.ID.String(), map[string]any{
+			"code":        unit.Code,
+			"name":        unit.Name,
+			"unit_level":  string(unit.UnitLevel),
+			"parent_code": parentCode,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return unit, nil
+}
+
+// SetOrgUnitParent memindahkan unit ke bawah atasan lain, atau melepasnya menjadi
+// puncak bila parentCode kosong. Atasan wajib berjenjang lebih tinggi; karena
+// jenjang mengikat dan menurun, siklus tidak mungkin terbentuk (pindah ke diri
+// sendiri pun ditolak sebagai atasan setingkat).
+func (s *branchService) SetOrgUnitParent(ctx context.Context, code, parentCode string, actor domain.Actor) (*domain.Branch, error) {
+	targetCode := strings.ToUpper(strings.TrimSpace(code))
+	target, err := s.repo.GetByCode(ctx, targetCode)
+	if err != nil {
+		return nil, err
+	}
+
+	var parentID *uuid.UUID
+	parentCode = strings.ToUpper(strings.TrimSpace(parentCode))
+	if parentCode != "" {
+		parent, err := s.repo.GetByCode(ctx, parentCode)
+		if err != nil {
+			return nil, err
+		}
+		if !parent.UnitLevel.CanBeParentOf(target.UnitLevel) {
+			return nil, domain.ErrOrgUnitParentInvalid
+		}
+		parentID = &parent.ID
+	}
+
+	err = s.txRunner.Run(ctx, func(tx any) error {
+		if err := s.repo.SetParentTx(ctx, tx, target.ID, parentID); err != nil {
+			return err
+		}
+		return writeAudit(ctx, s.auditRepo, tx, actor, "SET_ORG_UNIT_PARENT", "branch", target.ID.String(), map[string]any{
+			"code":        target.Code,
+			"parent_code": parentCode,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.repo.GetByID(ctx, target.ID)
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }

@@ -422,6 +422,9 @@ func (s *stubPlaceCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*dom
 type stubPlaceBranchRepo struct {
 	domain.BranchRepository
 	branch *domain.Branch
+	// byID membedakan cabang nasabah dari cabang aktor pada uji cakupan unit:
+	// resolusi memakai kode cabang hasil GetByID, bukan perbandingan id mentah.
+	byID map[uuid.UUID]*domain.Branch
 }
 
 func (s *stubPlaceBranchRepo) GetByCode(ctx context.Context, code string) (*domain.Branch, error) {
@@ -429,6 +432,9 @@ func (s *stubPlaceBranchRepo) GetByCode(ctx context.Context, code string) (*doma
 }
 
 func (s *stubPlaceBranchRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
+	if b, ok := s.byID[id]; ok {
+		return b, nil
+	}
 	return s.branch, nil
 }
 
@@ -451,11 +457,16 @@ func TestDepositPlaceMenolakNasabahCabangLain(t *testing.T) {
 			Status:   domain.CustomerStatusActive,
 			BranchID: &customerBranchID,
 		}},
-		branchRepo: &stubPlaceBranchRepo{branch: &domain.Branch{
-			ID:       actorBranchID,
-			Code:     "001",
-			IsActive: true,
-		}},
+		branchRepo: &stubPlaceBranchRepo{
+			branch: &domain.Branch{
+				ID:       actorBranchID,
+				Code:     "001",
+				IsActive: true,
+			},
+			byID: map[uuid.UUID]*domain.Branch{
+				customerBranchID: {ID: customerBranchID, Code: "002", IsActive: true},
+			},
+		},
 	}
 
 	_, err := svc.Place(context.Background(), domain.PlaceDepositInput{

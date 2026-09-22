@@ -6,12 +6,24 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 )
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": msg})
+}
+
+// writeErrorCode membalas galat dengan pesan tetap dari katalog i18n.
+func writeErrorCode(w http.ResponseWriter, status int, code i18n.Code) {
+	writeError(w, status, i18n.Text(code))
+}
+
+// writeErrorCodef membalas galat dengan pesan berkode yang menyertakan detail
+// dinamis (mis. peran dan izin yang diminta).
+func writeErrorCodef(w http.ResponseWriter, status int, code i18n.Code, args ...any) {
+	writeError(w, status, i18n.Textf(code, args...))
 }
 
 // AuthMiddleware validates the access token and injects claims into context.
@@ -22,7 +34,7 @@ func AuthMiddleware(authSvc domain.AuthService, cookies CookieConfig) func(http.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenStr := cookies.AccessTokenFromRequest(r)
 			if tokenStr == "" {
-				writeError(w, http.StatusUnauthorized, "missing or invalid access token")
+				writeErrorCode(w, http.StatusUnauthorized, i18n.MsgAccessTokenMissing)
 				return
 			}
 
@@ -30,9 +42,9 @@ func AuthMiddleware(authSvc domain.AuthService, cookies CookieConfig) func(http.
 			if err != nil {
 				switch err {
 				case domain.ErrSessionExpired:
-					writeError(w, http.StatusUnauthorized, "access token expired")
+					writeErrorCode(w, http.StatusUnauthorized, i18n.MsgAccessTokenExpired)
 				default:
-					writeError(w, http.StatusUnauthorized, "invalid access token")
+					writeErrorCode(w, http.StatusUnauthorized, i18n.MsgInvalidAccessToken)
 				}
 				return
 			}
@@ -63,7 +75,7 @@ func RequirePasswordChange(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := domain.ClaimsFromContext(r.Context())
 		if !ok {
-			writeError(w, http.StatusUnauthorized, "authentication required")
+			writeErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 			return
 		}
 		if !claims.PasswordExpired || passwordExpiredAllowedPaths[r.URL.Path] {
@@ -81,7 +93,7 @@ func RequirePermission(perm domain.Permission) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := domain.ClaimsFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusUnauthorized, "authentication required")
+				writeErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 				return
 			}
 
@@ -89,8 +101,8 @@ func RequirePermission(perm domain.Permission) func(http.Handler) http.Handler {
 			// oleh AuthMiddleware. Menu tersembunyi bukan batas keamanan: rute inilah
 			// penjaganya, dan ia tidak bergantung pada apa yang ditampilkan web.
 			if !claims.HasPermission(perm) {
-				writeError(w, http.StatusForbidden,
-					"forbidden: your role ("+string(claims.Role)+") does not have '"+string(perm)+"' permission")
+				writeErrorCodef(w, http.StatusForbidden, i18n.MsgForbiddenRolePermission,
+					string(claims.Role), string(perm))
 				return
 			}
 
@@ -105,7 +117,7 @@ func RequireRole(roles ...domain.StaffRole) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := domain.ClaimsFromContext(r.Context())
 			if !ok {
-				writeError(w, http.StatusUnauthorized, "authentication required")
+				writeErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 				return
 			}
 
@@ -115,7 +127,7 @@ func RequireRole(roles ...domain.StaffRole) func(http.Handler) http.Handler {
 					return
 				}
 			}
-			writeError(w, http.StatusForbidden, "forbidden: insufficient role")
+			writeErrorCode(w, http.StatusForbidden, i18n.MsgForbiddenInsufficientRole)
 		})
 	}
 }

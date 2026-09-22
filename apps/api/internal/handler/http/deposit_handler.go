@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
@@ -58,21 +59,21 @@ func (h *DepositHandler) RegisterRoutes(r chi.Router, perms ...func(http.Handler
 func (h *DepositHandler) Place(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.PlaceDepositInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	if input.CustomerID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "customer_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCustomerIDRequired)
 		return
 	}
 	if input.ProductID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "product_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgProductIDRequired)
 		return
 	}
 	if input.BranchCode == "" {
@@ -90,7 +91,7 @@ func (h *DepositHandler) Place(w http.ResponseWriter, r *http.Request) {
 		writeTransactionError(w, r, err)
 		return
 	}
-	Success(w, http.StatusCreated, "deposit placed successfully", deposit)
+	Success(w, http.StatusCreated, i18n.MsgDepositPlaced, deposit)
 }
 
 // Preview menghitung proyeksi deposito tanpa menyimpan. Dipakai layar penempatan
@@ -98,21 +99,21 @@ func (h *DepositHandler) Place(w http.ResponseWriter, r *http.Request) {
 func (h *DepositHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.PlaceDepositInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	if input.CustomerID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "customer_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCustomerIDRequired)
 		return
 	}
 	if input.ProductID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "product_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgProductIDRequired)
 		return
 	}
 	if input.BranchCode == "" {
@@ -124,19 +125,19 @@ func (h *DepositHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "deposit preview calculated", preview)
+	Success(w, http.StatusOK, i18n.MsgDepositPreviewCalculated, preview)
 }
 
 func (h *DepositHandler) Accrue(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	depositID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id deposito tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidDepositID)
 		return
 	}
 
@@ -152,7 +153,7 @@ func (h *DepositHandler) Accrue(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "deposit accrued successfully", deposit)
+	Success(w, http.StatusOK, i18n.MsgDepositAccrued, deposit)
 }
 
 // RunARO memperpanjang deposito ber-ARO yang sudah jatuh tempo. Dijalankan manual
@@ -161,7 +162,7 @@ func (h *DepositHandler) Accrue(w http.ResponseWriter, r *http.Request) {
 func (h *DepositHandler) RunARO(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -179,13 +180,13 @@ func (h *DepositHandler) RunARO(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "deposits rolled over (ARO)", map[string]any{"processed": processed})
+	Success(w, http.StatusOK, i18n.MsgDepositsRolledOver, map[string]any{"processed": processed})
 }
 
 func (h *DepositHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -197,7 +198,7 @@ func (h *DepositHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 	depositID, err := uuid.Parse(rawID)
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id deposito tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidDepositID)
 		return
 	}
 
@@ -206,19 +207,19 @@ func (h *DepositHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "deposit withdrawn successfully", deposit)
+	Success(w, http.StatusOK, i18n.MsgDepositWithdrawn, deposit)
 }
 
 func (h *DepositHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	depositID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id deposito tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidDepositID)
 		return
 	}
 
@@ -227,13 +228,13 @@ func (h *DepositHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusNotFound, err)
 		return
 	}
-	Success(w, http.StatusOK, "deposit retrieved", deposit)
+	Success(w, http.StatusOK, i18n.MsgDepositRetrieved, deposit)
 }
 
 func (h *DepositHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -253,7 +254,7 @@ func (h *DepositHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := (total + pageSize - 1) / pageSize
-	SuccessWithMeta(w, http.StatusOK, "deposits listed", deposits, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgDepositsListed, deposits, PaginationMeta{
 		Page:       page,
 		PageSize:   pageSize,
 		TotalItems: total,

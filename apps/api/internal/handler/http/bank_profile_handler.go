@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -27,7 +28,7 @@ func (h *BankProfileHandler) Get(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "profil bank", profile)
+	Success(w, http.StatusOK, i18n.MsgBankProfile, profile)
 }
 
 // Update mengubah profil bank (PUT /api/v1/system/bank-profile). Decoder menolak
@@ -36,7 +37,7 @@ func (h *BankProfileHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *BankProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -44,7 +45,7 @@ func (h *BankProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&input); err != nil {
-		Error(w, http.StatusUnprocessableEntity, "payload profil bank tidak valid: "+err.Error())
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgBankProfilePayloadInvalid, err.Error())
 		return
 	}
 
@@ -54,5 +55,5 @@ func (h *BankProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}
-	Success(w, http.StatusOK, "profil bank diperbarui", profile)
+	Success(w, http.StatusOK, i18n.MsgBankProfileUpdated, profile)
 }

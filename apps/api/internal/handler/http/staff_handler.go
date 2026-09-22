@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -27,12 +28,12 @@ func (h *StaffHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var input domain.CreateStaffInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	if input.Username == "" || input.FullName == "" || input.Email == "" || input.Password == "" || input.Role == "" {
-		Error(w, http.StatusBadRequest, "username, full_name, email, password, and role are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgStaffFieldsRequired)
 		return
 	}
 
@@ -42,7 +43,7 @@ func (h *StaffHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "staff user created successfully", user)
+	Success(w, http.StatusCreated, i18n.MsgStaffCreated, user)
 }
 
 // List handles GET /api/v1/staff
@@ -63,7 +64,7 @@ func (h *StaffHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := (total + pageSize - 1) / pageSize
-	SuccessWithMeta(w, http.StatusOK, "staff users listed", users, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgStaffListed, users, PaginationMeta{
 		Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages,
 	})
 }
@@ -72,7 +73,7 @@ func (h *StaffHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *StaffHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid staff user id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidStaffUserID)
 		return
 	}
 
@@ -82,7 +83,7 @@ func (h *StaffHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "staff user retrieved", user)
+	Success(w, http.StatusOK, i18n.MsgStaffRetrieved, user)
 }
 
 // Update handles PUT /api/v1/staff/{id}
@@ -93,13 +94,13 @@ func (h *StaffHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid staff user id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidStaffUserID)
 		return
 	}
 
 	var input domain.UpdateStaffInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestBody)
 		return
 	}
 
@@ -109,7 +110,7 @@ func (h *StaffHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "staff user updated", user)
+	Success(w, http.StatusOK, i18n.MsgStaffUpdated, user)
 }
 
 // ChangePassword handles POST /api/v1/staff/me/change-password
@@ -121,7 +122,7 @@ func (h *StaffHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	var input domain.ChangePasswordInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestBody)
 		return
 	}
 
@@ -130,7 +131,7 @@ func (h *StaffHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "password changed successfully", nil)
+	Success(w, http.StatusOK, i18n.MsgPasswordChanged, nil)
 }
 
 // ResetPassword handles POST /api/v1/staff/{id}/reset-password (Admin only)
@@ -142,7 +143,7 @@ func (h *StaffHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid staff user id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidStaffUserID)
 		return
 	}
 
@@ -150,7 +151,7 @@ func (h *StaffHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword string `json:"new_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.NewPassword == "" {
-		Error(w, http.StatusBadRequest, "new_password is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgNewPasswordRequired)
 		return
 	}
 
@@ -159,5 +160,5 @@ func (h *StaffHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "password reset successfully", nil)
+	Success(w, http.StatusOK, i18n.MsgPasswordReset, nil)
 }

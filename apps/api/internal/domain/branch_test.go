@@ -43,3 +43,46 @@ func TestValidateBranchCode(t *testing.T) {
 		}
 	}
 }
+
+// Jenjang organisasi (W14): hierarki menurun wilayah -> area -> cabang. Atasan
+// wajib lebih tinggi; setingkat atau lebih rendah ditolak. Jenjang tak dikenal
+// tidak boleh lolos ke database.
+func TestOrgUnitLevelRankDanParent(t *testing.T) {
+	if !UnitLevelBranch.Valid() || !UnitLevelArea.Valid() || !UnitLevelRegion.Valid() {
+		t.Fatal("tiga jenjang harus valid")
+	}
+	if OrgUnitLevel("AREA_LAIN").Valid() {
+		t.Fatal("jenjang tak dikenal harus invalid")
+	}
+	cases := []struct {
+		parent OrgUnitLevel
+		child  OrgUnitLevel
+		want   bool
+	}{
+		{UnitLevelRegion, UnitLevelArea, true},
+		{UnitLevelRegion, UnitLevelBranch, true},
+		{UnitLevelArea, UnitLevelBranch, true},
+		{UnitLevelArea, UnitLevelArea, false},
+		{UnitLevelBranch, UnitLevelBranch, false},
+		{UnitLevelBranch, UnitLevelArea, false},
+		{OrgUnitLevel("X"), UnitLevelBranch, false},
+	}
+	for _, tc := range cases {
+		if got := tc.parent.CanBeParentOf(tc.child); got != tc.want {
+			t.Errorf("%s.CanBeParentOf(%s) = %v, ingin %v", tc.parent, tc.child, got, tc.want)
+		}
+	}
+}
+
+// Kode area/wilayah bebas (bukan 3 digit, karena tidak dipakai untuk nomor
+// rekening), tetapi wajib tidak kosong.
+func TestValidateOrgUnitCode(t *testing.T) {
+	for _, code := range []string{"AREA-1", "WILAYAH_JABAR", "A1"} {
+		if err := ValidateOrgUnitCode(code); err != nil {
+			t.Errorf("ValidateOrgUnitCode(%q) = %v, ingin nil", code, err)
+		}
+	}
+	if err := ValidateOrgUnitCode(""); !errors.Is(err, ErrInvalidBranchCode) {
+		t.Errorf("kode kosong: err = %v, ingin ErrInvalidBranchCode", err)
+	}
+}

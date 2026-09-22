@@ -11,6 +11,7 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
+	"cbs-core/apps/core-api/internal/i18n"
 )
 
 func decodeError(t *testing.T, rec *httptest.ResponseRecorder) string {
@@ -110,5 +111,45 @@ func TestFailNeverShowsInternalOnServerError(t *testing.T) {
 	}
 	if got := decodeError(t, rec); strings.Contains(got, "koneksi database") {
 		t.Fatalf("detail internal tidak boleh tampil di 500, dapat %q", got)
+	}
+}
+
+// Kontrak respons tidak boleh berubah karena pesan dipindah ke katalog: bentuk
+// {"success","message","data"} untuk sukses dan {"success","error"} untuk galat,
+// dengan kode HTTP tetap ditentukan pemanggil. Uji ini mengunci bentuk itu.
+func TestEnvelopeResponsTetapDenganKatalog(t *testing.T) {
+	t.Setenv("CBS_LANGUAGE", "id")
+
+	rec := httptest.NewRecorder()
+	httpHandler.Success(rec, http.StatusCreated, i18n.MsgLoginSuccessful, map[string]any{"id": "u1"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status sukses = %d, mau 201", rec.Code)
+	}
+	var sukses struct {
+		Success bool           `json:"success"`
+		Message string         `json:"message"`
+		Data    map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &sukses); err != nil {
+		t.Fatalf("respons sukses bukan JSON: %v", err)
+	}
+	if !sukses.Success || sukses.Message != "login berhasil" || sukses.Data["id"] != "u1" {
+		t.Fatalf("envelope sukses berubah: %+v", sukses)
+	}
+
+	rec = httptest.NewRecorder()
+	httpHandler.ErrorCode(rec, http.StatusForbidden, i18n.MsgAuthenticationRequired)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status galat = %d, mau 403", rec.Code)
+	}
+	var galat struct {
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &galat); err != nil {
+		t.Fatalf("respons galat bukan JSON: %v", err)
+	}
+	if galat.Success || galat.Error != "autentikasi diperlukan" {
+		t.Fatalf("envelope galat berubah: %+v", galat)
 	}
 }

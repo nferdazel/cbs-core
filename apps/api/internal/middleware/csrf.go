@@ -4,6 +4,8 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+
+	"cbs-core/apps/core-api/internal/i18n"
 )
 
 // CSRFMiddleware menerapkan pola double-submit: nilai cookie non-httpOnly
@@ -35,13 +37,13 @@ func CSRFMiddleware(cfg CookieConfig) func(http.Handler) http.Handler {
 
 			cookie, err := r.Cookie(cfg.CSRFName)
 			if err != nil || cookie.Value == "" {
-				writeError(w, http.StatusForbidden, "permintaan ditolak: token CSRF tidak ditemukan")
+				writeErrorCode(w, http.StatusForbidden, i18n.MsgCSRFMissing)
 				return
 			}
 
 			header := r.Header.Get(cfg.CSRFHeader)
 			if header == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(header)) != 1 {
-				writeError(w, http.StatusForbidden, "permintaan ditolak: token CSRF tidak valid")
+				writeErrorCode(w, http.StatusForbidden, i18n.MsgCSRFInvalid)
 				return
 			}
 

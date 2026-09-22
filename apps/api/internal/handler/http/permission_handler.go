@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -67,7 +68,7 @@ func (h *PermissionHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	Success(w, http.StatusOK, "permission catalog", map[string]any{
+	Success(w, http.StatusOK, i18n.MsgPermissionCatalog, map[string]any{
 		"groups": groupList,
 		"menus":  menuList,
 	})
@@ -77,7 +78,7 @@ func (h *PermissionHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 func (h *PermissionHandler) RequestChange(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -89,7 +90,7 @@ func (h *PermissionHandler) RequestChange(w http.ResponseWriter, r *http.Request
 		Notes             string `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestBody)
 		return
 	}
 	operation, err := domain.NormalizePermissionOperation(body.Operation)
@@ -110,7 +111,7 @@ func (h *PermissionHandler) RequestChange(w http.ResponseWriter, r *http.Request
 		writePermissionError(w, r, err)
 		return
 	}
-	Success(w, http.StatusAccepted, "permission change submitted for approval", map[string]any{
+	Success(w, http.StatusAccepted, i18n.MsgPermissionChangeSubmitted, map[string]any{
 		"request_id":  req.ID,
 		"action_type": req.ActionType,
 		"status":      req.Status,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -68,6 +69,10 @@ type RouterParams struct {
 	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
 	// seluruh aktor berperilaku DUAL seperti sebelum setelan ini ada.
 	ConfigService domain.SystemConfigService
+	// BranchScopeResolver meresolusi cakupan unit organisasi (cabang/area/wilayah)
+	// ke klaim setiap permintaan lewat BranchScopeMiddleware. Bila nil, aktor
+	// berperilaku seperti sebelum hierarki organisasi ada (hanya kode cabangnya).
+	BranchScopeResolver domain.BranchScopeResolver
 	// Cookies menentukan nama/atribut cookie sesi & CSRF.
 	Cookies middleware.CookieConfig
 	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
@@ -108,7 +113,7 @@ func NewRouter(p RouterParams) *chi.Mux {
 
 	// Health check — public, no auth
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		Success(w, http.StatusOK, "Core Banking API is healthy", map[string]string{"status": "UP"})
+		Success(w, http.StatusOK, i18n.MsgHealthOK, map[string]string{"status": "UP"})
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -156,6 +161,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// konfigurasi sebelum handler membangun Actor. Semua endpoint di bawah
 			// ini (baca maupun tulis) mewarisi batas lini usaha tersebut.
 			r.Use(middleware.BookScopeMiddleware(p.ConfigService))
+			// Cakupan unit organisasi (cabang + turunan area/wilayah) diisi dari
+			// tabel branches sebelum handler membangun Actor, sehingga baca dan
+			// tulis memakai sumbu cakupan unit yang sama. Bank tanpa area/wilayah
+			// menghasilkan himpunan satu kode, identik dengan perilaku lama.
+			r.Use(middleware.BranchScopeMiddleware(p.BranchScopeResolver))
 			// Token berpenanda kata sandi kedaluwarsa hanya boleh mengganti kata
 			// sandi. Didaftarkan di sini (setelah AuthMiddleware) agar rute /auth/me
 			// dan logout tetap bebas, sedangkan seluruh rute bisnis lain ditolak 403.
@@ -195,6 +205,15 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.BranchHandler.List)
 				r.With(middleware.RequirePermission(domain.PermBranchesCreate)).
 					Post("/", p.BranchHandler.Create)
+				// Susunan hierarki organisasi (W14): baca unit semua jenjang dengan
+				// users:read, ubah dengan branches:create (fungsi administratif yang
+				// sama seperti pembuatan cabang).
+				r.With(middleware.RequirePermission(domain.PermUsersRead)).
+					Get("/org-units", p.BranchHandler.ListOrgUnits)
+				r.With(middleware.RequirePermission(domain.PermBranchesCreate)).
+					Post("/org-units", p.BranchHandler.CreateOrgUnit)
+				r.With(middleware.RequirePermission(domain.PermBranchesCreate)).
+					Put("/org-units/{code}/parent", p.BranchHandler.SetOrgUnitParent)
 			})
 			r.Route("/products", func(r chi.Router) {
 				// Data referensi produk dipakai layar rekening, deposito, dan kredit.

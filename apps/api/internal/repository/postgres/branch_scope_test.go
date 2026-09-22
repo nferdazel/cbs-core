@@ -42,4 +42,48 @@ func TestBranchReadClause(t *testing.T) {
 			t.Fatalf("args %v, ingin [\"\"]", args)
 		}
 	})
+
+	t.Run("cakupan hierarki diresolusi memakai himpunan kode", func(t *testing.T) {
+		actor := domain.Actor{
+			Role:        domain.RoleSupervisor,
+			BranchCode:  "810",
+			BranchScope: domain.NewBranchScope([]string{"810", "811", "812"}),
+		}
+		clause, args := branchReadClause("loans.branch_id", actor)
+		if !strings.Contains(clause, "loans.branch_id IS NULL") {
+			t.Fatalf("klausa harus menyertakan baris branch_id NULL: %q", clause)
+		}
+		if !strings.Contains(clause, "= ANY($1)") {
+			t.Fatalf("klausa cakupan hierarki harus memakai himpunan kode: %q", clause)
+		}
+		if len(args) != 1 {
+			t.Fatalf("argumen %v, ingin satu parameter himpunan", args)
+		}
+		codes, ok := args[0].([]string)
+		if !ok || len(codes) != 3 || codes[0] != "810" || codes[2] != "812" {
+			t.Fatalf("argumen himpunan %v, ingin [810 811 812]", args[0])
+		}
+	})
+
+	t.Run("cakupan hierarki dan buku tetap berlaku bersamaan", func(t *testing.T) {
+		// Sumbu unit dan sumbu buku terpisah: filter cabang memakai $1, filter buku
+		// memakai $2, sehingga cakupan area tidak meniadakan penjagaan lini usaha.
+		actor := domain.Actor{
+			Role:        domain.RoleSupervisor,
+			BranchCode:  "810",
+			BranchScope: domain.NewBranchScope([]string{"810", "811"}),
+			Book:        domain.BookConventional,
+		}
+		branchClause, branchArgs := branchReadClause("loans.branch_id", actor)
+		bookClause, bookArgs := bookReadClause("p.book", actor, len(branchArgs)+1)
+		if branchClause == "" || bookClause == "" {
+			t.Fatalf("kedua klausa harus terisi: cabang=%q buku=%q", branchClause, bookClause)
+		}
+		if !strings.Contains(bookClause, "$2") {
+			t.Fatalf("filter buku harus memakai placeholder $2 agar tidak bertabrakan: %q", bookClause)
+		}
+		if len(bookArgs) != 1 || bookArgs[0] != "CONVENTIONAL" {
+			t.Fatalf("argumen buku %v, ingin [CONVENTIONAL]", bookArgs)
+		}
+	})
 }

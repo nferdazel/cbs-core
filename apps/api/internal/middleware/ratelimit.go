@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cbs-core/apps/core-api/internal/i18n"
 )
 
 // Pembatasan percobaan login (anti brute force) untuk endpoint
@@ -333,7 +335,7 @@ func writeRateLimited(w http.ResponseWriter, retryAfter time.Duration) {
 		seconds = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(seconds))
-	writeError(w, http.StatusTooManyRequests, "terlalu banyak percobaan masuk, silakan coba lagi nanti")
+	writeErrorCode(w, http.StatusTooManyRequests, i18n.MsgTooManyLoginAttempts)
 }
 
 // loginUsername membaca username dari body JSON tanpa menghabiskan body: isinya

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -38,7 +39,7 @@ func (h *BatchProcessHandler) GetBusinessDate(w http.ResponseWriter, r *http.Req
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "current system business date retrieved", dateInfo)
+	Success(w, http.StatusOK, i18n.MsgCurrentBusinessDate, dateInfo)
 }
 
 // RunEOD handles POST /api/v1/batch/eod (Supervisor / Admin)
@@ -46,7 +47,7 @@ func (h *BatchProcessHandler) RunEOD(w http.ResponseWriter, r *http.Request) {
 	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -56,7 +57,7 @@ func (h *BatchProcessHandler) RunEOD(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "End of Day (EOD) executed successfully. System date advanced.", result)
+	Success(w, http.StatusOK, i18n.MsgEODExecuted, result)
 }
 
 // RunEOM handles POST /api/v1/batch/eom (Admin)
@@ -66,7 +67,7 @@ func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -76,7 +77,7 @@ func (h *BatchProcessHandler) RunEOM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "End of Month (EOM) batch process executed successfully.", result)
+	Success(w, http.StatusOK, i18n.MsgEOMExecuted, result)
 }
 
 // RunEOY handles POST /api/v1/batch/eoy (Superadmin / Admin)
@@ -85,7 +86,7 @@ func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
 	extendWriteDeadline(w)
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -103,5 +104,5 @@ func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "End of Year (EOY) Tutup Buku Akhir Tahun completed successfully.", result)
+	Success(w, http.StatusOK, i18n.MsgEOYExecuted, result)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 )
 
@@ -85,13 +86,13 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	loanID, err := uuid.Parse(chi.URLParam(r, "loanId"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id kredit tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
 	var req collateralRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -107,7 +108,7 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if raw := strings.TrimSpace(req.CashAccountID); raw != "" {
 		id, err := uuid.Parse(raw)
 		if err != nil {
-			Error(w, http.StatusBadRequest, "id rekening agunan tunai tidak valid")
+			ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidCashCollateralAccountID)
 			return
 		}
 		cashAccountID = &id
@@ -129,7 +130,7 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if raw := strings.TrimSpace(req.NJOPDate); raw != "" {
 		t, err := parseDateOrRFC3339(raw)
 		if err != nil {
-			Error(w, http.StatusBadRequest, "format tanggal NJOP tidak dikenal; gunakan YYYY-MM-DD")
+			ErrorCode(w, http.StatusBadRequest, i18n.MsgNJOPDateInvalid)
 			return
 		}
 		njopDate = &t
@@ -180,7 +181,7 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "agunan tercatat", collateral)
+	Success(w, http.StatusCreated, i18n.MsgCollateralRecorded, collateral)
 }
 
 // ListByLoan handles GET /api/v1/loans/{loanId}/collaterals
@@ -192,7 +193,7 @@ func (h *CollateralHandler) ListByLoan(w http.ResponseWriter, r *http.Request) {
 
 	loanID, err := uuid.Parse(chi.URLParam(r, "loanId"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id kredit tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -201,7 +202,7 @@ func (h *CollateralHandler) ListByLoan(w http.ResponseWriter, r *http.Request) {
 		writeCollateralError(w, err)
 		return
 	}
-	Success(w, http.StatusOK, "daftar agunan kredit", list)
+	Success(w, http.StatusOK, i18n.MsgCollateralList, list)
 }
 
 // Summary handles GET /api/v1/collateral/summary
@@ -217,7 +218,7 @@ func (h *CollateralHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		writeCollateralError(w, err)
 		return
 	}
-	Success(w, http.StatusOK, "rekap agunan aktif", list)
+	Success(w, http.StatusOK, i18n.MsgActiveCollateralSummary, list)
 }
 
 // GetByID handles GET /api/v1/collaterals/{id}
@@ -229,7 +230,7 @@ func (h *CollateralHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id agunan tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidCollateralID)
 		return
 	}
 
@@ -238,7 +239,7 @@ func (h *CollateralHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		writeCollateralError(w, err)
 		return
 	}
-	Success(w, http.StatusOK, "agunan", collateral)
+	Success(w, http.StatusOK, i18n.MsgCollateral, collateral)
 }
 
 // writeCollateralError memetakan kesalahan agunan ke status HTTP. Agunan yang tidak ada

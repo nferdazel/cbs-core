@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -26,7 +27,7 @@ func (h *ReportHandler) GetTrialBalance(w http.ResponseWriter, r *http.Request) 
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Trial Balance report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportTrialBalanceGenerated, report)
 }
 
 // GetBalanceSheet handles GET /api/v1/reports/balance-sheet
@@ -37,7 +38,7 @@ func (h *ReportHandler) GetBalanceSheet(w http.ResponseWriter, r *http.Request) 
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Balance Sheet report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportBalanceSheetGenerated, report)
 }
 
 // GetIncomeStatement handles GET /api/v1/reports/income-statement
@@ -50,7 +51,7 @@ func (h *ReportHandler) GetIncomeStatement(w http.ResponseWriter, r *http.Reques
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Income Statement report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportIncomeStatementGenerated, report)
 }
 
 // reportToday mengembalikan awal hari UTC dan awal bulan berjalan UTC.
@@ -98,7 +99,7 @@ func (h *ReportHandler) TrialBalance(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Trial Balance report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportTrialBalanceGenerated, report)
 }
 
 // IncomeStatement handles GET /api/v1/reports/income-statement
@@ -113,7 +114,7 @@ func (h *ReportHandler) IncomeStatement(w http.ResponseWriter, r *http.Request) 
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Income Statement report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportIncomeStatementGenerated, report)
 }
 
 // BalanceSheet handles GET /api/v1/reports/balance-sheet
@@ -129,7 +130,7 @@ func (h *ReportHandler) BalanceSheet(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Balance Sheet report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportBalanceSheetGenerated, report)
 }
 
 // CashFlow handles GET /api/v1/reports/cash-flow
@@ -144,7 +145,7 @@ func (h *ReportHandler) CashFlow(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "Cash Flow report generated", report)
+	Success(w, http.StatusOK, i18n.MsgReportCashFlowGenerated, report)
 }
 
 // DueObligations handles GET /api/v1/reports/due-obligations.
@@ -153,7 +154,7 @@ func (h *ReportHandler) CashFlow(w http.ResponseWriter, r *http.Request) {
 func (h *ReportHandler) DueObligations(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -161,7 +162,7 @@ func (h *ReportHandler) DueObligations(w http.ResponseWriter, r *http.Request) {
 	if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 0 {
-			Error(w, http.StatusBadRequest, "days tidak valid")
+			ErrorCode(w, http.StatusBadRequest, i18n.MsgDaysInvalid)
 			return
 		}
 		withinDays = parsed
@@ -177,5 +178,5 @@ func (h *ReportHandler) DueObligations(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "due obligations listed", items)
+	Success(w, http.StatusOK, i18n.MsgDueObligationsListed, items)
 }

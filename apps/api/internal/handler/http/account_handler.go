@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -24,22 +25,22 @@ func NewAccountHandler(service domain.AccountService) *AccountHandler {
 func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.OpenAccountInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	if input.CustomerID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "customer_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCustomerIDRequired)
 		return
 	}
 	if input.ProductID == uuid.Nil {
-		Error(w, http.StatusBadRequest, "product_id is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgProductIDRequired)
 		return
 	}
 	if input.Currency == "" {
@@ -55,19 +56,19 @@ func (h *AccountHandler) Open(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "account opened successfully", account)
+	Success(w, http.StatusCreated, i18n.MsgAccountOpened, account)
 }
 
 func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	accNum := chi.URLParam(r, "accountNumber")
 	if accNum == "" {
-		Error(w, http.StatusBadRequest, "account number is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAccountNumberRequired)
 		return
 	}
 
@@ -77,7 +78,7 @@ func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "account retrieved", acc)
+	Success(w, http.StatusOK, i18n.MsgAccountRetrieved, acc)
 }
 
 // Reactivate memulihkan rekening dormant ke ACTIVE. Body bersifat opsional dan hanya
@@ -85,13 +86,13 @@ func (h *AccountHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 func (h *AccountHandler) Reactivate(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	accNum := chi.URLParam(r, "accountNumber")
 	if accNum == "" {
-		Error(w, http.StatusBadRequest, "account number is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAccountNumberRequired)
 		return
 	}
 
@@ -100,7 +101,7 @@ func (h *AccountHandler) Reactivate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Body kosong bukan alasan menolak: reaktivasi tanpa catatan tetap sah.
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -111,13 +112,13 @@ func (h *AccountHandler) Reactivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "account reactivated successfully", acc)
+	Success(w, http.StatusOK, i18n.MsgAccountReactivated, acc)
 }
 
 func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -142,7 +143,7 @@ func (h *AccountHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (total + pageSize - 1) / pageSize
 
-	SuccessWithMeta(w, http.StatusOK, "accounts listed", accounts, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgAccountsListed, accounts, PaginationMeta{
 		Page:       page,
 		PageSize:   pageSize,
 		TotalItems: total,

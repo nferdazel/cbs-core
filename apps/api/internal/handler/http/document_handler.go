@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -34,7 +35,7 @@ func (h *DocumentHandler) DepositSlip(w http.ResponseWriter, r *http.Request) {
 	}
 	refNo := chi.URLParam(r, "refNo")
 	if refNo == "" {
-		Error(w, http.StatusBadRequest, "reference number is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgReferenceNumberRequired)
 		return
 	}
 
@@ -55,7 +56,7 @@ func (h *DocumentHandler) WithdrawalSlip(w http.ResponseWriter, r *http.Request)
 	}
 	refNo := chi.URLParam(r, "refNo")
 	if refNo == "" {
-		Error(w, http.StatusBadRequest, "reference number is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgReferenceNumberRequired)
 		return
 	}
 
@@ -97,7 +98,7 @@ func (h *DocumentHandler) ThermalReceipt(w http.ResponseWriter, r *http.Request)
 	}
 	receiptNo := chi.URLParam(r, "receiptNo")
 	if receiptNo == "" {
-		Error(w, http.StatusBadRequest, "receipt number is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgReceiptNumberRequired)
 		return
 	}
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"cbs-core/apps/core-api/internal/ojkreport"
@@ -68,7 +69,7 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 // Definitions mengembalikan definisi laporan, periodisitas/tenggat, daftar form
 // bulanan, dan status pemetaan. Laporan yang belum dapat dibangun ikut didaftarkan.
 func (h *OJKReportHandler) Definitions(w http.ResponseWriter, r *http.Request) {
-	Success(w, http.StatusOK, "definisi laporan OJK", map[string]any{
+	Success(w, http.StatusOK, i18n.MsgOJKReportDefinitions, map[string]any{
 		"reports":        ojkreport.OJKReportDefinitions,
 		"monthly_forms":  ojkreport.OJKBulananForms,
 		"mapping_status": ojkreport.MappingStatus,
@@ -137,7 +138,7 @@ func (h *OJKReportHandler) Mapping(w http.ResponseWriter, r *http.Request) {
 		unmappedCOA = []ojkreport.UnmappedCOA{}
 	}
 
-	Success(w, http.StatusOK, "pemetaan COA ke pos OJK", map[string]any{
+	Success(w, http.StatusOK, i18n.MsgOJKCOAMapping, map[string]any{
 		"mapping_status":     ojkreport.MappingStatus,
 		"period":             period,
 		"book":               book,
@@ -164,7 +165,7 @@ type mappingDecisionRequest struct {
 func (h *OJKReportHandler) DecideMapping(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 	if h.reviews == nil {
@@ -211,7 +212,7 @@ func (h *OJKReportHandler) DecideMapping(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	Success(w, http.StatusOK, "keputusan pemetaan tersimpan", review)
+	Success(w, http.StatusOK, i18n.MsgOJKMappingDecisionSaved, review)
 }
 
 // ExportMonthly menulis berkas teks Laporan Bulanan BPR: form 01.00, 02.00, 00.08,
@@ -220,7 +221,7 @@ func (h *OJKReportHandler) DecideMapping(w http.ResponseWriter, r *http.Request)
 func (h *OJKReportHandler) ExportMonthly(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))

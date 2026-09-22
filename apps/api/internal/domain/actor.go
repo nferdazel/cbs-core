@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -25,6 +26,12 @@ type Actor struct {
 	Username   string
 	Role       StaffRole
 	BranchCode string
+	// BranchScope adalah himpunan unit yang boleh diakses aktor, hasil resolusi
+	// hierarki organisasi (unit sendiri + seluruh turunannya) oleh middleware.
+	// Nilai nol (Loaded=false) berarti belum diresolusi dan akses ditentukan
+	// perbandingan langsung BranchCode, yaitu perilaku lama. Ini menjaga pengguna
+	// lama dan uji yang membangun Actor tanpa database tetap berjalan sama.
+	BranchScope BranchScope
 	// Book adalah buku COA (konvensional/syariah) pengguna, dibaca dari kolom
 	// staff_users.book. Kosong berarti belum ditentukan; aktor dengan buku kosong
 	// tidak dibatasi agar data lama tidak hilang dari operasional (lihat
@@ -162,6 +169,13 @@ func (a Actor) ConstrainedBook(requested string) string {
 // branchCode. Aktor lintas cabang selalu boleh. Bila cabang objek kosong, akses
 // diizinkan karena baris tersebut adalah data pra-migrasi yang cabangnya belum
 // diketahui; memblokirnya akan menghentikan operasional atas data lama.
+//
+// Bila BranchCodes sudah diresolusi middleware, keanggotaan himpunan itulah yang
+// menentukan: aktor di area melihat seluruh cabang di area itu, aktor di wilayah
+// melihat seluruh wilayahnya. Tanpa resolusi (mis. Actor di uji unit), perilaku
+// lama dipertahankan: hanya cabangnya sendiri. Ini yang membuat bank tanpa
+// area/wilayah berperilaku persis seperti sebelumnya sekaligus pengguna lama
+// tidak kehilangan akses.
 func (a Actor) CanAccessBranch(branchCode string) bool {
 	if a.IsCrossBranch() {
 		return true
@@ -169,7 +183,66 @@ func (a Actor) CanAccessBranch(branchCode string) bool {
 	if branchCode == "" {
 		return true
 	}
+	if a.BranchScope.Loaded {
+		return a.BranchScope.Contains(branchCode)
+	}
 	return a.BranchCode != "" && a.BranchCode == branchCode
+}
+
+// HasResolvedBranchScope melaporkan apakah cakupan unit aktor sudah diresolusi
+// (termasuk himpunan kosong yang berarti aktor tanpa unit). Dipakai repository
+// untuk memilih klausa filter berbasis himpunan, sejalan dengan CanAccessBranch.
+func (a Actor) HasResolvedBranchScope() bool {
+	return a.BranchScope.Loaded
+}
+
+// BranchScope adalah cakupan unit organisasi aktor (cabang + turunannya pada
+// hierarki area/wilayah). Kode disimpan tergabung sebagai string agar Actor tetap
+// dapat dibandingkan dengan == (dipakai uji dan pemetaan); kode unit dibatasi
+// karakter aman tanpa pemisah sehingga penggabungan tidak ambigu.
+type BranchScope struct {
+	// Loaded menandai cakupan benar-benar hasil resolusi. false = belum diresolusi
+	// (perilaku lama), true dengan himpunan kosong = aktor tanpa unit aktif.
+	Loaded bool
+	codes  string
+}
+
+const branchScopeSeparator = ","
+
+// NewBranchScope membangun cakupan dari daftar kode unit. Kode kosong diabaikan
+// dan duplikat dibuang agar hasilnya deterministik.
+func NewBranchScope(codes []string) BranchScope {
+	seen := map[string]bool{}
+	var uniq []string
+	for _, c := range codes {
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		uniq = append(uniq, c)
+	}
+	return BranchScope{Loaded: true, codes: strings.Join(uniq, branchScopeSeparator)}
+}
+
+// Codes mengembalikan kode unit yang boleh diakses. Nil untuk cakupan kosong.
+func (s BranchScope) Codes() []string {
+	if s.codes == "" {
+		return nil
+	}
+	return strings.Split(s.codes, branchScopeSeparator)
+}
+
+// Contains melaporkan apakah kode unit termasuk cakupan.
+func (s BranchScope) Contains(code string) bool {
+	if code == "" || s.codes == "" {
+		return false
+	}
+	for _, c := range strings.Split(s.codes, branchScopeSeparator) {
+		if c == code {
+			return true
+		}
+	}
+	return false
 }
 
 // CanManageStaff melaporkan apakah aktor berwenang mengubah akun staf dengan peran

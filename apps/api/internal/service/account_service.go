@@ -127,20 +127,13 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	if err != nil {
 		return nil, fmt.Errorf("cabang tidak valid: %w", err)
 	}
-	// Penegakan kepemilikan cabang: nasabah di cabang lain ditolak. Nasabah tanpa
-	// cabang (data pra-migrasi) dibiarkan agar operasional tidak terblokir.
-	if !actor.IsCrossBranch() && customer.BranchID != nil && *customer.BranchID != actorBranch.ID {
-		return nil, domain.ErrCrossBranchAccess
-	}
-	// Rekening mengikuti cabang nasabah. Aktor lintas cabang yang melayani nasabah
-	// cabang lain memakai cabang nasabah itu, bukan cabang aktornya.
-	branch := actorBranch
-	if customer.BranchID != nil && (actorBranch == nil || *customer.BranchID != actorBranch.ID) {
-		customerBranch, err := s.branchRepo.GetByID(ctx, *customer.BranchID)
-		if err != nil {
-			return nil, fmt.Errorf("cabang nasabah tidak valid: %w", err)
-		}
-		branch = customerBranch
+	// Penegakan kepemilikan cabang: nasabah di luar cakupan unit aktor ditolak
+	// (aktor area/wilayah boleh melayani cabang bawahannya). Nasabah tanpa cabang
+	// (data pra-migrasi) dibiarkan agar operasional tidak terblokir. Cabang operasi
+	// mengikuti cabang nasabah, bukan cabang aktor, bila berbeda.
+	branch, err := resolveCustomerBranch(ctx, s.branchRepo, actor, customer.BranchID, actorBranch)
+	if err != nil {
+		return nil, err
 	}
 	if branch == nil {
 		return nil, fmt.Errorf("cabang tidak valid: %w", domain.ErrBranchNotFound)

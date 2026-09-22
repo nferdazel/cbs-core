@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
@@ -24,7 +25,7 @@ func NewPPAPHandler(ppapSvc domain.PPAPService) *PPAPHandler {
 func (h *PPAPHandler) RunDaily(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -35,7 +36,7 @@ func (h *PPAPHandler) RunDaily(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "perhitungan PPAP harian selesai", summary)
+	Success(w, http.StatusOK, i18n.MsgPPAPCalculated, summary)
 }
 
 // Preview handles GET /api/v1/ppap/preview.
@@ -43,7 +44,7 @@ func (h *PPAPHandler) RunDaily(w http.ResponseWriter, r *http.Request) {
 func (h *PPAPHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -54,7 +55,7 @@ func (h *PPAPHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "pratinjau PPAP", summary)
+	Success(w, http.StatusOK, i18n.MsgPPAPPreview, summary)
 }
 
 // RegisterRoutes memasang rute PPAP pada router yang sudah berada di dalam grup

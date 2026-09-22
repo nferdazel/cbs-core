@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -38,13 +39,13 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		products = visible
 	}
-	Success(w, http.StatusOK, "daftar produk", products)
+	Success(w, http.StatusOK, i18n.MsgProductList, products)
 }
 
 func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "id produk tidak valid")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidProductID)
 		return
 	}
 
@@ -59,7 +60,7 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	Success(w, http.StatusOK, "detail produk", product)
+	Success(w, http.StatusOK, i18n.MsgProductDetail, product)
 }
 
 // UpdateParams mengubah parameter produk (tarif, nisbah, batas, biaya) berdasarkan
@@ -72,13 +73,13 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *ProductHandler) UpdateParams(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	code := strings.TrimSpace(chi.URLParam(r, "code"))
 	if code == "" {
-		Error(w, http.StatusUnprocessableEntity, "kode produk wajib diisi")
+		ErrorCode(w, http.StatusUnprocessableEntity, i18n.MsgProductCodeRequired)
 		return
 	}
 
@@ -86,7 +87,7 @@ func (h *ProductHandler) UpdateParams(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&input); err != nil {
-		Error(w, http.StatusUnprocessableEntity, "payload parameter produk tidak valid: "+err.Error())
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgProductParamsPayloadInvalid, err.Error())
 		return
 	}
 
@@ -103,5 +104,5 @@ func (h *ProductHandler) UpdateParams(w http.ResponseWriter, r *http.Request) {
 		Fail(w, r, status, err)
 		return
 	}
-	Success(w, http.StatusOK, "parameter produk diperbarui", product)
+	Success(w, http.StatusOK, i18n.MsgProductParamsUpdated, product)
 }

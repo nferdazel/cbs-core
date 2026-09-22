@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 )
 
@@ -20,13 +21,13 @@ func NewCollectionHandler(collectionSvc domain.CollectionService) *CollectionHan
 func (h *CollectionHandler) ProcessMobileCollection(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.MobileCollectionInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -36,5 +37,5 @@ func (h *CollectionHandler) ProcessMobileCollection(w http.ResponseWriter, r *ht
 		return
 	}
 
-	Success(w, http.StatusOK, "mobile collection processed successfully", result)
+	Success(w, http.StatusOK, i18n.MsgCollectionProcessed, result)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -27,13 +28,13 @@ func NewLoanHandler(loanSvc domain.LoanService) *LoanHandler {
 func (h *LoanHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.ApplyLoanInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -43,14 +44,14 @@ func (h *LoanHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "loan application submitted successfully", loan)
+	Success(w, http.StatusCreated, i18n.MsgLoanApplicationSubmitted, loan)
 }
 
 // List handles GET /api/v1/loans
 func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -70,7 +71,7 @@ func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := (total + pageSize - 1) / pageSize
-	SuccessWithMeta(w, http.StatusOK, "loans retrieved", loans, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgLoansRetrieved, loans, PaginationMeta{
 		Page: page, PageSize: pageSize, TotalItems: total, TotalPages: totalPages,
 	})
 }
@@ -79,13 +80,13 @@ func (h *LoanHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *LoanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -95,20 +96,20 @@ func (h *LoanHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan retrieved", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanRetrieved, loan)
 }
 
 // Approve handles POST /api/v1/loans/{id}/approve (Supervisor / Admin)
 func (h *LoanHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -118,20 +119,20 @@ func (h *LoanHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan application approved", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanApproved, loan)
 }
 
 // Reject handles POST /api/v1/loans/{id}/reject (Supervisor / Admin)
 func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -141,7 +142,7 @@ func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
@@ -151,20 +152,20 @@ func (h *LoanHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan application rejected", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanRejected, loan)
 }
 
 // Disburse handles POST /api/v1/loans/{id}/disburse (Supervisor / Teller)
 func (h *LoanHandler) Disburse(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -174,20 +175,20 @@ func (h *LoanHandler) Disburse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan disbursed to customer account successfully", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanDisbursed, loan)
 }
 
 // PayInstallment handles POST /api/v1/loans/{id}/pay-installment (Teller / AO Collector)
 func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -197,7 +198,7 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 		Method        string          `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.InstallmentNo <= 0 {
-		Error(w, http.StatusBadRequest, "valid installment_no is required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInstallmentNoRequired)
 		return
 	}
 
@@ -206,7 +207,7 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 		method = domain.LoanPaymentAccount
 	}
 	if method != domain.LoanPaymentAccount && method != domain.LoanPaymentCash {
-		Error(w, http.StatusBadRequest, "method harus ACCOUNT atau CASH")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgMethodInvalid)
 		return
 	}
 
@@ -223,26 +224,26 @@ func (h *LoanHandler) PayInstallment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "installment payment recorded successfully", schedule)
+	Success(w, http.StatusOK, i18n.MsgInstallmentRecorded, schedule)
 }
 
 // Restructure handles POST /api/v1/loans/{id}/restructure (Supervisor / Admin)
 func (h *LoanHandler) Restructure(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
 	var input domain.RestructureLoanInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	input.LoanID = id
@@ -253,20 +254,20 @@ func (h *LoanHandler) Restructure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan restructured successfully according to OJK rules", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanRestructured, loan)
 }
 
 // WriteOff handles POST /api/v1/loans/{id}/write-off (Supervisor / Admin)
 func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -290,26 +291,26 @@ func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan written off (hapus buku) successfully", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanWrittenOff, loan)
 }
 
 // Recover handles POST /api/v1/loans/{id}/recover (Teller / Supervisor)
 func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
 	var input domain.RecoverWrittenOffLoanInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	input.LoanID = id
@@ -325,7 +326,7 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "written-off loan recovery payment recorded successfully", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanRecoveryRecorded, loan)
 }
 
 // CancelDisbursement handles POST /api/v1/loans/{id}/cancel-disbursement
@@ -334,13 +335,13 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 func (h *LoanHandler) CancelDisbursement(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -348,11 +349,11 @@ func (h *LoanHandler) CancelDisbursement(w http.ResponseWriter, r *http.Request)
 		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Reason) == "" {
-		Error(w, http.StatusBadRequest, "alasan pembatalan wajib diisi")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCancelReasonRequired)
 		return
 	}
 
@@ -371,7 +372,7 @@ func (h *LoanHandler) CancelDisbursement(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	Success(w, http.StatusOK, "loan disbursement cancelled successfully", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanDisbursementCancelled, loan)
 }
 
 // CorrectAmount handles POST /api/v1/loans/{id}/correct-amount
@@ -380,13 +381,13 @@ func (h *LoanHandler) CancelDisbursement(w http.ResponseWriter, r *http.Request)
 func (h *LoanHandler) CorrectAmount(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid loan id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidLoanID)
 		return
 	}
 
@@ -395,15 +396,15 @@ func (h *LoanHandler) CorrectAmount(w http.ResponseWriter, r *http.Request) {
 		Reason    string          `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Reason) == "" {
-		Error(w, http.StatusBadRequest, "alasan koreksi wajib diisi")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCorrectionReasonRequired)
 		return
 	}
 	if body.NewAmount.LessThanOrEqual(decimal.Zero) {
-		Error(w, http.StatusBadRequest, "nominal baru harus positif")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgNewAmountMustBePositive)
 		return
 	}
 
@@ -423,5 +424,5 @@ func (h *LoanHandler) CorrectAmount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "loan amount corrected successfully", loan)
+	Success(w, http.StatusOK, i18n.MsgLoanAmountCorrected, loan)
 }

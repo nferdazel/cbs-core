@@ -341,6 +341,12 @@ type JWTClaims struct {
 	Username   string    `json:"username"`
 	Role       StaffRole `json:"role"`
 	BranchCode string    `json:"branch"`
+	// BranchScope adalah cakupan unit organisasi hasil resolusi hierarki
+	// (cabang/area/wilayah). TIDAK ditanam di token: middleware mengisinya setiap
+	// permintaan dari `branches` sehingga perubahan susunan langsung berlaku dan
+	// token lama tidak dapat menahan cakupan yang sudah dipersempit. Nilai nol
+	// berarti belum diresolusi (perilaku lama: hanya BranchCode).
+	BranchScope BranchScope `json:"-"`
 	// Book adalah buku COA pengguna pada saat token diterbitkan (dan disegarkan
 	// saat validasi dari baris staff_users). Kosong = belum ditentukan.
 	Book COABook `json:"book,omitempty"`
@@ -391,15 +397,16 @@ func (c *JWTClaims) HasPermission(p Permission) bool {
 // application log permintaan asalnya.
 func (c *JWTClaims) ToActor(ip, requestID string) Actor {
 	return Actor{
-		UserID:     c.UserID,
-		Username:   c.Username,
-		Role:       c.Role,
-		BranchCode: c.BranchCode,
-		Book:       c.Book,
-		BookScope:  c.BookScope,
-		SessionID:  c.SessionID,
-		IPAddress:  ip,
-		RequestID:  requestID,
+		UserID:      c.UserID,
+		Username:    c.Username,
+		Role:        c.Role,
+		BranchCode:  c.BranchCode,
+		BranchScope: c.BranchScope,
+		Book:        c.Book,
+		BookScope:   c.BookScope,
+		SessionID:   c.SessionID,
+		IPAddress:   ip,
+		RequestID:   requestID,
 	}
 }
 

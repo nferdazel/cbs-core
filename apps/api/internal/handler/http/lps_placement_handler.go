@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
@@ -27,7 +28,7 @@ func NewLPSPlacementHandler(lpsSvc domain.LPSPlacementService) *LPSPlacementHand
 func (h *LPSPlacementHandler) Calculate(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -38,7 +39,7 @@ func (h *LPSPlacementHandler) Calculate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	Success(w, http.StatusOK, "perhitungan PPKA penempatan pada bank lain (Pasal 23 POJK 1/2024)", summary)
+	Success(w, http.StatusOK, i18n.MsgPPKAPlacementCalculated, summary)
 }
 
 // RegisterRoutes memasang rute pada router yang sudah berada di dalam grup

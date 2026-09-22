@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -23,20 +24,20 @@ func NewCustomerHandler(service domain.CustomerService) *CustomerHandler {
 func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	var input domain.CreateCustomerInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		Error(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
 		return
 	}
 
 	// Email opsional: nasabah tanpa email tetap boleh didaftarkan. Bila diisi,
 	// formatnya diperiksa di sini sebelum masuk ke service.
 	if input.FullName == "" || input.IDCardNumber == "" {
-		Error(w, http.StatusBadRequest, "full_name and id_card_number are required")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgFullNameIDCardRequired)
 		return
 	}
 	if err := domain.ValidateEmail(input.Email); err != nil {
@@ -54,20 +55,20 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusCreated, "customer registered successfully", cust)
+	Success(w, http.StatusCreated, i18n.MsgCustomerRegistered, cust)
 }
 
 func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid customer id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidCustomerID)
 		return
 	}
 
@@ -77,13 +78,13 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	Success(w, http.StatusOK, "customer retrieved", cust)
+	Success(w, http.StatusOK, i18n.MsgCustomerRetrieved, cust)
 }
 
 func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
@@ -109,7 +110,7 @@ func (h *CustomerHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (total + pageSize - 1) / pageSize
 
-	SuccessWithMeta(w, http.StatusOK, "customers listed", customers, PaginationMeta{
+	SuccessWithMeta(w, http.StatusOK, i18n.MsgCustomersListed, customers, PaginationMeta{
 		Page:       page,
 		PageSize:   pageSize,
 		TotalItems: total,

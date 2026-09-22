@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/i18n"
 	"cbs-core/apps/core-api/internal/observability"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -56,7 +57,7 @@ func NewMakerCheckerHandler(svc domain.MakerCheckerService) *MakerCheckerHandler
 func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
@@ -71,20 +72,20 @@ func (h *MakerCheckerHandler) ListPending(w http.ResponseWriter, r *http.Request
 	for i := range requests {
 		list = append(list, toMakerCheckerResponse(&requests[i]))
 	}
-	Success(w, http.StatusOK, "pending maker-checker requests", list)
+	Success(w, http.StatusOK, i18n.MsgPendingMakerChecker, list)
 }
 
 // Approve handles POST /api/v1/maker-checker/{id}/approve
 func (h *MakerCheckerHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid request id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestID)
 		return
 	}
 
@@ -93,20 +94,20 @@ func (h *MakerCheckerHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		writeMakerCheckerError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "request approved successfully", nil)
+	Success(w, http.StatusOK, i18n.MsgRequestApproved, nil)
 }
 
 // Reject handles POST /api/v1/maker-checker/{id}/reject
 func (h *MakerCheckerHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {
-		Error(w, http.StatusUnauthorized, "authentication required")
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
 		return
 	}
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid request id")
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidRequestID)
 		return
 	}
 
@@ -115,7 +116,7 @@ func (h *MakerCheckerHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		writeMakerCheckerError(w, r, err)
 		return
 	}
-	Success(w, http.StatusOK, "request rejected", nil)
+	Success(w, http.StatusOK, i18n.MsgRequestRejected, nil)
 }
 
 // decodeNotes membaca catatan pemeriksa; body opsional.
