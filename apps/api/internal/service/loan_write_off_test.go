@@ -24,6 +24,11 @@ func writeOffFixture() (interestFixture, *loanService) {
 		DisbursementAccountID: f.accountID,
 		OutstandingPrincipal:  decimal.NewFromInt(2_500_000),
 		PenaltyAccrued:        decimal.NewFromInt(50_000),
+		// Syarat hapus buku POJK: kualitas Macet dan cadangan sudah 100% dari nilai
+		// tercatat. Tanpa keduanya, hapus buku ditolak sebelum jurnal apa pun.
+		Collectibility: domain.CollectibilityKol5,
+		RequiredPPAP:   decimal.NewFromInt(2_500_000),
+		DPD:            400,
 	}
 	// Satu angsuran dengan bunga yang sudah diakui tetapi belum tertagih.
 	f.repo.schedules = []domain.LoanSchedule{{
@@ -66,7 +71,7 @@ func TestWriteOffLoan_RequiresApprovalBeforePosting(t *testing.T) {
 	actor := writeOffActor()
 
 	loan, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
-		LoanID: f.loanID, Reason: "debitor pailit",
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x + kunjungan lapangan",
 	}, actor)
 	if loan != nil {
 		t.Fatal("hapus buku belum boleh menghasilkan kredit sebelum disetujui")
@@ -112,13 +117,14 @@ func TestWriteOffLoan_ExecuteApprovedPostsAndMarksLoan(t *testing.T) {
 	svc.auditRepo = audit
 
 	payload := map[string]any{
-		"loan_id":        f.loanID.String(),
-		"loan_number":    f.repo.loan.LoanNumber,
-		"reason":         "debitor pailit",
-		"maker_id":       maker.UserID.String(),
-		"maker_username": maker.Username,
-		"maker_role":     string(maker.Role),
-		"maker_branch":   maker.BranchCode,
+		"loan_id":            f.loanID.String(),
+		"loan_number":        f.repo.loan.LoanNumber,
+		"reason":             "debitor pailit",
+		"collection_efforts": "somasi 3x + kunjungan lapangan",
+		"maker_id":           maker.UserID.String(),
+		"maker_username":     maker.Username,
+		"maker_role":         string(maker.Role),
+		"maker_branch":       maker.BranchCode,
 	}
 	if err := svc.ExecuteApproved(context.Background(), nil, ActionLoanWriteOff, payload, checker); err != nil {
 		t.Fatalf("ExecuteApproved: %v", err)
@@ -170,6 +176,18 @@ func TestWriteOffLoan_ExecuteApprovedPostsAndMarksLoan(t *testing.T) {
 	}
 	if audit.events[0].ActorUsername != maker.Username {
 		t.Fatalf("audit mencatat %q, ingin pembuat %q", audit.events[0].ActorUsername, maker.Username)
+	}
+	// Bukti syarat POJK harus tersimpan: kualitas aset, cadangan yang dibentuk, dan
+	// upaya penagihan. Tanpanya, keputusan tidak dapat dipertanggungjawabkan ke Dekom.
+	changes := audit.events[0].Changes
+	if changes["collectibility"] != string(domain.CollectibilityKol5) {
+		t.Fatalf("audit kualitas aset %v, ingin %s", changes["collectibility"], domain.CollectibilityKol5)
+	}
+	if changes["required_ppap"] != "2500000.00" {
+		t.Fatalf("audit cadangan %v, ingin 2500000.00", changes["required_ppap"])
+	}
+	if changes["collection_efforts"] != "somasi 3x + kunjungan lapangan" {
+		t.Fatalf("audit upaya penagihan %v, tidak tercatat", changes["collection_efforts"])
 	}
 }
 
@@ -235,7 +253,7 @@ func TestWriteOffLoan_BelowThresholdExecutesDirectly(t *testing.T) {
 	svc.txRunner = stubTxRunner{}
 
 	loan, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
-		LoanID: f.loanID, Reason: "debitor pailit",
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x + kunjungan lapangan",
 	}, writeOffActor())
 	if err != nil {
 		t.Fatalf("hapus buku di bawah ambang: %v", err)
@@ -257,7 +275,7 @@ func TestWriteOffLoan_RejectsUnmappedAccruedProfit(t *testing.T) {
 	f.products.rules[domain.EventLoanWriteOff] = f.products.rules[domain.EventLoanWriteOff][:2]
 
 	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
-		LoanID: f.loanID, Reason: "debitor pailit",
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x + kunjungan lapangan",
 	}, writeOffActor())
 	if err == nil || !strings.Contains(err.Error(), "piutang bunga") {
 		t.Fatalf("hapus buku tanpa kaki piutang bunga harus ditolak, dapat: %v", err)
@@ -314,6 +332,112 @@ func TestRecoverWrittenOffLoan_UsesCallerIdempotencyKey(t *testing.T) {
 	}
 	if got := f.posting.requests[0].IdempotencyKey; got != "RECOV-"+f.repo.loan.LoanNumber+"-kuitansi-777" {
 		t.Fatalf("kunci idempotensi %q, ingin memakai kunci pemanggil", got)
+	}
+}
+
+// Kredit yang belum Macet tidak boleh dihapus buku (POJK 1/2024 Pasal 42 ayat (1)).
+// Penolakan harus menyebut syaratnya (ErrWriteOffNotMacet), bukan galat umum.
+func TestWriteOffLoan_RejectsNonMacet(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Collectibility = domain.CollectibilityKol4
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "coba", CollectionEfforts: "telepon",
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrWriteOffNotMacet) {
+		t.Fatalf("kredit Diragukan harus ditolak sebagai bukan macet, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 || f.repo.loan.Status != domain.LoanStatusDisbursed {
+		t.Fatalf("tidak boleh ada jurnal/status berubah, dapat %d jurnal status %s",
+			len(f.posting.requests), f.repo.loan.Status)
+	}
+}
+
+// Cadangan yang belum 100% menolak hapus buku walaupun kualitasnya sudah Macet.
+func TestWriteOffLoan_RejectsIncompleteReserve(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.RequiredPPAP = decimal.NewFromInt(1_000_000) // < 2.5 juta
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "coba", CollectionEfforts: "telepon",
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrWriteOffReserveIncomplete) {
+		t.Fatalf("cadangan belum 100%% harus ditolak, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
+	}
+}
+
+// Nilai tercatat hanya dihitung dari pokok dikurangi saldo kerugian restrukturisasi;
+// cadangan yang menutup nilai tercatat itu sudah dianggap 100%.
+func TestWriteOffLoan_ReserveCountsCarryingAmount(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.RestructureLossBalance = decimal.NewFromInt(500_000)
+	f.repo.loan.RequiredPPAP = decimal.NewFromInt(2_000_000) // 2.5jt - 0.5jt
+	svc.approvals = nil
+
+	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "coba", CollectionEfforts: "telepon",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("cadangan atas nilai tercatat harus diterima, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1", len(f.posting.requests))
+	}
+}
+
+// Permintaan yang lebih kecil dari seluruh sisa pokok adalah hapus buku sebagian dan
+// dilarang (POJK 1/2024 Pasal 42 ayat (2)).
+func TestWriteOffLoan_RejectsPartialRequest(t *testing.T) {
+	f, svc := writeOffFixture()
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "coba", CollectionEfforts: "telepon",
+		Amount: decimal.NewFromInt(1_000_000),
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrWriteOffPartial) {
+		t.Fatalf("hapus buku sebagian harus ditolak, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
+	}
+}
+
+// Upaya penagihan wajib terdokumentasi (POJK 1/2024 Pasal 43); yang kosong ditolak.
+func TestWriteOffLoan_RejectsMissingCollectionEfforts(t *testing.T) {
+	f, svc := writeOffFixture()
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "coba",
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrWriteOffCollectionEffortsRequired) {
+		t.Fatalf("upaya penagihan kosong harus ditolak, dapat: %v", err)
+	}
+}
+
+// Bukti syarat dikirim ke pemeriksa sejak pengajuan: kualitas, DPD, cadangan, dan
+// upaya penagihan harus ikut di payload persetujuan, bukan hanya di audit eksekusi.
+func TestWriteOffLoan_ApprovalPayloadCarriesEvidence(t *testing.T) {
+	f, svc := writeOffFixture()
+
+	_, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi + kunjungan",
+	}, writeOffActor())
+	var pending *domain.PendingApprovalError
+	if !errors.As(err, &pending) {
+		t.Fatalf("harus menunggu persetujuan, dapat: %v", err)
+	}
+	approvals := svc.approvals.(*stubApprovals)
+	payload := approvals.created[0].Payload
+	if payload["collectibility"] != string(domain.CollectibilityKol5) {
+		t.Fatalf("payload kualitas aset %v", payload["collectibility"])
+	}
+	if payload["required_ppap"] != "2500000" {
+		t.Fatalf("payload cadangan %v, ingin 2500000", payload["required_ppap"])
+	}
+	if payload["collection_efforts"] != "somasi + kunjungan" {
+		t.Fatalf("payload upaya penagihan %v", payload["collection_efforts"])
 	}
 }
 

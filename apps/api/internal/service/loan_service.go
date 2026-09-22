@@ -1204,7 +1204,8 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 			return err
 		}
 		reason, _ := payload["reason"].(string)
-		return s.writeOffTx(ctx, tx, loan, product, terms, reason, maker)
+		collectionEfforts, _ := payload["collection_efforts"].(string)
+		return s.writeOffTx(ctx, tx, loan, product, terms, reason, collectionEfforts, maker)
 	case ActionLoanRecovery:
 		amount, err := decimalFromPayload(payload["recovery_amount"])
 		if err != nil {
@@ -1290,10 +1291,22 @@ func requireWriteOffLegs(rules []domain.JournalMappingRule, terms writeOffTerms)
 	return nil
 }
 
-// writeOffTarget memvalidasi kredit yang akan dihapus buku dan menghitung nominal yang
-// dilepas dari neraca.
+// writeOffTarget memvalidasi syarat hapus buku (POJK 1/2024 Pasal 42-43 / POJK
+// 24/2024 Pasal 50-51) dan menghitung nominal yang dilepas dari neraca.
+//
+// Dua syarat yang ditegakkan di sini, bukan sekadar konfigurasi:
+//  1. kualitas aset harus Macet (kolektibilitas 5);
+//  2. cadangan/penyisihan harus sudah 100% dari nilai tercatat kredit.
+//
+// Nilai tercatat memakai basis yang sama dengan mesin PPAP (PPAPCarryingAmount),
+// sehingga saldo kerugian restrukturisasi tidak dihitung sebagai eksposur yang perlu
+// dicadangkan. Pengurang agunan (Pasal 20) tidak diterapkan di sini karena layanan
+// kredit tidak memegang modul agunan; karena itu syarat cadangan 100% bersifat lebih
+// konservatif untuk kredit beragunan.
 func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, writeOffTerms, error) {
-	if loan.Status != domain.LoanStatusDisbursed {
+	// Kredit tidak aktif (PAID_OFF/WRITTEN_OFF/CANCELLED) sudah tidak punya eksposur.
+	// DEFAULTED tetap boleh karena ia masih punya eksposur dan justru golongan macet.
+	if loan.Status != domain.LoanStatusDisbursed && loan.Status != domain.LoanStatusDefaulted {
 		return nil, writeOffTerms{}, errors.New("hanya kredit aktif yang dapat dihapus buku")
 	}
 	if loan.ProductID == nil {
@@ -1303,9 +1316,28 @@ func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*d
 	if err != nil {
 		return nil, writeOffTerms{}, err
 	}
+	// Syarat 1: hanya aset macet. Kolektibilitas disimpan sebagai kode lama (mis.
+	// "5_MACET"); domain.CollectibilityFromOJK menormalkannya.
+	if c := domain.CollectibilityFromOJK(loan.Collectibility); c != domain.KolMacet {
+		return nil, writeOffTerms{}, fmt.Errorf("%w: kredit %s berkualitas %s",
+			domain.ErrWriteOffNotMacet, loan.LoanNumber, c.Label())
+	}
+	// Tanpa fallback ke PrincipalAmount: hapus buku harus melepas SELURUH sisa pokok
+	// yang tercatat (POJK 1/2024 Pasal 42 ayat (2)). Sisa pokok nol berarti tidak ada
+	// lagi yang bisa dihapus buku.
+	if !loan.OutstandingPrincipal.IsPositive() {
+		return nil, writeOffTerms{}, errors.New("kredit tidak memiliki sisa pokok yang dapat dihapus buku")
+	}
 	principal := loan.OutstandingPrincipal
-	if !principal.IsPositive() {
-		principal = loan.PrincipalAmount
+	// Syarat 2: cadangan 100% dari nilai tercatat. Pihak bank boleh menetapkan tarif
+	// PPAP lebih tinggi, tetapi POJK menetapkan lantai 100% untuk kualitas Macet,
+	// sehingga lantai itu dipakai langsung (bukan tarif yang bisa lebih rendah).
+	carrying := domain.PPAPCarryingAmount(principal, loan.RestructureLossBalance)
+	requiredReserve := domain.RoundToRupiah(carrying)
+	if loan.RequiredPPAP.LessThan(requiredReserve) {
+		return nil, writeOffTerms{}, fmt.Errorf("%w: kredit %s baru dicadangkan %s dari %s yang diwajibkan",
+			domain.ErrWriteOffReserveIncomplete, loan.LoanNumber,
+			loan.RequiredPPAP.StringFixed(2), requiredReserve.StringFixed(2))
 	}
 	accruedProfit, err := s.accruedProfitFor(ctx, loan.ID)
 	if err != nil {
@@ -1344,7 +1376,12 @@ func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*d
 // writeOffTx menjalankan hapus buku di dalam transaksi pemanggil: jurnal, status, sisa
 // pokok, dan jejak auditnya commit bersama. Selain pokok, piutang bunga dan denda yang
 // masih tercatat ikut dilepas supaya tidak ada aset tanpa penopang yang tertinggal.
-func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, terms writeOffTerms, reason string, actor domain.Actor) error {
+//
+// Auditnya menyimpan bukti syarat saat keputusan: kualitas aset, DPD, nilai cadangan
+// yang sudah dibentuk, dasar pertimbangan, dan upaya penagihan yang terdokumentasi.
+// Bukti ini tidak dapat diubah (audit_logs append-only) dan menjadi rujukan pelaporan
+// pengawasan Dekom/OJK.
+func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, terms writeOffTerms, reason, collectionEfforts string, actor domain.Actor) error {
 	rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanWriteOff)
 	if err != nil {
 		return fmt.Errorf("membaca pemetaan hapus buku: %w", err)
@@ -1376,12 +1413,18 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":           loan.LoanNumber,
 		"reason":                reason,
+		"collection_efforts":    collectionEfforts,
 		"principal":             terms.Principal.StringFixed(2),
 		"accrued_profit":        terms.AccruedProfit.StringFixed(2),
 		"penalty":               terms.Penalty.StringFixed(2),
 		"amount":                terms.Total().StringFixed(2),
 		"outstanding_principal": loan.OutstandingPrincipal.StringFixed(2),
 		"penalty_outstanding":   loan.PenaltyAccrued.StringFixed(2),
+		// Bukti syarat POJK pada saat keputusan: kualitas aset wajib Macet dan
+		// cadangan yang sudah dibentuk wajib 100% dari nilai tercatat.
+		"collectibility": string(loan.Collectibility),
+		"dpd":            loan.DPD,
+		"required_ppap":  loan.RequiredPPAP.StringFixed(2),
 	})
 }
 
@@ -1444,11 +1487,33 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	if err != nil {
 		return nil, err
 	}
+	// POJK 1/2024 Pasal 43 mewajibkan upaya memperoleh kembali dan dasar
+	// pertimbangannya terdokumentasi. Keduanya diminta SEBELUM keputusan dibuat dan
+	// ikut tersimpan pada permintaan persetujuan, bukan hanya pada audit eksekusi.
+	if strings.TrimSpace(input.Reason) == "" {
+		return nil, domain.ErrWriteOffReasonRequired
+	}
+	if strings.TrimSpace(input.CollectionEfforts) == "" {
+		return nil, domain.ErrWriteOffCollectionEffortsRequired
+	}
+	// Tidak boleh hapus buku sebagian (POJK 1/2024 Pasal 42 ayat (2)). Pengosongan
+	// Amount berarti seluruh eksposur; nilai yang diisi harus sama dengan sisa pokok.
+	if input.Amount.IsPositive() && !input.Amount.Equal(terms.Principal) {
+		return nil, fmt.Errorf("%w: diminta %s, kewajiban hapus buku seluruh sisa pokok %s",
+			domain.ErrWriteOffPartial, input.Amount.StringFixed(2), terms.Principal.StringFixed(2))
+	}
 
 	if err := s.guardLoanApproval(ctx, actor, ActionLoanWriteOff, terms.Total(), map[string]any{
 		"loan_id":     loan.ID.String(),
 		"loan_number": loan.LoanNumber,
 		"reason":      input.Reason,
+		// Bukti syarat dikirim ke pemeriksa pada saat pengajuan, sehingga keputusan
+		// dapat dinilai dari keadaan kredit saat itu, bukan saat eksekusi.
+		"collection_efforts": input.CollectionEfforts,
+		"collectibility":     string(loan.Collectibility),
+		"dpd":                loan.DPD,
+		"required_ppap":      loan.RequiredPPAP.String(),
+		"amount":             terms.Total().String(),
 	}); err != nil {
 		return nil, err
 	}
@@ -1456,7 +1521,7 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	// Transaksi dibuka lewat txRunner yang sama dengan pembayaran angsuran: isolasi
 	// ReadCommitted dan jalur uji tanpa database tetap satu pintu.
 	if err := s.txRunner.Run(ctx, func(tx any) error {
-		return s.writeOffTx(ctx, tx, loan, product, terms, input.Reason, actor)
+		return s.writeOffTx(ctx, tx, loan, product, terms, input.Reason, input.CollectionEfforts, actor)
 	}); err != nil {
 		return nil, err
 	}

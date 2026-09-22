@@ -115,6 +115,13 @@ var businessErrors = []error{
 	domain.ErrInvalidBranchCode,
 	domain.ErrLoanNotFound,
 	domain.ErrLoanAlreadyApproved,
+	// Syarat hapus buku adalah aturan bisnis/regulasi: pesannya harus menyebut syarat
+	// mana yang belum terpenuhi supaya operator dapat menindaklanjutinya.
+	domain.ErrWriteOffNotMacet,
+	domain.ErrWriteOffReserveIncomplete,
+	domain.ErrWriteOffPartial,
+	domain.ErrWriteOffReasonRequired,
+	domain.ErrWriteOffCollectionEffortsRequired,
 	domain.ErrInvalidBusinessDate,
 	domain.ErrEODAlreadyRunForDate,
 	domain.ErrEODInProgress,

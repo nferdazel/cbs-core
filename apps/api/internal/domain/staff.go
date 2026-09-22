@@ -107,6 +107,15 @@ const (
 	// membatalkan pencairan. Mengubah tagihan nasabah, jadi sama sensitifnya dengan
 	// pembatalan dan hanya dipegang peran tertinggi.
 	PermLoansCorrect Permission = "loans:correct"
+	// PermLoansWriteOff dan PermLoansRecover memisahkan wewenang hapus buku dan
+	// recovery dari izin yang selama ini ditumpangi (loans:approve dan
+	// collections:input). Hapus buku melepas aset dari neraca, sedangkan recovery
+	// adalah penerimaan kas atas aset yang sudah dihapus buku; keduanya perlu ditinjau
+	// bank secara tersendiri. Untuk sementara izin diberikan ke peran yang MEMANG
+	// sudah dapat melakukannya agar tidak ada yang terkunci; matriks final menunggu
+	// keputusan pemilik sistem.
+	PermLoansWriteOff Permission = "loans:write_off"
+	PermLoansRecover  Permission = "loans:recover"
 
 	// Field Collections
 	PermCollectionsInput Permission = "collections:input"
@@ -155,7 +164,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
-		PermLoansCancel, PermLoansCorrect,
+		PermLoansCancel, PermLoansCorrect, PermLoansWriteOff, PermLoansRecover,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
@@ -169,7 +178,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsOpen, PermAccountsRead, PermAccountsFreeze, PermAccountsClose,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer, PermTransactionsReverse,
 		PermLoansApply, PermLoansRead, PermLoansApprove, PermCollectionsInput,
-		PermLoansCancel, PermLoansCorrect,
+		PermLoansCancel, PermLoansCorrect, PermLoansWriteOff, PermLoansRecover,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
@@ -182,7 +191,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCustomersRead, PermCustomersUpdate,
 		PermAccountsRead, PermAccountsFreeze,
 		PermTransactionsReverse,
-		PermLoansRead, PermLoansApprove,
+		PermLoansRead, PermLoansApprove, PermLoansWriteOff,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead,
@@ -194,7 +203,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCustomersCreate, PermCustomersRead,
 		PermAccountsOpen, PermAccountsRead,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
-		PermCollectionsInput,
+		PermCollectionsInput, PermLoansRecover,
 		PermLedgerRead,
 	},
 	RoleCS: {
@@ -210,7 +219,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsRead,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
 		PermLoansApply, PermLoansRead,
-		PermCollectionsInput,
+		PermCollectionsInput, PermLoansRecover,
 		PermLedgerRead,
 	},
 	RoleAuditor: {

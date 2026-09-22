@@ -54,7 +54,9 @@ type RouterParams struct {
 	LPSPlacementHandler *LPSPlacementHandler
 	AuditHandler        *AuditHandler
 	CollateralHandler   *CollateralHandler
-	AuthService         domain.AuthService
+	// AppInfoHandler melayani identitas aplikasi publik untuk halaman login/web.
+	AppInfoHandler *AppInfoHandler
+	AuthService    domain.AuthService
 	// ConfigService membaca cakupan buku tingkat instalasi (institution.book_scope)
 	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
 	// seluruh aktor berperilaku DUAL seperti sebelum setelan ini ada.
@@ -103,6 +105,14 @@ func NewRouter(p RouterParams) *chi.Mux {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+
+		// ── Public: identitas aplikasi (no JWT required) ──
+		// Dipakai halaman login dan metadata/judul tab web. Sengaja di luar grup
+		// ber-AuthMiddleware/BookScopeMiddleware: cakupan buku mengatur DATA, bukan
+		// identitas instalasi, sehingga endpoint ini tetap sama pada cakupan apa pun.
+		if p.AppInfoHandler != nil {
+			r.Get("/app-info", p.AppInfoHandler.Get)
+		}
 
 		// ── Public: Auth endpoints (no JWT required) ──
 		r.Route("/auth", func(r chi.Router) {
@@ -255,9 +265,9 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Post("/{id}/pay-installment", p.LoanHandler.PayInstallment)
 				r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 					Post("/{id}/restructure", p.LoanHandler.Restructure)
-				r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+				r.With(middleware.RequirePermission(domain.PermLoansWriteOff)).
 					Post("/{id}/write-off", p.LoanHandler.WriteOff)
-				r.With(middleware.RequirePermission(domain.PermCollectionsInput)).
+				r.With(middleware.RequirePermission(domain.PermLoansRecover)).
 					Post("/{id}/recover", p.LoanHandler.Recover)
 			})
 
