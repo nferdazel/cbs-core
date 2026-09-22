@@ -1,0 +1,102 @@
+# CI paling awal. Tujuannya menjaga agar tidak mundur, bukan menegakkan seluruh gaya
+# sekaligus: hanya pemeriksaan yang memang hijau pada keadaan sekarang.
+#
+# Uji integrasi tidak dijalankan di sini karena butuh PostgreSQL + migrasi. Seluruh uji
+# integrasi sudah melewatkan dirinya sendiri bila CBS_TEST_DB_DSN kosong (pola yang sama
+# dipakai di seluruh repo), sehingga `go test ./...` aman dijalankan tanpa database.
+# Menjalankannya di CI menuntut job terpisah dengan service PostgreSQL dan langkah
+# migrasi; itu sengaja ditunda sampai ada kebutuhan, bukan dipaksakan sekarang.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (build, gofmt, unit test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth 0 agar sha basis perubahan tersedia untuk pemeriksaan gofmt.
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+
+      - name: go build ./...
+        run: go build ./...
+
+      - name: gofmt (berkas yang berubah)
+        working-directory: .
+        run: |
+          # Drift gofmt lama di repo ini (lihat docs/BACKLOG.md) tidak digagalkan; yang
+          # digagalkan hanya berkas Go yang diubah pada perubahan ini, supaya drift tidak
+          # bertambah tanpa memaksa membereskan puluhan berkas lama sekaligus.
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
+          if [ -z "$base" ] \
+            || [ "$base" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "Basis perubahan tidak tersedia; hanya melaporkan drift gofmt saat ini:"
+            gofmt -l apps/api || true
+            exit 0
+          fi
+          changed="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.go' || true)"
+          if [ -z "$changed" ]; then
+            echo "Tidak ada berkas Go yang berubah."
+            exit 0
+          fi
+          bad="$(printf '%s\n' "$changed" | xargs gofmt -l)"
+          if [ -n "$bad" ]; then
+            echo "Berkas Go berikut belum gofmt-clean:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "Semua berkas Go yang berubah sudah gofmt-clean."
+
+      - name: go test ./...
+        # Tanpa CBS_TEST_DB_DSN, uji integrasi melewatkan dirinya sendiri.
+        run: go test ./...
+
+  web:
+    name: Web (build + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # Versi dibaca dari "packageManager" di package.json.
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        run: pnpm --filter web build
+
+      - name: Typecheck web (tsc)
+        run: pnpm --filter web exec tsc --noEmit

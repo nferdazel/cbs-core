@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,15 +30,49 @@ func TestReindexMovesLegacyRowAndIsIdempotent(t *testing.T) {
 	if dsn == "" {
 		t.Skip("CBS_TEST_DB_DSN tidak diisi: uji integrasi reindex dilewati")
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("membuka database: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-
 	ctx := context.Background()
-	if err := db.PingContext(ctx); err != nil {
+
+	// Isolasi skema: `run` memindai SELURUH tabel customers, sehingga peninggalan uji
+	// lain (mis. uji OJK menyisipkan nasabah tanpa full_name_enc) membuat baris dengan
+	// full_name_enc NULL ikut ter-scan dan menggagalkan uji ini tergantung urutan paket.
+	// Uji ini karena itu bekerja di skema khusus yang hanya berisi datanya sendiri;
+	// struktur tabel disalin dari tabel asli (LIKE ... INCLUDING ALL) agar kolom,
+	// default, dan constraint tetap sama dengan yang dipakai di produksi.
+	schema := fmt.Sprintf("reindex_test_%d", time.Now().UnixNano()%1_000_000_000_000)
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("membuka database admin: %v", err)
+	}
+	if err := admin.PingContext(ctx); err != nil {
+		admin.Close()
 		t.Fatalf("database tidak dapat dihubungi: %v", err)
+	}
+
+	var db *sql.DB
+	t.Cleanup(func() {
+		if db != nil {
+			db.Close()
+		}
+		_, _ = admin.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", schema))
+		admin.Close()
+	})
+
+	if _, err := admin.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %q", schema)); err != nil {
+		t.Fatalf("membuat skema isolasi: %v", err)
+	}
+	for _, table := range []string{"customers", "customer_name_tokens"} {
+		if _, err := admin.ExecContext(ctx, fmt.Sprintf(
+			"CREATE TABLE %q.%s (LIKE public.%s INCLUDING ALL)", schema, table, table)); err != nil {
+			t.Fatalf("menyalin tabel %s: %v", table, err)
+		}
+	}
+
+	db, err = sql.Open("pgx", dsnWithSearchPath(dsn, schema))
+	if err != nil {
+		t.Fatalf("membuka skema isolasi: %v", err)
+	}
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("skema isolasi tidak dapat dihubungi: %v", err)
 	}
 
 	masterKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
@@ -74,10 +109,6 @@ func TestReindexMovesLegacyRowAndIsIdempotent(t *testing.T) {
 		id, legacyCipher.NameTokenIndex("nasabah")); err != nil {
 		t.Fatalf("menyisipkan token lama: %v", err)
 	}
-	t.Cleanup(func() {
-		_, _ = db.ExecContext(ctx, `DELETE FROM customer_name_tokens WHERE customer_id = $1`, id)
-		_, _ = db.ExecContext(ctx, `DELETE FROM customers WHERE id = $1`, id)
-	})
 
 	updated, skipped, err := run(ctx, db, splitCipher, 50)
 	if err != nil {
@@ -120,4 +151,14 @@ func TestReindexMovesLegacyRowAndIsIdempotent(t *testing.T) {
 	if updatedAgain != 0 {
 		t.Fatalf("reindex kedua memperbarui %d baris, ingin 0 (tidak idempoten)", updatedAgain)
 	}
+}
+
+// dsnWithSearchPath menambahkan search_path ke DSN tanpa merusak parameter yang sudah
+// ada, sehingga koneksi uji hanya melihat tabel di skema isolasinya.
+func dsnWithSearchPath(dsn, schema string) string {
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "search_path=" + schema
 }
