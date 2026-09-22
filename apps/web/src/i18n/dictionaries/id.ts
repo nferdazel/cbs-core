@@ -1,7 +1,5 @@
 export const dictionaryID = {
   common: {
-    systemTitle: "CBS Core Backoffice",
-    systemSubtitle: "Core Banking & Akuntansi Double-Entry",
     loading: "Memproses...",
     close: "Tutup",
     cancel: "Batal",
@@ -48,8 +46,6 @@ export const dictionaryID = {
     pengaturan: "Pengaturan",
   },
   login: {
-    title: "Portal Backoffice CBS",
-    subtitle: "Core Banking System BPR",
     staffUsername: "Username Staff",
     password: "Password",
     submitBtn: "Masuk ke Backoffice",

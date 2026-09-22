@@ -49,6 +49,19 @@ export interface AccountRecord extends Account {
   dormant_at?: string;
 }
 
+/**
+ * domain.AppInfo (apps/api/internal/domain/app_info.go). Identitas aplikasi yang
+ * boleh dibaca TANPA login dari GET /api/v1/app-info. company_name berasal dari
+ * bank_profile.bank_name; sisanya dari kunci konfigurasi branding.*.
+ */
+export interface AppInfo {
+  company_name: string;
+  display_name: string;
+  short_name: string;
+  description: string;
+  logo_url: string;
+}
+
 /** domain.SystemBusinessDate (system_date.go) */
 export interface SystemBusinessDate {
   current_date: string;

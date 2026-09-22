@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Building2 } from "lucide-react";
 import { useTranslation } from "@/i18n/context";
+import { useAppInfo } from "@/components/AppInfoProvider";
 import { Button } from "@/components/ui/Button";
 import {
   Card,
@@ -20,6 +21,9 @@ import type { LoginResponse } from "@/lib/types";
 export default function LoginPage() {
   const router = useRouter();
   const { language, setLanguage, t } = useTranslation();
+  // Nama aplikasi di halaman login berasal dari identitas server; tidak ada sesi
+  // pada titik ini, jadi endpoint /app-info memang publik.
+  const appInfo = useAppInfo();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -81,8 +85,8 @@ export default function LoginPage() {
             <div className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-md bg-navy-700 text-white">
               <Building2 className="h-5 w-5" aria-hidden />
             </div>
-            <CardTitle>{t.login.title}</CardTitle>
-            <CardDescription>{t.login.subtitle}</CardDescription>
+            <CardTitle>{appInfo.display_name}</CardTitle>
+            <CardDescription>{appInfo.description}</CardDescription>
           </CardHeader>
 
           <CardContent>

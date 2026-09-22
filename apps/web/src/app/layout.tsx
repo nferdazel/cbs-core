@@ -1,7 +1,9 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { AppInfoProvider } from "@/components/AppInfoProvider";
 import { LanguageProvider } from "@/i18n/context";
+import { fetchAppInfo } from "@/lib/app-info-server";
 
 const ibmPlexSans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -17,20 +19,28 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "CBS Core Backoffice",
-  description: "Backoffice core banking BPR: operasional, kredit, dan akuntansi.",
-};
+// Judul & deskripsi tab mengikuti identitas dari server (endpoint /api/v1/app-info),
+// bukan literal, supaya perubahan nama aplikasi berlaku tanpa build ulang.
+export async function generateMetadata(): Promise<Metadata> {
+  const info = await fetchAppInfo();
+  return {
+    title: info.display_name,
+    description: info.description,
+  };
+}
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const info = await fetchAppInfo();
   return (
     <html lang="id" className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
       <body className="min-h-screen bg-canvas font-sans text-ink-900 antialiased">
-        <LanguageProvider>{children}</LanguageProvider>
+        <AppInfoProvider initial={info}>
+          <LanguageProvider>{children}</LanguageProvider>
+        </AppInfoProvider>
       </body>
     </html>
   );

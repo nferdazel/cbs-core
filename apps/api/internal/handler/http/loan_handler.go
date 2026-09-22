@@ -271,13 +271,17 @@ func (h *LoanHandler) WriteOff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Reason string `json:"reason"`
+		Reason            string          `json:"reason"`
+		CollectionEfforts string          `json:"collection_efforts"`
+		Amount            decimal.Decimal `json:"amount"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
 	input := domain.WriteOffLoanInput{
-		LoanID: id,
-		Reason: body.Reason,
+		LoanID:            id,
+		Reason:            body.Reason,
+		CollectionEfforts: body.CollectionEfforts,
+		Amount:            body.Amount,
 	}
 
 	loan, err := h.loanSvc.WriteOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Building2, LogOut, ShieldCheck } from "lucide-react";
 import { useTranslation } from "@/i18n/context";
+import { useAppInfo } from "@/components/AppInfoProvider";
 import { request } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -15,10 +16,12 @@ interface AppHeaderProps {
 
 /**
  * Header 56px. Tanggal buku diambil dari GET /system/business-date; bila gagal
- * ditampilkan "tidak diketahui", bukan tanggal hardcode.
+ * ditampilkan "tidak diketahui", bukan tanggal hardcode. Nama aplikasi dan
+ * keterangannya berasal dari identitas server (GET /api/v1/app-info), bukan literal.
  */
 export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
   const { language, setLanguage, t } = useTranslation();
+  const appInfo = useAppInfo();
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(null);
   const [dateUnavailable, setDateUnavailable] = useState(false);
 
@@ -41,11 +44,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-navy-800 px-4 text-white">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-navy-700">
-          <Building2 className="h-4 w-4 text-white" aria-hidden />
+          {appInfo.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={appInfo.logo_url}
+              alt={appInfo.company_name || appInfo.display_name}
+              className="h-4 w-4 object-contain"
+            />
+          ) : (
+            <Building2 className="h-4 w-4 text-white" aria-hidden />
+          )}
         </div>
-        <div>
-          <div className="text-title font-semibold leading-tight">{t.common.systemTitle}</div>
-          <div className="text-meta text-white/60">{t.common.systemSubtitle}</div>
+        <div
+          title={appInfo.company_name || undefined}
+          aria-label={appInfo.company_name || undefined}
+        >
+          <div className="text-title font-semibold leading-tight">{appInfo.display_name}</div>
+          <div className="text-meta text-white/60">{appInfo.description}</div>
         </div>
       </div>
 

@@ -40,6 +40,17 @@ var (
 	// tanpa perubahan, jurnal selisih nol dan penulisan ulang jadwal hanya menghapus
 	// jejak tanpa manfaat.
 	ErrLoanAmountUnchanged = errors.New("nominal baru sama dengan nominal lama")
+
+	// Syarat hapus buku menurut POJK 1/2024 Pasal 42-43 (BPR) dan POJK 24/2024
+	// Pasal 50-51 (BPRS): hanya atas aset macet yang cadangannya sudah 100%, tidak
+	// boleh sebagian, dan wajib didahului upaya penagihan yang terdokumentasi.
+	// Tiap syarat punya sentinel sendiri supaya penolakan menyebut syarat mana yang
+	// belum terpenuhi, bukan galat umum yang tidak bisa ditindaklanjuti.
+	ErrWriteOffNotMacet                  = errors.New("hapus buku hanya dapat dilakukan atas kredit berkualitas Macet (kolektibilitas 5)")
+	ErrWriteOffReserveIncomplete         = errors.New("hapus buku memerlukan cadangan/penyisihan 100% atas kredit")
+	ErrWriteOffPartial                   = errors.New("hapus buku sebagian dilarang; hapus buku harus atas seluruh eksposur kredit")
+	ErrWriteOffReasonRequired            = errors.New("dasar pertimbangan hapus buku wajib diisi")
+	ErrWriteOffCollectionEffortsRequired = errors.New("upaya penagihan terdokumentasi wajib diisi sebelum hapus buku")
 )
 
 type LoanStatus string
@@ -325,6 +336,15 @@ type RestructureLoanInput struct {
 type WriteOffLoanInput struct {
 	LoanID uuid.UUID `json:"loan_id"`
 	Reason string    `json:"reason"`
+	// CollectionEfforts adalah ringkasan upaya penagihan yang sudah dilakukan; wajib
+	// diisi karena POJK 1/2024 Pasal 43 mewajibkan upaya memperoleh kembali
+	// didokumentasikan sebelum hapus buku. Nilainya ikut tersimpan pada permintaan
+	// maker-checker dan audit log sebagai bukti syarat terpenuhi saat keputusan dibuat.
+	CollectionEfforts string `json:"collection_efforts"`
+	// Amount boleh dikosongkan untuk menghapus buku seluruh eksposur. Bila diisi,
+	// nilainya WAJIB sama dengan seluruh sisa pokok: nominal yang lebih kecil ditolak
+	// sebagai hapus buku sebagian (POJK 1/2024 Pasal 42 ayat (2)).
+	Amount decimal.Decimal `json:"amount,omitempty"`
 }
 
 type RecoverWrittenOffLoanInput struct {

@@ -2,8 +2,6 @@ import { Dictionary } from "./id";
 
 export const dictionaryEN: Dictionary = {
   common: {
-    systemTitle: "CBS Core Backoffice",
-    systemSubtitle: "Core Banking & Double-Entry Accounting",
     loading: "Processing...",
     close: "Close",
     cancel: "Cancel",
@@ -50,8 +48,6 @@ export const dictionaryEN: Dictionary = {
     pengaturan: "Settings",
   },
   login: {
-    title: "CBS Backoffice Portal",
-    subtitle: "Core Banking System for BPR",
     staffUsername: "Staff Username",
     password: "Password",
     submitBtn: "Login to Backoffice",

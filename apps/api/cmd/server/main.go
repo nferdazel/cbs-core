@@ -149,6 +149,9 @@ func main() {
 	// penandaan rekening dormant.
 	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc, ckpnSvc)
 	docSvc := service.NewDocumentService(ledgerRepo, accountRepo, loanRepo, customerRepo, bankProfileRepo, cipher)
+	// Identitas aplikasi: nama PT dari bank_profile, branding dari system_config.
+	// Dipakai endpoint publik /app-info (halaman login + metadata web).
+	appInfoSvc := service.NewAppInfoService(bankProfileRepo, configSvc)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
@@ -196,6 +199,7 @@ func main() {
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
+	appInfoHandler := httpHandler.NewAppInfoHandler(appInfoSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
@@ -225,6 +229,7 @@ func main() {
 		LPSPlacementHandler: lpsPlacementHandler,
 		AuditHandler:        httpHandler.NewAuditHandler(auditRepo, limitSvc),
 		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
+		AppInfoHandler:      appInfoHandler,
 		AuthService:         authSvc,
 		ConfigService:       configSvc,
 		Cookies:             cookies,
