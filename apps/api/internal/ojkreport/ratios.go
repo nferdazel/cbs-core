@@ -10,10 +10,12 @@ import (
 //
 // Dasar rumus: SEOJK No. 16/SEOJK.03/2024, Lampiran II, Form 00.08 – 2 PENJELASAN
 // RASIO KEUANGAN TRIWULANAN (hlm. 204-205 pada penomoran dokumen; PDF hlm. 255).
-// Lampiran II hanya memberi definisi operasional. Untuk KPMM, ROA, BOPO, NIM, LDR,
-// dan Cash Ratio, Lampiran II merujuk ke SEOJK lain (KPMM BPR, penilaian tingkat
-// kesehatan BPR/BPRS, dan manajemen risiko BPR) yang belum ditelusuri di repositori
-// ini. Karena itu rasio yang komponennya belum tersedia dinyatakan TIDAK TERSEDIA
+// Lampiran II hanya memberi definisi operasional. Untuk KPMM, Lampiran II merujuk
+// ke SEOJK KPMM BPR (No. 2/SEOJK.03/2025) yang sudah ditelusuri; angkanya
+// disalurkan lewat KPMMSource. Untuk ROA, BOPO, NIM, LDR, dan Cash Ratio, Lampiran
+// II merujuk ke SEOJK penilaian tingkat kesehatan BPR/BPRS dan manajemen risiko BPR
+// yang belum ditelusuri di repositori ini. Karena itu rasio yang komponennya belum
+// tersedia dinyatakan TIDAK TERSEDIA
 // beserta alasannya, bukan diisi nol: nol dan tidak tersedia berbeda bagi regulator.
 //
 // Form hanya diisi untuk posisi Maret, Juni, September, dan Desember. Posisi bulan
@@ -74,8 +76,8 @@ var rasioKeuanganDefinisi = []rasioDefinition{
 	{
 		Sandi: sandiKPMM, Nama: "Kewajiban Penyediaan Modal Minimum (KPMM)",
 		Dasar: "Lampiran II hlm. 204 butir 1: modal dibagi ATMR sesuai POJK KPMM BPR",
-		AlasanKosong: "komponen modal dan ATMR sudah dihitung modul KPMM " +
-			"(lihat endpoint GET /reports/kpmm), tetapi belum disalurkan ke Form 00.08",
+		AlasanKosong: "komponen modal dan ATMR dari modul KPMM belum tersedia " +
+			"(mis. CKPN belum dihitung atau ATMR belum lengkap); lihat endpoint GET /reports/kpmm",
 	},
 	{
 		Sandi: sandiCadanganPPKA, Nama: "Rasio Cadangan terhadap PPKA",
@@ -207,6 +209,11 @@ type KomponenRasio struct {
 	RataRataTotalAset decimal.Decimal
 	// RataRataTotalAsetTersedia false berarti rata-rata belum dapat diturunkan.
 	RataRataTotalAsetTersedia bool
+	// Modal dan ATMR mengisi baris KPMM (sandi 0101) dari modul KPMM. Bila
+	// KPMMTersedia=false, baris ditulis "-" beserta alasannya, bukan nol.
+	Modal        decimal.Decimal
+	ATMR         decimal.Decimal
+	KPMMTersedia bool
 }
 
 // RasioKeuangan menghitung seluruh baris Form 00.08 dari angka Form 01.00
@@ -232,6 +239,15 @@ func RasioKeuangan(period time.Time, amounts01, amounts02 map[string]decimal.Dec
 		switch {
 		case !triwulanan:
 			h.Alasan = alasanDikosongkan
+		case d.Sandi == sandiKPMM:
+			if !komponen.KPMMTersedia {
+				h.Alasan = d.AlasanKosong
+				break
+			}
+			h.NilaiPersen, h.Tersedia = RumusKPMM(komponen.Modal, komponen.ATMR)
+			if !h.Tersedia {
+				h.Alasan = "ATMR nol sehingga rasio KPMM tidak dapat dihitung"
+			}
 		case d.Sandi == sandiBOPO:
 			h.NilaiPersen, h.Tersedia = RumusBOPO(bebanOperasional, pendapatanOperasional)
 			if !h.Tersedia {

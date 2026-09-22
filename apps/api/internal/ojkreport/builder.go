@@ -20,6 +20,15 @@ type Source interface {
 	GetIncomeStatement(ctx context.Context, from, to time.Time, book string) (*domain.IncomeStatement, error)
 }
 
+// KPMMSource menyediakan komponen modal dan ATMR untuk baris KPMM (sandi 0101)
+// Form 00.08. Kontraknya opsional: bila sumber tidak mengimplementasikannya atau
+// komponennya belum lengkap, baris ditulis "-" beserta alasan, bukan nol. Nilainya
+// berasal dari modul KPMM yang sama dengan endpoint GET /reports/kpmm, sehingga
+// Form 00.08 dan endpoint tidak pernah memakai angka yang berbeda.
+type KPMMSource interface {
+	KPMMModalATMR(ctx context.Context, asOf time.Time, book string, actor domain.Actor) (modal, atmr decimal.Decimal, tersedia bool)
+}
+
 var (
 	// ErrIncompleteMapping menandai pemetaan COA yang tidak lengkap. Ekspor harus
 	// gagal, bukan menghasilkan laporan bolong tanpa disadari.
@@ -190,6 +199,14 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 		}
 		loanRows = rows
 		komponen.Kredit = NPLDariLoanRows(rows)
+	}
+	// Baris KPMM (sandi 0101) diisi dari modul KPMM yang sama dengan GET /reports/kpmm.
+	// Buku dan aktor diteruskan apa adanya agar cakupan Form 00.08 sama dengan laporan.
+	if ks, ok := b.source.(KPMMSource); ok {
+		modal, atmr, tersedia := ks.KPMMModalATMR(ctx, periodEnd, book, actor)
+		komponen.Modal = modal
+		komponen.ATMR = atmr
+		komponen.KPMMTersedia = tersedia
 	}
 
 	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows)

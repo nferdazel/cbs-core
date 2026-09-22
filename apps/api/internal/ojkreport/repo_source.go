@@ -6,21 +6,26 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/shopspring/decimal"
 )
 
 // repo_source.go menghubungkan builder dengan repositori yang sudah ada tanpa
 // menambah dependensi: kredit (loans), profil bank (bank_profile), konfigurasi
-// (system_config), dan penempatan pada bank lain (lps_placements).
+// (system_config), penempatan pada bank lain (lps_placements), dan modul KPMM.
 //
 // RepoSource mengimplementasikan Source (lewat embedding) sekaligus kontrak data
-// opsional LoanDataSource, BankProfileSource, dan PlacementDataSource. Bila builder
-// tidak menerima sumber opsional, form terkait ditandai belum tersedia.
+// opsional LoanDataSource, BankProfileSource, PlacementDataSource, dan KPMMSource.
+// Bila builder tidak menerima sumber opsional, form/baris terkait ditandai belum
+// tersedia.
 type RepoSource struct {
 	Source
 	Loans      domain.LoanRepository
 	Profile    domain.BankProfileRepository
 	Config     domain.SystemConfigRepository
 	Placements domain.LPSPlacementRepository
+	// KPMM mengisi baris KPMM Form 00.08. Bila nil, Form 00.08 menulis baris KPMM
+	// sebagai tidak tersedia (bukan nol).
+	KPMM domain.KPMMService
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -89,6 +94,23 @@ func (s RepoSource) GetBankProfileConfig(ctx context.Context) (*BankProfileConfi
 	}
 	cfg.Configured = strings.TrimSpace(cfg.Name) != ""
 	return cfg, nil
+}
+
+// KPMMModalATMR menyediakan modal (total) dan ATMR dari modul KPMM untuk baris
+// KPMM Form 00.08. tersedia=false berarti modal/ATMR belum lengkap (mis. CKPN
+// belum dihitung) sehingga baris harus ditulis tidak tersedia, bukan nol.
+func (s RepoSource) KPMMModalATMR(ctx context.Context, asOf time.Time, book string, actor domain.Actor) (decimal.Decimal, decimal.Decimal, bool) {
+	if s.KPMM == nil {
+		return decimal.Zero, decimal.Zero, false
+	}
+	report, err := s.KPMM.Hitung(ctx, asOf, book, actor)
+	if err != nil {
+		return decimal.Zero, decimal.Zero, false
+	}
+	if !report.TotalModal.Tersedia || !report.ATMR.Tersedia {
+		return decimal.Zero, decimal.Zero, false
+	}
+	return report.TotalModal.Nilai, report.ATMR.Nilai, true
 }
 
 // ListPlacementsForOJK membaca penempatan pada bank lain bank-wide.

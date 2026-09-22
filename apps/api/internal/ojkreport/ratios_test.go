@@ -148,6 +148,46 @@ func TestRasioKeuanganTersediaBOPOdanLDR(t *testing.T) {
 	}
 }
 
+// Baris KPMM (sandi 0101) terisi dari komponen modul KPMM; bila ATMR nol, baris
+// ditandai tidak tersedia, bukan 0/NaN.
+func TestRasioKeuanganKPMMDariKomponen(t *testing.T) {
+	hasil := RasioKeuangan(
+		time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC),
+		map[string]decimal.Decimal{}, map[string]decimal.Decimal{},
+		KomponenRasio{
+			Modal:        decimal.NewFromInt(240_000_000),
+			ATMR:         decimal.NewFromInt(2_000_000_000),
+			KPMMTersedia: true,
+		},
+	)
+	bySandi := make(map[string]RasioHasil, len(hasil))
+	for _, h := range hasil {
+		bySandi[h.Sandi] = h
+	}
+	kpmm := bySandi[sandiKPMM]
+	if !kpmm.Tersedia || !kpmm.NilaiPersen.Equal(decimal.NewFromInt(12)) {
+		t.Fatalf("KPMM = %s (tersedia=%v), ingin 12", kpmm.NilaiPersen, kpmm.Tersedia)
+	}
+	if kpmm.Alasan != "" {
+		t.Fatalf("KPMM tersedia tidak boleh beralasan: %q", kpmm.Alasan)
+	}
+
+	// ATMR nol tidak pernah menghasilkan NaN/Inf; barisnya tidak tersedia.
+	hasilNol := RasioKeuangan(
+		time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC),
+		map[string]decimal.Decimal{}, map[string]decimal.Decimal{},
+		KomponenRasio{Modal: decimal.NewFromInt(1), ATMR: decimal.Zero, KPMMTersedia: true},
+	)
+	for _, h := range hasilNol {
+		if h.Sandi != sandiKPMM {
+			continue
+		}
+		if h.Tersedia || h.Alasan == "" || !h.NilaiPersen.IsZero() {
+			t.Fatalf("KPMM ATMR nol = %+v, ingin tidak tersedia beralasan", h)
+		}
+	}
+}
+
 // Format keluaran: baris rasio memakai persen dua desimal, yang tidak tersedia
 // ditulis "-" (bukan 0) beserta alasannya.
 func TestWriteTextBarisRasioPersenDanTidakTersedia(t *testing.T) {

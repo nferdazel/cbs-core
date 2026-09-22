@@ -186,3 +186,57 @@ func TestGenerateMonthlyTanpaSumber(t *testing.T) {
 		t.Fatal("builder tanpa sumber harus menolak")
 	}
 }
+
+// kpmmStubSource menambahkan kontrak KPMMSource pada stubSource supaya builder
+// mengisi baris KPMM Form 00.08 dari modul KPMM.
+type kpmmStubSource struct {
+	*stubSource
+	modal, atmr decimal.Decimal
+	tersedia    bool
+	gotBook     string
+	gotPeriod   time.Time
+}
+
+func (s *kpmmStubSource) KPMMModalATMR(_ context.Context, asOf time.Time, book string, _ domain.Actor) (decimal.Decimal, decimal.Decimal, bool) {
+	s.gotBook, s.gotPeriod = book, asOf
+	return s.modal, s.atmr, s.tersedia
+}
+
+// TestGenerateMonthlyMengisiBarisKPMM memastikan Form 00.08 memakai komponen modal
+// dan ATMR dari KPMMSource: baris 0101 terisi, dan buku serta periode (akhir bulan)
+// diteruskan apa adanya. Tanpa KPMMSource, baris tetap tidak tersedia (bukan nol).
+func TestGenerateMonthlyMengisiBarisKPMM(t *testing.T) {
+	src := &kpmmStubSource{
+		stubSource: newStubSource(),
+		modal:      decimal.NewFromInt(240_000_000),
+		atmr:       decimal.NewFromInt(2_000_000_000),
+		tersedia:   true,
+	}
+	b, err := NewBuilder(src).
+		GenerateMonthly(context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "CONVENTIONAL")
+	if err != nil {
+		t.Fatalf("error tak terduga: %v", err)
+	}
+	line := findLine(t, b, "00.08", sandiKPMM)
+	if line.UnavailableReason != "" {
+		t.Fatalf("baris KPMM harus terisi: %s", line.UnavailableReason)
+	}
+	if !line.Percent || !line.Amount.Equal(decimal.NewFromInt(12)) {
+		t.Fatalf("baris KPMM = %s (percent=%v), ingin 12", line.Amount, line.Percent)
+	}
+	if src.gotBook != "CONVENTIONAL" {
+		t.Fatalf("buku diteruskan ke KPMM = %q, ingin CONVENTIONAL", src.gotBook)
+	}
+	if want := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC); !src.gotPeriod.Equal(want) {
+		t.Fatalf("periode diteruskan ke KPMM = %s, ingin %s", src.gotPeriod, want)
+	}
+
+	bTanpa, err := NewBuilder(newStubSource()).
+		GenerateMonthly(context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "CONVENTIONAL")
+	if err != nil {
+		t.Fatalf("error tak terduga: %v", err)
+	}
+	if got := findLine(t, bTanpa, "00.08", sandiKPMM); got.UnavailableReason == "" {
+		t.Fatal("tanpa KPMMSource baris KPMM harus tidak tersedia")
+	}
+}

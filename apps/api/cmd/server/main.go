@@ -206,6 +206,12 @@ func main() {
 	loanHandler := httpHandler.NewLoanHandler(loanSvc)
 	mcHandler := httpHandler.NewMakerCheckerHandler(mcSvc)
 	reportHandler := httpHandler.NewReportHandler(reportSvc)
+	// Laporan KPMM/ATMR memakai laporan journal-based, perbandingan PPKA-CKPN
+	// (baca-saja), dan parameter kpmm.* di system_config. Tidak menyentuh saklar
+	// ckpn.enabled. Dibuat sebelum handler OJK agar baris KPMM Form 00.08 memakai
+	// modul yang sama dengan endpoint GET /reports/kpmm.
+	kpmmSvc := service.NewKPMMService(reportSvc, ckpnSvc, configSvc)
+
 	// Ekspor OJK memakai laporan journal-based yang sama; hanya pemetaan pos OJK
 	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi. RepoSource menambah
 	// sumber form daftar: kredit (Form 06.00/NPL), profil bank (Form 00.00), dan
@@ -219,6 +225,7 @@ func main() {
 		Profile:    bankProfileRepo,
 		Config:     configRepo,
 		Placements: postgres.NewLPSPlacementRepository(db),
+		KPMM:       kpmmSvc,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db))
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
@@ -234,10 +241,6 @@ func main() {
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
 
-	// Laporan KPMM/ATMR memakai laporan journal-based, perbandingan PPKA-CKPN
-	// (baca-saja), dan parameter kpmm.* di system_config. Tidak menyentuh saklar
-	// ckpn.enabled.
-	kpmmSvc := service.NewKPMMService(reportSvc, ckpnSvc, configSvc)
 	kpmmHandler := httpHandler.NewKPMMHandler(kpmmSvc)
 
 	// 6. Router
