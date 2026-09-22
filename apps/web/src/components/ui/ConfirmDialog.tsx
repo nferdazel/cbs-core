@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "./Button";
+import { useTranslation } from "@/i18n/context";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -30,14 +31,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   open,
   title,
   description,
-  confirmLabel = "Konfirmasi",
-  cancelLabel = "Batal",
+  confirmLabel,
+  cancelLabel,
   destructive = false,
   loading = false,
   requireKeyword,
   onConfirm,
   onCancel,
 }) => {
+  const { t } = useTranslation();
   const [keyword, setKeyword] = useState("");
 
   useEffect(() => {
@@ -83,8 +85,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                   htmlFor="confirm-keyword"
                   className="text-meta font-medium text-ink-900"
                 >
-                  Ketik <span className="font-mono">{requireKeyword}</span> untuk
-                  mengonfirmasi
+                  {t.common.typeToConfirmPrefix}{" "}
+                  <span className="font-mono">{requireKeyword}</span>{" "}
+                  {t.common.typeToConfirmSuffix}
                 </label>
                 <input
                   id="confirm-keyword"
@@ -102,7 +105,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         )}
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
           <Button variant="secondary" onClick={onCancel} disabled={loading}>
-            {cancelLabel}
+            {cancelLabel ?? t.common.cancel}
           </Button>
           <Button
             autoFocus={!requireKeyword}
@@ -111,7 +114,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             loading={loading}
             disabled={!keywordSatisfied}
           >
-            {confirmLabel}
+            {confirmLabel ?? t.common.confirm}
           </Button>
         </div>
       </div>

@@ -47,7 +47,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ menus, activeBooks }) =>
 
   return (
     <nav
-      aria-label="Navigasi utama"
+      aria-label={t.nav.mainNavigation}
       className="sticky top-14 h-[calc(100vh-56px)] w-[240px] shrink-0 overflow-y-auto bg-navy-800 py-3 text-white"
     >
       {NAV_GROUPS.map((group) => (

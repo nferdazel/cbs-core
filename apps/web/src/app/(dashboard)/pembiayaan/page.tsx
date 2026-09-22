@@ -3,17 +3,20 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoanWorkspace } from "@/components/loan/LoanWorkspace";
 import { BookScopeGuard } from "@/components/layout/BookScopeGuard";
+import { useTranslation } from "@/i18n/context";
 
 export default function PembiayaanPage() {
+  const { t } = useTranslation();
+
   return (
     <BookScopeGuard
       book="SYARIAH"
-      title="Pembiayaan"
-      description="Pembiayaan syariah: murabahah, mudharabah, dan musyarakah dengan margin atau bagi hasil."
+      title={t.loans.titleSyariah}
+      description={t.loans.descSyariah}
     >
       <PageHeader
-        title="Pembiayaan"
-        description="Pembiayaan syariah: murabahah, mudharabah, dan musyarakah dengan margin atau bagi hasil."
+        title={t.loans.titleSyariah}
+        description={t.loans.descSyariah}
       />
       <LoanWorkspace book="SYARIAH" />
     </BookScopeGuard>

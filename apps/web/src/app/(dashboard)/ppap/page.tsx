@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, newIdempotencyKey, request } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { PPAPRunItem, PPAPRunSummary } from "@/lib/operations-types";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -13,23 +14,12 @@ import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 
-const COLLECTIBILITY_LABEL: Record<number, string> = {
-  1: "Lancar",
-  2: "Dalam Perhatian Khusus",
-  3: "Kurang Lancar",
-  4: "Diragukan",
-  5: "Macet",
-};
-
-function collectibilityLabel(value: number): string {
-  return COLLECTIBILITY_LABEL[value] ?? `Golongan ${value}`;
-}
-
 function summaryItems(summary: PPAPRunSummary): PPAPRunItem[] {
   return summary.items ?? [];
 }
 
 export default function PPAPPage() {
+  const { t } = useTranslation();
   const [preview, setPreview] = useState<PPAPRunSummary | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -39,6 +29,24 @@ export default function PPAPPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [running, setRunning] = useState(false);
 
+  // Kolektibilitas disimpan sebagai angka 1-5; hanya labelnya dari kamus.
+  const collectibilityLabel = (value: number): string => {
+    switch (value) {
+      case 1:
+        return t.ppap.collectibility1;
+      case 2:
+        return t.ppap.collectibility2;
+      case 3:
+        return t.ppap.collectibility3;
+      case 4:
+        return t.ppap.collectibility4;
+      case 5:
+        return t.ppap.collectibility5;
+      default:
+        return `${t.ppap.collectibilityOtherPrefix}${value}`;
+    }
+  };
+
   const loadPreview = useCallback(async () => {
     setPreviewLoading(true);
     setPreviewError(null);
@@ -47,12 +55,12 @@ export default function PPAPPage() {
       setPreview(response.data ?? null);
     } catch (err) {
       setPreviewError(
-        err instanceof ApiError ? err.message : "Gagal memuat pratinjau PPAP."
+        err instanceof ApiError ? err.message : t.ppap.previewLoadError
       );
     } finally {
       setPreviewLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadPreview();
@@ -74,7 +82,7 @@ export default function PPAPPage() {
       setRunError(
         err instanceof ApiError
           ? err.message
-          : "Perhitungan PPAP harian gagal dijalankan."
+          : t.ppap.runError
       );
       setConfirmOpen(false);
     } finally {
@@ -84,31 +92,31 @@ export default function PPAPPage() {
 
   const itemColumns: Column<PPAPRunItem>[] = [
     {
-      header: "Nomor Kredit",
+      header: t.ppap.colLoanNumber,
       cell: (row) => <span className="font-mono">{row.loan_number}</span>,
     },
     {
-      header: "Kolektibilitas",
+      header: t.ppap.colCollectibility,
       cell: (row) => collectibilityLabel(row.collectibility),
     },
     {
-      header: "DPD",
+      header: t.ppap.colDpd,
       align: "right",
       isMono: true,
-      cell: (row) => `${row.dpd} hari`,
+      cell: (row) => `${row.dpd} ${t.ppap.dpdSuffix}`,
     },
     {
-      header: "Pokok",
+      header: t.ppap.colPrincipal,
       type: "money",
       cell: (row) => <MoneyText value={row.outstanding} />,
     },
     {
-      header: "Cadangan Dibutuhkan",
+      header: t.ppap.colReserveRequired,
       type: "money",
       cell: (row) => <MoneyText value={row.target} />,
     },
     {
-      header: "Penyesuaian",
+      header: t.ppap.colAdjustment,
       type: "money",
       cell: (row) => (
         <MoneyText
@@ -122,8 +130,8 @@ export default function PPAPPage() {
   return (
     <>
       <PageHeader
-        title="PPAP"
-        description="Penyisihan Penghapusan Aktiva Produktif: kolektibilitas dan cadangan kerugian kredit."
+        title={t.ppap.title}
+        description={t.ppap.description}
         actions={
           <>
             <Button
@@ -131,10 +139,10 @@ export default function PPAPPage() {
               onClick={loadPreview}
               loading={previewLoading}
             >
-              Pratinjau
+              {t.ppap.previewButton}
             </Button>
             <Button onClick={() => setConfirmOpen(true)}>
-              Jalankan PPAP Harian
+              {t.ppap.runButton}
             </Button>
           </>
         }
@@ -142,9 +150,7 @@ export default function PPAPPage() {
 
       <div className="mb-4 rounded-md border border-border bg-canvas px-4 py-3">
         <p className="text-body text-ink-600">
-          PPAP normalnya dijalankan otomatis oleh proses EOD. Tombol “Jalankan
-          PPAP Harian” hanya untuk menjalankan ulang perhitungan secara manual
-          di luar jadwal EOD; aksi ini memposting jurnal penyesuaian cadangan.
+          {t.ppap.notice}
         </p>
       </div>
 
@@ -161,30 +167,30 @@ export default function PPAPPage() {
         <Card className="mb-4">
           <CardHeader>
             <CardTitle>
-              Hasil Perhitungan{" "}
+              {t.ppap.runResultTitle}{" "}
               <span className="font-mono">{formatDate(runSummary.as_of)}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-body text-credit-700">
-              Perhitungan PPAP harian selesai.
+              {t.ppap.runSuccess}
             </p>
             <DefinitionList
               items={[
-                { label: "Total Kredit", value: runSummary.total, isMono: true },
-                { label: "Berhasil", value: runSummary.processed, isMono: true },
-                { label: "Gagal", value: runSummary.failed, isMono: true },
-                { label: "Tanpa Perubahan", value: runSummary.skipped, isMono: true },
+                { label: t.ppap.totalLoans, value: runSummary.total, isMono: true },
+                { label: t.ppap.processedLabel, value: runSummary.processed, isMono: true },
+                { label: t.ppap.failedLabel, value: runSummary.failed, isMono: true },
+                { label: t.ppap.skippedLabel, value: runSummary.skipped, isMono: true },
                 {
-                  label: "Total Penyesuaian",
+                  label: t.ppap.totalAdjustment,
                   value: <MoneyText value={runSummary.total_adjustment} />,
                 },
                 {
-                  label: "Cadangan Sebelum",
+                  label: t.ppap.reserveBefore,
                   value: <MoneyText value={runSummary.reserve_before} />,
                 },
                 {
-                  label: "Cadangan Sesudah",
+                  label: t.ppap.reserveAfter,
                   value: <MoneyText value={runSummary.reserve_after} />,
                 },
               ]}
@@ -192,7 +198,7 @@ export default function PPAPPage() {
             {runSummary.failures && runSummary.failures.length > 0 && (
               <div className="rounded-md border border-debit-700/30 bg-debit-50 px-4 py-3">
                 <p className="text-title font-medium text-debit-700">
-                  Kredit gagal diproses
+                  {t.ppap.failuresTitle}
                 </p>
                 <ul className="mt-2 space-y-1">
                   {runSummary.failures.map((failure) => (
@@ -211,11 +217,11 @@ export default function PPAPPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            Pratinjau Perhitungan
+            {t.ppap.previewTitle}
             {preview && (
               <span className="font-normal text-ink-600">
                 {" "}
-                — {formatDate(preview.as_of)}
+                {formatDate(preview.as_of)}
               </span>
             )}
           </CardTitle>
@@ -223,16 +229,16 @@ export default function PPAPPage() {
         <CardContent className="p-0">
           {previewLoading ? (
             <div className="p-4">
-              <LoadingState label="Menghitung pratinjau PPAP..." />
+              <LoadingState label={t.ppap.previewLoading} />
             </div>
           ) : previewError ? (
             <div className="p-4">
               <ErrorState
-                title="Gagal memuat pratinjau PPAP"
+                title={t.ppap.previewErrorTitle}
                 description={previewError}
                 action={
                   <Button variant="secondary" onClick={loadPreview}>
-                    Coba lagi
+                    {t.common.retry}
                   </Button>
                 }
               />
@@ -243,18 +249,18 @@ export default function PPAPPage() {
                 <DefinitionList
                   items={[
                     {
-                      label: "Kredit Diproses",
-                      value: `${preview.processed} dari ${preview.total}`,
+                      label: t.ppap.colProcessedLoans,
+                      value: `${preview.processed} ${t.common.of} ${preview.total}`,
                       isMono: true,
                     },
-                    { label: "Gagal", value: preview.failed, isMono: true },
-                    { label: "Tanpa Perubahan", value: preview.skipped, isMono: true },
+                    { label: t.ppap.failedLabel, value: preview.failed, isMono: true },
+                    { label: t.ppap.skippedLabel, value: preview.skipped, isMono: true },
                     {
-                      label: "Total Penyesuaian",
+                      label: t.ppap.totalAdjustment,
                       value: <MoneyText value={preview.total_adjustment} />,
                     },
                     {
-                      label: "Cadangan Saat Ini (GL)",
+                      label: t.ppap.reserveCurrent,
                       value: <MoneyText value={preview.reserve_before} />,
                     },
                   ]}
@@ -264,18 +270,18 @@ export default function PPAPPage() {
                 columns={itemColumns}
                 data={summaryItems(preview)}
                 keyExtractor={(row) => row.loan_id}
-                emptyMessage="Tidak ada kredit aktif yang dihitung pada tanggal ini."
+                emptyMessage={t.ppap.emptyItems}
                 zebra
               />
             </>
           ) : (
             <div className="p-4">
               <ErrorState
-                title="Pratinjau kosong"
-                description="API tidak mengembalikan data pratinjau."
+                title={t.ppap.previewEmptyTitle}
+                description={t.ppap.previewEmptyDesc}
                 action={
                   <Button variant="secondary" onClick={loadPreview}>
-                    Coba lagi
+                    {t.common.retry}
                   </Button>
                 }
               />
@@ -286,32 +292,30 @@ export default function PPAPPage() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Jalankan PPAP Harian"
+        title={t.ppap.confirmTitle}
         loading={running}
-        confirmLabel="Jalankan dan Posting"
+        confirmLabel={t.ppap.confirmButton}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={runDaily}
         description={
           <>
             <p>
-              Perhitungan akan memperbarui kolektibilitas kredit aktif dan
-              memposting jurnal penyesuaian cadangan PPAP. Aksi ini tidak dapat
-              dibatalkan.
+              {t.ppap.confirmDesc}
             </p>
             {preview ? (
               <dl className="space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Tanggal acuan</dt>
+                  <dt className="text-ink-600">{t.ppap.refDate}</dt>
                   <dd className="font-mono">{formatDate(preview.as_of)}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Kredit diproses</dt>
+                  <dt className="text-ink-600">{t.ppap.processedLoansShort}</dt>
                   <dd className="font-mono">
-                    {preview.processed} dari {preview.total}
+                    {preview.processed} {t.common.of} {preview.total}
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Total penyesuaian</dt>
+                  <dt className="text-ink-600">{t.ppap.totalAdjustmentShort}</dt>
                   <dd>
                     <MoneyText value={preview.total_adjustment} />
                   </dd>
@@ -319,8 +323,7 @@ export default function PPAPPage() {
               </dl>
             ) : (
               <p className="text-accent-600">
-                Nominal belum tersedia. Jalankan pratinjau terlebih dahulu untuk
-                melihat estimasi penyesuaian sebelum memposting.
+                {t.ppap.amountsUnavailable}
               </p>
             )}
           </>

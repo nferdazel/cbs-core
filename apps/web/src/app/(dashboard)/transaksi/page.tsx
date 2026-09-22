@@ -5,6 +5,7 @@ import type { JournalLine } from "@cbs/shared-types";
 import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { AccountRecord } from "@/lib/types";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +29,7 @@ interface Meta {
 }
 
 export default function TransaksiPage() {
+  const { t } = useTranslation();
   const [accountInput, setAccountInput] = useState("");
   const [account, setAccount] = useState<string | null>(null);
   const [lines, setLines] = useState<JournalLine[]>([]);
@@ -53,12 +55,12 @@ export default function TransaksiPage() {
       // Rekening cabang lain dibalas 403, bukan daftar mutasi kosong. Tampilkan
       // sebabnya agar tidak disalahartikan sebagai "tidak ada transaksi".
       setForbidden(isCrossBranchError(err));
-      setError(err instanceof ApiError ? err.message : "Gagal memuat mutasi rekening.");
+      setError(err instanceof ApiError ? err.message : t.transactions.loadError);
       setLines([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (account) load(account, page);
@@ -94,18 +96,18 @@ export default function TransaksiPage() {
   const handleReactivated = (updated: AccountRecord) => {
     setAccountInfo(updated);
     setSuccessMessage(
-      `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`
+      `${t.transactions.reactivatedPrefix}${updated.account_number}${t.transactions.reactivatedSuffix}`
     );
   };
 
   const columns: Column<JournalLine>[] = [
     {
-      header: "Waktu",
+      header: t.transactions.colTime,
       cell: (row) => formatDateTime(row.created_at),
       isMono: true,
     },
     {
-      header: "Arah",
+      header: t.transactions.colDirection,
       cell: (row) => (
         <Badge variant={row.direction === "DEBIT" ? "debit" : "credit"}>
           {row.direction}
@@ -113,7 +115,7 @@ export default function TransaksiPage() {
       ),
     },
     {
-      header: "Nominal",
+      header: t.transactions.colAmount,
       type: "money",
       cell: (row) => (
         <MoneyText
@@ -123,19 +125,23 @@ export default function TransaksiPage() {
       ),
     },
     {
-      header: "Saldo Setelah",
+      header: t.transactions.colBalanceAfter,
       type: "money",
       cell: (row) => <MoneyText value={row.balance_after} />,
     },
-    { header: "Keterangan", accessorKey: "description" },
-    { header: "Referensi", accessorKey: "journal_entry_id", isMono: true },
+    { header: t.transactions.colDescription, accessorKey: "description" },
+    {
+      header: t.transactions.colReference,
+      accessorKey: "journal_entry_id",
+      isMono: true,
+    },
   ];
 
   return (
     <>
       <PageHeader
-        title="Transaksi"
-        description="Telusuri mutasi satu rekening dari buku besar. Masukkan nomor rekening untuk melihat."
+        title={t.transactions.title}
+        description={t.transactions.description}
       />
 
       {successMessage && (
@@ -152,15 +158,15 @@ export default function TransaksiPage() {
           <form onSubmit={handleSearch} className="flex items-end gap-3">
             <div className="w-72">
               <Input
-                label="Nomor Rekening"
+                label={t.transactions.accountNumber}
                 value={accountInput}
                 onChange={(e) => setAccountInput(e.target.value)}
                 isMono
-                placeholder="mis. 102601020001"
+                placeholder={t.transactions.accountNumberPlaceholder}
               />
             </div>
             <Button type="submit" loading={loading && account !== null}>
-              Tampilkan Mutasi
+              {t.transactions.showButton}
             </Button>
           </form>
         </CardContent>
@@ -169,7 +175,7 @@ export default function TransaksiPage() {
       {accountInfo && (
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Rincian Rekening</CardTitle>
+            <CardTitle>{t.transactions.detailsTitle}</CardTitle>
             <div className="flex items-center gap-3">
               <StatusBadge status={accountInfo.status} />
               <AccountReactivation
@@ -182,21 +188,21 @@ export default function TransaksiPage() {
             <DefinitionList
               items={[
                 {
-                  label: "Nomor Rekening",
+                  label: t.transactions.accountNumber,
                   value: accountInfo.account_number,
                   isMono: true,
                 },
                 {
-                  label: "Pemilik",
+                  label: t.transactions.owner,
                   value: accountInfo.customer_name || "-",
                 },
                 {
-                  label: "Cabang",
+                  label: t.common.branch,
                   value: accountInfo.branch_code || "-",
                   isMono: true,
                 },
                 {
-                  label: "Aktivitas Terakhir",
+                  label: t.transactions.lastActivity,
                   value: accountInfo.last_activity_at
                     ? formatDateTime(accountInfo.last_activity_at)
                     : "-",
@@ -212,15 +218,15 @@ export default function TransaksiPage() {
         <ErrorState
           title={
             forbidden
-              ? "Akses lintas cabang ditolak"
-              : "Gagal memuat mutasi"
+              ? t.transactions.forbiddenTitle
+              : t.transactions.errorTitle
           }
           description={error}
         />
       ) : account === null ? (
         <EmptyState
-          title="Belum ada rekening dipilih"
-          description="Masukkan nomor rekening lalu tekan Tampilkan Mutasi."
+          title={t.transactions.emptyNoAccountTitle}
+          description={t.transactions.emptyNoAccountDesc}
         />
       ) : (
         <Card>
@@ -230,7 +236,7 @@ export default function TransaksiPage() {
               data={lines}
               keyExtractor={(row) => row.id}
               loading={loading}
-              emptyMessage="Tidak ada mutasi untuk rekening ini."
+              emptyMessage={t.transactions.empty}
               zebra
             />
             {meta && (

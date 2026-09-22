@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { LoadingState } from "@/components/ui/States";
 import { FeatureUnavailable } from "./FeatureUnavailable";
 
@@ -29,19 +30,20 @@ export const BookScopeGuard: React.FC<BookScopeGuardProps> = ({
   children,
 }) => {
   const { user, ready } = useAuth();
+  const { t } = useTranslation();
 
   if (!ready) {
-    return <LoadingState label="Memeriksa sesi..." />;
+    return <LoadingState label={t.common.checkingSession} />;
   }
 
   const activeBooks = user?.active_books;
   if (activeBooks && !activeBooks.includes(book)) {
-    const label = book === "SYARIAH" ? "syariah" : "konvensional";
+    const label = book === "SYARIAH" ? t.bookScope.syariah : t.bookScope.conventional;
     return (
       <FeatureUnavailable
         title={title}
         description={description}
-        reason={`Buku ${label} tidak aktif pada instalasi ini (cakupan buku: ${user?.book_scope ?? "DUAL"}). Hubungi administrator bila lini usaha ini seharusnya aktif.`}
+        reason={`${t.bookScope.reasonPrefix} ${label} ${t.bookScope.reasonMiddle} ${user?.book_scope ?? "DUAL"}${t.bookScope.reasonSuffix}`}
       />
     );
   }

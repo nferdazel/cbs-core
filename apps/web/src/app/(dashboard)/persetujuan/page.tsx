@@ -5,6 +5,7 @@ import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { MakerCheckerRequest } from "@/lib/operations-types";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,29 +23,15 @@ interface ReviewTarget {
   kind: ReviewKind;
 }
 
-const REVIEW_TITLE: Record<ReviewKind, string> = {
-  approve: "Setujui Permintaan",
-  reject: "Tolak Permintaan",
-};
-
 function payloadAmount(request: MakerCheckerRequest): string | number | null {
   const amount = request.payload?.amount;
   if (amount === undefined || amount === null) return null;
   return amount as string | number;
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  DEPOSIT: "Setoran",
-  WITHDRAWAL: "Penarikan",
-  TRANSFER: "Transfer",
-};
-
-function actionLabel(actionType: string): string {
-  return ACTION_LABEL[actionType] ?? actionType;
-}
-
 export default function PersetujuanPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [requests, setRequests] = useState<MakerCheckerRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +45,26 @@ export default function PersetujuanPage() {
     null
   );
 
+  // Jenis aksi disimpan sebagai kunci (DEPOSIT dll.); hanya tampilannya dipetakan
+  // ke kamus. Jenis yang tidak dikenal ditampilkan apa adanya.
+  const actionLabel = (actionType: string): string => {
+    switch (actionType) {
+      case "DEPOSIT":
+        return t.approvals.actionDeposit;
+      case "WITHDRAWAL":
+        return t.approvals.actionWithdrawal;
+      case "TRANSFER":
+        return t.approvals.actionTransfer;
+      default:
+        return actionType;
+    }
+  };
+
+  const reviewTitle = (kind: ReviewKind): string =>
+    kind === "approve"
+      ? t.approvals.reviewApproveTitle
+      : t.approvals.reviewRejectTitle;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -70,12 +77,12 @@ export default function PersetujuanPage() {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Gagal memuat antrean persetujuan."
+          : t.approvals.loadError
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -99,8 +106,8 @@ export default function PersetujuanPage() {
       setFeedback({
         title:
           target.kind === "approve"
-            ? "Permintaan disetujui"
-            : "Permintaan ditolak",
+            ? t.approvals.feedbackApprovedTitle
+            : t.approvals.feedbackRejectedTitle,
         reference: target.request.id,
       });
       setTarget(null);
@@ -111,15 +118,17 @@ export default function PersetujuanPage() {
         // jangan dibungkus lagi agar tidak terkesan sekadar izin kurang.
         if (err.status === 403 && !isCrossBranchError(err)) {
           setActionError(
-            `Tidak dapat ${
-              target.kind === "approve" ? "menyetujui" : "menolak"
-            } (403): ${err.message}`
+            `${t.approvals.cannotPrefix}${
+              target.kind === "approve"
+                ? t.approvals.cannotApprove
+                : t.approvals.cannotReject
+            }${t.approvals.cannotSuffix}${err.message}`
           );
         } else {
           setActionError(err.message);
         }
       } else {
-        setActionError("Tindakan gagal diproses.");
+        setActionError(t.approvals.actionFailed);
       }
       setTarget(null);
     } finally {
@@ -128,44 +137,44 @@ export default function PersetujuanPage() {
   };
 
   const columns: Column<MakerCheckerRequest>[] = [
-    { header: "Jenis Aksi", cell: (row) => actionLabel(row.action_type) },
+    { header: t.approvals.colActionType, cell: (row) => actionLabel(row.action_type) },
     {
-      header: "Nominal",
+      header: t.approvals.colAmount,
       type: "money",
       cell: (row) => <MoneyText value={payloadAmount(row)} />,
     },
     {
-      header: "Pembuat",
+      header: t.approvals.colMaker,
       cell: (row) => (
         <div className="space-y-0.5">
           <span className="font-mono">{row.maker_id}</span>
           {user?.id === row.maker_id && (
             <div>
-              <Badge variant="accent">Permintaan Anda</Badge>
+              <Badge variant="accent">{t.approvals.badgeOwn}</Badge>
             </div>
           )}
         </div>
       ),
     },
     {
-      header: "Waktu",
+      header: t.approvals.colTime,
       cell: (row) => formatDateTime(row.created_at),
       isMono: true,
     },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
     {
-      header: "Aksi",
+      header: t.common.actions,
       cell: (row) => (
         <div className="flex gap-2">
           <Button size="sm" onClick={() => openReview(row, "approve")}>
-            Setujui
+            {t.approvals.approveButton}
           </Button>
           <Button
             size="sm"
             variant="danger"
             onClick={() => openReview(row, "reject")}
           >
-            Tolak
+            {t.approvals.rejectButton}
           </Button>
         </div>
       ),
@@ -175,8 +184,8 @@ export default function PersetujuanPage() {
   return (
     <>
       <PageHeader
-        title="Persetujuan"
-        description="Antrean maker-checker. Pembuat permintaan tidak dapat menyetujui permintaannya sendiri."
+        title={t.approvals.title}
+        description={t.approvals.description}
       />
 
       {feedback && (
@@ -185,7 +194,8 @@ export default function PersetujuanPage() {
             {feedback.title}
           </p>
           <p className="mt-1 text-body text-ink-900">
-            Referensi: <span className="font-mono">{feedback.reference}</span>
+            {t.approvals.referenceLabel}{" "}
+            <span className="font-mono">{feedback.reference}</span>
           </p>
         </div>
       )}
@@ -200,7 +210,7 @@ export default function PersetujuanPage() {
       )}
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat antrean" description={error} />
+        <ErrorState title={t.approvals.errorTitle} description={error} />
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -209,7 +219,7 @@ export default function PersetujuanPage() {
               data={requests}
               keyExtractor={(row) => row.id}
               loading={loading}
-              emptyMessage="Tidak ada permintaan yang menunggu persetujuan."
+              emptyMessage={t.approvals.empty}
               zebra
             />
           </CardContent>
@@ -218,10 +228,10 @@ export default function PersetujuanPage() {
 
       <ConfirmDialog
         open={target !== null}
-        title={target ? REVIEW_TITLE[target.kind] : "Konfirmasi"}
+        title={target ? reviewTitle(target.kind) : t.common.confirm}
         destructive={target?.kind === "reject"}
         loading={submitting}
-        confirmLabel={target ? REVIEW_TITLE[target.kind] : "Konfirmasi"}
+        confirmLabel={target ? reviewTitle(target.kind) : t.common.confirm}
         onCancel={() => setTarget(null)}
         onConfirm={submitReview}
         description={
@@ -229,23 +239,23 @@ export default function PersetujuanPage() {
             <>
               <p>
                 {target.kind === "approve"
-                  ? "Menyetujui permintaan akan langsung memposting efek transaksinya."
-                  : "Menolak permintaan hanya mengubah status; tidak ada jurnal yang diposting."}
+                  ? t.approvals.descApprove
+                  : t.approvals.descReject}
               </p>
               <dl className="space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Jenis aksi</dt>
+                  <dt className="text-ink-600">{t.approvals.labelActionType}</dt>
                   <dd>{actionLabel(target.request.action_type)}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Nominal</dt>
+                  <dt className="text-ink-600">{t.approvals.colAmount}</dt>
                   <dd>
                     <MoneyText value={payloadAmount(target.request)} />
                   </dd>
                 </div>
               </dl>
               <Input
-                label="Catatan (opsional)"
+                label={t.approvals.notesLabel}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />

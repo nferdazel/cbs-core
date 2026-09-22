@@ -5,6 +5,7 @@ import { ApiError, request } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
 import type { SystemBusinessDate } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { DefinitionList } from "@/components/ui/DefinitionList";
@@ -14,6 +15,7 @@ import { BankProfileCard } from "@/components/settings/BankProfileCard";
 
 export default function PengaturanPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
     null
   );
@@ -32,12 +34,12 @@ export default function PengaturanPage() {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Gagal memuat tanggal bisnis sistem."
+          : t.settingsPage.loadError
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -46,21 +48,21 @@ export default function PengaturanPage() {
   return (
     <>
       <PageHeader
-        title="Pengaturan"
-        description="Profil pengguna, tanggal bisnis sistem, dan batas transaksi."
+        title={t.settingsPage.title}
+        description={t.settingsPage.description}
       />
 
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Profil Pengguna</CardTitle>
+          <CardTitle>{t.settingsPage.profileTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           <DefinitionList
             items={[
-              { label: "Nama", value: user?.full_name || user?.username || "-" },
-              { label: "Username", value: user?.username || "-", isMono: true },
-              { label: "Role", value: user?.role || "-" },
-              { label: "Cabang", value: user?.branch_code || "-", isMono: true },
+              { label: t.common.name, value: user?.full_name || user?.username || "-" },
+              { label: t.common.username, value: user?.username || "-", isMono: true },
+              { label: t.common.role, value: user?.role || "-" },
+              { label: t.common.branch, value: user?.branch_code || "-", isMono: true },
             ]}
           />
         </CardContent>
@@ -68,34 +70,34 @@ export default function PengaturanPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Tanggal Bisnis</CardTitle>
+          <CardTitle>{t.settingsPage.businessDateTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <LoadingState label="Memuat tanggal bisnis..." />
+            <LoadingState label={t.settingsPage.loadingBusinessDate} />
           ) : error ? (
             <ErrorState
-              title="Gagal memuat tanggal bisnis"
+              title={t.settingsPage.businessDateErrorTitle}
               description={error}
             />
           ) : businessDate ? (
             <DefinitionList
               items={[
                 {
-                  label: "Tanggal Berjalan",
+                  label: t.settingsPage.currentDate,
                   value: formatDate(businessDate.current_date),
                   isMono: true,
                 },
-                { label: "Status", value: businessDate.status },
+                { label: t.common.status, value: businessDate.status },
                 {
-                  label: "Terakhir Diperbarui",
+                  label: t.settingsPage.lastUpdated,
                   value: formatDateTime(businessDate.updated_at),
                   isMono: true,
                 },
                 ...(businessDate.updated_by
                   ? [
                       {
-                        label: "Diperbarui Oleh",
+                        label: t.settingsPage.updatedBy,
                         value: businessDate.updated_by,
                         isMono: true,
                       },
@@ -105,7 +107,7 @@ export default function PengaturanPage() {
             />
           ) : (
             <p className="text-body text-ink-600">
-              Tanggal bisnis belum tersedia.
+              {t.settingsPage.unavailable}
             </p>
           )}
         </CardContent>

@@ -157,7 +157,7 @@ export default function PemetaanOJKPage() {
     } catch (err) {
       // Dialog dibiarkan terbuka agar catatan yang sudah ditulis tidak hilang.
       setActionError(
-        err instanceof ApiError ? err.message : "Tindakan gagal diproses."
+        err instanceof ApiError ? err.message : t.ojkMapping.actionFailed
       );
     } finally {
       setSubmitting(false);

@@ -2,6 +2,7 @@
 
 import { Printer } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { useTranslation } from "@/i18n/context";
 import { Button, type ButtonProps } from "@/components/ui/Button";
 
 export interface PrintButtonProps {
@@ -23,10 +24,11 @@ export interface PrintButtonProps {
  */
 export function PrintButton({
   url,
-  label = "Cetak",
+  label,
   variant = "secondary",
   size = "sm",
 }: PrintButtonProps) {
+  const { t } = useTranslation();
   const handlePrint = () => {
     const target = window.open(`${API_BASE_URL}${url}`, "_blank");
     // Popup bisa diblokir; dalam hal itu tidak ada yang bisa dicetak otomatis dan
@@ -54,7 +56,7 @@ export function PrintButton({
       icon={<Printer className="h-4 w-4" />}
       onClick={handlePrint}
     >
-      {label}
+      {label ?? t.common.print}
     </Button>
   );
 }

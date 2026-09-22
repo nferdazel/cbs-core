@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import type { AccountRecord } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
@@ -36,6 +37,7 @@ export function AccountReactivation({
   onReactivated,
 }: AccountReactivationProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +66,7 @@ export function AccountReactivation({
       onReactivated(response.data ?? { ...account, status: "ACTIVE" });
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Reaktivasi gagal diproses."
+        err instanceof ApiError ? err.message : t.reactivation.error
       );
     } finally {
       setSubmitting(false);
@@ -74,27 +76,29 @@ export function AccountReactivation({
   return (
     <>
       <Button size="sm" variant="secondary" onClick={openDialog}>
-        Reaktivasi
+        {t.reactivation.button}
       </Button>
       <ConfirmDialog
         open={open}
-        title="Reaktivasi Rekening Dormant"
-        confirmLabel="Reaktivasi Rekening"
+        title={t.reactivation.title}
+        confirmLabel={t.reactivation.confirm}
         loading={submitting}
         onConfirm={submit}
         onCancel={() => setOpen(false)}
         description={
           <>
             <p>
-              Rekening <span className="font-mono">{account.account_number}</span>{" "}
-              dipulihkan dari <strong>DORMANT</strong> menjadi{" "}
-              <strong>ACTIVE</strong>, sehingga transaksi debit diizinkan kembali.
+              {t.reactivation.descAccount}{" "}
+              <span className="font-mono">{account.account_number}</span>{" "}
+              {t.reactivation.descRestoredFrom} <strong>DORMANT</strong>{" "}
+              {t.reactivation.descTo} <strong>ACTIVE</strong>
+              {t.reactivation.descSuffix}
             </p>
             <Input
-              label="Catatan (opsional)"
+              label={t.reactivation.notesLabel}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="Alasan reaktivasi, mis. permintaan nasabah"
+              placeholder={t.reactivation.notesPlaceholder}
             />
             {error && (
               <p role="alert" className="text-meta text-debit-700">

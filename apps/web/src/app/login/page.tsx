@@ -47,7 +47,7 @@ export default function LoginPage() {
       router.replace("/");
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : "Terjadi kesalahan jaringan.";
+        err instanceof ApiError ? err.message : t.login.networkError;
       setError(message);
     } finally {
       setLoading(false);

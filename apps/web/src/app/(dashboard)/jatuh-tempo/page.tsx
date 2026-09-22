@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer } from "@cbs/shared-types";
 import { ApiError, request } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { useTranslation } from "@/i18n/context";
 import type { DueObligation, DueObligationKind } from "@/lib/operations-types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -13,35 +14,58 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { ErrorState } from "@/components/ui/States";
 
-const HORIZON_OPTIONS = [
-  { value: "7", label: "7 hari ke depan" },
-  { value: "30", label: "30 hari ke depan" },
-  { value: "60", label: "60 hari ke depan" },
-  { value: "90", label: "90 hari ke depan" },
-];
-
-function kindLabel(kind: DueObligationKind): string {
-  return kind === "LOAN_INSTALLMENT" ? "Angsuran Kredit" : "Jatuh Tempo Deposito";
-}
+/** Horison hari; label dibentuk dari kamus agar bahasa mengikuti pilihan pengguna. */
+const HORIZON_DAYS = ["7", "30", "60", "90"] as const;
 
 /** Penanda status berbasis selisih hari; negatif berarti sudah lewat. */
 function DueStatusBadge({ item }: { item: DueObligation }) {
+  const { t } = useTranslation();
   if (item.overdue) {
-    return <Badge variant="debit">Lewat {Math.abs(item.days_remaining)} hari</Badge>;
+    return (
+      <Badge variant="debit">
+        {t.dueDates.overduePrefix}
+        {Math.abs(item.days_remaining)}
+        {t.dueDates.overdueSuffix}
+      </Badge>
+    );
   }
   if (item.days_remaining === 0) {
-    return <Badge variant="accent">Hari ini</Badge>;
+    return <Badge variant="accent">{t.dueDates.today}</Badge>;
   }
-  return <Badge variant="credit">{item.days_remaining} hari lagi</Badge>;
+  return (
+    <Badge variant="credit">
+      {t.dueDates.remainingPrefix}
+      {item.days_remaining}
+      {t.dueDates.remainingSuffix}
+    </Badge>
+  );
 }
 
 export default function JatuhTempoPage() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<DueObligation[]>([]);
   const [days, setDays] = useState("30");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
+
+  const horizonOptions = useMemo(
+    () =>
+      HORIZON_DAYS.map((value) => ({
+        value,
+        label: `${value} ${t.dueDates.daysAhead}`,
+      })),
+    [t]
+  );
+
+  const kindLabel = useCallback(
+    (kind: DueObligationKind): string =>
+      kind === "LOAN_INSTALLMENT"
+        ? t.dueDates.kindLoan
+        : t.dueDates.kindDeposit,
+    [t]
+  );
 
   const load = useCallback(async (horizon: string) => {
     setLoading(true);
@@ -53,12 +77,12 @@ export default function JatuhTempoPage() {
       setItems(response.data ?? []);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Gagal memuat daftar jatuh tempo."
+        err instanceof ApiError ? err.message : t.dueDates.loadError
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load(days);
@@ -88,37 +112,39 @@ export default function JatuhTempoPage() {
 
   const columns: Column<DueObligation>[] = [
     {
-      header: "Jenis",
+      header: t.dueDates.colKind,
       cell: (row) => kindLabel(row.kind),
     },
     {
-      header: "Referensi",
+      header: t.dueDates.colReference,
       cell: (row) => (
         <span className="font-mono">
           {row.reference}
-          {row.installment_no ? ` / ke-${row.installment_no}` : ""}
+          {row.installment_no
+            ? ` / ${t.dueDates.installmentSuffix}${row.installment_no}`
+            : ""}
         </span>
       ),
     },
     {
-      header: "Nasabah",
+      header: t.dueDates.colCustomer,
       cell: (row) =>
         customerNames[row.customer_id] ?? (
           <span className="font-mono">{row.customer_id}</span>
         ),
     },
     {
-      header: "Jatuh Tempo",
+      header: t.dueDates.colDueDate,
       cell: (row) => formatDate(row.due_date),
       isMono: true,
     },
     {
-      header: "Nominal",
+      header: t.dueDates.colAmount,
       type: "money",
       cell: (row) => <MoneyText value={row.amount} />,
     },
     {
-      header: "Status",
+      header: t.common.status,
       cell: (row) => <DueStatusBadge item={row} />,
     },
   ];
@@ -126,29 +152,32 @@ export default function JatuhTempoPage() {
   return (
     <>
       <PageHeader
-        title="Jatuh Tempo"
-        description="Kewajiban yang akan atau sudah jatuh tempo: angsuran kredit dan deposito berjangka, diurutkan dari tanggal terdekat."
+        title={t.dueDates.title}
+        description={t.dueDates.description}
       />
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat daftar jatuh tempo" description={error} />
+        <ErrorState title={t.dueDates.errorTitle} description={error} />
       ) : (
         <Card>
           <CardHeader>
             <CardTitle>
-              Daftar Jatuh Tempo
+              {t.dueDates.listTitle}
               {overdueCount > 0 && (
                 <span className="ml-2 align-middle">
-                  <Badge variant="debit">{overdueCount} lewat</Badge>
+                  <Badge variant="debit">
+                    {overdueCount}
+                    {t.dueDates.overdueCountSuffix}
+                  </Badge>
                 </span>
               )}
             </CardTitle>
             <div className="w-56">
               <Select
-                label="Horison"
+                label={t.dueDates.horizon}
                 value={days}
                 onChange={(event) => setDays(event.target.value)}
-                options={HORIZON_OPTIONS}
+                options={horizonOptions}
               />
             </div>
           </CardHeader>
@@ -158,7 +187,7 @@ export default function JatuhTempoPage() {
               data={items}
               keyExtractor={(row) => `${row.kind}-${row.reference}-${row.due_date}`}
               loading={loading}
-              emptyMessage="Tidak ada kewajiban yang jatuh tempo pada horison ini."
+              emptyMessage={t.dueDates.empty}
               zebra
             />
           </CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { JournalEntry, JournalLine } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
 import {
@@ -8,6 +8,7 @@ import {
   type PendingApprovalResult,
 } from "@/lib/operations-types";
 import { formatDateTime } from "@/lib/format";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -23,23 +24,14 @@ import { PrintButton } from "@/components/ui/PrintButton";
 
 type TrxType = "deposit" | "withdraw" | "transfer";
 
-const TRX_OPTIONS = [
-  { value: "deposit", label: "Setoran Tunai" },
-  { value: "withdraw", label: "Penarikan Tunai" },
-  { value: "transfer", label: "Transfer Internal" },
-];
-
 function trxPath(type: TrxType): string {
   if (type === "deposit") return "/transactions/deposit";
   if (type === "withdraw") return "/transactions/withdraw";
   return "/transactions/transfer";
 }
 
-function trxLabel(type: TrxType): string {
-  return TRX_OPTIONS.find((option) => option.value === type)?.label ?? type;
-}
-
 export default function TellerPage() {
+  const { t } = useTranslation();
   const [type, setType] = useState<TrxType>("deposit");
   const [accountNumber, setAccountNumber] = useState("");
   const [sourceAccount, setSourceAccount] = useState("");
@@ -54,14 +46,28 @@ export default function TellerPage() {
   const [pendingApproval, setPendingApproval] =
     useState<PendingApprovalResult | null>(null);
 
+  // Jenis transaksi adalah kunci teknis (deposit dll.); hanya label tampilannya
+  // yang diambil dari kamus.
+  const trxOptions = useMemo(
+    () => [
+      { value: "deposit", label: t.teller.trxDeposit },
+      { value: "withdraw", label: t.teller.trxWithdraw },
+      { value: "transfer", label: t.teller.trxTransfer },
+    ],
+    [t]
+  );
+
+  const trxLabel = (value: TrxType): string =>
+    trxOptions.find((option) => option.value === value)?.label ?? value;
+
   const validate = (): string | null => {
-    if (amount <= 0) return "Nominal harus lebih besar dari nol.";
+    if (amount <= 0) return t.teller.amountRequired;
     if (type === "transfer") {
       if (!sourceAccount.trim() || !destinationAccount.trim()) {
-        return "Rekening sumber dan tujuan wajib diisi.";
+        return t.teller.accountsRequired;
       }
     } else if (!accountNumber.trim()) {
-      return "Nomor rekening wajib diisi.";
+      return t.teller.accountRequired;
     }
     return null;
   };
@@ -122,7 +128,7 @@ export default function TellerPage() {
       setDescription("");
       setConfirmOpen(false);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Transaksi gagal diproses.");
+      setFormError(err instanceof ApiError ? err.message : t.teller.submitError);
       setConfirmOpen(false);
     } finally {
       setSubmitting(false);
@@ -130,10 +136,10 @@ export default function TellerPage() {
   };
 
   const lineColumns: Column<JournalLine>[] = [
-    { header: "Rekening", accessorKey: "account_number", isMono: true },
-    { header: "Arah", accessorKey: "direction" },
+    { header: t.teller.colAccount, accessorKey: "account_number", isMono: true },
+    { header: t.teller.colDirection, accessorKey: "direction" },
     {
-      header: "Nominal",
+      header: t.teller.colAmount,
       type: "money",
       cell: (row) => (
         <MoneyText
@@ -143,45 +149,45 @@ export default function TellerPage() {
       ),
     },
     {
-      header: "Saldo Setelah",
+      header: t.teller.colBalanceAfter,
       type: "money",
       cell: (row) => <MoneyText value={row.balance_after} />,
     },
-    { header: "Keterangan", accessorKey: "description" },
+    { header: t.teller.colDescription, accessorKey: "description" },
   ];
 
   return (
     <>
       <PageHeader
-        title="Teller"
-        description="Setoran, penarikan, dan transfer internal. Setiap tindakan melewati konfirmasi sebelum diposting."
+        title={t.teller.title}
+        description={t.teller.description}
       />
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Transaksi Baru</CardTitle>
+              <CardTitle>{t.teller.newTrxTitle}</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={openConfirm} className="space-y-4">
                 <Select
-                  label="Jenis Transaksi"
+                  label={t.teller.trxTypeLabel}
                   value={type}
                   onChange={(e) => setType(e.target.value as TrxType)}
-                  options={TRX_OPTIONS}
+                  options={trxOptions}
                 />
 
                 {type === "transfer" ? (
                   <div className="grid grid-cols-2 gap-4">
                     <Input
-                      label="Rekening Sumber (Debit)"
+                      label={t.teller.sourceAccountLabel}
                       value={sourceAccount}
                       onChange={(e) => setSourceAccount(e.target.value)}
                       isMono
                     />
                     <Input
-                      label="Rekening Tujuan (Kredit)"
+                      label={t.teller.destinationAccountLabel}
                       value={destinationAccount}
                       onChange={(e) => setDestinationAccount(e.target.value)}
                       isMono
@@ -189,7 +195,7 @@ export default function TellerPage() {
                   </div>
                 ) : (
                   <Input
-                    label="Nomor Rekening"
+                    label={t.teller.accountNumberLabel}
                     value={accountNumber}
                     onChange={(e) => setAccountNumber(e.target.value)}
                     isMono
@@ -197,13 +203,13 @@ export default function TellerPage() {
                 )}
 
                 <CurrencyInput
-                  label="Nominal (IDR)"
+                  label={t.teller.amountLabel}
                   value={amount}
                   onChange={setAmount}
                 />
 
                 <Input
-                  label="Keterangan"
+                  label={t.teller.descriptionLabel}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -214,7 +220,7 @@ export default function TellerPage() {
                   </p>
                 )}
 
-                <Button type="submit">Lanjut Konfirmasi</Button>
+                <Button type="submit">{t.teller.continueButton}</Button>
               </form>
             </CardContent>
           </Card>
@@ -224,25 +230,23 @@ export default function TellerPage() {
           {pendingApproval && (
             <Card>
               <CardHeader>
-                <CardTitle>Menunggu Persetujuan</CardTitle>
+                <CardTitle>{t.teller.pendingTitle}</CardTitle>
                 <StatusBadge status={pendingApproval.status} />
               </CardHeader>
               <CardContent>
                 <p className="text-body text-ink-600">
-                  Transaksi melewati ambang limit dan belum diposting. Pejabat
-                  berwenang harus menyetujuinya lewat menu Persetujuan sebelum
-                  jurnal diterbitkan.
+                  {t.teller.pendingDesc}
                 </p>
                 <DefinitionList
                   columns={1}
                   items={[
                     {
-                      label: "ID Permintaan",
+                      label: t.teller.requestIdLabel,
                       value: pendingApproval.request_id,
                       isMono: true,
                     },
                     {
-                      label: "Jenis Aksi",
+                      label: t.teller.actionTypeLabel,
                       value: pendingApproval.action_type,
                     },
                   ]}
@@ -254,7 +258,7 @@ export default function TellerPage() {
           {result && (
             <Card>
               <CardHeader>
-                <CardTitle>Bukti Posting</CardTitle>
+                <CardTitle>{t.teller.resultTitle}</CardTitle>
                 <StatusBadge status={result.status} />
               </CardHeader>
               <CardContent>
@@ -262,13 +266,13 @@ export default function TellerPage() {
                   columns={1}
                   items={[
                     {
-                      label: "Nomor Referensi",
+                      label: t.teller.refLabel,
                       value: result.reference_number,
                       isMono: true,
                     },
-                    { label: "Jenis", value: result.transaction_type },
+                    { label: t.teller.typeLabel, value: result.transaction_type },
                     {
-                      label: "Waktu",
+                      label: t.teller.timeLabel,
                       value: formatDateTime(result.posted_at),
                       isMono: true,
                     },
@@ -283,8 +287,8 @@ export default function TellerPage() {
                       }/${encodeURIComponent(result.reference_number)}`}
                       label={
                         type === "deposit"
-                          ? "Cetak Slip Setoran"
-                          : "Cetak Slip Penarikan"
+                          ? t.teller.printDepositSlip
+                          : t.teller.printWithdrawalSlip
                       }
                     />
                   </div>
@@ -298,14 +302,14 @@ export default function TellerPage() {
       {result && (
         <Card className="mt-4">
           <CardHeader>
-            <CardTitle>Rincian Jurnal</CardTitle>
+            <CardTitle>{t.teller.journalTitle}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable
               columns={lineColumns}
               data={result.lines ?? []}
               keyExtractor={(row) => row.id}
-              emptyMessage="Rincian baris jurnal tidak dikembalikan oleh API."
+              emptyMessage={t.teller.emptyLines}
               zebra
             />
           </CardContent>
@@ -314,43 +318,44 @@ export default function TellerPage() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Konfirmasi Transaksi"
+        title={t.teller.confirmTitle}
         destructive={type === "withdraw"}
         loading={submitting}
-        confirmLabel="Posting Transaksi"
+        confirmLabel={t.teller.confirmButton}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={submit}
         description={
           <>
             <p>
-              Anda akan memposting <strong>{trxLabel(type)}</strong> dengan rincian:
+              {t.teller.confirmIntro} <strong>{trxLabel(type)}</strong>{" "}
+              {t.teller.confirmIntroSuffix}
             </p>
             <dl className="mt-2 space-y-1">
               {type === "transfer" ? (
                 <>
                   <div className="flex justify-between">
-                    <dt className="text-ink-600">Rekening sumber</dt>
+                    <dt className="text-ink-600">{t.teller.sourceAccountShort}</dt>
                     <dd className="font-mono">{sourceAccount || "-"}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-ink-600">Rekening tujuan</dt>
+                    <dt className="text-ink-600">{t.teller.destAccountShort}</dt>
                     <dd className="font-mono">{destinationAccount || "-"}</dd>
                   </div>
                 </>
               ) : (
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Rekening</dt>
+                  <dt className="text-ink-600">{t.teller.accountShort}</dt>
                   <dd className="font-mono">{accountNumber || "-"}</dd>
                 </div>
               )}
               <div className="flex justify-between">
-                <dt className="text-ink-600">Nominal</dt>
+                <dt className="text-ink-600">{t.teller.amountShort}</dt>
                 <dd>
                   <MoneyText value={amount} />
                 </dd>
               </div>
             </dl>
-            <p className="text-meta">Jurnal yang diposting tidak dapat dibatalkan sembarangan.</p>
+            <p className="text-meta">{t.teller.irreversible}</p>
           </>
         }
       />

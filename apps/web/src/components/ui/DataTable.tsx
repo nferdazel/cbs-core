@@ -1,6 +1,7 @@
 import React from "react";
 import { MoneyText } from "./MoneyText";
 import { StatusBadge } from "./StatusBadge";
+import { useTranslation } from "@/i18n/context";
 
 export type DataTableColumnType =
   | "text"
@@ -44,9 +45,10 @@ export function DataTable<T>({
   keyExtractor,
   loading = false,
   error = null,
-  emptyMessage = "Tidak ada data.",
+  emptyMessage,
   zebra = false,
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
   return (
     <div className="w-full overflow-x-auto rounded-md border border-border bg-surface">
       <table className="w-full border-collapse text-left text-body">
@@ -70,7 +72,7 @@ export function DataTable<T>({
           {loading ? (
             <tr>
               <td colSpan={columns.length} className="px-3 py-8 text-center text-ink-600">
-                Memuat data...
+                {t.states.loading}
               </td>
             </tr>
           ) : error ? (
@@ -86,7 +88,7 @@ export function DataTable<T>({
           ) : data.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="px-3 py-8 text-center text-ink-600">
-                {emptyMessage}
+                {emptyMessage ?? t.states.emptyTitle}
               </td>
             </tr>
           ) : (

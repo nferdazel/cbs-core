@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertCircle, Loader2, Inbox } from "lucide-react";
+import { useTranslation } from "@/i18n/context";
 
 export interface StateMessageProps {
   title: string;
@@ -28,14 +29,17 @@ export const EmptyState: React.FC<StateMessageProps> = ({
 
 /** Sedang memuat. */
 export const LoadingState: React.FC<{ label?: string; className?: string }> = ({
-  label = "Memuat data...",
+  label,
   className = "",
-}) => (
-  <div className={`${shell} ${className}`} role="status">
-    <Loader2 className="h-6 w-6 animate-spin text-ink-600" aria-hidden />
-    <p className="text-body text-ink-600">{label}</p>
-  </div>
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className={`${shell} ${className}`} role="status">
+      <Loader2 className="h-6 w-6 animate-spin text-ink-600" aria-hidden />
+      <p className="text-body text-ink-600">{label ?? t.states.loading}</p>
+    </div>
+  );
+};
 
 /** Gagal memuat; jelaskan sebab dan sediakan tindakan. */
 export const ErrorState: React.FC<StateMessageProps> = ({

@@ -70,11 +70,11 @@ export default function NasabahPage() {
       setCustomers(response.data ?? []);
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Gagal memuat nasabah.");
+      setError(err instanceof ApiError ? err.message : t.customerPage.loadError);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load(page, query);
@@ -86,18 +86,18 @@ export default function NasabahPage() {
   const resetSearch = () => setSearch("");
 
   const columns: Column<Customer>[] = [
-    { header: "CIF", accessorKey: "cif_number", isMono: true },
-    { header: "Nama", accessorKey: "full_name" },
-    { header: "Telepon", accessorKey: "phone_number", isMono: true },
-    { header: "Email", accessorKey: "email" },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.customerPage.colCif, accessorKey: "cif_number", isMono: true },
+    { header: t.common.name, accessorKey: "full_name" },
+    { header: t.customerPage.colPhone, accessorKey: "phone_number", isMono: true },
+    { header: t.customerPage.colEmail, accessorKey: "email" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
   ];
 
   return (
     <>
       <PageHeader
-        title="Nasabah"
-        description="Data induk nasabah (CIF). Nilai pribadi disimpan terenkripsi di backend."
+        title={t.customerPage.title}
+        description={t.customerPage.description}
         actions={
           canRegister ? (
             <Button
@@ -176,7 +176,7 @@ export default function NasabahPage() {
       </Card>
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat nasabah" description={error} />
+        <ErrorState title={t.customerPage.errorTitle} description={error} />
       ) : (
         <Card>
           <CardContent className="p-0">

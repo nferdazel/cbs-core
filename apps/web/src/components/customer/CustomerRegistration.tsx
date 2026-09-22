@@ -103,7 +103,7 @@ export function CustomerRegistration({
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
       // Bisa berupa field wajib yang kosong atau format email yang salah.
-      setFormError("Periksa kembali data yang ditandai.");
+      setFormError(t.customerRegistration.fillHighlighted);
       return;
     }
     setFormError(null);
@@ -130,7 +130,7 @@ export function CustomerRegistration({
       onRegistered(customer);
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : "Pendaftaran nasabah gagal.";
+        err instanceof ApiError ? err.message : t.customerRegistration.submitError;
       const field = fieldForApiMessage(message);
       setFieldErrors(field ? { [field]: message } : {});
       setFormError(field ? null : message);

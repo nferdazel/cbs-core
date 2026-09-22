@@ -12,6 +12,8 @@ import type {
   DepositStatus,
   ProfitType,
 } from "@/lib/operations-types";
+import { useTranslation } from "@/i18n/context";
+import type { Dictionary } from "@/i18n/dictionaries/id";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -49,16 +51,19 @@ function DepositStatusBadge({ status }: { status: DepositStatus }) {
   return <Badge variant={DEPOSIT_STATUS[status]?.variant ?? "outline"}>{status}</Badge>;
 }
 
-function profitTypeLabel(type: ProfitType): string {
-  if (type === "MARGIN") return "Margin";
-  if (type === "BAGI_HASIL") return "Bagi Hasil";
-  return "Bunga";
+// Skema imbal hasil disimpan sebagai kunci teknis (MARGIN dll.); hanya label
+// tampilannya yang diambil dari kamus.
+function profitTypeLabel(t: Dictionary["deposits"], type: ProfitType): string {
+  if (type === "MARGIN") return t.profitMargin;
+  if (type === "BAGI_HASIL") return t.profitBagiHasil;
+  return t.profitInterest;
 }
 
-function aroLabel(instruction: AROInstruction): string {
-  if (instruction === "PRINCIPAL_AND_PROFIT") return "Pokok + imbal hasil";
-  if (instruction === "PRINCIPAL") return "Pokok saja";
-  return "Tanpa ARO";
+// Instruksi ARO juga kunci teknis; labelnya dari kamus.
+function aroLabel(t: Dictionary["deposits"], instruction: AROInstruction): string {
+  if (instruction === "PRINCIPAL_AND_PROFIT") return t.aroPrincipalAndProfitShort;
+  if (instruction === "PRINCIPAL") return t.aroPrincipalShort;
+  return t.aroNone;
 }
 
 function customerLabel(
@@ -83,6 +88,7 @@ function DepositPlaceForm({
   onPlaced,
   onClose,
 }: PlaceFormProps) {
+  const { t } = useTranslation();
   const [customerId, setCustomerId] = useState("");
   const [productId, setProductId] = useState("");
   const [amount, setAmount] = useState(0);
@@ -98,10 +104,10 @@ function DepositPlaceForm({
   const selectedProduct = products.find((p) => p.id === productId);
 
   const validate = (): string | null => {
-    if (!customerId) return "Nasabah wajib dipilih.";
-    if (!productId) return "Produk wajib dipilih.";
-    if (amount <= 0) return "Pokok harus lebih besar dari nol.";
-    if (termMonths <= 0) return "Jangka waktu minimal 1 bulan.";
+    if (!customerId) return t.deposits.requiredCustomer;
+    if (!productId) return t.deposits.requiredProduct;
+    if (amount <= 0) return t.deposits.requiredAmount;
+    if (termMonths <= 0) return t.deposits.requiredTerm;
     return null;
   };
 
@@ -135,7 +141,7 @@ function DepositPlaceForm({
     } catch (err) {
       setPreview(null);
       setFormError(
-        err instanceof ApiError ? err.message : "Pratinjau deposito gagal dihitung."
+        err instanceof ApiError ? err.message : t.deposits.previewError
       );
     } finally {
       setPreviewLoading(false);
@@ -164,7 +170,7 @@ function DepositPlaceForm({
       setConfirmOpen(false);
     } catch (err) {
       setFormError(
-        err instanceof ApiError ? err.message : "Penempatan deposito gagal."
+        err instanceof ApiError ? err.message : t.deposits.placeError
       );
       setConfirmOpen(false);
     } finally {
@@ -174,59 +180,62 @@ function DepositPlaceForm({
 
   const customerOptions = customers.map((c) => ({
     value: c.id,
-    label: `${c.cif_number} — ${c.full_name}`,
+    label: `${c.cif_number} - ${c.full_name}`,
   }));
   const productOptions = products.map((p) => ({
     value: p.id,
-    label: `${p.code} — ${p.name}`,
+    label: `${p.code} - ${p.name}`,
   }));
 
   return (
     <Card className="mb-4">
       <CardHeader>
-        <CardTitle>Penempatan Deposito Baru</CardTitle>
+        <CardTitle>{t.deposits.placeTitle}</CardTitle>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Tutup
+          {t.common.close}
         </Button>
       </CardHeader>
       <CardContent>
         <form onSubmit={openConfirm} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Select
-              label="Nasabah"
+              label={t.deposits.customer}
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
               options={customerOptions}
-              placeholder="Pilih nasabah"
+              placeholder={t.deposits.selectCustomer}
             />
             <Select
-              label="Produk Deposito"
+              label={t.deposits.product}
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
               options={productOptions}
               placeholder={
                 productOptions.length === 0
-                  ? "Tidak ada produk deposito aktif"
-                  : "Pilih produk"
+                  ? t.deposits.noActiveProducts
+                  : t.deposits.selectProduct
               }
             />
           </div>
 
           {selectedProduct && (
             <p className="text-meta text-ink-600">
-              Rentang produk: <MoneyText value={selectedProduct.min_amount} /> s.d.{" "}
-              <MoneyText value={selectedProduct.max_amount} />, tenor{" "}
+              {t.deposits.productRange}{" "}
+              <MoneyText value={selectedProduct.min_amount} />{" "}
+              {t.deposits.toRange}{" "}
+              <MoneyText value={selectedProduct.max_amount} />,{" "}
+              {t.deposits.termLabel}{" "}
               <span className="font-mono">
                 {selectedProduct.min_term_months}-{selectedProduct.max_term_months}
               </span>{" "}
-              bulan.
+              {t.deposits.termSuffix}.
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <CurrencyInput label="Pokok" value={amount} onChange={setAmount} />
+            <CurrencyInput label={t.deposits.principal} value={amount} onChange={setAmount} />
             <Input
-              label="Jangka Waktu (bulan)"
+              label={t.deposits.termMonths}
               type="number"
               min={1}
               value={termMonths}
@@ -243,21 +252,21 @@ function DepositPlaceForm({
                 onChange={(e) => setAro(e.target.checked)}
                 className="h-4 w-4 rounded-sm border border-border-strong"
               />
-              Perpanjangan otomatis (ARO)
+              {t.deposits.aroCheckbox}
             </label>
             {aro && (
               <div className="w-64">
                 <Select
-                  label="Instruksi ARO"
+                  label={t.deposits.aroInstruction}
                   value={instruction}
                   onChange={(e) =>
                     setInstruction(e.target.value as AROInstruction)
                   }
                   options={[
-                    { value: "PRINCIPAL", label: "Pokok saja" },
+                    { value: "PRINCIPAL", label: t.deposits.aroPrincipal },
                     {
                       value: "PRINCIPAL_AND_PROFIT",
-                      label: "Pokok + imbal hasil (kapitalisasi)",
+                      label: t.deposits.aroPrincipalProfit,
                     },
                   ]}
                 />
@@ -272,42 +281,45 @@ function DepositPlaceForm({
           )}
 
           <Button type="submit" loading={previewLoading}>
-            {previewLoading ? "Menghitung pratinjau..." : "Lanjut Konfirmasi"}
+            {previewLoading
+              ? t.deposits.computingPreview
+              : t.deposits.continueButton}
           </Button>
         </form>
       </CardContent>
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Konfirmasi Penempatan Deposito"
+        title={t.deposits.confirmPlaceTitle}
         loading={submitting}
-        confirmLabel="Tempatkan Deposito"
+        confirmLabel={t.deposits.confirmPlaceButton}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={submit}
         description={
           preview ? (
             <>
               <p>
-                Periksa proyeksi perhitungan di bawah. Jurnal penempatan baru
-                dibuat setelah Anda menekan simpan.
+                {t.deposits.confirmPlaceDesc}
               </p>
               <dl className="mt-2 space-y-1">
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Produk</dt>
+                  <dt className="text-ink-600">{t.deposits.labelProduct}</dt>
                   <dd>{selectedProduct?.name ?? "-"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Nominal</dt>
+                  <dt className="text-ink-600">{t.deposits.labelAmount}</dt>
                   <dd>
                     <MoneyText value={preview.placement_amount} />
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Jangka waktu</dt>
-                  <dd className="font-mono">{preview.term_months} bulan</dd>
+                  <dt className="text-ink-600">{t.deposits.labelTerm}</dt>
+                  <dd className="font-mono">
+                    {preview.term_months} {t.deposits.termSuffix}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Jatuh tempo</dt>
+                  <dt className="text-ink-600">{t.deposits.labelMaturity}</dt>
                   <dd className="font-mono">
                     {formatDate(preview.maturity_date)}
                   </dd>
@@ -315,10 +327,10 @@ function DepositPlaceForm({
                 <div className="flex justify-between">
                   <dt className="text-ink-600">
                     {preview.profit_type === "MARGIN"
-                      ? "Margin"
+                      ? t.deposits.profitMargin
                       : preview.profit_type === "BAGI_HASIL"
-                        ? "Nisbah Pemilik Dana"
-                        : "Bunga per Tahun"}
+                        ? t.deposits.labelProfitShareOwner
+                        : t.deposits.labelInterestPerYear}
                   </dt>
                   <dd className="font-mono">
                     {preview.profit_type === "BAGI_HASIL"
@@ -328,20 +340,21 @@ function DepositPlaceForm({
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ink-600">
-                    Estimasi {profitTypeLabel(preview.profit_type)}
+                    {t.deposits.estimatedPrefix}{" "}
+                    {profitTypeLabel(t.deposits, preview.profit_type)}
                   </dt>
                   <dd>
                     <MoneyText value={preview.estimated_profit} />
                   </dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-ink-600">Estimasi Pajak (PPh)</dt>
+                  <dt className="text-ink-600">{t.deposits.labelEstimatedTax}</dt>
                   <dd>
                     <MoneyText value={preview.estimated_tax} />
                   </dd>
                 </div>
                 <div className="flex justify-between font-medium">
-                  <dt>Nilai Jatuh Tempo</dt>
+                  <dt>{t.deposits.labelMaturityValue}</dt>
                   <dd>
                     <MoneyText value={preview.maturity_proceeds} />
                   </dd>
@@ -349,7 +362,7 @@ function DepositPlaceForm({
               </dl>
             </>
           ) : (
-            <p>Rincian pratinjau tidak tersedia.</p>
+            <p>{t.deposits.previewUnavailable}</p>
           )
         }
       />
@@ -372,6 +385,7 @@ function DepositDetailPanel({
   onClose,
   onChanged,
 }: DetailPanelProps) {
+  const { t } = useTranslation();
   const [deposit, setDeposit] = useState<Deposit | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -393,12 +407,12 @@ function DepositDetailPanel({
       setDeposit(unwrap(response));
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Gagal memuat detail deposito."
+        err instanceof ApiError ? err.message : t.deposits.detailLoadError
       );
     } finally {
       setLoading(false);
     }
-  }, [depositId]);
+  }, [depositId, t]);
 
   useEffect(() => {
     load();
@@ -424,43 +438,43 @@ function DepositDetailPanel({
       const updated = unwrap(response);
       if (pending === "withdraw") {
         setFeedback({
-          title: "Deposito dicairkan",
+          title: t.deposits.withdrawnTitle,
           reference: updated.account_number,
           detail: (
             <DefinitionList
               columns={2}
               items={[
                 {
-                  label: "Hasil Pencairan",
+                  label: t.deposits.labelDisbursement,
                   value: <MoneyText value={updated.maturity_proceeds} />,
                 },
                 {
-                  label: "Denda",
+                  label: t.deposits.labelPenalty,
                   value: <MoneyText value={updated.early_withdrawal_penalty} />,
                 },
                 {
-                  label: "Pajak Dibayar",
+                  label: t.deposits.labelTaxPaid,
                   value: <MoneyText value={updated.paid_tax} />,
                 },
-                { label: "Status", value: updated.status },
+                { label: t.common.status, value: updated.status },
               ]}
             />
           ),
         });
       } else {
         setFeedback({
-          title: "Akrual imbal hasil diposting",
+          title: t.deposits.accruedTitle,
           reference: updated.account_number,
           detail: (
             <DefinitionList
               columns={2}
               items={[
                 {
-                  label: "Akrual Imbal Hasil",
+                  label: t.deposits.labelAccruedProfit,
                   value: <MoneyText value={updated.accrued_profit} />,
                 },
                 {
-                  label: "Akrual Pajak",
+                  label: t.deposits.labelAccruedTax,
                   value: <MoneyText value={updated.accrued_tax} />,
                 },
               ]}
@@ -473,7 +487,7 @@ function DepositDetailPanel({
       onChanged();
     } catch (err) {
       setActionError(
-        err instanceof ApiError ? err.message : "Tindakan gagal diproses."
+        err instanceof ApiError ? err.message : t.deposits.actionFailed
       );
       setPending(null);
     } finally {
@@ -485,7 +499,7 @@ function DepositDetailPanel({
     return (
       <Card className="mt-4">
         <CardContent>
-          <LoadingState label="Memuat detail deposito..." />
+          <LoadingState label={t.deposits.detailLoading} />
         </CardContent>
       </Card>
     );
@@ -495,11 +509,11 @@ function DepositDetailPanel({
     return (
       <div className="mt-4">
         <ErrorState
-          title="Gagal memuat detail deposito"
-          description={error ?? "Deposito tidak ditemukan."}
+          title={t.deposits.detailErrorTitle}
+          description={error ?? t.deposits.notFound}
           action={
             <Button variant="secondary" onClick={onClose}>
-              Tutup
+              {t.common.close}
             </Button>
           }
         />
@@ -513,11 +527,11 @@ function DepositDetailPanel({
     <Card className="mt-4">
       <CardHeader>
         <CardTitle>
-          Detail Deposito{" "}
+          {t.deposits.detailTitle}{" "}
           <span className="font-mono">{deposit.account_number}</span>
         </CardTitle>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Tutup
+          {t.common.close}
         </Button>
       </CardHeader>
       <CardContent>
@@ -527,7 +541,8 @@ function DepositDetailPanel({
               {feedback.title}
             </p>
             <p className="mt-1 text-body text-ink-900">
-              Referensi: <span className="font-mono">{feedback.reference}</span>
+              {t.deposits.referenceLabel}{" "}
+              <span className="font-mono">{feedback.reference}</span>
             </p>
             {feedback.detail && <div className="mt-2">{feedback.detail}</div>}
           </div>
@@ -542,11 +557,11 @@ function DepositDetailPanel({
         {early && (
           <div className="rounded-md border border-accent-600/30 bg-accent-50 px-4 py-3">
             <p className="text-body text-accent-600">
-              Deposito belum jatuh tempo pada{" "}
-              <span className="font-mono">{formatDate(deposit.maturity_date)}</span>.
-              Pencairan lebih awal akan dikenakan denda
+              {t.deposits.earlyPrefix}{" "}
+              <span className="font-mono">{formatDate(deposit.maturity_date)}</span>
+              . {t.deposits.earlyPenalty}
               {product
-                ? ` ${formatRate(product.early_withdrawal_penalty_rate)} dari pokok`
+                ? ` ${formatRate(product.early_withdrawal_penalty_rate)} ${t.deposits.earlyPenaltyOfPrincipal}`
                 : ""}
               .
             </p>
@@ -556,80 +571,83 @@ function DepositDetailPanel({
         <DefinitionList
           items={[
             {
-              label: "Nasabah",
+              label: t.deposits.customer,
               value: customerLabel(deposit.customer_id, customerNames),
             },
             {
-              label: "Produk",
-              value: product ? `${product.code} — ${product.name}` : "-",
+              label: t.deposits.labelProduct,
+              value: product ? `${product.code} - ${product.name}` : "-",
             },
             {
-              label: "Status",
+              label: t.common.status,
               value: <DepositStatusBadge status={deposit.status} />,
             },
-            { label: "Pokok", value: <MoneyText value={deposit.placement_amount} /> },
+            { label: t.deposits.principal, value: <MoneyText value={deposit.placement_amount} /> },
             {
-              label: "Tanggal Mulai",
+              label: t.deposits.labelStartDate,
               value: formatDate(deposit.start_date),
               isMono: true,
             },
             {
-              label: "Jatuh Tempo",
+              label: t.deposits.labelMaturity,
               value: formatDate(deposit.maturity_date),
               isMono: true,
             },
             {
-              label: "Skema Imbal Hasil",
-              value: profitTypeLabel(deposit.profit_type),
+              label: t.deposits.labelScheme,
+              value: profitTypeLabel(t.deposits, deposit.profit_type),
             },
             bagiHasil
               ? {
-                  label: "Nisbah Pemilik Dana",
+                  label: t.deposits.labelProfitShareOwner,
                   value: formatRate(String(Number(deposit.profit_rate) * 100)),
                   isMono: true,
                 }
               : {
-                  label: "Bunga per Tahun",
+                  label: t.deposits.labelInterestPerYear,
                   value: formatRate(deposit.profit_rate),
                   isMono: true,
                 },
             ...(bagiHasil
               ? [
                   {
-                    label: "Proyeksi Imbal Hasil Tahunan",
+                    label: t.deposits.labelYieldProjection,
                     value: formatRate(deposit.yield_rate),
                     isMono: true,
                   },
                 ]
               : []),
             {
-              label: "Akrual Imbal Hasil",
+              label: t.deposits.labelAccruedProfit,
               value: <MoneyText value={deposit.accrued_profit} />,
             },
             {
-              label: "Akrual Pajak (PPh)",
+              label: t.deposits.labelAccruedTax,
               value: <MoneyText value={deposit.accrued_tax} />,
             },
             {
-              label: "Tarif Pajak",
+              label: t.deposits.labelTaxRate,
               value: formatRate(deposit.tax_rate),
               isMono: true,
             },
             ...(deposit.status === "CLOSED" || deposit.status === "BROKEN"
               ? [
                   {
-                    label: "Hasil Pencairan",
+                    label: t.deposits.labelDisbursement,
                     value: <MoneyText value={deposit.maturity_proceeds} />,
                   },
                   {
-                    label: "Denda Pencairan",
+                    label: t.deposits.labelEarlyPenalty,
                     value: (
                       <MoneyText value={deposit.early_withdrawal_penalty} />
                     ),
                   },
                 ]
               : []),
-            { label: "ARO", value: deposit.aro ? aroLabel(deposit.aro_instruction) : "Tidak" },
+            {
+              label: t.deposits.labelAro,
+              value: deposit.aro ? aroLabel(t.deposits, deposit.aro_instruction) : t.deposits.notAro,
+            },
           ]}
         />
 
@@ -637,14 +655,14 @@ function DepositDetailPanel({
           {isActive && (
             <>
               <Button size="sm" onClick={() => setPending("accrue")}>
-                Akrual Imbal Hasil
+                {t.deposits.accrueButton}
               </Button>
               <Button
                 size="sm"
                 variant={early ? "danger" : "primary"}
                 onClick={() => setPending("withdraw")}
               >
-                Cairkan
+                {t.deposits.withdrawButton}
               </Button>
             </>
           )}
@@ -653,31 +671,39 @@ function DepositDetailPanel({
 
       <ConfirmDialog
         open={pending !== null}
-        title={pending === "withdraw" ? "Cairkan Deposito" : "Akrual Imbal Hasil"}
+        title={
+          pending === "withdraw"
+            ? t.deposits.confirmWithdrawTitle
+            : t.deposits.confirmAccrueTitle
+        }
         destructive={pending === "withdraw" && early}
         loading={submitting}
-        confirmLabel={pending === "withdraw" ? "Cairkan Deposito" : "Jalankan Akrual"}
+        confirmLabel={
+          pending === "withdraw"
+            ? t.deposits.confirmWithdrawButton
+            : t.deposits.confirmAccrueButton
+        }
         onCancel={() => setPending(null)}
         onConfirm={runAction}
         description={
           pending === "withdraw" ? (
             <>
               <p>
-                Deposito <span className="font-mono">{deposit.account_number}</span>{" "}
-                akan ditutup dan dana pokok beserta imbal hasil bersih dibayarkan.
+                {t.deposits.withdrawDescPrefix}{" "}
+                <span className="font-mono">{deposit.account_number}</span>{" "}
+                {t.deposits.withdrawDescSuffix}
               </p>
               {early && (
                 <p className="text-debit-700">
-                  Pencairan sebelum jatuh tempo dikenakan denda sesuai tarif
-                  produk. Hasil akhir dihitung backend dan ditampilkan setelah
-                  pencairan.
+                  {t.deposits.earlyWithdrawNotice}
                 </p>
               )}
             </>
           ) : (
             <p>
-              Akrual imbal hasil satu hari berjalan akan diposting untuk deposito{" "}
-              <span className="font-mono">{deposit.account_number}</span>.
+              {t.deposits.accrueDescPrefix}{" "}
+              <span className="font-mono">{deposit.account_number}</span>
+              .
             </p>
           )
         }
@@ -687,6 +713,7 @@ function DepositDetailPanel({
 }
 
 export default function DepositoPage() {
+  const { t } = useTranslation();
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [page, setPage] = useState(1);
@@ -722,12 +749,12 @@ export default function DepositoPage() {
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Gagal memuat daftar deposito."
+        err instanceof ApiError ? err.message : t.deposits.listLoadError
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadDeposits(page);
@@ -766,14 +793,14 @@ export default function DepositoPage() {
       });
       const processed = response.data?.processed ?? 0;
       setFeedback({
-        title: "ARO dijalankan",
-        reference: `${processed} kontrak diperpanjang`,
+        title: t.deposits.aroRunTitle,
+        reference: `${processed} ${t.deposits.contractsExtendedSuffix}`,
       });
       setAroOpen(false);
       setListReloadKey((key) => key + 1);
     } catch (err) {
       setAroError(
-        err instanceof ApiError ? err.message : "Proses ARO gagal dijalankan."
+        err instanceof ApiError ? err.message : t.deposits.aroRunError
       );
       setAroOpen(false);
     } finally {
@@ -782,43 +809,43 @@ export default function DepositoPage() {
   };
 
   const columns: Column<Deposit>[] = [
-    { header: "Nomor Rekening", accessorKey: "account_number", isMono: true },
+    { header: t.deposits.colAccountNumber, accessorKey: "account_number", isMono: true },
     {
-      header: "Nasabah",
+      header: t.deposits.customer,
       cell: (row) => customerLabel(row.customer_id, customerNames),
     },
     {
-      header: "Pokok",
+      header: t.deposits.principal,
       type: "money",
       cell: (row) => <MoneyText value={row.placement_amount} />,
     },
     {
-      header: "Skema",
-      cell: (row) => profitTypeLabel(row.profit_type),
+      header: t.deposits.colScheme,
+      cell: (row) => profitTypeLabel(t.deposits, row.profit_type),
     },
     {
-      header: "Jatuh Tempo",
+      header: t.deposits.labelMaturity,
       cell: (row) => formatDate(row.maturity_date),
       isMono: true,
     },
     {
-      header: "Akrual Imbal Hasil",
+      header: t.deposits.labelAccruedProfit,
       type: "money",
       cell: (row) => <MoneyText value={row.accrued_profit} />,
     },
     {
-      header: "Status",
+      header: t.common.status,
       cell: (row) => <DepositStatusBadge status={row.status} />,
     },
     {
-      header: "Aksi",
+      header: t.common.actions,
       cell: (row) => (
         <Button
           size="sm"
           variant="secondary"
           onClick={() => setSelectedId(row.id)}
         >
-          Detail
+          {t.deposits.detailButton}
         </Button>
       ),
     },
@@ -827,8 +854,8 @@ export default function DepositoPage() {
   return (
     <>
       <PageHeader
-        title="Deposito"
-        description="Deposito berjangka: penempatan, akrual imbal hasil, ARO, dan pencairan."
+        title={t.deposits.title}
+        description={t.deposits.description}
       />
 
       {feedback && (
@@ -837,7 +864,8 @@ export default function DepositoPage() {
             {feedback.title}
           </p>
           <p className="mt-1 text-body text-ink-900">
-            Referensi: <span className="font-mono">{feedback.reference}</span>
+            {t.deposits.referenceLabel}{" "}
+            <span className="font-mono">{feedback.reference}</span>
           </p>
         </div>
       )}
@@ -866,21 +894,21 @@ export default function DepositoPage() {
       )}
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat deposito" description={error} />
+        <ErrorState title={t.deposits.listErrorTitle} description={error} />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Daftar Deposito</CardTitle>
+            <CardTitle>{t.deposits.listTitle}</CardTitle>
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={() => setAroOpen(true)}
               >
-                Jalankan ARO
+                {t.deposits.runAroButton}
               </Button>
               <Button size="sm" onClick={() => setFormOpen((open) => !open)}>
-                Tempatkan Deposito
+                {t.deposits.placeButton}
               </Button>
             </div>
           </CardHeader>
@@ -890,7 +918,7 @@ export default function DepositoPage() {
               data={deposits}
               keyExtractor={(row) => row.id}
               loading={loading}
-              emptyMessage="Belum ada deposito."
+              emptyMessage={t.deposits.empty}
               zebra
             />
             {meta && (
@@ -918,15 +946,14 @@ export default function DepositoPage() {
 
       <ConfirmDialog
         open={aroOpen}
-        title="Jalankan ARO"
+        title={t.deposits.runAroButton}
         loading={aroSubmitting}
-        confirmLabel="Jalankan ARO"
+        confirmLabel={t.deposits.runAroButton}
         onCancel={() => setAroOpen(false)}
         onConfirm={runAro}
         description={
           <p>
-            Sistem akan memperpanjang semua deposito ber-ARO yang sudah jatuh
-            tempo sesuai instruksinya. Kapitalisasi imbal hasil ikut diposting.
+            {t.deposits.aroConfirmDesc}
           </p>
         }
       />

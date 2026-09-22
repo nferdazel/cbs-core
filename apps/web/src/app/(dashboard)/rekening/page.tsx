@@ -30,14 +30,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 type StatusFilter = AccountStatus | "ALL";
 
-const STATUS_OPTIONS = [
-  { value: "ALL", label: "Semua status" },
-  { value: "ACTIVE", label: "Aktif" },
-  { value: "DORMANT", label: "Dormant" },
-  { value: "FROZEN", label: "Dibekukan" },
-  { value: "CLOSED", label: "Ditutup" },
-];
-
 interface Meta {
   page: number;
   page_size: number;
@@ -48,6 +40,19 @@ interface Meta {
 export default function RekeningPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+
+  // Status disimpan sebagai kunci teknis; hanya label tampilannya dari kamus.
+  const statusOptions = useMemo(
+    () => [
+      { value: "ALL", label: t.accountPage.statusAll },
+      { value: "ACTIVE", label: t.accountPage.statusActive },
+      { value: "DORMANT", label: t.accountPage.statusDormant },
+      { value: "FROZEN", label: t.accountPage.statusFrozen },
+      { value: "CLOSED", label: t.accountPage.statusClosed },
+    ],
+    [t]
+  );
+
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [page, setPage] = useState(1);
@@ -82,11 +87,11 @@ export default function RekeningPage() {
       setAccounts(response.data ?? []);
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Gagal memuat rekening.");
+      setError(err instanceof ApiError ? err.message : t.accountPage.loadError);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load(page, query);
@@ -124,18 +129,18 @@ export default function RekeningPage() {
   const resetSearch = () => setSearch("");
 
   const columns: Column<AccountRecord>[] = [
-    { header: "Nomor Rekening", accessorKey: "account_number", isMono: true },
-    { header: "Pemilik", cell: (row) => row.customer_name || "-" },
-    { header: "Tipe", accessorKey: "account_type" },
-    { header: "Mata Uang", accessorKey: "currency", isMono: true },
+    { header: t.accountPage.colAccountNumber, accessorKey: "account_number", isMono: true },
+    { header: t.accountPage.colOwner, cell: (row) => row.customer_name || "-" },
+    { header: t.accountPage.colType, accessorKey: "account_type" },
+    { header: t.accountPage.colCurrency, accessorKey: "currency", isMono: true },
     {
-      header: "Saldo",
+      header: t.accountPage.colBalance,
       type: "money",
       cell: (row) => <MoneyText value={row.balance} />,
     },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
     {
-      header: "Aktivitas Terakhir",
+      header: t.accountPage.colLastActivity,
       cell: (row) =>
         row.last_activity_at ? formatDateTime(row.last_activity_at) : "-",
       isMono: true,
@@ -144,7 +149,7 @@ export default function RekeningPage() {
 
   if (authorized) {
     columns.push({
-      header: "Aksi",
+      header: t.common.actions,
       align: "right",
       cell: (row) => (
         <AccountReactivation account={row} onReactivated={handleReactivated} />
@@ -155,8 +160,8 @@ export default function RekeningPage() {
   return (
     <>
       <PageHeader
-        title="Rekening"
-        description="Direktori rekening nasabah: tabungan, giro, dan kredit. Akun buku besar internal tidak ditampilkan di sini."
+        title={t.accountPage.title}
+        description={t.accountPage.description}
         actions={
           canOpen ? (
             <Button onClick={() => setFormOpen((open) => !open)}>
@@ -200,18 +205,17 @@ export default function RekeningPage() {
           )}
           <div className="w-56">
             <Select
-              label="Filter Status"
+              label={t.accountPage.filterStatus}
               value={statusFilter}
               onChange={(event) =>
                 setStatusFilter(event.target.value as StatusFilter)
               }
-              options={STATUS_OPTIONS}
+              options={statusOptions}
             />
           </div>
           <p className="pb-2 text-meta text-ink-600">
-            Menampilkan {filteredAccounts.length} dari {accounts.length} rekening
-            di halaman ini. API belum mendukung filter status, jadi penyaringan
-            hanya berlaku per halaman.
+            {t.accountPage.showingPrefix} {filteredAccounts.length}{" "}
+            {t.common.of} {accounts.length} {t.accountPage.showingSuffix}
           </p>
         </CardContent>
         <p
@@ -223,7 +227,7 @@ export default function RekeningPage() {
       </Card>
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat rekening" description={error} />
+        <ErrorState title={t.accountPage.errorTitle} description={error} />
       ) : (
         <Card>
           <CardContent className="p-0">
@@ -237,7 +241,7 @@ export default function RekeningPage() {
                   ? t.accountList.emptyFiltered
                   : statusFilter === "ALL"
                     ? t.accountList.empty
-                    : "Tidak ada rekening dengan status ini pada halaman ini."
+                    : t.accountPage.emptyFilteredStatus
               }
               zebra
             />

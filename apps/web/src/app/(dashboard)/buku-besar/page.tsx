@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, isCrossBranchError, request } from "@/lib/api";
 import type { JournalEntryWithBranch } from "@/lib/operations-types";
 import { formatDateTime } from "@/lib/format";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent } from "@/components/ui/Card";
 import { DataTable, Column } from "@/components/ui/DataTable";
@@ -20,6 +21,7 @@ interface Meta {
 }
 
 export default function BukuBesarPage() {
+  const { t } = useTranslation();
   const [journals, setJournals] = useState<JournalEntryWithBranch[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [page, setPage] = useState(1);
@@ -39,11 +41,11 @@ export default function BukuBesarPage() {
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
       setForbidden(isCrossBranchError(err));
-      setError(err instanceof ApiError ? err.message : "Gagal memuat jurnal.");
+      setError(err instanceof ApiError ? err.message : t.ledger.loadError);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load(page);
@@ -51,36 +53,34 @@ export default function BukuBesarPage() {
 
   const columns: Column<JournalEntryWithBranch>[] = [
     {
-      header: "Nomor Referensi",
+      header: t.ledger.colReference,
       accessorKey: "reference_number",
       isMono: true,
     },
     {
-      header: "Waktu Posting",
+      header: t.ledger.colPostedAt,
       cell: (row) => formatDateTime(row.posted_at),
       isMono: true,
     },
     {
-      header: "Cabang",
+      header: t.common.branch,
       cell: (row) => row.branch_code || "-",
       isMono: true,
     },
-    { header: "Jenis", accessorKey: "transaction_type" },
-    { header: "Keterangan", accessorKey: "description" },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.ledger.colType, accessorKey: "transaction_type" },
+    { header: t.ledger.colDescription, accessorKey: "description" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
   ];
 
   return (
     <>
       <PageHeader
-        title="Buku Besar"
-        description="Audit trail jurnal double-entry. Setiap baris harus seimbang debit dan kredit."
+        title={t.ledger.title}
+        description={t.ledger.description}
       />
       {error && !loading ? (
         <ErrorState
-          title={
-            forbidden ? "Akses lintas cabang ditolak" : "Gagal memuat jurnal"
-          }
+          title={forbidden ? t.ledger.forbiddenTitle : t.ledger.errorTitle}
           description={error}
         />
       ) : (
@@ -91,7 +91,7 @@ export default function BukuBesarPage() {
               data={journals}
               keyExtractor={(row) => row.id}
               loading={loading}
-              emptyMessage="Belum ada jurnal yang diposting."
+              emptyMessage={t.ledger.empty}
               zebra
             />
             {meta && (

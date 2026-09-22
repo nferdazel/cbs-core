@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import {
   BalanceSheet,
@@ -10,6 +10,7 @@ import {
   ReportRow,
   TrialBalanceRow,
 } from "@/lib/types";
+import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -27,14 +28,8 @@ function isoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-const REPORT_OPTIONS = [
-  { value: "trial-balance", label: "Neraca Saldo" },
-  { value: "balance-sheet", label: "Neraca" },
-  { value: "income-statement", label: "Laba Rugi" },
-  { value: "cash-flow", label: "Arus Kas" },
-];
-
 export default function LaporanPage() {
+  const { t } = useTranslation();
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
@@ -51,6 +46,18 @@ export default function LaporanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Jenis laporan disimpan sebagai kunci teknis (trial-balance dll.); hanya
+  // label tampilannya yang diambil dari kamus.
+  const reportOptions = useMemo(
+    () => [
+      { value: "trial-balance", label: t.reports.kindTrialBalance },
+      { value: "balance-sheet", label: t.reports.kindBalanceSheet },
+      { value: "income-statement", label: t.reports.kindIncomeStatement },
+      { value: "cash-flow", label: t.reports.kindCashFlow },
+    ],
+    [t]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,43 +89,43 @@ export default function LaporanPage() {
         setCash(res.data ?? null);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Gagal memuat laporan.");
+      setError(err instanceof ApiError ? err.message : t.reports.loadError);
     } finally {
       setLoading(false);
     }
-  }, [kind, from, to, asOf, reloadKey]);
+  }, [kind, from, to, asOf, reloadKey, t]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const trialColumns: Column<TrialBalanceRow>[] = [
-    { header: "Kode", accessorKey: "account_code", isMono: true },
-    { header: "Nama Akun", accessorKey: "account_name" },
-    { header: "Saldo Normal", accessorKey: "normal_balance" },
+    { header: t.reports.colCode, accessorKey: "account_code", isMono: true },
+    { header: t.reports.colAccountName, accessorKey: "account_name" },
+    { header: t.reports.colNormalBalance, accessorKey: "normal_balance" },
     {
-      header: "Debit",
+      header: t.reports.colDebit,
       type: "money",
       cell: (row) => <MoneyText value={row.total_debit} />,
     },
     {
-      header: "Kredit",
+      header: t.reports.colCredit,
       type: "money",
       cell: (row) => <MoneyText value={row.total_credit} />,
     },
     {
-      header: "Saldo Akhir",
+      header: t.reports.colClosingBalance,
       type: "money",
       cell: (row) => <MoneyText value={row.closing_balance} />,
     },
   ];
 
   const reportColumns: Column<ReportRow>[] = [
-    { header: "Kode", accessorKey: "account_code", isMono: true },
-    { header: "Nama Akun", accessorKey: "account_name" },
-    { header: "Buku", accessorKey: "book" },
+    { header: t.reports.colCode, accessorKey: "account_code", isMono: true },
+    { header: t.reports.colAccountName, accessorKey: "account_name" },
+    { header: t.reports.colBook, accessorKey: "book" },
     {
-      header: "Jumlah",
+      header: t.reports.colAmount,
       type: "money",
       cell: (row) => <MoneyText value={row.amount} />,
     },
@@ -129,50 +136,50 @@ export default function LaporanPage() {
   return (
     <>
       <PageHeader
-        title="Laporan"
-        description="Laporan keuangan dihitung dari jurnal. Pilih jenis dan rentang tanggal."
+        title={t.reports.title}
+        description={t.reports.description}
       />
 
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-end gap-4">
           <div className="w-56">
             <Select
-              label="Jenis Laporan"
+              label={t.reports.reportTypeLabel}
               value={kind}
               onChange={(e) => setKind(e.target.value as ReportKind)}
-              options={REPORT_OPTIONS}
+              options={reportOptions}
             />
           </div>
           {usesRange ? (
             <>
               <div className="w-44">
-                <DateInput label="Dari" value={from} onChange={(e) => setFrom(e.target.value)} />
+                <DateInput label={t.reports.from} value={from} onChange={(e) => setFrom(e.target.value)} />
               </div>
               <div className="w-44">
-                <DateInput label="Sampai" value={to} onChange={(e) => setTo(e.target.value)} />
+                <DateInput label={t.reports.to} value={to} onChange={(e) => setTo(e.target.value)} />
               </div>
             </>
           ) : (
             <div className="w-44">
               <DateInput
-                label="Per Tanggal"
+                label={t.reports.asOf}
                 value={asOf}
                 onChange={(e) => setAsOf(e.target.value)}
               />
             </div>
           )}
           <Button onClick={() => setReloadKey((key) => key + 1)} loading={loading}>
-            Tampilkan
+            {t.reports.show}
           </Button>
         </CardContent>
       </Card>
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat laporan" description={error} />
+        <ErrorState title={t.reports.errorTitle} description={error} />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{REPORT_OPTIONS.find((o) => o.value === kind)?.label}</CardTitle>
+            <CardTitle>{reportOptions.find((o) => o.value === kind)?.label}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading && kind !== "trial-balance" && <LoadingState />}
@@ -183,7 +190,7 @@ export default function LaporanPage() {
                 data={trial ?? []}
                 keyExtractor={(row) => row.account_code}
                 loading={loading}
-                emptyMessage="Tidak ada saldo pada rentang ini."
+                emptyMessage={t.reports.emptyTrial}
                 zebra
               />
             )}
@@ -195,15 +202,15 @@ export default function LaporanPage() {
                   data={income.rows}
                   keyExtractor={(row) => row.account_code}
                   loading={loading}
-                  emptyMessage="Tidak ada mutu pendapatan/beban pada rentang ini."
+                  emptyMessage={t.reports.emptyIncome}
                   zebra
                 />
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: "Total Pendapatan", value: <MoneyText value={income.total_revenue} /> },
-                      { label: "Total Beban", value: <MoneyText value={income.total_expense} /> },
-                      { label: "Laba/Rugi Bersih", value: <MoneyText value={income.net_income} tone={Number(income.net_income) >= 0 ? "credit" : "debit"} /> },
+                      { label: t.reports.totalRevenue, value: <MoneyText value={income.total_revenue} /> },
+                      { label: t.reports.totalExpense, value: <MoneyText value={income.total_expense} /> },
+                      { label: t.reports.netIncome, value: <MoneyText value={income.net_income} tone={Number(income.net_income) >= 0 ? "credit" : "debit"} /> },
                     ]}
                   />
                 </div>
@@ -217,16 +224,16 @@ export default function LaporanPage() {
                   data={balance.rows}
                   keyExtractor={(row) => row.account_code}
                   loading={loading}
-                  emptyMessage="Tidak ada saldo akun."
+                  emptyMessage={t.reports.emptyBalance}
                   zebra
                 />
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: "Total Aset", value: <MoneyText value={balance.total_assets} /> },
-                      { label: "Total Liabilitas", value: <MoneyText value={balance.total_liabilities} /> },
-                      { label: "Total Ekuitas", value: <MoneyText value={balance.total_equity} /> },
-                      { label: "Laba/Rugi Berjalan", value: <MoneyText value={balance.net_income} /> },
+                      { label: t.reports.totalAssets, value: <MoneyText value={balance.total_assets} /> },
+                      { label: t.reports.totalLiabilities, value: <MoneyText value={balance.total_liabilities} /> },
+                      { label: t.reports.totalEquity, value: <MoneyText value={balance.total_equity} /> },
+                      { label: t.reports.netIncomeCurrent, value: <MoneyText value={balance.net_income} /> },
                     ]}
                   />
                 </div>
@@ -240,16 +247,16 @@ export default function LaporanPage() {
                   data={cash.rows}
                   keyExtractor={(row) => row.account_code}
                   loading={loading}
-                  emptyMessage="Tidak ada arus kas pada rentang ini."
+                  emptyMessage={t.reports.emptyCash}
                   zebra
                 />
                 <div className="border-t border-border p-4">
                   <DefinitionList
                     items={[
-                      { label: "Operasi", value: <MoneyText value={cash.operating} /> },
-                      { label: "Investasi", value: <MoneyText value={cash.investing} /> },
-                      { label: "Pendanaan", value: <MoneyText value={cash.financing} /> },
-                      { label: "Perubahan Bersih", value: <MoneyText value={cash.net_change} /> },
+                      { label: t.reports.operating, value: <MoneyText value={cash.operating} /> },
+                      { label: t.reports.investing, value: <MoneyText value={cash.investing} /> },
+                      { label: t.reports.financing, value: <MoneyText value={cash.financing} /> },
+                      { label: t.reports.netChange, value: <MoneyText value={cash.net_change} /> },
                     ]}
                   />
                 </div>
@@ -262,7 +269,7 @@ export default function LaporanPage() {
               !balance &&
               !cash && (
                 <div className="px-4 py-8 text-center text-body text-ink-600">
-                  Tidak ada data laporan.
+                  {t.reports.emptyReport}
                 </div>
               )}
           </CardContent>

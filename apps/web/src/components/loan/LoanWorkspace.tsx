@@ -12,6 +12,8 @@ import type {
   OJKCollectibility,
   ProfitType,
 } from "@/lib/operations-types";
+import { useTranslation } from "@/i18n/context";
+import type { Dictionary } from "@/i18n/dictionaries/id";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -35,44 +37,72 @@ interface Meta {
   total_pages: number;
 }
 
-const COLLECTIBILITY_META: Record<
+// Kolektibilitas adalah kunci teknis (1_LANCAR dll.); label & warnanya dari sini,
+// teksnya dari kamus.
+const COLLECTIBILITY_VARIANT: Record<
   OJKCollectibility,
-  { label: string; variant: "credit" | "accent" | "debit" }
+  "credit" | "accent" | "debit"
 > = {
-  "1_LANCAR": { label: "1 - Lancar", variant: "credit" },
-  "2_DPK": { label: "2 - Dalam Perhatian Khusus", variant: "accent" },
-  "3_KURANG_LANCAR": { label: "3 - Kurang Lancar", variant: "debit" },
-  "4_DIRAGUKAN": { label: "4 - Diragukan", variant: "debit" },
-  "5_MACET": { label: "5 - Macet", variant: "debit" },
+  "1_LANCAR": "credit",
+  "2_DPK": "accent",
+  "3_KURANG_LANCAR": "debit",
+  "4_DIRAGUKAN": "debit",
+  "5_MACET": "debit",
 };
 
+function collectibilityLabel(
+  t: Dictionary["loans"],
+  value: OJKCollectibility
+): string {
+  switch (value) {
+    case "1_LANCAR":
+      return t.collect1;
+    case "2_DPK":
+      return t.collect2;
+    case "3_KURANG_LANCAR":
+      return t.collect3;
+    case "4_DIRAGUKAN":
+      return t.collect4;
+    case "5_MACET":
+      return t.collect5;
+    default:
+      return value;
+  }
+}
+
 function CollectibilityBadge({ value }: { value: OJKCollectibility }) {
-  const meta = COLLECTIBILITY_META[value];
-  if (!meta) return <Badge variant="outline">{value}</Badge>;
-  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+  const { t } = useTranslation();
+  const variant = COLLECTIBILITY_VARIANT[value];
+  const label = collectibilityLabel(t.loans, value);
+  if (!variant) return <Badge variant="outline">{label}</Badge>;
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
-function profitLabel(type: ProfitType): string {
-  if (type === "MARGIN") return "Margin";
-  if (type === "BAGI_HASIL") return "Bagi Hasil";
-  return "Bunga";
+// Skema imbal hasil produk adalah kunci teknis (MURABAHAH dll.); labelnya dari kamus.
+function profitLabel(t: Dictionary["loans"], type: ProfitType): string {
+  if (type === "MARGIN") return t.profitMargin;
+  if (type === "BAGI_HASIL") return t.profitBagiHasil;
+  return t.profitInterest;
 }
 
-function schemeLabel(product?: BankingProduct): string {
-  if (!product) return "Tidak diketahui";
+function schemeLabel(
+  t: Dictionary["loans"],
+  product?: BankingProduct
+): string {
+  if (!product) return t.unknown;
   switch (product.profit_scheme) {
     case "MURABAHAH":
-      return "Murabahah (margin)";
+      return t.schemeMurabahah;
     case "MUDHARABAH":
-      return "Mudharabah (bagi hasil)";
+      return t.schemeMudharabah;
     case "MUSYARAKAH":
-      return "Musyarakah (bagi hasil)";
+      return t.schemeMusyarakah;
     case "IJARAH":
-      return "Ijarah (sewa)";
+      return t.schemeIjarah;
     case "WADIAH":
-      return "Wadiah";
+      return t.schemeWadiah;
     default:
-      return "Bunga (konvensional)";
+      return t.schemeInterest;
   }
 }
 
@@ -90,11 +120,12 @@ function ActionFeedback({
 }: {
   feedback: { title: string; reference: string; description?: string };
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-credit-700/30 bg-credit-50 px-4 py-3">
       <p className="text-title font-medium text-credit-700">{feedback.title}</p>
       <p className="mt-1 text-body text-ink-900">
-        Referensi:{" "}
+        {t.loans.referenceLabel}{" "}
         <span className="font-mono">{feedback.reference}</span>
       </p>
       {feedback.description && (
@@ -119,6 +150,7 @@ function LoanApplyForm({
   onApplied,
   onClose,
 }: ApplyFormProps) {
+  const { t } = useTranslation();
   const syariah = book === "SYARIAH";
   const [customerId, setCustomerId] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -168,11 +200,11 @@ function LoanApplyForm({
   const selectedProduct = products.find((p) => p.id === productId);
 
   const validate = (): string | null => {
-    if (!customerId) return "Nasabah wajib dipilih.";
-    if (!accountId) return "Rekening pencairan wajib dipilih.";
-    if (!productId) return "Produk wajib dipilih.";
-    if (principal <= 0) return "Pokok harus lebih besar dari nol.";
-    if (termMonths <= 0) return "Jangka waktu minimal 1 bulan.";
+    if (!customerId) return t.loans.requiredCustomer;
+    if (!accountId) return t.loans.requiredAccount;
+    if (!productId) return t.loans.requiredProduct;
+    if (principal <= 0) return t.loans.requiredPrincipal;
+    if (termMonths <= 0) return t.loans.requiredTerm;
     return null;
   };
 
@@ -209,7 +241,7 @@ function LoanApplyForm({
       setConfirmOpen(false);
     } catch (err) {
       setFormError(
-        err instanceof ApiError ? err.message : "Pengajuan kredit gagal diproses."
+        err instanceof ApiError ? err.message : t.loans.applyError
       );
       setConfirmOpen(false);
     } finally {
@@ -219,7 +251,7 @@ function LoanApplyForm({
 
   const customerOptions = customers.map((c) => ({
     value: c.id,
-    label: `${c.cif_number} — ${c.full_name}`,
+    label: `${c.cif_number} - ${c.full_name}`,
   }));
   const accountOptions = accounts.map((a) => ({
     value: a.id,
@@ -227,42 +259,44 @@ function LoanApplyForm({
   }));
   const productOptions = products.map((p) => ({
     value: p.id,
-    label: `${p.code} — ${p.name}`,
+    label: `${p.code} - ${p.name}`,
   }));
 
   return (
     <Card className="mb-4">
       <CardHeader>
-        <CardTitle>Pengajuan {syariah ? "Pembiayaan" : "Kredit"} Baru</CardTitle>
+        <CardTitle>
+          {syariah ? t.loans.applyTitleFinancing : t.loans.applyTitleLoan}
+        </CardTitle>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Tutup
+          {t.common.close}
         </Button>
       </CardHeader>
       <CardContent>
         <form onSubmit={openConfirm} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Select
-              label="Nasabah"
+              label={t.loans.customer}
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
               options={customerOptions}
-              placeholder="Pilih nasabah"
+              placeholder={t.loans.selectCustomer}
             />
             <Select
-              label="Rekening Pencairan"
+              label={t.loans.disbursementAccount}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               options={accountOptions}
               placeholder={
                 !customerId
-                  ? "Pilih nasabah dahulu"
+                  ? t.loans.selectCustomerFirst
                   : accountsLoading
-                    ? "Memuat rekening..."
+                    ? t.loans.loadingAccounts
                     : accountsError
-                      ? "Gagal memuat rekening"
+                      ? t.loans.accountsLoadError
                       : accountOptions.length === 0
-                        ? "Nasabah belum punya rekening"
-                        : "Pilih rekening"
+                        ? t.loans.noAccounts
+                        : t.loans.selectAccount
               }
               disabled={!customerId || accountsLoading}
             />
@@ -270,18 +304,18 @@ function LoanApplyForm({
 
           <div className="grid grid-cols-2 gap-4">
             <Select
-              label="Produk"
+              label={t.loans.product}
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
               options={productOptions}
               placeholder={
                 productOptions.length === 0
-                  ? "Tidak ada produk aktif"
-                  : "Pilih produk"
+                  ? t.loans.noActiveProducts
+                  : t.loans.selectProduct
               }
             />
             <Input
-              label="Jangka Waktu (bulan)"
+              label={t.loans.termMonths}
               type="number"
               min={1}
               value={termMonths}
@@ -292,31 +326,33 @@ function LoanApplyForm({
 
           {selectedProduct && (
             <p className="text-meta text-ink-600">
-              Rentang produk:{" "}
-              <MoneyText value={selectedProduct.min_amount} /> s.d.{" "}
-              <MoneyText value={selectedProduct.max_amount} />, tenor{" "}
+              {t.loans.productRange}{" "}
+              <MoneyText value={selectedProduct.min_amount} />{" "}
+              {t.loans.toRange}{" "}
+              <MoneyText value={selectedProduct.max_amount} />,{" "}
+              {t.loans.termLabel}{" "}
               <span className="font-mono">
                 {selectedProduct.min_term_months}-{selectedProduct.max_term_months}
               </span>{" "}
-              bulan.
+              {t.loans.termSuffix}.
             </p>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <CurrencyInput
-              label="Pokok"
+              label={t.loans.principal}
               value={principal}
               onChange={setPrincipal}
             />
             <CurrencyInput
-              label={syariah ? "Margin / Proyeksi Bagi Hasil" : "Margin (opsional)"}
+              label={syariah ? t.loans.marginSyariah : t.loans.marginOptional}
               value={margin}
               onChange={setMargin}
             />
           </div>
 
           <Input
-            label="Tujuan Penggunaan"
+            label={t.loans.purpose}
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
           />
@@ -327,34 +363,36 @@ function LoanApplyForm({
             </p>
           )}
 
-          <Button type="submit">Lanjut Konfirmasi</Button>
+          <Button type="submit">{t.loans.continueButton}</Button>
         </form>
       </CardContent>
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Konfirmasi Pengajuan"
+        title={t.loans.confirmApplyTitle}
         loading={submitting}
-        confirmLabel="Kirim Pengajuan"
+        confirmLabel={t.loans.confirmApplyButton}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={submit}
         description={
           <>
-            <p>Pengajuan akan dikirim untuk persetujuan pejabat berwenang.</p>
+            <p>{t.loans.confirmApplyDesc}</p>
             <dl className="mt-2 space-y-1">
               <div className="flex justify-between">
-                <dt className="text-ink-600">Produk</dt>
+                <dt className="text-ink-600">{t.loans.labelProduct}</dt>
                 <dd>{selectedProduct?.name ?? "-"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-ink-600">Pokok</dt>
+                <dt className="text-ink-600">{t.loans.labelPrincipal}</dt>
                 <dd>
                   <MoneyText value={principal} />
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-ink-600">Jangka waktu</dt>
-                <dd className="font-mono">{termMonths} bulan</dd>
+                <dt className="text-ink-600">{t.loans.labelTerm}</dt>
+                <dd className="font-mono">
+                  {termMonths} {t.loans.termSuffix}
+                </dd>
               </div>
             </dl>
           </>
@@ -375,12 +413,18 @@ interface DetailPanelProps {
 
 type ActionKind = "approve" | "reject" | "disburse" | "pay";
 
-const ACTION_LABEL: Record<ActionKind, string> = {
-  approve: "Setujui Kredit",
-  reject: "Tolak Kredit",
-  disburse: "Cairkan Kredit",
-  pay: "Bayar Angsuran",
-};
+function actionLabel(t: Dictionary["loans"], kind: ActionKind): string {
+  switch (kind) {
+    case "approve":
+      return t.actionApprove;
+    case "reject":
+      return t.actionReject;
+    case "disburse":
+      return t.actionDisburse;
+    default:
+      return t.actionPay;
+  }
+}
 
 function LoanDetailPanel({
   loanId,
@@ -390,6 +434,7 @@ function LoanDetailPanel({
   onClose,
   onChanged,
 }: DetailPanelProps) {
+  const { t } = useTranslation();
   const syariah = book === "SYARIAH";
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -413,12 +458,12 @@ function LoanDetailPanel({
       setLoan(unwrap(response));
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Gagal memuat detail kredit."
+        err instanceof ApiError ? err.message : t.loans.detailLoadError
       );
     } finally {
       setLoading(false);
     }
-  }, [loanId]);
+  }, [loanId, t]);
 
   useEffect(() => {
     load();
@@ -459,9 +504,9 @@ function LoanDetailPanel({
         );
         const schedule = unwrap(response);
         setFeedback({
-          title: "Pembayaran angsuran tercatat",
-          reference: `Angsuran ke-${schedule.installment_no}`,
-          description: `Status ${schedule.status}.`,
+          title: t.loans.paymentRecordedTitle,
+          reference: `${t.loans.installmentRefPrefix}${schedule.installment_no}`,
+          description: `${t.loans.statusDescPrefix} ${schedule.status}${t.loans.statusDescSuffix}`,
         });
       } else {
         const response = await request<Loan>(`/loans/${loan.id}/${pending}`, {
@@ -470,9 +515,9 @@ function LoanDetailPanel({
         });
         const updated = unwrap(response);
         setFeedback({
-          title: ACTION_LABEL[pending],
+          title: actionLabel(t.loans, pending),
           reference: updated.loan_number,
-          description: `Status sekarang ${updated.status}.`,
+          description: `${t.loans.currentStatusPrefix} ${updated.status}${t.loans.statusDescSuffix}`,
         });
       }
       setPending(null);
@@ -480,7 +525,7 @@ function LoanDetailPanel({
       onChanged();
     } catch (err) {
       setActionError(
-        err instanceof ApiError ? err.message : "Tindakan gagal diproses."
+        err instanceof ApiError ? err.message : t.loans.actionFailed
       );
       setPending(null);
     } finally {
@@ -489,49 +534,49 @@ function LoanDetailPanel({
   };
 
   const scheduleColumns: Column<LoanSchedule>[] = [
-    { header: "Ke", accessorKey: "installment_no", isMono: true },
+    { header: t.loans.colInstallmentNo, accessorKey: "installment_no", isMono: true },
     {
-      header: "Jatuh Tempo",
+      header: t.loans.colDueDate,
       cell: (row) => formatDate(row.due_date),
       isMono: true,
     },
     {
-      header: "Pokok",
+      header: t.loans.principal,
       type: "money",
       cell: (row) => <MoneyText value={row.principal_amount} />,
     },
     {
       header: loan?.schedules?.[0]
-        ? profitLabel(loan.schedules[0].profit_type)
+        ? profitLabel(t.loans, loan.schedules[0].profit_type)
         : syariah
-          ? "Imbal Hasil"
-          : "Bunga",
+          ? t.loans.colProfitSyariah
+          : t.loans.colProfitConventional,
       type: "money",
       cell: (row) => <MoneyText value={row.profit_amount} />,
     },
     {
-      header: "Total",
+      header: t.loans.colTotal,
       type: "money",
       cell: (row) => <MoneyText value={row.total_installment} />,
     },
     {
-      header: "Dibayar Pokok",
+      header: t.loans.colPaidPrincipal,
       type: "money",
       cell: (row) => <MoneyText value={row.paid_principal} />,
     },
     {
-      header: "Dibayar Imbal",
+      header: t.loans.colPaidProfit,
       type: "money",
       cell: (row) => <MoneyText value={row.paid_profit} />,
     },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
   ];
 
   if (loading) {
     return (
       <Card className="mt-4">
         <CardContent>
-          <LoadingState label="Memuat detail kredit..." />
+          <LoadingState label={t.loans.detailLoading} />
         </CardContent>
       </Card>
     );
@@ -541,11 +586,11 @@ function LoanDetailPanel({
     return (
       <div className="mt-4">
         <ErrorState
-          title="Gagal memuat detail kredit"
-          description={error ?? "Kredit tidak ditemukan."}
+          title={t.loans.detailErrorTitle}
+          description={error ?? t.loans.notFound}
           action={
             <Button variant="secondary" onClick={onClose}>
-              Tutup
+              {t.common.close}
             </Button>
           }
         />
@@ -559,10 +604,11 @@ function LoanDetailPanel({
     <Card className="mt-4">
       <CardHeader>
         <CardTitle>
-          Detail Kredit <span className="font-mono">{loan.loan_number}</span>
+          {t.loans.detailTitle}{" "}
+          <span className="font-mono">{loan.loan_number}</span>
         </CardTitle>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Tutup
+          {t.common.close}
         </Button>
       </CardHeader>
       <CardContent>
@@ -575,40 +621,44 @@ function LoanDetailPanel({
 
         <DefinitionList
           items={[
-            { label: "Nasabah", value: customerLabel(loan.customer_id, customerNames) },
-            { label: "Produk", value: product ? `${product.code} — ${product.name}` : "-" },
-            { label: "Status", value: loan.status },
+            { label: t.loans.customer, value: customerLabel(loan.customer_id, customerNames) },
+            { label: t.loans.labelProduct, value: product ? `${product.code} - ${product.name}` : "-" },
+            { label: t.common.status, value: loan.status },
             {
-              label: "Skema Imbal Hasil",
-              value: schemeLabel(product),
+              label: t.loans.labelScheme,
+              value: schemeLabel(t.loans, product),
             },
-            { label: "Pokok", value: <MoneyText value={loan.principal_amount} /> },
+            { label: t.loans.principal, value: <MoneyText value={loan.principal_amount} /> },
             {
-              label: "Sisa Pokok",
+              label: t.loans.labelRemainingPrincipal,
               value: <MoneyText value={loan.outstanding_principal} />,
             },
             {
-              label: "Total Kewajiban",
+              label: t.loans.labelTotalPayable,
               value: <MoneyText value={loan.total_payable} />,
             },
             {
-              label: "Angsuran per Bulan",
+              label: t.loans.labelMonthlyInstallment,
               value: <MoneyText value={loan.monthly_installment} />,
             },
-            { label: "Jangka Waktu", value: `${loan.term_months} bulan`, isMono: true },
+            {
+              label: t.loans.labelTerm,
+              value: `${loan.term_months} ${t.loans.termSuffix}`,
+              isMono: true,
+            },
             syariah
               ? {
-                  label: "Margin",
+                  label: t.loans.labelMargin,
                   value: <MoneyText value={loan.margin_amount} />,
                 }
               : {
-                  label: "Suku Bunga per Tahun",
+                  label: t.loans.labelInterestAnnual,
                   value: formatRate(loan.interest_rate_annual),
                   isMono: true,
                 },
             syariah && Number(loan.profit_sharing_ratio) > 0
               ? {
-                  label: "Nisbah Bagi Hasil",
+                  label: t.loans.labelProfitSharing,
                   value: formatRate(
                     String(Number(loan.profit_sharing_ratio) * 100)
                   ),
@@ -616,11 +666,11 @@ function LoanDetailPanel({
                 }
               : null,
             {
-              label: "Kolektibilitas",
+              label: t.loans.labelCollectibility,
               value: <CollectibilityBadge value={loan.collectibility} />,
             },
-            { label: "DPD", value: `${loan.dpd} hari`, isMono: true },
-            { label: "Tujuan", value: loan.purpose || "-" },
+            { label: t.loans.labelDpd, value: `${loan.dpd} ${t.loans.dpdSuffix}`, isMono: true },
+            { label: t.loans.labelPurpose, value: loan.purpose || "-" },
           ].filter((item) => item !== null)}
         />
 
@@ -628,42 +678,42 @@ function LoanDetailPanel({
           {loan.status === "PENDING_APPROVAL" && (
             <>
               <Button size="sm" onClick={() => openAction("approve")}>
-                Setujui
+                {t.loans.approveButton}
               </Button>
               <Button
                 size="sm"
                 variant="danger"
                 onClick={() => openAction("reject")}
               >
-                Tolak
+                {t.loans.rejectButton}
               </Button>
             </>
           )}
           {loan.status === "APPROVED" && (
             <Button size="sm" onClick={() => openAction("disburse")}>
-              Cairkan
+              {t.loans.disburseButton}
             </Button>
           )}
           {/* Perjanjian kredit dapat dicetak kapan pun selama kredit ada di sistem. */}
           <PrintButton
             url={`/documents/loan-agreement/${encodeURIComponent(loan.id)}`}
-            label="Cetak Perjanjian"
+            label={t.loans.printAgreement}
           />
           {canPay && (
             <>
               <div className="w-72">
                 <Select
-                  label="Angsuran yang Dibayar"
+                  label={t.loans.paidInstallmentLabel}
                   value={installmentNo}
                   onChange={(e) => setInstallmentNo(e.target.value)}
                   options={unpaidSchedules.map((s) => ({
                     value: String(s.installment_no),
-                    label: `Ke-${s.installment_no} — jatuh ${formatDate(s.due_date)}`,
+                    label: `${t.loans.installmentOptionPrefix}${s.installment_no}${t.loans.installmentDuePrefix}${formatDate(s.due_date)}`,
                   }))}
                   placeholder={
                     unpaidSchedules.length === 0
-                      ? "Semua angsuran sudah lunas"
-                      : "Pilih angsuran"
+                      ? t.loans.allPaid
+                      : t.loans.selectInstallment
                   }
                 />
               </div>
@@ -673,7 +723,7 @@ function LoanDetailPanel({
                   onClick={() => openAction("pay")}
                   disabled={!installmentNo}
                 >
-                  Bayar Angsuran
+                  {t.loans.payButton}
                 </Button>
               </div>
             </>
@@ -682,13 +732,13 @@ function LoanDetailPanel({
 
         <div>
           <h4 className="mb-2 text-title font-medium text-ink-900">
-            Jadwal Angsuran
+            {t.loans.scheduleTitle}
           </h4>
           <DataTable
             columns={scheduleColumns}
             data={loan.schedules ?? []}
             keyExtractor={(row) => row.id}
-            emptyMessage="Jadwal angsuran tidak dikembalikan oleh API."
+            emptyMessage={t.loans.emptySchedules}
             zebra
           />
         </div>
@@ -696,38 +746,40 @@ function LoanDetailPanel({
 
       <ConfirmDialog
         open={pending !== null}
-        title={pending ? ACTION_LABEL[pending] : "Konfirmasi"}
+        title={pending ? actionLabel(t.loans, pending) : t.common.confirm}
         destructive={pending === "reject"}
         loading={submitting}
-        confirmLabel={pending ? ACTION_LABEL[pending] : "Konfirmasi"}
+        confirmLabel={pending ? actionLabel(t.loans, pending) : t.common.confirm}
         onCancel={() => setPending(null)}
         onConfirm={runAction}
         description={
           pending === "disburse" ? (
             <>
               <p>
-                Dana sebesar <MoneyText value={loan.principal_amount} /> akan
-                dicairkan ke rekening nasabah dan jurnal pencairan diposting.
+                {t.loans.disburseDescPrefix}{" "}
+                <MoneyText value={loan.principal_amount} />{" "}
+                {t.loans.disburseDescSuffix}
               </p>
-              <p className="text-meta">Tindakan ini tidak dapat dibatalkan.</p>
+              <p className="text-meta">{t.loans.irreversible}</p>
             </>
           ) : pending === "pay" ? (
             <>
               <p>
-                Pembayaran angsuran ke-{installmentNo || "-"} akan dicatat dan
-                jurnal diterbitkan.
+                {t.loans.payDescPrefix}
+                {installmentNo || "-"} {t.loans.payDescSuffix}
               </p>
-              <p className="text-meta">Pastikan angsuran yang dipilih benar.</p>
+              <p className="text-meta">{t.loans.payConfirmCheck}</p>
             </>
           ) : pending === "reject" ? (
             <p>
-              Pengajuan kredit {loan.loan_number} akan ditolak. Status menjadi
-              REJECTED.
+              {t.loans.rejectDescPrefix} {loan.loan_number}{" "}
+              {t.loans.rejectDescSuffix}
             </p>
           ) : (
             <p>
-              Pengajuan kredit <span className="font-mono">{loan.loan_number}</span>{" "}
-              akan disetujui. Status menjadi APPROVED dan siap dicairkan.
+              {t.loans.approveDescPrefix}{" "}
+              <span className="font-mono">{loan.loan_number}</span>{" "}
+              {t.loans.approveDescSuffix}
             </p>
           )
         }
@@ -745,6 +797,7 @@ export interface LoanWorkspaceProps {
  * /pembiayaan memakai buku SYARIAH. Endpoint sama: /loans.
  */
 export function LoanWorkspace({ book }: LoanWorkspaceProps) {
+  const { t } = useTranslation();
   const syariah = book === "SYARIAH";
   const [loans, setLoans] = useState<Loan[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -772,12 +825,12 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
       if (response.meta) setMeta(response.meta as Meta);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Gagal memuat daftar kredit."
+        err instanceof ApiError ? err.message : t.loans.listLoadError
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadLoans(page);
@@ -822,33 +875,33 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
   }, [loans, productsReady, productById, book]);
 
   const columns: Column<Loan>[] = [
-    { header: "Nomor Kredit", accessorKey: "loan_number", isMono: true },
+    { header: t.loans.colLoanNumber, accessorKey: "loan_number", isMono: true },
     {
-      header: "Nasabah",
+      header: t.loans.customer,
       cell: (row) => customerLabel(row.customer_id, customerNames),
     },
     {
-      header: "Pokok",
+      header: t.loans.principal,
       type: "money",
       cell: (row) => <MoneyText value={row.principal_amount} />,
     },
     {
-      header: "Sisa Pokok",
+      header: t.loans.labelRemainingPrincipal,
       type: "money",
       cell: (row) => <MoneyText value={row.outstanding_principal} />,
     },
-    { header: "Status", accessorKey: "status", type: "status" },
+    { header: t.common.status, accessorKey: "status", type: "status" },
     ...(syariah
       ? [
           {
-            header: "Skema Imbal Hasil",
+            header: t.loans.labelScheme,
             cell: (row: Loan) =>
-              schemeLabel(row.product_id ? productById[row.product_id] : undefined),
+              schemeLabel(t.loans, row.product_id ? productById[row.product_id] : undefined),
           } as Column<Loan>,
         ]
       : []),
     {
-      header: "Kolektibilitas",
+      header: t.loans.labelCollectibility,
       cell: (row) => <CollectibilityBadge value={row.collectibility} />,
     },
     {
@@ -859,7 +912,7 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
           variant="secondary"
           onClick={() => setSelectedId(row.id)}
         >
-          Detail
+          {t.loans.detailButton}
         </Button>
       ),
     },
@@ -883,22 +936,21 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
       )}
 
       {error && !loading ? (
-        <ErrorState title="Gagal memuat kredit" description={error} />
+        <ErrorState title={t.loans.errorTitle} description={error} />
       ) : (
         <Card>
           <CardHeader>
             <CardTitle>
-              Daftar {syariah ? "Pembiayaan" : "Kredit"}
+              {syariah ? t.loans.listTitleSyariah : t.loans.listTitleConventional}
             </CardTitle>
             <Button size="sm" onClick={() => setFormOpen((open) => !open)}>
-              Ajukan Baru
+              {t.loans.applyButton}
             </Button>
           </CardHeader>
           <CardContent className="p-0">
             {syariah && productsReady && (
               <p className="border-b border-border px-4 py-2 text-meta text-ink-600">
-                Data difilter di sisi klien ke produk buku SYARIAH karena
-                /loans belum menyediakan filter buku.
+                {t.loans.syariahFilterNote}
               </p>
             )}
             <DataTable
@@ -908,8 +960,8 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
               loading={loading}
               emptyMessage={
                 syariah
-                  ? "Belum ada pembiayaan syariah pada halaman ini."
-                  : "Belum ada kredit."
+                  ? t.loans.emptySyariah
+                  : t.loans.emptyConventional
               }
               zebra
             />

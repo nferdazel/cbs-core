@@ -101,7 +101,7 @@ export function AccountOpening({
         if (cancelled) return;
         setResults([]);
         setSearchError(
-          err instanceof ApiError ? err.message : "Pencarian nasabah gagal."
+          err instanceof ApiError ? err.message : t.accountOpening.searchError
         );
       } finally {
         if (!cancelled) setSearching(false);
@@ -132,7 +132,7 @@ export function AccountOpening({
       .catch((err) => {
         if (cancelled) return;
         setProductError(
-          err instanceof ApiError ? err.message : "Gagal memuat daftar produk."
+          err instanceof ApiError ? err.message : t.accountOpening.productLoadError
         );
         setProductForbidden(err instanceof ApiError && err.status === 403);
       })
@@ -184,7 +184,7 @@ export function AccountOpening({
       onOpened?.(account);
     } catch (err) {
       setFormError(
-        err instanceof ApiError ? err.message : "Pembukaan rekening gagal."
+        err instanceof ApiError ? err.message : t.accountOpening.openError
       );
       setConfirmOpen(false);
     } finally {
@@ -369,7 +369,7 @@ export function AccountOpening({
                 label={t.accountOpening.currency}
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value)}
-                options={[{ value: "IDR", label: "IDR - Rupiah" }]}
+                options={[{ value: "IDR", label: t.accountOpening.currencyIdr }]}
                 helperText={t.accountOpening.currencyHint}
               />
             </div>

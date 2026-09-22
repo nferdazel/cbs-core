@@ -1,5 +1,6 @@
 import React from "react";
 import { Badge, BadgeProps } from "./Badge";
+import { useTranslation } from "@/i18n/context";
 
 type StatusTone = NonNullable<BadgeProps["variant"]>;
 
@@ -36,8 +37,9 @@ export interface StatusBadgeProps {
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+  const { t } = useTranslation();
   if (!status) {
-    return <Badge variant="outline">TIDAK DIKETAHUI</Badge>;
+    return <Badge variant="outline">{t.common.unknown}</Badge>;
   }
   const tone = STATUS_TONE[status] ?? "outline";
   return <Badge variant={tone}>{status}</Badge>;

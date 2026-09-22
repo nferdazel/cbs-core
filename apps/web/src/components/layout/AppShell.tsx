@@ -4,6 +4,7 @@ import React from "react";
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { LoadingState } from "@/components/ui/States";
 
 /**
@@ -12,6 +13,7 @@ import { LoadingState } from "@/components/ui/States";
  */
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, ready, logout } = useAuth();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen min-w-[1024px] bg-canvas">
@@ -21,7 +23,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         <main className="min-w-0 flex-1">
           <div className="mx-auto max-w-[1440px] p-6">
             {!ready ? (
-              <LoadingState label="Memeriksa sesi..." />
+              <LoadingState label={t.common.checkingSession} />
             ) : user ? (
               children
             ) : null}

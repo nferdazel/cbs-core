@@ -11,6 +11,8 @@ import type {
   SystemBusinessDate,
 } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
+import type { Dictionary } from "@/i18n/dictionaries/id";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -27,62 +29,21 @@ type BatchKind = "eod" | "eom" | "eoy";
 /** Permission `system:config` (domain.RolePermissions) hanya dimiliki SUPERADMIN. */
 const CLOSING_ROLE = "SUPERADMIN";
 
-function bookLabel(book: EOYBookResult["book"]): string {
-  if (book === "SYARIAH") return "Syariah";
-  if (book === "CONVENTIONAL") return "Konvensional";
+// Buku adalah kunci teknis (CONVENTIONAL/SYARIAH); hanya label tampilannya dari kamus.
+function bookLabel(t: Dictionary["dayClose"], book: EOYBookResult["book"]): string {
+  if (book === "SYARIAH") return t.bookSyariah;
+  if (book === "CONVENTIONAL") return t.bookConventional;
   return book;
 }
 
-const BOOK_COLUMNS: Column<EOYBookResult>[] = [
-  { header: "Buku", cell: (row) => bookLabel(row.book) },
-  {
-    header: "Status",
-    cell: (row) =>
-      row.already_closed ? (
-        <Badge variant="accent">Sudah ditutup sebelumnya</Badge>
-      ) : (
-        <Badge variant="credit">Ditutup</Badge>
-      ),
-  },
-  {
-    header: "Pendapatan Ditutup",
-    type: "money",
-    cell: (row) => <MoneyText value={row.total_revenue_closed} />,
-  },
-  {
-    header: "Beban Ditutup",
-    type: "money",
-    cell: (row) => <MoneyText value={row.total_expense_closed} />,
-  },
-  {
-    header: "Laba Ditahan",
-    type: "money",
-    cell: (row) => (
-      <MoneyText
-        value={row.net_retained_earnings}
-        tone={Number(row.net_retained_earnings) < 0 ? "debit" : "default"}
-      />
-    ),
-  },
-  {
-    header: "Akun Laba Ditahan",
-    cell: (row) => (
-      <span className="font-mono">{row.retained_earnings_coa_code || "-"}</span>
-    ),
-  },
-  {
-    header: "Ref Jurnal",
-    cell: (row) => (
-      <span className="font-mono">{row.closing_journal_ref || "-"}</span>
-    ),
-  },
-];
-
 /** Nama pihak yang lebih tinggi pada perbandingan bayangan (domain.CKPNLarger). */
-function ckpnShadowHigherLabel(higher: string): string {
-  if (higher === "PPKA") return "PPKA lebih tinggi";
-  if (higher === "CKPN") return "CKPN lebih tinggi";
-  if (higher === "SAMA") return "Keduanya sama";
+function ckpnShadowHigherLabel(
+  t: Dictionary["dayClose"],
+  higher: string
+): string {
+  if (higher === "PPKA") return t.higherPpka;
+  if (higher === "CKPN") return t.higherCkpn;
+  if (higher === "SAMA") return t.higherSame;
   return higher || "-";
 }
 
@@ -92,14 +53,13 @@ function ckpnShadowHigherLabel(higher: string): string {
  * laporan final.
  */
 function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
+  const { t } = useTranslation();
   return (
     <Card className="mb-4 border-accent-600/40">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>Simulasi CKPN (Mode Bayangan)</CardTitle>
-          <Badge variant="accent">
-            Mode bayangan · bukan kewajiban akuntansi · modal inti belum dikurangi
-          </Badge>
+          <CardTitle>{t.dayClose.ckpnTitle}</CardTitle>
+          <Badge variant="accent">{t.dayClose.ckpnBadge}</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -111,12 +71,12 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
         <DefinitionList
           items={[
             {
-              label: "Kredit Diproses",
+              label: t.dayClose.ckpnProcessed,
               value: eod.ckpn_shadow_processed,
               isMono: true,
             },
             {
-              label: "Kredit Gagal",
+              label: t.dayClose.ckpnFailed,
               value: (
                 <span
                   className={
@@ -131,20 +91,20 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
               isMono: true,
             },
             {
-              label: "Total PPKA",
+              label: t.dayClose.ckpnTotalPpka,
               value: <MoneyText value={eod.ckpn_shadow_total_ppka} />,
             },
             {
-              label: "Total CKPN (Bayangan)",
+              label: t.dayClose.ckpnTotalCkpn,
               value: <MoneyText value={eod.ckpn_shadow_total_ckpn} />,
             },
             {
-              label: "Selisih (PPKA - CKPN)",
+              label: t.dayClose.ckpnDifference,
               value: <MoneyText value={eod.ckpn_shadow_difference} />,
             },
             {
-              label: "Nilai Lebih Tinggi",
-              value: ckpnShadowHigherLabel(eod.ckpn_shadow_higher),
+              label: t.dayClose.ckpnHigher,
+              value: ckpnShadowHigherLabel(t.dayClose, eod.ckpn_shadow_higher),
             },
           ]}
         />
@@ -152,7 +112,7 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
           eod.ckpn_shadow_assumptions.length > 0 && (
             <div className="mt-4">
               <p className="mb-2 text-meta font-medium uppercase tracking-wide text-ink-600">
-                Asumsi Perhitungan
+                {t.dayClose.assumptions}
               </p>
               <ul className="list-disc space-y-1 pl-5 text-body text-ink-900">
                 {eod.ckpn_shadow_assumptions.map((assumption, index) => (
@@ -168,6 +128,7 @@ function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
 
 export default function TutupHariPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const canRun = user?.role === CLOSING_ROLE;
 
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(
@@ -196,12 +157,12 @@ export default function TutupHariPage() {
       setDateError(
         err instanceof ApiError
           ? err.message
-          : "Gagal memuat tanggal bisnis sistem."
+          : t.dayClose.dateError
       );
     } finally {
       setDateLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadBusinessDate();
@@ -237,7 +198,7 @@ export default function TutupHariPage() {
       setActionError(
         err instanceof ApiError
           ? err.message
-          : "Proses tutup gagal dijalankan."
+          : t.dayClose.actionError
       );
       setConfirmKind(null);
     } finally {
@@ -247,23 +208,68 @@ export default function TutupHariPage() {
 
   const confirmTitle =
     confirmKind === "eod"
-      ? "Jalankan Tutup Hari (EOD)"
+      ? t.dayClose.confirmEodTitle
       : confirmKind === "eom"
-        ? "Jalankan Tutup Bulan (EOM)"
-        : "Jalankan Tutup Tahun (EOY)";
+        ? t.dayClose.confirmEomTitle
+        : t.dayClose.confirmEoyTitle;
 
   const confirmLabel =
     confirmKind === "eod"
-      ? "Jalankan Tutup Hari"
+      ? t.dayClose.confirmEodLabel
       : confirmKind === "eom"
-        ? "Jalankan Tutup Bulan"
-        : "Tutup Buku Tahun Ini";
+        ? t.dayClose.confirmEomLabel
+        : t.dayClose.confirmEoyLabel;
+
+  const bookColumns: Column<EOYBookResult>[] = [
+    { header: t.dayClose.book, cell: (row) => bookLabel(t.dayClose, row.book) },
+    {
+      header: t.common.status,
+      cell: (row) =>
+        row.already_closed ? (
+          <Badge variant="accent">{t.dayClose.alreadyClosed}</Badge>
+        ) : (
+          <Badge variant="credit">{t.dayClose.closed}</Badge>
+        ),
+    },
+    {
+      header: t.dayClose.revenueClosed,
+      type: "money",
+      cell: (row) => <MoneyText value={row.total_revenue_closed} />,
+    },
+    {
+      header: t.dayClose.expenseClosed,
+      type: "money",
+      cell: (row) => <MoneyText value={row.total_expense_closed} />,
+    },
+    {
+      header: t.dayClose.retainedEarnings,
+      type: "money",
+      cell: (row) => (
+        <MoneyText
+          value={row.net_retained_earnings}
+          tone={Number(row.net_retained_earnings) < 0 ? "debit" : "default"}
+        />
+      ),
+    },
+    {
+      header: t.dayClose.retainedEarningsCoa,
+      cell: (row) => (
+        <span className="font-mono">{row.retained_earnings_coa_code || "-"}</span>
+      ),
+    },
+    {
+      header: t.dayClose.journalRef,
+      cell: (row) => (
+        <span className="font-mono">{row.closing_journal_ref || "-"}</span>
+      ),
+    },
+  ];
 
   return (
     <>
       <PageHeader
-        title="Tutup Hari & Buku"
-        description="Jalankan proses tutup hari (EOD), tutup bulan (EOM), dan tutup tahun (EOY)."
+        title={t.dayClose.title}
+        description={t.dayClose.description}
         actions={
           canRun ? (
             <>
@@ -272,21 +278,21 @@ export default function TutupHariPage() {
                 onClick={() => setConfirmKind("eom")}
                 disabled={running !== null}
               >
-                Tutup Bulan (EOM)
+                {t.dayClose.eomButton}
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => setConfirmKind("eoy")}
                 disabled={running !== null}
               >
-                Tutup Tahun (EOY)
+                {t.dayClose.eoyButton}
               </Button>
               <Button
                 onClick={() => setConfirmKind("eod")}
                 disabled={running !== null}
                 loading={running === "eod"}
               >
-                Jalankan Tutup Hari (EOD)
+                {t.dayClose.eodButton}
               </Button>
             </>
           ) : undefined
@@ -296,11 +302,12 @@ export default function TutupHariPage() {
       {!canRun && (
         <div className="mb-4 rounded-md border border-border bg-canvas px-4 py-3">
           <p className="text-body font-medium text-ink-900">
-            Tutup hari hanya dapat dijalankan oleh peran {CLOSING_ROLE}.
+            {t.dayClose.restrictedPrefix}
+            {CLOSING_ROLE}
+            {t.dayClose.restrictedSuffix}
           </p>
           <p className="mt-1 text-body text-ink-600">
-            Tanggal bisnis berjalan tetap ditampilkan di bawah ini. Minta
-            superadmin menjalankan EOD, EOM, atau EOY.
+            {t.dayClose.restrictedHint}
           </p>
         </div>
       )}
@@ -311,7 +318,7 @@ export default function TutupHariPage() {
           role="alert"
         >
           <p className="text-title font-medium text-debit-700">
-            Proses tutup gagal
+            {t.dayClose.actionErrorTitle}
           </p>
           <p className="mt-1 text-body text-debit-700">{actionError}</p>
         </div>
@@ -319,18 +326,18 @@ export default function TutupHariPage() {
 
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Tanggal Bisnis Berjalan</CardTitle>
+          <CardTitle>{t.dayClose.currentDateTitle}</CardTitle>
         </CardHeader>
         <CardContent>
           {dateLoading ? (
-            <LoadingState label="Memuat tanggal bisnis..." />
+            <LoadingState label={t.dayClose.loadingDate} />
           ) : dateError ? (
             <ErrorState
-              title="Gagal memuat tanggal bisnis"
+              title={t.dayClose.dateErrorTitle}
               description={dateError}
               action={
                 <Button variant="secondary" onClick={loadBusinessDate}>
-                  Coba lagi
+                  {t.common.retry}
                 </Button>
               }
             />
@@ -338,16 +345,16 @@ export default function TutupHariPage() {
             <DefinitionList
               items={[
                 {
-                  label: "Tanggal Berjalan",
+                  label: t.dayClose.currentDate,
                   value: formatDate(businessDate.current_date),
                   isMono: true,
                 },
                 {
-                  label: "Status",
+                  label: t.common.status,
                   value: <StatusBadge status={businessDate.status} />,
                 },
                 {
-                  label: "Terakhir Diperbarui",
+                  label: t.dayClose.lastUpdated,
                   value: formatDateTime(businessDate.updated_at),
                   isMono: true,
                 },
@@ -355,7 +362,7 @@ export default function TutupHariPage() {
             />
           ) : (
             <p className="text-body text-ink-600">
-              Tanggal bisnis belum tersedia.
+              {t.dayClose.unavailable}
             </p>
           )}
         </CardContent>
@@ -369,12 +376,10 @@ export default function TutupHariPage() {
               role="alert"
             >
               <p className="text-title font-semibold text-accent-600">
-                Tutup hari berhasil, tetapi belum lengkap
+                {t.dayClose.warningsTitle}
               </p>
               <p className="mt-1 text-body text-ink-900">
-                {eod.warnings.length} pekerjaan harian tidak berjalan dan perlu
-                diperiksa. Tutup hari tetap selesai, tetapi hasilnya tidak
-                menyeluruh.
+                {eod.warnings.length} {t.dayClose.warningsDesc}
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-body text-ink-900">
                 {eod.warnings.map((warning, index) => (
@@ -387,48 +392,48 @@ export default function TutupHariPage() {
           <Card className="mb-4">
             <CardHeader>
               <CardTitle>
-                Hasil Tutup Hari (EOD)
+                {t.dayClose.eodTitle}
               </CardTitle>
               <span className="text-meta text-ink-600">
-                Selesai {formatDateTime(eod.completed_at)}
+                {t.dayClose.completed} {formatDateTime(eod.completed_at)}
               </span>
             </CardHeader>
             <CardContent>
               {(!eod.warnings || eod.warnings.length === 0) && (
                 <p className="text-body text-credit-700">
-                  Tutup hari selesai tanpa peringatan.
+                  {t.dayClose.eodNoWarnings}
                 </p>
               )}
               <DefinitionList
                 items={[
                   {
-                    label: "Tanggal Dieksekusi",
+                    label: t.dayClose.executedDate,
                     value: formatDate(eod.executed_date),
                     isMono: true,
                   },
                   {
-                    label: "Tanggal Bisnis Berikutnya",
+                    label: t.dayClose.nextBusinessDate,
                     value: formatDate(eod.next_business_date),
                     isMono: true,
                   },
                   {
-                    label: "Jurnal Terposting Hari Ini",
+                    label: t.dayClose.postedJournals,
                     value: eod.total_posted_journals_today,
                     isMono: true,
                   },
                   {
-                    label: "Total Setoran Hari Ini",
+                    label: t.dayClose.totalDeposits,
                     value: (
                       <MoneyText value={eod.total_deposit_amount_today} />
                     ),
                   },
                   {
-                    label: "Penempatan Deposito Berjangka",
+                    label: t.dayClose.depositPlacements,
                     value: eod.total_deposit_placements_today,
                     isMono: true,
                   },
                   {
-                    label: "Nominal Penempatan Deposito",
+                    label: t.dayClose.depositPlacementAmount,
                     value: (
                       <MoneyText
                         value={eod.total_deposit_placement_amount_today}
@@ -436,7 +441,7 @@ export default function TutupHariPage() {
                     ),
                   },
                   {
-                    label: "Total Penarikan Hari Ini",
+                    label: t.dayClose.totalWithdrawals,
                     value: (
                       <MoneyText value={eod.total_withdrawal_amount_today} />
                     ),
@@ -445,45 +450,45 @@ export default function TutupHariPage() {
               />
               <div>
                 <p className="mb-2 text-meta font-medium uppercase tracking-wide text-ink-600">
-                  Pekerjaan Harian
+                  {t.dayClose.dailyJobs}
                 </p>
                 <DefinitionList
                   items={[
                     {
-                      label: "Deposito Diperpanjang Otomatis",
+                      label: t.dayClose.rolledOver,
                       value: eod.deposits_rolled_over,
                       isMono: true,
                     },
                     {
-                      label: "PPAP Diproses",
+                      label: t.dayClose.ppapProcessed,
                       value: eod.ppap_processed,
                       isMono: true,
                     },
                     {
-                      label: "PPAP Disesuaikan",
+                      label: t.dayClose.ppapAdjusted,
                       value: eod.ppap_adjusted,
                       isMono: true,
                     },
                     {
-                      label: "Denda Kredit Diakru",
+                      label: t.dayClose.penaltiesAccrued,
                       value: eod.loan_penalties_accrued,
                       isMono: true,
                     },
                     {
-                      label: "Nominal Denda",
+                      label: t.dayClose.penaltyAmount,
                       value: <MoneyText value={eod.loan_penalty_amount} />,
                     },
                     {
-                      label: "Bunga Kredit Diakru",
+                      label: t.dayClose.interestAccrued,
                       value: eod.loan_interest_accrued,
                       isMono: true,
                     },
                     {
-                      label: "Nominal Bunga Diakru",
+                      label: t.dayClose.interestAccruedAmount,
                       value: <MoneyText value={eod.loan_interest_accrued_amount} />,
                     },
                     {
-                      label: "Rekening Ditandai Dormant",
+                      label: t.dayClose.markedDormant,
                       value: eod.accounts_marked_dormant,
                       isMono: true,
                     },
@@ -500,35 +505,35 @@ export default function TutupHariPage() {
       {eom && (
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Hasil Tutup Bulan (EOM)</CardTitle>
+            <CardTitle>{t.dayClose.eomTitle}</CardTitle>
             <span className="text-meta text-ink-600">
-              Selesai {formatDateTime(eom.completed_at)}
+              {t.dayClose.completed} {formatDateTime(eom.completed_at)}
             </span>
           </CardHeader>
           <CardContent>
-            <p className="text-body text-credit-700">Tutup bulan selesai.</p>
+            <p className="text-body text-credit-700">{t.dayClose.eomDone}</p>
             <DefinitionList
               items={[
                 {
-                  label: "Bulan Dieksekusi",
+                  label: t.dayClose.executedMonth,
                   value: eom.executed_month,
                   isMono: true,
                 },
                 {
-                  label: "Total Biaya Admin Dipotong",
+                  label: t.dayClose.adminFees,
                   value: <MoneyText value={eom.total_admin_fees_deducted} />,
                 },
                 {
-                  label: "Total Bunga Dibayar",
+                  label: t.dayClose.interestPaid,
                   value: <MoneyText value={eom.total_interest_paid} />,
                 },
                 {
-                  label: "Rekening Diproses",
+                  label: t.dayClose.processedAccounts,
                   value: eom.processed_accounts,
                   isMono: true,
                 },
                 {
-                  label: "Rekening Gagal",
+                  label: t.dayClose.failedAccounts,
                   value: (
                     <span
                       className={
@@ -551,32 +556,33 @@ export default function TutupHariPage() {
       {eoy && (
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Hasil Tutup Tahun (EOY)</CardTitle>
+            <CardTitle>{t.dayClose.eoyTitle}</CardTitle>
             <span className="text-meta text-ink-600">
-              Selesai {formatDateTime(eoy.completed_at)}
+              {t.dayClose.completed} {formatDateTime(eoy.completed_at)}
             </span>
           </CardHeader>
           <CardContent>
             <p className="text-body text-credit-700">
-              Tutup buku tahun {eoy.fiscal_year} selesai.
+              {t.dayClose.eoyDonePrefix} {eoy.fiscal_year}{" "}
+              {t.dayClose.eoyDoneSuffix}
             </p>
             <DefinitionList
               items={[
                 {
-                  label: "Tahun Fiskal",
+                  label: t.dayClose.fiscalYear,
                   value: eoy.fiscal_year,
                   isMono: true,
                 },
                 {
-                  label: "Total Pendapatan Ditutup",
+                  label: t.dayClose.totalRevenueClosed,
                   value: <MoneyText value={eoy.total_revenue_closed} />,
                 },
                 {
-                  label: "Total Beban Ditutup",
+                  label: t.dayClose.totalExpenseClosed,
                   value: <MoneyText value={eoy.total_expense_closed} />,
                 },
                 {
-                  label: "Laba Ditahan Neto",
+                  label: t.dayClose.netRetained,
                   value: (
                     <MoneyText
                       value={eoy.net_retained_earnings}
@@ -589,7 +595,7 @@ export default function TutupHariPage() {
                   ),
                 },
                 {
-                  label: "Referensi Jurnal Penutup",
+                  label: t.dayClose.closingJournalRef,
                   value: eoy.closing_journal_ref || "-",
                   isMono: true,
                 },
@@ -598,13 +604,13 @@ export default function TutupHariPage() {
             {eoy.books && eoy.books.length > 0 && (
               <div>
                 <p className="mb-2 text-meta font-medium uppercase tracking-wide text-ink-600">
-                  Rincian per Buku
+                  {t.dayClose.perBook}
                 </p>
                 <DataTable
-                  columns={BOOK_COLUMNS}
+                  columns={bookColumns}
                   data={eoy.books}
                   keyExtractor={(row) => row.book}
-                  emptyMessage="Tidak ada buku yang ditutup."
+                  emptyMessage={t.dayClose.noBooks}
                 />
               </div>
             )}
@@ -618,7 +624,7 @@ export default function TutupHariPage() {
         confirmLabel={confirmLabel}
         destructive={confirmKind === "eoy"}
         loading={running !== null}
-        requireKeyword={confirmKind === "eoy" ? "TUTUP BUKU" : undefined}
+        requireKeyword={confirmKind === "eoy" ? t.dayClose.confirmKeyword : undefined}
         onCancel={() => setConfirmKind(null)}
         onConfirm={() => {
           if (confirmKind) runBatch(confirmKind);
@@ -627,33 +633,25 @@ export default function TutupHariPage() {
           confirmKind === "eod" ? (
             <>
               <p>
-                Tutup hari akan menjalankan pekerjaan harian (perpanjangan
-                otomatis deposito, PPAP, akrual denda kredit, penandaan rekening
-                dormant), lalu memajukan tanggal bisnis ke hari berikutnya.
+                {t.dayClose.descEod1}
               </p>
               <p>
-                Pastikan seluruh transaksi hari ini sudah diposting sebelum
-                melanjutkan.
+                {t.dayClose.descEod2}
               </p>
             </>
           ) : confirmKind === "eom" ? (
             <>
               <p>
-                Tutup bulan akan mengakru dan membayar bunga tabungan, serta
-                memotong biaya administrasi untuk periode bulan berjalan. Jurnal
-                terkait ikut diposting.
+                {t.dayClose.descEom}
               </p>
             </>
           ) : (
             <>
               <p>
-                Tutup tahun akan memindahkan saldo akun pendapatan dan beban ke
-                laba ditahan untuk Buku Konvensional dan Syariah, lalu menerbitkan
-                jurnal penutup.
+                {t.dayClose.descEoy}
               </p>
               <p className="font-medium text-debit-700">
-                Aksi ini tidak dapat dibatalkan. Setelah ditutup, buku tidak dapat
-                dibuka kembali.
+                {t.dayClose.descEoyWarning}
               </p>
             </>
           )

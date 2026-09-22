@@ -19,50 +19,8 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { useAuth } from "@/lib/useAuth";
+import { useTranslation } from "@/i18n/context";
 import { formatRate } from "@/lib/format";
-
-const BOOK_LABEL: Record<COABook, string> = {
-  CONVENTIONAL: "Konvensional",
-  SYARIAH: "Syariah",
-};
-
-const FAMILY_LABEL: Record<ProductFamily, string> = {
-  SAVINGS: "Tabungan",
-  TIME_DEPOSIT: "Deposito Berjangka",
-  LOAN: "Kredit",
-  CURRENT_ACCOUNT: "Giro",
-};
-
-const PROFIT_SCHEME_LABEL: Record<ProfitScheme, string> = {
-  INTEREST: "Bunga",
-  MURABAHAH: "Murabahah",
-  MUDHARABAH: "Mudharabah",
-  MUSYARAKAH: "Musyarakah",
-  IJARAH: "Ijarah",
-  WADIAH: "Wadiah",
-};
-
-const SCHEDULE_LABEL: Record<ScheduleMethod, string> = {
-  FLAT: "Flat",
-  ANNUITY: "Anuitas",
-  SLIDING: "Sliding",
-  BAGI_HASIL: "Bagi Hasil",
-  NONE: "Tanpa Jadwal",
-};
-
-const BOOK_OPTIONS = [
-  { value: "", label: "Semua buku" },
-  { value: "CONVENTIONAL", label: "Konvensional" },
-  { value: "SYARIAH", label: "Syariah" },
-];
-
-const FAMILY_OPTIONS = [
-  { value: "", label: "Semua family" },
-  { value: "SAVINGS", label: "Tabungan" },
-  { value: "TIME_DEPOSIT", label: "Deposito Berjangka" },
-  { value: "LOAN", label: "Kredit" },
-  { value: "CURRENT_ACCOUNT", label: "Giro" },
-];
 
 function ratioLabel(value: string): string {
   const num = Number(value);
@@ -70,129 +28,9 @@ function ratioLabel(value: string): string {
   return formatRate(String(num * 100));
 }
 
-function yesNo(value: boolean): string {
-  return value ? "Ya" : "Tidak";
-}
-
-interface ProductDetailProps {
-  productId: string;
-  onClose: () => void;
-}
-
-function ProductDetail({ productId, onClose }: ProductDetailProps) {
-  const [product, setProduct] = useState<BankingProduct | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await request<BankingProduct>(`/products/${productId}`);
-      setProduct(response.data ?? null);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Gagal memuat detail produk."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [productId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle>Detail Produk</CardTitle>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Tutup
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <LoadingState label="Memuat detail produk..." />
-        ) : error || !product ? (
-          <ErrorState
-            title="Gagal memuat detail produk"
-            description={error ?? "Produk tidak ditemukan."}
-            action={
-              <Button variant="secondary" onClick={onClose}>
-                Tutup
-              </Button>
-            }
-          />
-        ) : (
-          <DefinitionList
-            columns={2}
-            items={[
-              { label: "Kode", value: product.code, isMono: true },
-              { label: "Nama", value: product.name },
-              { label: "Family", value: FAMILY_LABEL[product.family] ?? product.family },
-              { label: "Buku", value: BOOK_LABEL[product.book] ?? product.book },
-              {
-                label: "Skema Imbal Hasil",
-                value: PROFIT_SCHEME_LABEL[product.profit_scheme] ?? product.profit_scheme,
-              },
-              {
-                label: "Metode Jadwal",
-                value: SCHEDULE_LABEL[product.schedule_method] ?? product.schedule_method,
-              },
-              { label: "Tarif Tahunan", value: formatRate(product.rate_annual), isMono: true },
-              {
-                label: "Nisbah Bagi Hasil",
-                value: ratioLabel(product.profit_sharing_ratio),
-                isMono: true,
-              },
-              {
-                label: "Minimal Nominal",
-                value: <MoneyText value={product.min_amount} />,
-              },
-              {
-                label: "Maksimal Nominal",
-                value: <MoneyText value={product.max_amount} />,
-              },
-              {
-                label: "Tenor Minimum",
-                value: `${product.min_term_months} bulan`,
-                isMono: true,
-              },
-              {
-                label: "Tenor Maksimum",
-                value: `${product.max_term_months} bulan`,
-                isMono: true,
-              },
-              { label: "Biaya Admin", value: <MoneyText value={product.admin_fee} /> },
-              {
-                label: "Tarif Denda Pencairan Dini",
-                value: formatRate(product.early_withdrawal_penalty_rate),
-                isMono: true,
-              },
-              { label: "Tarif Pajak", value: formatRate(product.tax_rate), isMono: true },
-              {
-                label: "Angsuran Parsial",
-                value: yesNo(product.allow_partial_payment),
-              },
-              {
-                label: "Status",
-                value: product.is_active ? (
-                  <Badge variant="credit">Aktif</Badge>
-                ) : (
-                  <Badge variant="outline">Nonaktif</Badge>
-                ),
-              },
-            ]}
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function ProdukPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [products, setProducts] = useState<BankingProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,15 +40,68 @@ export default function ProdukPage() {
   const [family, setFamily] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Pemilih buku hanya menawarkan lini usaha yang aktif di instalasi. Cakupan
-  // dibaca dari server (/auth/me -> active_books); web tidak menebak.
+  const bookLabel = (value: COABook): string =>
+    value === "SYARIAH" ? t.products.bookSyariah : t.products.bookConventional;
+
+  const familyLabel = (value: ProductFamily): string => {
+    switch (value) {
+      case "SAVINGS":
+        return t.products.familySavings;
+      case "TIME_DEPOSIT":
+        return t.products.familyTimeDeposit;
+      case "LOAN":
+        return t.products.familyLoan;
+      case "CURRENT_ACCOUNT":
+        return t.products.familyCurrent;
+      default:
+        return value;
+    }
+  };
+
+  const profitSchemeLabel = (value: ProfitScheme): string => {
+    switch (value) {
+      case "INTEREST":
+        return t.products.profitInterest;
+      case "MURABAHAH":
+        return t.products.profitMurabahah;
+      case "MUDHARABAH":
+        return t.products.profitMudharabah;
+      case "MUSYARAKAH":
+        return t.products.profitMusyarakah;
+      case "IJARAH":
+        return t.products.profitIjarah;
+      case "WADIAH":
+        return t.products.profitWadiah;
+      default:
+        return value;
+    }
+  };
+
   const bookOptions = useMemo(() => {
+    const options = [
+      { value: "", label: t.products.bookAll },
+      { value: "CONVENTIONAL", label: t.products.bookConventional },
+      { value: "SYARIAH", label: t.products.bookSyariah },
+    ];
+    // Pemilih buku hanya menawarkan lini usaha yang aktif di instalasi. Cakupan
+    // dibaca dari server (/auth/me -> active_books); web tidak menebak.
     const active = user?.active_books;
-    if (!active) return BOOK_OPTIONS;
-    return BOOK_OPTIONS.filter(
+    if (!active) return options;
+    return options.filter(
       (option) => option.value === "" || active.includes(option.value)
     );
-  }, [user?.active_books]);
+  }, [user?.active_books, t]);
+
+  const familyOptions = useMemo(
+    () => [
+      { value: "", label: t.products.familyAll },
+      { value: "SAVINGS", label: t.products.familySavings },
+      { value: "TIME_DEPOSIT", label: t.products.familyTimeDeposit },
+      { value: "LOAN", label: t.products.familyLoan },
+      { value: "CURRENT_ACCOUNT", label: t.products.familyCurrent },
+    ],
+    [t]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -219,11 +110,11 @@ export default function ProdukPage() {
       const response = await request<BankingProduct[]>("/products");
       setProducts(response.data ?? []);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Gagal memuat produk.");
+      setError(err instanceof ApiError ? err.message : t.products.loadError);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -240,38 +131,38 @@ export default function ProdukPage() {
   );
 
   const columns: Column<BankingProduct>[] = [
-    { header: "Kode", accessorKey: "code", isMono: true },
-    { header: "Nama", accessorKey: "name" },
+    { header: t.products.labelCode, accessorKey: "code", isMono: true },
+    { header: t.products.labelName, accessorKey: "name" },
     {
-      header: "Family",
-      cell: (row) => FAMILY_LABEL[row.family] ?? row.family,
+      header: t.products.labelFamily,
+      cell: (row) => familyLabel(row.family),
     },
     {
-      header: "Buku",
-      cell: (row) => BOOK_LABEL[row.book] ?? row.book,
+      header: t.products.labelBook,
+      cell: (row) => bookLabel(row.book),
     },
     {
-      header: "Skema Imbal Hasil",
-      cell: (row) => PROFIT_SCHEME_LABEL[row.profit_scheme] ?? row.profit_scheme,
+      header: t.products.labelProfitScheme,
+      cell: (row) => profitSchemeLabel(row.profit_scheme),
     },
     {
-      header: "Status",
+      header: t.common.status,
       cell: (row) =>
         row.is_active ? (
-          <Badge variant="credit">Aktif</Badge>
+          <Badge variant="credit">{t.products.active}</Badge>
         ) : (
-          <Badge variant="outline">Nonaktif</Badge>
+          <Badge variant="outline">{t.products.inactive}</Badge>
         ),
     },
     {
-      header: "Aksi",
+      header: t.common.actions,
       cell: (row) => (
         <Button
           size="sm"
           variant="secondary"
           onClick={() => setSelectedId(row.id)}
         >
-          Detail
+          {t.products.detailButton}
         </Button>
       ),
     },
@@ -280,15 +171,15 @@ export default function ProdukPage() {
   return (
     <>
       <PageHeader
-        title="Produk"
-        description="Master produk bank: konvensional dan syariah. Halaman ini hanya baca."
+        title={t.products.title}
+        description={t.products.description}
       />
 
       <Card className="mb-4">
         <CardContent className="flex flex-wrap items-end gap-4">
           <div className="w-56">
             <Select
-              label="Buku"
+              label={t.products.labelBook}
               value={book}
               onChange={(e) => setBook(e.target.value)}
               options={bookOptions}
@@ -296,10 +187,10 @@ export default function ProdukPage() {
           </div>
           <div className="w-56">
             <Select
-              label="Family"
+              label={t.products.labelFamily}
               value={family}
               onChange={(e) => setFamily(e.target.value)}
-              options={FAMILY_OPTIONS}
+              options={familyOptions}
             />
           </div>
           <Button
@@ -309,25 +200,25 @@ export default function ProdukPage() {
               setFamily("");
             }}
           >
-            Reset Filter
+            {t.products.filterReset}
           </Button>
         </CardContent>
       </Card>
 
       {error && !loading ? (
         <ErrorState
-          title="Gagal memuat produk"
+          title={t.products.errorTitle}
           description={error}
           action={
             <Button variant="secondary" onClick={() => setReloadKey((key) => key + 1)}>
-              Coba lagi
+              {t.common.retry}
             </Button>
           }
         />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Daftar Produk</CardTitle>
+            <CardTitle>{t.products.listTitle}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable
@@ -335,7 +226,7 @@ export default function ProdukPage() {
               data={filtered}
               keyExtractor={(row) => row.id}
               loading={loading}
-              emptyMessage="Tidak ada produk yang sesuai filter."
+              emptyMessage={t.products.empty}
               zebra
             />
           </CardContent>
@@ -346,5 +237,177 @@ export default function ProdukPage() {
         <ProductDetail productId={selectedId} onClose={() => setSelectedId(null)} />
       )}
     </>
+  );
+}
+
+interface ProductDetailProps {
+  productId: string;
+  onClose: () => void;
+}
+
+function ProductDetail({ productId, onClose }: ProductDetailProps) {
+  const { t } = useTranslation();
+  const [product, setProduct] = useState<BankingProduct | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await request<BankingProduct>(`/products/${productId}`);
+      setProduct(response.data ?? null);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : t.products.detailLoadError
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, t]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const familyLabel = (value: ProductFamily): string => {
+    switch (value) {
+      case "SAVINGS":
+        return t.products.familySavings;
+      case "TIME_DEPOSIT":
+        return t.products.familyTimeDeposit;
+      case "LOAN":
+        return t.products.familyLoan;
+      case "CURRENT_ACCOUNT":
+        return t.products.familyCurrent;
+      default:
+        return value;
+    }
+  };
+
+  const profitSchemeLabel = (value: ProfitScheme): string => {
+    switch (value) {
+      case "INTEREST":
+        return t.products.profitInterest;
+      case "MURABAHAH":
+        return t.products.profitMurabahah;
+      case "MUDHARABAH":
+        return t.products.profitMudharabah;
+      case "MUSYARAKAH":
+        return t.products.profitMusyarakah;
+      case "IJARAH":
+        return t.products.profitIjarah;
+      case "WADIAH":
+        return t.products.profitWadiah;
+      default:
+        return value;
+    }
+  };
+
+  const scheduleLabel = (value: ScheduleMethod): string => {
+    switch (value) {
+      case "FLAT":
+        return t.products.scheduleFlat;
+      case "ANNUITY":
+        return t.products.scheduleAnnuity;
+      case "SLIDING":
+        return t.products.scheduleSliding;
+      case "BAGI_HASIL":
+        return t.products.scheduleBagiHasil;
+      case "NONE":
+        return t.products.scheduleNone;
+      default:
+        return value;
+    }
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>{t.products.detailTitle}</CardTitle>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          {t.common.close}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <LoadingState label={t.products.loadingDetail} />
+        ) : error || !product ? (
+          <ErrorState
+            title={t.products.detailErrorTitle}
+            description={error ?? t.products.notFound}
+            action={
+              <Button variant="secondary" onClick={onClose}>
+                {t.common.close}
+              </Button>
+            }
+          />
+        ) : (
+          <DefinitionList
+            columns={2}
+            items={[
+              { label: t.products.labelCode, value: product.code, isMono: true },
+              { label: t.products.labelName, value: product.name },
+              { label: t.products.labelFamily, value: familyLabel(product.family) },
+              {
+                label: t.products.labelBook,
+                value: product.book === "SYARIAH" ? t.products.bookSyariah : t.products.bookConventional,
+              },
+              {
+                label: t.products.labelProfitScheme,
+                value: profitSchemeLabel(product.profit_scheme),
+              },
+              {
+                label: t.products.labelScheduleMethod,
+                value: scheduleLabel(product.schedule_method),
+              },
+              { label: t.products.labelRateAnnual, value: formatRate(product.rate_annual), isMono: true },
+              {
+                label: t.products.labelProfitSharingRatio,
+                value: ratioLabel(product.profit_sharing_ratio),
+                isMono: true,
+              },
+              {
+                label: t.products.labelMinAmount,
+                value: <MoneyText value={product.min_amount} />,
+              },
+              {
+                label: t.products.labelMaxAmount,
+                value: <MoneyText value={product.max_amount} />,
+              },
+              {
+                label: t.products.labelMinTerm,
+                value: `${product.min_term_months} ${t.products.termSuffix}`,
+                isMono: true,
+              },
+              {
+                label: t.products.labelMaxTerm,
+                value: `${product.max_term_months} ${t.products.termSuffix}`,
+                isMono: true,
+              },
+              { label: t.products.labelAdminFee, value: <MoneyText value={product.admin_fee} /> },
+              {
+                label: t.products.labelEarlyWithdrawalPenalty,
+                value: formatRate(product.early_withdrawal_penalty_rate),
+                isMono: true,
+              },
+              { label: t.products.labelTaxRate, value: formatRate(product.tax_rate), isMono: true },
+              {
+                label: t.products.labelPartialPayment,
+                value: product.allow_partial_payment ? t.products.yes : t.products.no,
+              },
+              {
+                label: t.common.status,
+                value: product.is_active ? (
+                  <Badge variant="credit">{t.products.active}</Badge>
+                ) : (
+                  <Badge variant="outline">{t.products.inactive}</Badge>
+                ),
+              },
+            ]}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
