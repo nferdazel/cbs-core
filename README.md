@@ -182,7 +182,7 @@ items below are release gates. Verify current status against
 - Per-role transaction limits and approval thresholds are **not in effect**: the
   `limit.*` config keys are never seeded, so defaults apply to every role. This
   is flagged as a release blocker in `docs/KEPUTUSAN.md`.
-- CKPN production parameters (`ckpn.pd.*`, `ckpn.lgd`) are unset, so credit
+- CKPN production parameters (`ckpn.pd.*`, `ckpn.lgd_frac`) are unset, so credit
   computations fail with a clear error instead of producing numbers; the
   PD/LGD methodology needs bank data.
 - The COA → OJK account mapping is still a draft, so reports are not ready for

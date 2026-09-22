@@ -58,9 +58,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4">
       <div className="w-full max-w-sm space-y-4">
         <div className="flex justify-end">
-          <div className="flex items-center rounded-md border border-border bg-surface p-0.5 text-meta">
+          <div
+            role="group"
+            aria-label={t.common.language}
+            className="flex items-center rounded-md border border-border bg-surface p-0.5 text-meta"
+          >
             <button
               type="button"
+              aria-pressed={language === "id"}
               onClick={() => setLanguage("id")}
               className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
                 language === "id" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"
@@ -70,6 +75,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
+              aria-pressed={language === "en"}
               onClick={() => setLanguage("en")}
               className={`rounded-sm px-2.5 py-1 transition-colors duration-fast ${
                 language === "en" ? "bg-navy-700 font-medium text-white" : "text-ink-600 hover:text-ink-900"

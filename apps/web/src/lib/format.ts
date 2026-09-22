@@ -22,6 +22,17 @@ export function formatMoney(value: Numeric): string {
   }).format(num);
 }
 
+/**
+ * Persentase id-ID dengan maksimal dua desimal, diakhiri tanda persen.
+ * Nilai yang tidak bisa dibaca ditampilkan apa adanya agar tidak
+ * menyamarkan data yang mencurigakan menjadi angka yang terlihat normal.
+ */
+export function formatRate(value: Numeric): string {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value ? String(value) : "-";
+  return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(num)}%`;
+}
+
 /** dd MMM yyyy menurut locale id-ID. Contoh: 02 Sep 2026. */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";

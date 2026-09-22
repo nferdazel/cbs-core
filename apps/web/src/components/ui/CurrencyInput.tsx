@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { Input, InputProps } from "./Input";
 
 export interface CurrencyInputProps extends Omit<InputProps, "onChange" | "value"> {
@@ -24,6 +24,11 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
 }) => {
   const numericValue = typeof value === "string" ? Number(value) || 0 : value;
 
+  // Label harus terhubung ke input lewat htmlFor/id agar pembaca layar
+  // membacakan nama field, bukan sekadar teks visual di sebelahnya.
+  const generatedId = useId();
+  const inputId = props.id ?? generatedId;
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9]/g, "");
     onChange(raw ? parseInt(raw, 10) : 0);
@@ -34,11 +39,17 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   return (
     <div className="w-full space-y-1">
       {label && (
-        <label className="block text-meta font-medium text-ink-600">{label}</label>
+        <label
+          htmlFor={inputId}
+          className="block text-meta font-medium text-ink-600"
+        >
+          {label}
+        </label>
       )}
       <div className="flex h-9 items-center rounded-md border border-border-strong bg-surface focus-within:border-navy-600 focus-within:ring-1 focus-within:ring-navy-600">
         <span className="pl-3 font-mono text-body text-ink-600">{currencyPrefix}</span>
         <input
+          id={inputId}
           type="text"
           inputMode="numeric"
           value={formatted}

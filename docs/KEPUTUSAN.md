@@ -417,7 +417,7 @@ Yang menunggu keputusan bank: membuka saklarnya di produksi, COA yang dipakai, d
 tingkat diskonto untuk kredit lama yang tidak punya suku bunga efektif tersimpan.
 **Menghalangi:** pengakuan kerugian restrukturisasi di produksi.
 
-## 3. PD dan LGD untuk CKPN (`ckpn.pd.1`..`ckpn.pd.5`, `ckpn.lgd`)
+## 3. PD dan LGD untuk CKPN (`ckpn.pd_frac.gol_1`..`ckpn.pd_frac.gol_5`, `ckpn.lgd_frac`)
 Sejak 22 Sep 2026 parameternya **diisi sementara** dengan asumsi PD disandera dari bobot PPKA
 dibagi LGD 45% (fraksi 0..1; §7.3), supaya CKPN dapat dihitung dalam mode bayangan. Pengisian
 permanen menuntut data migrasi sendiri (target 12 bulan data untuk estimasi PD) dan wajib
@@ -473,7 +473,7 @@ Pilihannya: (a) samakan kunci di kode dengan seed dan pindahkan niat batasnya, a
 
 ## Perlu diperhatikan
 - **18 kunci konfigurasi dibaca kode tetapi tidak di-seed.** Dua di antaranya jatuh ke nol secara
-  senyap: `deposit.mudharabah.yield_annual` (bagi hasil nol) dan
+  senyap: `deposit.mudharabah.yield_annual_pct` (bagi hasil nol) dan
   `loan.penalty.rate.daily.per_mille` (denda nol; kini diisi `1` di produksi, §7.1). Lima kunci lain di-seed tetapi tidak dibaca
   kode (kode mati): `auth.password_expiry_days`, `role_limit.{TELLER,AO,SUPERVISOR,ADMIN}`.
 - **Satu uji integrasi gagal bila seluruh uji dijalankan pada satu database**
@@ -543,7 +543,7 @@ Pasal 23 (LPS), dan kebijakan kedaluwarsa kata sandi (`auth.password_expiry_days
 
 ### 6.1 Tarif denda keterlambatan
 Satuan: `loan.penalty.rate.daily.per_mille` (per-mille **per hari**). Sejak 22 Sep 2026 diisi `1`
-di produksi dengan plafon `loan.penalty.cap.percent = 10`; rincian di §7.1.
+di produksi dengan plafon `loan.penalty.cap_pct = 10`; rincian di §7.1.
 - **Fakta yang ditemukan:** akrual denda untuk kredit kolektibilitas 3–5 **belum** dihentikan — kodenya hanya memeriksa status kredit, berbeda dari akrual bunga yang punya gerbang `IsNPL()`. Kalau tarif denda dinyalakan sebelum ini diperbaiki, bank akan mengakui pendapatan denda atas kredit macet. **Sudah diperbaiki**: denda kini memakai gerbang kolektibilitas yang sama dengan bunga (berlaku ke depan; data historis tidak diubah).
 - **Saran:** isi 0,5–1 per-mille per hari dengan batas atas (mis. tidak melebihi 10% pokok tertunggak). Angkanya wajib berasal dari **perjanjian kredit bank** — bukan angka regulasi, dan bukan angka yang ditentukan pengembang.
 - **Konsekuensi bila kredit sembuh dari NPL:** hari-hari selama masa NPL ikut tertagih saat akrual berjalan lagi (konsisten dengan perilaku akrual bunga). Bank perlu memutuskan apakah itu memang dikehendaki; keputusan 22 Sep 2026: akrual denda **dihentikan saat kredit NPL** (§7.1).
@@ -578,7 +578,7 @@ di produksi atau **masih menunggu** persetujuan bank/DPS.
   angsuran lalu dijumlahkan per kredit, berjalan harian sampai dibayar, dan **dihentikan saat
   kredit NPL**.
 - **Parameter produksi:** `loan.penalty.rate.daily.per_mille = 1` (0,1%/hari ≈ 3%/bulan dari
-  pokok angsuran tertunggak) dan `loan.penalty.cap.percent = 10` (plafon total denda per kredit
+  pokok angsuran tertunggak) dan `loan.penalty.cap_pct = 10` (plafon total denda per kredit
   10% dari pokok angsuran tertunggak; plafon tercapai sekitar hari ke-100; `0` = nonaktif).
 - **Tarif final wajib mengikuti perjanjian kredit bank.** Bila perjanjian berbunyi "1% per
   bulan", nilai yang benar adalah **0,33‰/hari**.
@@ -596,9 +596,9 @@ di produksi atau **masih menunggu** persetujuan bank/DPS.
 
 - `ckpn.shadow_mode.enabled = true`, `ckpn.enabled = false` (nol jurnal).
 - **Satuan parameter adalah FRAKSI 0..1** (0.01 = 1%), bukan persen.
-- PD tiap golongan **disandera dari bobot PPKA** dibagi LGD 45%: `ckpn.pd.1 = 0.0111`,
-  `ckpn.pd.2 = 0.0667`, `ckpn.pd.3 = 0.2222`, `ckpn.pd.4 = 1.0`, `ckpn.pd.5 = 1.0`,
-  `ckpn.lgd = 0.45`. Dasar bobot PPKA `ppap.rate.1..5 = 0.005 / 0.03 / 0.10 / 0.5 / 1.0`.
+- PD tiap golongan **disandera dari bobot PPKA** dibagi LGD 45%: `ckpn.pd_frac.gol_1 = 0.0111`,
+  `ckpn.pd_frac.gol_2 = 0.0667`, `ckpn.pd_frac.gol_3 = 0.2222`, `ckpn.pd_frac.gol_4 = 1.0`, `ckpn.pd_frac.gol_5 = 1.0`,
+  `ckpn.lgd_frac = 0.45`. Dasar bobot PPKA `ppap.rate_frac.gol_1..5 = 0.005 / 0.03 / 0.10 / 0.5 / 1.0`.
 - **Akibat:** untuk golongan 1–3 CKPN model **setara PPKA**; selisih hanya muncul di golongan
   4–5 (PPKA 50%/100% melebihi LGD 45%).
 - **Asumsi sementara** sampai ada data migrasi sendiri (target 12 bulan data untuk estimasi PD),

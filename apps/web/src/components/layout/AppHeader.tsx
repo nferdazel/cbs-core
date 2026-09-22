@@ -81,9 +81,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
           )}
         </div>
 
-        <div className="flex items-center rounded-md border border-white/20 p-0.5 text-meta">
+        <div
+          role="group"
+          aria-label={t.common.language}
+          className="flex items-center rounded-md border border-white/20 p-0.5 text-meta"
+        >
           <button
             type="button"
+            aria-pressed={language === "id"}
             onClick={() => setLanguage("id")}
             className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
               language === "id" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"
@@ -93,6 +98,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
           </button>
           <button
             type="button"
+            aria-pressed={language === "en"}
             onClick={() => setLanguage("en")}
             className={`rounded-sm px-2 py-0.5 transition-colors duration-fast ${
               language === "en" ? "bg-white text-navy-800 font-medium" : "text-white/70 hover:text-white"

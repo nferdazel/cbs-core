@@ -19,6 +19,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { useAuth } from "@/lib/useAuth";
+import { formatRate } from "@/lib/format";
 
 const BOOK_LABEL: Record<COABook, string> = {
   CONVENTIONAL: "Konvensional",
@@ -63,16 +64,10 @@ const FAMILY_OPTIONS = [
   { value: "CURRENT_ACCOUNT", label: "Giro" },
 ];
 
-function rateLabel(value: string): string {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return value || "-";
-  return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(num)}%`;
-}
-
 function ratioLabel(value: string): string {
   const num = Number(value);
   if (!Number.isFinite(num)) return value || "-";
-  return rateLabel(String(num * 100));
+  return formatRate(String(num * 100));
 }
 
 function yesNo(value: boolean): string {
@@ -145,7 +140,7 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
                 label: "Metode Jadwal",
                 value: SCHEDULE_LABEL[product.schedule_method] ?? product.schedule_method,
               },
-              { label: "Tarif Tahunan", value: rateLabel(product.rate_annual), isMono: true },
+              { label: "Tarif Tahunan", value: formatRate(product.rate_annual), isMono: true },
               {
                 label: "Nisbah Bagi Hasil",
                 value: ratioLabel(product.profit_sharing_ratio),
@@ -172,10 +167,10 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
               { label: "Biaya Admin", value: <MoneyText value={product.admin_fee} /> },
               {
                 label: "Tarif Denda Pencairan Dini",
-                value: rateLabel(product.early_withdrawal_penalty_rate),
+                value: formatRate(product.early_withdrawal_penalty_rate),
                 isMono: true,
               },
-              { label: "Tarif Pajak", value: rateLabel(product.tax_rate), isMono: true },
+              { label: "Tarif Pajak", value: formatRate(product.tax_rate), isMono: true },
               {
                 label: "Angsuran Parsial",
                 value: yesNo(product.allow_partial_payment),

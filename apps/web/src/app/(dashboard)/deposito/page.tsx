@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatRate } from "@/lib/format";
 import type {
   AROInstruction,
   BankingProduct,
@@ -24,7 +24,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
-import { ErrorState } from "@/components/ui/States";
+import { ErrorState, LoadingState } from "@/components/ui/States";
 
 const PAGE_SIZE = 20;
 
@@ -53,12 +53,6 @@ function profitTypeLabel(type: ProfitType): string {
   if (type === "MARGIN") return "Margin";
   if (type === "BAGI_HASIL") return "Bagi Hasil";
   return "Bunga";
-}
-
-function rateLabel(value: string): string {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return value || "-";
-  return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(num)}%`;
 }
 
 function aroLabel(instruction: AROInstruction): string {
@@ -328,8 +322,8 @@ function DepositPlaceForm({
                   </dt>
                   <dd className="font-mono">
                     {preview.profit_type === "BAGI_HASIL"
-                      ? rateLabel(String(Number(preview.profit_rate) * 100))
-                      : rateLabel(preview.profit_rate)}
+                      ? formatRate(String(Number(preview.profit_rate) * 100))
+                      : formatRate(preview.profit_rate)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
@@ -490,8 +484,8 @@ function DepositDetailPanel({
   if (loading) {
     return (
       <Card className="mt-4">
-        <CardContent className="text-body text-ink-600">
-          Memuat detail deposito...
+        <CardContent>
+          <LoadingState label="Memuat detail deposito..." />
         </CardContent>
       </Card>
     );
@@ -552,7 +546,7 @@ function DepositDetailPanel({
               <span className="font-mono">{formatDate(deposit.maturity_date)}</span>.
               Pencairan lebih awal akan dikenakan denda
               {product
-                ? ` ${rateLabel(product.early_withdrawal_penalty_rate)} dari pokok`
+                ? ` ${formatRate(product.early_withdrawal_penalty_rate)} dari pokok`
                 : ""}
               .
             </p>
@@ -591,19 +585,19 @@ function DepositDetailPanel({
             bagiHasil
               ? {
                   label: "Nisbah Pemilik Dana",
-                  value: rateLabel(String(Number(deposit.profit_rate) * 100)),
+                  value: formatRate(String(Number(deposit.profit_rate) * 100)),
                   isMono: true,
                 }
               : {
                   label: "Bunga per Tahun",
-                  value: rateLabel(deposit.profit_rate),
+                  value: formatRate(deposit.profit_rate),
                   isMono: true,
                 },
             ...(bagiHasil
               ? [
                   {
                     label: "Proyeksi Imbal Hasil Tahunan",
-                    value: rateLabel(deposit.yield_rate),
+                    value: formatRate(deposit.yield_rate),
                     isMono: true,
                   },
                 ]
@@ -618,7 +612,7 @@ function DepositDetailPanel({
             },
             {
               label: "Tarif Pajak",
-              value: rateLabel(deposit.tax_rate),
+              value: formatRate(deposit.tax_rate),
               isMono: true,
             },
             ...(deposit.status === "CLOSED" || deposit.status === "BROKEN"

@@ -51,7 +51,7 @@ e. bahwa [rujukan: fatwa/rondangan DSN-MUI atau ketentuan lain yang relevan];
    tersimpan pada konfigurasi `loan.penalty.rate.daily.per_mille`.
 4. Plafon akrual ta'zir per pembiayaan **10%** dari pokok angsuran tertunggak;
    nilai **0** berarti plafon dimatikan. Nilai ini tersimpan pada konfigurasi
-   `loan.penalty.cap.percent`.
+   `loan.penalty.cap_pct`.
 5. Akrual ta'zir **dihentikan** saat pembiayaan digolongkan NPL.
 6. `[PILIHAN: apakah ta'zir hanya dikenakan kepada nasabah yang mampu tetapi
    sengaja menunda pembayaran. Bila ya, DPS perlu menetapkan cara menilai
@@ -92,7 +92,7 @@ e. bahwa [rujukan: fatwa/rondangan DSN-MUI atau ketentuan lain yang relevan];
    berubah**, termasuk tarif harian, plafon, aturan penghentian pada NPL, dan
    akun pembukuan ta'zir.
 3. Tarif dan plafon tersimpan di konfigurasi sistem
-   (`loan.penalty.rate.daily.per_mille`, `loan.penalty.cap.percent`). Nilai di
+   (`loan.penalty.rate.daily.per_mille`, `loan.penalty.cap_pct`). Nilai di
    sistem dan ketetapan DPS **harus selalu sama**; setiap perbedaan diselesaikan
    secara tertulis dengan menyesuaikan salah satu, bukan dibiarkan.
 4. Hasil peninjauan dituangkan dalam berita acara atau keputusan baru.

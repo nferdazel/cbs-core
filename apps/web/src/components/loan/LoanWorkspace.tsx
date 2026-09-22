@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Account, Customer } from "@cbs/shared-types";
 import { ApiError, newIdempotencyKey, request, unwrap } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatRate } from "@/lib/format";
 import type {
   BankingProduct,
   COABook,
@@ -23,7 +23,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
-import { ErrorState } from "@/components/ui/States";
+import { ErrorState, LoadingState } from "@/components/ui/States";
 import { PrintButton } from "@/components/ui/PrintButton";
 
 const PAGE_SIZE = 20;
@@ -56,12 +56,6 @@ function profitLabel(type: ProfitType): string {
   if (type === "MARGIN") return "Margin";
   if (type === "BAGI_HASIL") return "Bagi Hasil";
   return "Bunga";
-}
-
-function rateLabel(value: string): string {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return value || "-";
-  return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(num)}%`;
 }
 
 function schemeLabel(product?: BankingProduct): string {
@@ -536,8 +530,8 @@ function LoanDetailPanel({
   if (loading) {
     return (
       <Card className="mt-4">
-        <CardContent className="text-body text-ink-600">
-          Memuat detail kredit...
+        <CardContent>
+          <LoadingState label="Memuat detail kredit..." />
         </CardContent>
       </Card>
     );
@@ -609,13 +603,13 @@ function LoanDetailPanel({
                 }
               : {
                   label: "Suku Bunga per Tahun",
-                  value: rateLabel(loan.interest_rate_annual),
+                  value: formatRate(loan.interest_rate_annual),
                   isMono: true,
                 },
             syariah && Number(loan.profit_sharing_ratio) > 0
               ? {
                   label: "Nisbah Bagi Hasil",
-                  value: rateLabel(
+                  value: formatRate(
                     String(Number(loan.profit_sharing_ratio) * 100)
                   ),
                   isMono: true,
