@@ -175,7 +175,7 @@ export default function TransaksiPage() {
           <CardHeader>
             <CardTitle>{t.transactions.detailsTitle}</CardTitle>
             <div className="flex items-center gap-3">
-              <StatusBadge status={accountInfo.status} />
+              <StatusBadge status={accountInfo.status} domain="account" />
               <AccountReactivation
                 account={accountInfo}
                 onReactivated={handleReactivated}

@@ -136,7 +136,12 @@ export default function RekeningPage() {
       type: "money",
       cell: (row) => <MoneyText value={row.balance} />,
     },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "account",
+    },
     {
       header: t.accountPage.colLastActivity,
       cell: (row) =>

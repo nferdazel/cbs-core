@@ -162,7 +162,12 @@ export default function PersetujuanPage() {
       cell: (row) => formatDateTime(row.created_at),
       isMono: true,
     },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "approval",
+    },
     {
       header: t.common.actions,
       cell: (row) => (

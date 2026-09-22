@@ -10,7 +10,6 @@ import type {
   BankingProduct,
   Deposit,
   DepositPreview,
-  DepositStatus,
 } from "@/lib/operations-types";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
@@ -18,7 +17,7 @@ import { Alert } from "@/components/ui/Alert";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
@@ -38,19 +37,8 @@ interface Meta {
   total_pages: number;
 }
 
-const DEPOSIT_STATUS: Record<
-  DepositStatus,
-  { variant: "neutral" | "accent" | "credit" | "debit" }
-> = {
-  PLACED: { variant: "credit" },
-  MATURED: { variant: "accent" },
-  CLOSED: { variant: "neutral" },
-  BROKEN: { variant: "debit" },
-};
-
-function DepositStatusBadge({ status }: { status: DepositStatus }) {
-  return <Badge variant={DEPOSIT_STATUS[status]?.variant ?? "outline"}>{status}</Badge>;
-}
+// Status deposito memakai domain "deposit": CLOSED di sini berarti pencairan
+// normal (netral), berbeda dari CLOSED rekening yang berarti terminal.
 
 // Instruksi ARO juga kunci teknis; labelnya dari kamus.
 function aroLabel(t: Dictionary["deposits"], instruction: AROInstruction): string {
@@ -557,7 +545,7 @@ function DepositDetailPanel({
             },
             {
               label: t.common.status,
-              value: <DepositStatusBadge status={deposit.status} />,
+              value: <StatusBadge status={deposit.status} domain="deposit" />,
             },
             { label: t.deposits.principal, value: <MoneyText value={deposit.placement_amount} /> },
             {
@@ -812,7 +800,7 @@ export default function DepositoPage() {
     },
     {
       header: t.common.status,
-      cell: (row) => <DepositStatusBadge status={row.status} />,
+      cell: (row) => <StatusBadge status={row.status} domain="deposit" />,
     },
     {
       header: t.common.actions,

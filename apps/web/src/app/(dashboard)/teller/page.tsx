@@ -231,7 +231,7 @@ export default function TellerPage() {
             <Card>
               <CardHeader>
                 <CardTitle>{t.teller.pendingTitle}</CardTitle>
-                <StatusBadge status={pendingApproval.status} />
+                <StatusBadge status={pendingApproval.status} domain="approval" />
               </CardHeader>
               <CardContent>
                 <p className="text-body text-ink-600">
@@ -259,7 +259,7 @@ export default function TellerPage() {
             <Card>
               <CardHeader>
                 <CardTitle>{t.teller.resultTitle}</CardTitle>
-                <StatusBadge status={result.status} />
+                <StatusBadge status={result.status} domain="journal" />
               </CardHeader>
               <CardContent>
                 <DefinitionList

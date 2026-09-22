@@ -321,7 +321,7 @@ export function AccountOpening({
                               {customer.full_name}
                             </span>
                           </span>
-                          <StatusBadge status={customer.status} />
+                          <StatusBadge status={customer.status} domain="customer" />
                         </button>
                       </li>
                     ))}

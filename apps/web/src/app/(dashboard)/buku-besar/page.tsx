@@ -69,7 +69,12 @@ export default function BukuBesarPage() {
     },
     { header: t.ledger.colType, accessorKey: "transaction_type" },
     { header: t.ledger.colDescription, accessorKey: "description" },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "journal",
+    },
   ];
 
   return (

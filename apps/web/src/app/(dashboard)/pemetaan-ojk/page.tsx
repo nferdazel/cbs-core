@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { DataTable, Column } from "@/components/ui/DataTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -449,23 +450,15 @@ export default function PemetaanOJKPage() {
                 </div>
               </dl>
               {target.kind === "note" && (
-                <div className="space-y-1">
-                  <label
-                    htmlFor="ojk-mapping-note"
-                    className="block text-meta font-medium text-ink-900"
-                  >
-                    {t.ojkMapping.noteField}
-                  </label>
-                  <textarea
-                    id="ojk-mapping-note"
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder={t.ojkMapping.notePlaceholder}
-                    rows={3}
-                    disabled={submitting}
-                    className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-body text-ink-900 placeholder:text-ink-400 focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 disabled:opacity-50"
-                  />
-                </div>
+                <Textarea
+                  id="ojk-mapping-note"
+                  label={t.ojkMapping.noteField}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder={t.ojkMapping.notePlaceholder}
+                  rows={3}
+                  disabled={submitting}
+                />
               )}
               {actionError && (
                 <p className="text-body text-debit-700" role="alert">

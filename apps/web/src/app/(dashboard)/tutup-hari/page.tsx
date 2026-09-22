@@ -348,7 +348,9 @@ export default function TutupHariPage() {
                 },
                 {
                   label: t.common.status,
-                  value: <StatusBadge status={businessDate.status} />,
+                  value: (
+                    <StatusBadge status={businessDate.status} domain="businessDate" />
+                  ),
                 },
                 {
                   label: t.dayClose.lastUpdated,

@@ -1,6 +1,7 @@
 import React from "react";
 import { MoneyText } from "./MoneyText";
 import { StatusBadge } from "./StatusBadge";
+import type { StatusDomain } from "./StatusBadge";
 import { useTranslation } from "@/i18n/context";
 
 export type DataTableColumnType =
@@ -16,6 +17,8 @@ export interface Column<T> {
   cell?: (row: T, index: number) => React.ReactNode;
   /** Tipe bawaan menentukan render & alignment. */
   type?: DataTableColumnType;
+  /** Domain makna untuk kolom `status`; wajib bila statusnya bisa ambigu antar domain. */
+  statusDomain?: StatusDomain;
   align?: "left" | "center" | "right";
   width?: string;
   isMono?: boolean;
@@ -108,7 +111,12 @@ export function DataTable<T>({
                   } else if (col.type === "money") {
                     content = <MoneyText value={raw as string | number | null} />;
                   } else if (col.type === "status") {
-                    content = <StatusBadge status={raw as string | null} />;
+                    content = (
+                      <StatusBadge
+                        status={raw as string | null}
+                        domain={col.statusDomain}
+                      />
+                    );
                   }
 
                   return (

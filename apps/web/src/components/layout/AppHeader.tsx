@@ -24,6 +24,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
   const appInfo = useAppInfo();
   const [businessDate, setBusinessDate] = useState<SystemBusinessDate | null>(null);
   const [dateUnavailable, setDateUnavailable] = useState(false);
+  // Nama bank dari identitas instalasi. Bila profil bank belum diisi, bidang ini
+  // kosong dan header jatuh kembali ke keterangan aplikasi, bukan bidang kosong.
+  const bankName = appInfo.company_name.trim();
 
   useEffect(() => {
     let cancelled = false;
@@ -55,12 +58,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
             <Building2 className="h-4 w-4 text-white" aria-hidden />
           )}
         </div>
-        <div
-          title={appInfo.company_name || undefined}
-          aria-label={appInfo.company_name || undefined}
-        >
+        <div title={bankName || undefined}>
           <div className="text-title font-semibold leading-tight">{appInfo.display_name}</div>
-          <div className="text-meta text-white/60">{appInfo.description}</div>
+          <div className="text-meta text-white/60">
+            {bankName || appInfo.description}
+          </div>
         </div>
       </div>
 
@@ -72,7 +74,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ user, onLogout }) => {
               <span className="font-mono text-white">
                 {formatDate(businessDate.current_date)}
               </span>
-              <StatusBadge status={businessDate.status} />
+              <StatusBadge status={businessDate.status} domain="businessDate" />
             </>
           ) : (
             <span className="font-mono text-white/70">

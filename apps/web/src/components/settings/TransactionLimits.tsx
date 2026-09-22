@@ -143,7 +143,9 @@ export function TransactionLimits() {
         row.configured ? (
           <Badge variant="credit">{t.limits.configured}</Badge>
         ) : (
-          <Badge variant="debit">
+          // "Masih bawaan" = perlu perhatian, bukan kegagalan; kuning (accent),
+          // konsisten dengan notis peringatan di atas tabel.
+          <Badge variant="accent">
             <AlertTriangle className="mr-1 h-3 w-3" aria-hidden />
             {t.limits.unconfigured}
           </Badge>

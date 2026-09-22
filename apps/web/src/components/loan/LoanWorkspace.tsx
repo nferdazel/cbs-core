@@ -552,7 +552,12 @@ function LoanDetailPanel({
       type: "money",
       cell: (row) => <MoneyText value={row.paid_profit} />,
     },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "installment",
+    },
   ];
 
   if (loading) {
@@ -873,7 +878,12 @@ export function LoanWorkspace({ book }: LoanWorkspaceProps) {
       type: "money",
       cell: (row) => <MoneyText value={row.outstanding_principal} />,
     },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "loan",
+    },
     ...(syariah
       ? [
           {

@@ -89,7 +89,12 @@ export default function NasabahPage() {
     { header: t.common.name, accessorKey: "full_name" },
     { header: t.customerPage.colPhone, accessorKey: "phone_number", isMono: true },
     { header: t.customerPage.colEmail, accessorKey: "email" },
-    { header: t.common.status, accessorKey: "status", type: "status" },
+    {
+      header: t.common.status,
+      accessorKey: "status",
+      type: "status",
+      statusDomain: "customer",
+    },
   ];
 
   return (
