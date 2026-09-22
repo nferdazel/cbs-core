@@ -223,6 +223,23 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		if diff := itemSnap.RequiredPPAP.Sub(calc.Target); diff.IsPositive() {
 			summary.ModalIntiDeduction = summary.ModalIntiDeduction.Add(diff)
 		}
+
+		// Basis pembanding KEDUA "setara PPKA": aset baik TETAP dinilai EAD x PD x
+		// LGD supaya basisnya sebanding dengan PPKA yang dihitung atas seluruh kredit.
+		// Hanya untuk pelaporan: tidak ada jurnal dan required_ckpn tidak ditulis.
+		// Kegagalan hanya-basis-2 (biasanya PD/LGD aset baik belum lengkap) dihitung
+		// terpisah supaya tidak mengubah Processed/Failed basis pertama.
+		setara, setaraErr := domain.CalculateCKPNSetaraPPKA(itemSnap, policy)
+		if setaraErr != nil {
+			summary.SetaraPPKAFailed++
+		} else {
+			summary.SetaraPPKAProcessed++
+			summary.SetaraPPKATotalPPKA = summary.SetaraPPKATotalPPKA.Add(itemSnap.RequiredPPAP)
+			summary.SetaraPPKATotalCKPN = summary.SetaraPPKATotalCKPN.Add(setara.Target)
+			if diff := itemSnap.RequiredPPAP.Sub(setara.Target); diff.IsPositive() {
+				summary.SetaraPPKAModalIntiDeduction = summary.SetaraPPKAModalIntiDeduction.Add(diff)
+			}
+		}
 	}
 
 	// Selisih agregat dan pihak yang lebih tinggi. PPKA diperlakukan sebagai lantai
@@ -242,6 +259,19 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		summary.Higher = domain.CKPNLargerSame
 	}
 
+	// Selisih dan pihak lebih tinggi basis KEDUA (setara PPKA). Dihitung agregat atas
+	// kredit yang dapat dihitung, serupa basis pertama; pengurang modal intinya tetap
+	// Σ max(PPKA-CKPN,0) per kredit, bukan selisih agregat.
+	summary.SetaraPPKADifference = summary.SetaraPPKATotalPPKA.Sub(summary.SetaraPPKATotalCKPN)
+	switch {
+	case summary.SetaraPPKADifference.IsPositive():
+		summary.SetaraPPKAHigher = domain.CKPNLargerPPKA
+	case summary.SetaraPPKADifference.IsNegative():
+		summary.SetaraPPKAHigher = domain.CKPNLargerCKPN
+	default:
+		summary.SetaraPPKAHigher = domain.CKPNLargerSame
+	}
+
 	// Asumsi dan kekurangan parameter hanya relevan (dan hanya diisi) untuk mode
 	// bayangan yang benar-benar dipakai (shadowEffective), supaya bentuk respons jalur
 	// resmi tidak berubah. ParameterGaps tidak menebak nilai: ia menyebut kunci yang
@@ -249,9 +279,22 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	if shadowEffective {
 		summary.Assumptions = ckpnShadowAssumptions(policy)
 		summary.ParameterGaps = ckpnPolicyGaps(policy)
+		summary.BasisNote = ckpnDuaBasisNote(summary)
 	}
 
 	return summary, nil
+}
+
+// ckpnDuaBasisNote menjelaskan mengapa dua basis perbandingan bisa berbeda dan
+// menegaskan keduanya belum menjadi kebijakan bank. Bila basis setara PPKA tidak
+// dapat menghitung sebagian kredit (PD/LGD belum lengkap), itu disebutkan supaya
+// totalnya yang lebih kecil tidak disalahbaca sebagai CKPN yang sudah dihitung penuh.
+func ckpnDuaBasisNote(s domain.CKPNComparisonSummary) string {
+	note := "DUA BASIS CKPN: (1) sesuai kebijakan — aset baik dikecualikan sehingga CKPN-nya nol (butir 12.3.a.2.a); (2) setara PPKA — aset baik tetap dinilai EAD x PD x LGD supaya basisnya sebanding dengan PPKA yang dihitung atas SELURUH kredit. Kedua angka berbeda karena perlakuan aset baik, bukan karena rumus berbeda. Keduanya BUKAN kebijakan bank yang berlaku: tidak ada jurnal yang ditulis, required_ckpn tidak tersimpan, dan pengurangan modal inti belum dilakukan."
+	if s.SetaraPPKAFailed > 0 {
+		note += fmt.Sprintf(" Basis setara PPKA belum dapat menghitung %d kredit (PD/LGD belum lengkap), sehingga totalnya hanya mencakup kredit yang dapat dihitung.", s.SetaraPPKAFailed)
+	}
+	return note
 }
 
 // ckpnShadowAssumptions merangkum asumsi yang BENAR-BENAR dipakai perhitungan mode

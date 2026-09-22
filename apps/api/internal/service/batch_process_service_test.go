@@ -974,3 +974,119 @@ func TestRunEODShadowCKPNJelaskanTotalNolKarenaAsetBaik(t *testing.T) {
 		t.Fatalf("mode bayangan tidak boleh mengisi bidang resmi: %+v", res)
 	}
 }
+
+// Dua basis CKPN harus berdampingan pada hasil EOD: bidang lama (basis "sesuai
+// kebijakan") tetap, ditambah bidang "setara PPKA" (aset baik tetap dinilai) dan
+// catatan yang menegaskan keduanya belum menjadi kebijakan bank.
+func TestRunEODLaporkanDuaBasisCKPN(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode: true,
+				Processed:  6,
+				// Basis 1: aset baik dikecualikan -> total CKPN nol, pengurang = seluruh PPKA.
+				TotalPPKA:          decimal.NewFromInt(929_407),
+				TotalCKPN:          decimal.Zero,
+				Difference:         decimal.NewFromInt(929_407),
+				Higher:             domain.CKPNLargerPPKA,
+				ModalIntiDeduction: decimal.NewFromInt(929_407),
+				AsetBaikCount:      6,
+				// Basis 2: aset baik tetap dinilai -> angka lebih kecil.
+				SetaraPPKAProcessed:          6,
+				SetaraPPKATotalPPKA:          decimal.NewFromInt(929_407),
+				SetaraPPKATotalCKPN:          decimal.NewFromInt(120_000),
+				SetaraPPKADifference:         decimal.NewFromInt(809_407),
+				SetaraPPKAModalIntiDeduction: decimal.NewFromInt(809_407),
+				SetaraPPKAHigher:             domain.CKPNLargerPPKA,
+				BasisNote:                    "DUA BASIS CKPN: ... Keduanya BUKAN kebijakan bank yang berlaku.",
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	// Basis 1 (bidang lama) tidak berubah.
+	if !res.CKPNShadowTotalCKPN.IsZero() || !res.CKPNShadowModalIntiDeduction.Equal(decimal.NewFromInt(929_407)) {
+		t.Fatalf("basis kebijakan berubah: ckpn=%s ded=%s", res.CKPNShadowTotalCKPN, res.CKPNShadowModalIntiDeduction)
+	}
+	// Basis 2 terpetakan lengkap.
+	if res.CKPNShadowSetaraPPKAProcessed != 6 {
+		t.Fatalf("ckpn_shadow_setara_ppka_processed = %d, mau 6", res.CKPNShadowSetaraPPKAProcessed)
+	}
+	if !res.CKPNShadowSetaraPPKATotalPPKA.Equal(decimal.NewFromInt(929_407)) {
+		t.Fatalf("total PPKA setara %s, mau 929407 (sama dengan basis kebijakan)", res.CKPNShadowSetaraPPKATotalPPKA)
+	}
+	if !res.CKPNShadowSetaraPPKATotalCKPN.Equal(decimal.NewFromInt(120_000)) {
+		t.Fatalf("total CKPN setara %s, mau 120000", res.CKPNShadowSetaraPPKATotalCKPN)
+	}
+	if !res.CKPNShadowSetaraPPKADifference.Equal(decimal.NewFromInt(809_407)) {
+		t.Fatalf("difference setara %s, mau 809407", res.CKPNShadowSetaraPPKADifference)
+	}
+	if !res.CKPNShadowSetaraPPKAModalIntiDeduction.Equal(decimal.NewFromInt(809_407)) {
+		t.Fatalf("pengurang modal setara %s, mau 809407", res.CKPNShadowSetaraPPKAModalIntiDeduction)
+	}
+	if res.CKPNShadowSetaraPPKAHigher != string(domain.CKPNLargerPPKA) {
+		t.Fatalf("higher setara %q, mau PPKA", res.CKPNShadowSetaraPPKAHigher)
+	}
+	if !strings.Contains(res.CKPNShadowBasisNote, "DUA BASIS") {
+		t.Fatalf("basis note harus diteruskan, dapat %q", res.CKPNShadowBasisNote)
+	}
+	if !strings.Contains(res.CKPNShadowNote, "DUA BASIS") {
+		t.Fatalf("basis note harus ikut pada catatan bayangan, dapat %q", res.CKPNShadowNote)
+	}
+	// Bidang resmi tetap tidak terisi.
+	if res.CKPNCompared != 0 || !res.CKPNModalIntiDeduction.IsZero() {
+		t.Fatalf("bidang resmi tidak boleh terisi: %+v", res)
+	}
+}
+
+// Bila basis setara PPKA tidak dapat menghitung sebagian kredit (PD/LGD belum
+// lengkap), EOD harus memberi peringatan agar total yang lebih kecil tidak terbaca
+// sebagai perbandingan utuh.
+func TestRunEODPeringatkanBasisSetaraPPKAGagal(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode:          true,
+				Processed:           3,
+				SetaraPPKAProcessed: 2,
+				SetaraPPKAFailed:    1,
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if res.CKPNShadowSetaraPPKAFailed != 1 {
+		t.Fatalf("ckpn_shadow_setara_ppka_failed = %d, mau 1", res.CKPNShadowSetaraPPKAFailed)
+	}
+	warned := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "setara PPKA") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("harus ada peringatan basis setara PPKA gagal, dapat %v", res.Warnings)
+	}
+}

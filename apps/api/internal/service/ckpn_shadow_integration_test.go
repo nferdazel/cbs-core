@@ -116,6 +116,34 @@ func TestIntegrasiCKPNModeBayanganPortofolioCampuran(t *testing.T) {
 		t.Fatalf("parameter lengkap, gap harus kosong, dapat %v", summary.ParameterGaps)
 	}
 
+	// Basis KEDUA "setara PPKA": aset baik (C) TETAP dinilai EAD x PD x LGD.
+	// A = 100.000.000 x 5% x 45% = 2.250.000; B = 100.000.000 x 60% x 45% = 27.000.000;
+	// C = 50.000.000 x 0,5% x 45% = 112.500. Total = 29.362.500 (berbeda dari basis
+	// kebijakan 29.250.000 yang mengecualikan C).
+	if summary.SetaraPPKAProcessed != 3 || summary.SetaraPPKAFailed != 0 {
+		t.Fatalf("basis setara processed=%d failed=%d, mau 3/0", summary.SetaraPPKAProcessed, summary.SetaraPPKAFailed)
+	}
+	if !summary.SetaraPPKATotalCKPN.Equal(decimal.NewFromInt(29_362_500)) {
+		t.Fatalf("basis setara total CKPN %s, mau 29362500", summary.SetaraPPKATotalCKPN)
+	}
+	if !summary.SetaraPPKATotalPPKA.Equal(decimal.NewFromInt(16_000_000)) {
+		t.Fatalf("basis setara total PPKA %s, mau 16000000 (sama dengan basis kebijakan)", summary.SetaraPPKATotalPPKA)
+	}
+	if !summary.SetaraPPKADifference.Equal(decimal.NewFromInt(-13_362_500)) || summary.SetaraPPKAHigher != domain.CKPNLargerCKPN {
+		t.Fatalf("basis setara difference=%s higher=%s, mau -13362500/CKPN", summary.SetaraPPKADifference, summary.SetaraPPKAHigher)
+	}
+	// Pengurang modal inti per kredit: max(5.000.000-2.250.000,0) +
+	// max(10.000.000-27.000.000,0) + max(1.000.000-112.500,0) = 3.637.500.
+	if !summary.SetaraPPKAModalIntiDeduction.Equal(decimal.NewFromInt(3_637_500)) {
+		t.Fatalf("basis setara pengurang modal inti %s, mau 3637500", summary.SetaraPPKAModalIntiDeduction)
+	}
+	if summary.SetaraPPKATotalCKPN.Equal(summary.TotalCKPN) {
+		t.Fatalf("dua basis harus berbeda pada portofolio campuran, keduanya %s", summary.TotalCKPN)
+	}
+	if !strings.Contains(summary.BasisNote, "DUA BASIS") {
+		t.Fatalf("basis note harus terisi, dapat %q", summary.BasisNote)
+	}
+
 	// Mode bayangan TIDAK menjurnal dan TIDAK menyimpan required_ckpn.
 	if after := e.countCKPNJournals(t); after != beforeJournals {
 		t.Fatalf("mode bayangan menambah jurnal CKPN: sebelum %d, sesudah %d", beforeJournals, after)

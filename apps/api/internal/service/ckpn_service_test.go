@@ -1017,3 +1017,123 @@ func TestCKPN_ModeBayanganMenghitungAsetBaik(t *testing.T) {
 		t.Fatalf("sisa pokok aset baik %s, mau %s", summary.AsetBaikOutstanding, snap.Outstanding)
 	}
 }
+
+// Dua basis perbandingan CKPN: basis pertama "sesuai kebijakan" mengecualikan aset
+// baik (CKPN nol), basis kedua "setara PPKA" tetap menilai aset baik EAD x PD x LGD
+// supaya sebanding dengan PPKA. Portofolio campuran (satu kredit tidak lancar, satu
+// aset baik) membuktikan kedua basis menghasilkan angka BERBEDA dan keduanya benar
+// manual, tanpa jurnal dan tanpa menulis required_ckpn.
+func TestCKPN_DuaBasisSetaraPPKAPortofolioCampuran(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati: murni pelaporan
+		"ckpn.pd.1":                "0.005",
+		"ckpn.pd.3":                "0.10",
+		"ckpn.lgd":                 "0.50",
+	}}
+
+	// A: tidak lancar (bukan aset baik). 10.000.000 x 10% x 50% = 500.000; PPKA 1.000.000.
+	loanA := ckpnLoan()
+	loanA.Outstanding = decimal.NewFromInt(10_000_000)
+	loanA.RequiredPPAP = decimal.NewFromInt(1_000_000)
+	// C: aset baik. dasar CKPN basis-1 nol; basis-2 = 5.000.000 x 0,5% x 50% = 12.500.
+	loanC := ckpnLoan()
+	loanC.LoanNumber = "KRD-2026-0002"
+	loanC.Collectibility = domain.KolLancar
+	loanC.DPD = 0
+	loanC.Outstanding = decimal.NewFromInt(5_000_000)
+	loanC.RequiredPPAP = decimal.NewFromInt(200_000)
+
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{loanA, loanC}}
+	svc, posting, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Processed != 2 || summary.Failed != 0 {
+		t.Fatalf("processed=%d failed=%d, mau 2/0 (%+v)", summary.Processed, summary.Failed, summary.Failures)
+	}
+
+	// Basis 1 — sesuai kebijakan (aset baik dikecualikan).
+	if !summary.TotalCKPN.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("basis kebijakan total CKPN %s, mau 500000", summary.TotalCKPN)
+	}
+	if !summary.TotalPPKA.Equal(decimal.NewFromInt(1_200_000)) {
+		t.Fatalf("basis kebijakan total PPKA %s, mau 1200000", summary.TotalPPKA)
+	}
+	if !summary.ModalIntiDeduction.Equal(decimal.NewFromInt(700_000)) {
+		t.Fatalf("basis kebijakan pengurang modal inti %s, mau 700000", summary.ModalIntiDeduction)
+	}
+	if summary.AsetBaikCount != 1 || !summary.AsetBaikOutstanding.Equal(decimal.NewFromInt(5_000_000)) {
+		t.Fatalf("aset baik %d/%s, mau 1/5000000", summary.AsetBaikCount, summary.AsetBaikOutstanding)
+	}
+
+	// Basis 2 — setara PPKA (aset baik tetap dinilai). 500.000 + 12.500 = 512.500.
+	if summary.SetaraPPKAProcessed != 2 || summary.SetaraPPKAFailed != 0 {
+		t.Fatalf("basis setara processed=%d failed=%d, mau 2/0", summary.SetaraPPKAProcessed, summary.SetaraPPKAFailed)
+	}
+	if !summary.SetaraPPKATotalPPKA.Equal(decimal.NewFromInt(1_200_000)) {
+		t.Fatalf("basis setara total PPKA %s, mau 1200000 (sama dengan basis kebijakan)", summary.SetaraPPKATotalPPKA)
+	}
+	if !summary.SetaraPPKATotalCKPN.Equal(decimal.NewFromInt(512_500)) {
+		t.Fatalf("basis setara total CKPN %s, mau 512500", summary.SetaraPPKATotalCKPN)
+	}
+	if !summary.SetaraPPKADifference.Equal(decimal.NewFromInt(687_500)) || summary.SetaraPPKAHigher != domain.CKPNLargerPPKA {
+		t.Fatalf("basis setara difference=%s higher=%s, mau 687500/PPKA", summary.SetaraPPKADifference, summary.SetaraPPKAHigher)
+	}
+	if !summary.SetaraPPKAModalIntiDeduction.Equal(decimal.NewFromInt(687_500)) {
+		t.Fatalf("basis setara pengurang modal inti %s, mau 687500", summary.SetaraPPKAModalIntiDeduction)
+	}
+	// Kedua basis memang BERBEDA, inti laporan A1.
+	if summary.SetaraPPKATotalCKPN.Equal(summary.TotalCKPN) {
+		t.Fatalf("dua basis harus berbeda, keduanya %s", summary.TotalCKPN)
+	}
+	if !strings.Contains(summary.BasisNote, "DUA BASIS") || !strings.Contains(summary.BasisNote, "BUKAN kebijakan bank") {
+		t.Fatalf("basis note harus menjelaskan dua basis dan statusnya, dapat %q", summary.BasisNote)
+	}
+
+	// Murni pelaporan: tidak ada jurnal, tidak ada state, tidak ada kunci.
+	if len(posting.requests) != 0 {
+		t.Fatalf("dua basis tidak boleh menjurnal, dapat %d", len(posting.requests))
+	}
+	if len(repo.updates) != 0 {
+		t.Fatalf("dua basis tidak boleh menulis required_ckpn, dapat %d", len(repo.updates))
+	}
+}
+
+// Parameter aset baik yang belum diisi membuat basis setara PPKA tidak dapat dihitung
+// pada kredit aset baik, sementara basis kebijakan tetap berhasil (tidak butuh PD).
+// Kegagalan itu harus dilaporkan terpisah, tidak menambah Failed basis pertama.
+func TestCKPN_DuaBasisSetaraPPKAParameterAsetBaikKosong(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.pd.3":                "0.10",
+		"ckpn.lgd":                 "0.50",
+		// ckpn.pd.1 sengaja kosong: hanya dibutuhkan basis setara untuk aset baik.
+	}}
+	snap := ckpnLoan()
+	snap.Collectibility = domain.KolLancar
+	snap.DPD = 0
+
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
+	svc, _, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Processed != 1 || summary.Failed != 0 {
+		t.Fatalf("basis kebijakan processed=%d failed=%d, mau 1/0", summary.Processed, summary.Failed)
+	}
+	if summary.SetaraPPKAProcessed != 0 || summary.SetaraPPKAFailed != 1 {
+		t.Fatalf("basis setara processed=%d failed=%d, mau 0/1", summary.SetaraPPKAProcessed, summary.SetaraPPKAFailed)
+	}
+	if !summary.SetaraPPKATotalCKPN.IsZero() {
+		t.Fatalf("basis setara total CKPN %s, mau nol saat tidak dapat dihitung", summary.SetaraPPKATotalCKPN)
+	}
+	if !strings.Contains(summary.BasisNote, "belum dapat menghitung") {
+		t.Fatalf("basis note harus menyebut kredit yang belum dapat dihitung, dapat %q", summary.BasisNote)
+	}
+}

@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -19,6 +20,14 @@ import (
 // diisi, mengikuti pola moneyflow_integration_test.go yang menyediakan newMoneyEnv.
 //
 //	CBS_TEST_DB_DSN='postgres://...' go test ./internal/service/ -run IntegrasiKreditW2 -v
+
+// w2Email menghasilkan email unik per run. email_index punya indeks unik parsial,
+// dan pelanggaran unik apa pun dipetakan produksi ke ErrDuplicateIDCard (pesan
+// "NIK sudah terdaftar"); email tetap akan menggagalkan uji pada database yang
+// sama bila nilainya tidak unik per run.
+func w2Email(prefix string) string {
+	return fmt.Sprintf("%s-%s@uji.local", prefix, uuid.NewString()[:8])
+}
 
 func w2ApplyLoan(t *testing.T, e *moneyEnv, productCode string, customerID, accountID uuid.UUID, amount decimal.Decimal) *domain.Loan {
 	t.Helper()
@@ -44,7 +53,7 @@ func w2ApplyLoan(t *testing.T, e *moneyEnv, productCode string, customerID, acco
 // tercatat di audit. Alasan kosong ditolak tanpa mengubah baris kredit.
 func TestIntegrasiKreditW2TolakMenyimpanAlasan(t *testing.T) {
 	e := newMoneyEnv(t)
-	cust := e.newCustomer(t, "Nasabah Tolak W2", "tolak.w2@uji.local")
+	cust := e.newCustomer(t, "Nasabah Tolak W2", w2Email("tolak.w2"))
 	accID := e.newAccount(t, cust.ID)
 	loan := w2ApplyLoan(t, e, "KRD-FLAT", cust.ID, accID, decimal.NewFromInt(3_000_000))
 
@@ -113,7 +122,7 @@ func TestIntegrasiKreditW2TolakMenyimpanAlasan(t *testing.T) {
 // tidak menyentuh journal_reference_seq. Dibandingkan dua pembangkit: kredit vs jurnal.
 func TestIntegrasiKreditW2NomorTidakMenggeserReferensiTransaksi(t *testing.T) {
 	e := newMoneyEnv(t)
-	cust := e.newCustomer(t, "Nasabah Nomor W2", "nomor.w2@uji.local")
+	cust := e.newCustomer(t, "Nasabah Nomor W2", w2Email("nomor.w2"))
 	accID := e.newAccount(t, cust.ID)
 
 	seqBefore := w2PrimeJournalSeq(t, e)
@@ -141,7 +150,7 @@ func TestIntegrasiKreditW2NomorTidakMenggeserReferensiTransaksi(t *testing.T) {
 	}
 
 	// Produk syariah memakai prefix berbeda.
-	syarCust := e.newCustomer(t, "Nasabah Syariah W2", "syariah.w2@uji.local")
+	syarCust := e.newCustomer(t, "Nasabah Syariah W2", w2Email("syariah.w2"))
 	syarAcc := e.newAccount(t, syarCust.ID)
 	syarLoan := w2ApplyLoan(t, e, "PMB-MURABAHAH", syarCust.ID, syarAcc, decimal.NewFromInt(3_000_000))
 	if !regexp.MustCompile(`^PMB-\d{8}-\d{6}$`).MatchString(syarLoan.LoanNumber) {

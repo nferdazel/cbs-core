@@ -73,7 +73,17 @@ type EODSummaryResult struct {
 	// aditif: klien lama tetap membaca TotalDepositAmountToday seperti sebelumnya.
 	TotalDepositPlacementsToday int             `json:"total_deposit_placements_today"`
 	TotalDepositPlacementAmount decimal.Decimal `json:"total_deposit_placement_amount_today"`
-	TotalWithdrawalAmountToday  decimal.Decimal `json:"total_withdrawal_amount_today"`
+	// TotalDepositAmountTodayLabel menjelaskan cakupan angka TotalDepositAmountToday
+	// beserta keterbatasan data lamanya, supaya pembaca laporan tidak salah tafsir.
+	TotalDepositAmountTodayLabel string          `json:"total_deposit_amount_today_label,omitempty"`
+	TotalWithdrawalAmountToday   decimal.Decimal `json:"total_withdrawal_amount_today"`
+	// SocialFundBalance adalah saldo akun 12500 "Dana Kebajikan" saat tutup hari:
+	// akumulasi denda pembiayaan syariah (ta'zir) yang BUKAN pendapatan bank. Dana ini
+	// menunggu keputusan penyaluran oleh Dewan Pengawas Syariah; EOD hanya melaporkan
+	// saldo, tidak menulis jurnal dan tidak mengubah akrual.
+	SocialFundBalance decimal.Decimal `json:"social_fund_balance"`
+	// SocialFundNote adalah catatan singkat yang menjelaskan status dana kebajikan.
+	SocialFundNote string `json:"social_fund_note,omitempty"`
 	// Pekerjaan harian berikut bersifat best-effort: kegagalannya tidak
 	// menggagalkan tutup hari, tetapi selalu tampil di Warnings agar tidak
 	// terlihat sukses padahal tidak berjalan.
@@ -149,6 +159,22 @@ type EODSummaryResult struct {
 	// perhitungan, bukan tanda model belum dijalankan.
 	CKPNShadowAsetBaik            int             `json:"ckpn_shadow_aset_baik"`
 	CKPNShadowAsetBaikOutstanding decimal.Decimal `json:"ckpn_shadow_aset_baik_outstanding"`
+	// Bidang basis KEDUA "setara PPKA" (bidang CKPNShadow* di atas adalah basis
+	// pertama "sesuai kebijakan" yang mengecualikan aset baik). Basis kedua menilai
+	// aset baik dengan model yang sama (EAD x PD x LGD) supaya sebanding dengan PPKA
+	// yang dihitung atas seluruh kredit. Keduanya hanya DILAPORKAN: tidak ada jurnal
+	// dan required_ckpn tidak ditulis. Bila CKPNShadowSetaraPPKAFailed > 0, totalnya
+	// hanya mencakup kredit yang dapat dihitung.
+	CKPNShadowSetaraPPKAProcessed          int             `json:"ckpn_shadow_setara_ppka_processed"`
+	CKPNShadowSetaraPPKAFailed             int             `json:"ckpn_shadow_setara_ppka_failed"`
+	CKPNShadowSetaraPPKATotalPPKA          decimal.Decimal `json:"ckpn_shadow_setara_ppka_total_ppka"`
+	CKPNShadowSetaraPPKATotalCKPN          decimal.Decimal `json:"ckpn_shadow_setara_ppka_total_ckpn"`
+	CKPNShadowSetaraPPKADifference         decimal.Decimal `json:"ckpn_shadow_setara_ppka_difference"`
+	CKPNShadowSetaraPPKAModalIntiDeduction decimal.Decimal `json:"ckpn_shadow_setara_ppka_modal_inti_deduction"`
+	CKPNShadowSetaraPPKAHigher             string          `json:"ckpn_shadow_setara_ppka_higher"`
+	// CKPNShadowBasisNote menjelaskan mengapa dua basis bisa berbeda dan menegaskan
+	// keduanya belum menjadi kebijakan bank.
+	CKPNShadowBasisNote string `json:"ckpn_shadow_basis_note,omitempty"`
 	// CKPNShadowParameterGaps adalah kunci parameter PD/LGD yang belum diisi atau diisi
 	// dengan satuan salah (persen alih-alih fraksi). CKPN tidak dapat dihitung untuk
 	// kredit yang membutuhkannya sampai kunci ini diperbaiki.

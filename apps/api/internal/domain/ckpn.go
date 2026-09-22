@@ -152,6 +152,27 @@ type CKPNCalculation struct {
 //
 // Parameter yang belum diisi menghasilkan ErrCKPNParameterMissing, bukan nol.
 func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
+	return calculateCKPN(snap, policy, true)
+}
+
+// CalculateCKPNSetaraPPKA menghitung target CKPN dengan model dan EAD yang SAMA
+// seperti CalculateCKPN (EAD x PD x LGD), tetapi TANPA pengecualian aset baik butir
+// 12.3.a.2.a: aset baik tetap dinilai. Tujuannya agar basisnya sebanding dengan PPKA
+// yang dihitung atas SELURUH kredit, sehingga laporan dapat menyandingkan dua basis
+// (sesuai kebijakan vs setara PPKA).
+//
+// Fungsi ini HANYA untuk pelaporan pembanding. Ia tidak pernah dipakai menjurnal
+// maupun menyimpan required_ckpn, dan tidak mengubah perhitungan resmi
+// (CalculateCKPN). Parameter yang belum diisi tetap menghasilkan
+// ErrCKPNParameterMissing, bukan nol.
+func CalculateCKPNSetaraPPKA(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
+	return calculateCKPN(snap, policy, false)
+}
+
+// calculateCKPN adalah inti kedua fungsi di atas. excludeAsetBaik=true berarti
+// perilaku resmi: aset baik butir 12.3.a.2.a dikecualikan (target nol). false berarti
+// aset baik tetap dinilai dengan EAD x PD x LGD.
+func calculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy, excludeAsetBaik bool) (CKPNCalculation, error) {
 	out := CKPNCalculation{
 		Outstanding:    snap.Outstanding,
 		Collectibility: snap.Collectibility,
@@ -169,7 +190,7 @@ func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, e
 		return out, nil
 	}
 
-	if CKPNIsAsetBaik(snap.DPD, snap.IsRestructured, policy.AsetBaikMaxDPD) {
+	if excludeAsetBaik && CKPNIsAsetBaik(snap.DPD, snap.IsRestructured, policy.AsetBaikMaxDPD) {
 		// Aset baik boleh tidak membentuk CKPN. Bila ada CKPN lama, selisihnya dipulihkan
 		// (butir 12.5.b), paling tinggi sebesar yang pernah dibentuk — diwakili Existing.
 		out.IsAsetBaik = true
@@ -282,6 +303,27 @@ type CKPNComparisonSummary struct {
 	// Higher menamai pihak yang lebih tinggi pada tingkat agregat: PPKA, CKPN, atau
 	// SAMA. Ia hanya penjelas Difference dan TIDAK menentukan pengurang modal inti.
 	Higher CKPNLarger `json:"higher"`
+	// SetaraPPKA* adalah basis pembanding KEDUA: CKPN dinilai dengan model yang sama
+	// (EAD x PD x LGD) atas SEMUA kredit, aset baik TIDAK dikecualikan, supaya
+	// basisnya sebanding dengan PPKA yang juga dihitung atas seluruh kredit. Bidang
+	// di atas (TotalCKPN/ModalIntiDeduction/Difference/Higher) adalah basis PERTAMA
+	// "sesuai kebijakan" yang mengecualikan aset baik (butir 12.3.a.2.a). Kedua basis
+	// hanya DILAPORKAN pada mode bayangan: tidak ada jurnal dan required_ckpn tidak
+	// ditulis.
+	//
+	// SetaraPPKAProcessed/Failed mencatat berapa kredit yang dapat dihitung basis
+	// kedua; bila Failed > 0 (biasanya PD/LGD aset baik belum lengkap), totalnya hanya
+	// mencakup kredit yang dapat dihitung.
+	SetaraPPKAProcessed          int             `json:"setara_ppka_processed"`
+	SetaraPPKAFailed             int             `json:"setara_ppka_failed"`
+	SetaraPPKATotalPPKA          decimal.Decimal `json:"setara_ppka_total_ppka"`
+	SetaraPPKATotalCKPN          decimal.Decimal `json:"setara_ppka_total_ckpn"`
+	SetaraPPKADifference         decimal.Decimal `json:"setara_ppka_difference"`
+	SetaraPPKAModalIntiDeduction decimal.Decimal `json:"setara_ppka_modal_inti_deduction"`
+	SetaraPPKAHigher             CKPNLarger      `json:"setara_ppka_higher"`
+	// BasisNote menjelaskan mengapa dua basis bisa berbeda dan menegaskan keduanya
+	// belum menjadi kebijakan bank. Hanya diisi saat mode bayangan yang dipakai.
+	BasisNote string `json:"basis_note,omitempty"`
 	// Assumptions adalah asumsi parameter yang benar-benar dipakai perhitungan (PD per
 	// golongan, LGD, perlakuan agunan, aset baik, dasar EAD) supaya pembaca tahu ini
 	// hitungan sementara beralasan, bukan kebijakan final. Hanya diisi mode bayangan.

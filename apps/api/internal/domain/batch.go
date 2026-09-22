@@ -26,6 +26,13 @@ type DailyActivitySummary struct {
 	// sehingga reklasifikasi berbasis tebakan sengaja tidak dilakukan.
 	DepositPlacementCount       int
 	TotalDepositPlacementAmount decimal.Decimal
+	// SocialFundBalance adalah saldo akun 12500 "Dana Kebajikan" (LIABILITY, saldo
+	// normal kredit) sampai dan termasuk tanggal bisnis ini: sisi kredit dikurangi
+	// debit. Akun ini menampung denda keterlambatan pembiayaan syariah (ta'zir),
+	// bukan pendapatan bank, dan menunggu keputusan penyaluran oleh Dewan Pengawas
+	// Syariah. Kode 12500 berasal dari bagan akun (migrasi 000024/000068), sama
+	// dengan bawaan kunci konfigurasi loan.penalty.syariah.social_fund.coa.
+	SocialFundBalance decimal.Decimal
 }
 
 // BatchActivityRepository membaca aktivitas harian untuk ringkasan EOD.

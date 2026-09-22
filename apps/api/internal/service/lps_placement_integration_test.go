@@ -137,7 +137,10 @@ func TestIntegrasiLPSPlacementSaklarMati(t *testing.T) {
 
 	setLPSConfig(t, e, domain.LPSPlacementEnabledKey, "false")
 	branchID := e.ensureBranch(t, ("LC" + uuid.New().String())[:8], "Cabang Uji LPS Mati")
-	insertLPSPlacement(t, e, "10200", "Bank Uji Mati", "DEPOSITO", "LANCAR", 1_000_000_000, 500_000_000, branchID)
+	// Nama bank lawan unik per run: plafon LPS dihitung atas JUMLAH pengurang PER
+	// bank lawan, sehingga nama tetap akan membuat baris run sebelumnya ikut
+	// terjumlah dan uji pengurang lain gagal pada database yang sudah terakumulasi.
+	insertLPSPlacement(t, e, "10200", "Bank Uji Mati "+uuid.New().String(), "DEPOSITO", "LANCAR", 1_000_000_000, 500_000_000, branchID)
 
 	svc := newLPSSvcForTest(e)
 	summary, err := svc.Calculate(e.ctx, time.Now().UTC(), e.actor)

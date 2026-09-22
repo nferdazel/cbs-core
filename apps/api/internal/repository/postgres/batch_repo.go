@@ -26,6 +26,10 @@ func NewBatchActivityRepository(db *sql.DB) *BatchActivityRepository {
 // dilaporkan tersendiri sebagai jumlah dan nominal. Namanya "setoran" kini hanya untuk
 // DEPOSIT (tunai teller).
 //
+// SocialFundBalance melaporkan saldo akun 12500 "Dana Kebajikan" sampai tanggal
+// tersebut (kredit dikurangi debit), sebagai subquery terpisah dari agregat harian.
+// Ia baca-saja dan tidak memengaruhi angka aktivitas lain.
+//
 // Keterbatasan data lama: jurnal penempatan yang dibuat sebelum jenis DEPOSIT_PLACEMENT
 // ada (migrasi 000057) tetap bertipe DEPOSIT dan ikut terhitung sebagai setoran tunai.
 // Baris lama tidak menyimpan penanda pasti untuk membedakannya dari setoran tunai,
@@ -37,7 +41,15 @@ func (r *BatchActivityRepository) DailyActivity(ctx context.Context, date time.T
 		       COALESCE(SUM(CASE WHEN je.transaction_type = 'DEPOSIT' AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0),
 		       COALESCE(SUM(CASE WHEN je.transaction_type = 'WITHDRAWAL' AND jl.direction = 'DEBIT'  THEN jl.amount ELSE 0 END), 0),
 		       COUNT(DISTINCT CASE WHEN je.transaction_type = 'DEPOSIT_PLACEMENT' THEN je.id END),
-		       COALESCE(SUM(CASE WHEN je.transaction_type = 'DEPOSIT_PLACEMENT' AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0)
+		       COALESCE(SUM(CASE WHEN je.transaction_type = 'DEPOSIT_PLACEMENT' AND jl.direction = 'CREDIT' THEN jl.amount ELSE 0 END), 0),
+		       COALESCE((
+		           SELECT SUM(CASE WHEN jl2.direction = 'CREDIT' THEN jl2.amount ELSE -jl2.amount END)
+		           FROM journal_lines jl2
+		           JOIN journal_entries je2 ON je2.id = jl2.journal_entry_id
+		           JOIN accounts a2 ON a2.id = jl2.account_id
+		           JOIN chart_of_accounts coa2 ON coa2.id = a2.coa_id
+		           WHERE coa2.code = '12500' AND je2.entry_date <= $1::date
+		       ), 0)
 		FROM journal_entries je
 		JOIN journal_lines jl ON jl.journal_entry_id = je.id
 		WHERE je.entry_date = $1::date`, date,
@@ -47,6 +59,7 @@ func (r *BatchActivityRepository) DailyActivity(ctx context.Context, date time.T
 		&summary.TotalWithdrawalAmount,
 		&summary.DepositPlacementCount,
 		&summary.TotalDepositPlacementAmount,
+		&summary.SocialFundBalance,
 	)
 	if err != nil {
 		return nil, err

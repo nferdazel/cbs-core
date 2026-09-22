@@ -24,6 +24,18 @@ const (
 	configRetainedEarningsCOASyar = "retained_earnings.coa.syariah"
 )
 
+// Catatan/label yang menemani angka ringkasan EOD agar pembaca laporan tahu batas
+// maknanya tanpa harus membaca kode.
+const (
+	// socialFundNote menjelaskan saldo dana kebajikan (12500). Denda ta'zir bukan
+	// pendapatan bank; penyalurannya menunggu keputusan Dewan Pengawas Syariah.
+	socialFundNote = "Saldo akun 12500 Dana Kebajikan: akumulasi denda keterlambatan pembiayaan syariah (ta'zir), bukan pendapatan bank; menunggu keputusan penyaluran oleh Dewan Pengawas Syariah."
+	// depositAmountLabel menandai keterbatasan data lama: jurnal penempatan deposito
+	// yang dibuat sebelum tipe DEPOSIT_PLACEMENT ada tetap bertipe DEPOSIT sehingga
+	// ikut terhitung sebagai setoran tunai.
+	depositAmountLabel = "Setoran tunai teller (DEPOSIT). Keterbatasan data lama: jurnal penempatan deposito yang dibuat sebelum tipe DEPOSIT_PLACEMENT ada tetap bertipe DEPOSIT dan ikut terhitung di sini; penempatan berjenis baru dilaporkan terpisah pada total_deposit_placements_today/total_deposit_placement_amount_today."
+)
+
 // Nama langkah pekerjaan harian EOD. Dipakai sebagai kunci pada EODSummaryResult.Steps
 // dan sebagai nama prasyarat antar-langkah. Sengaja berupa konstanta agar
 // perbandingan prasyarat tidak bergantung pada string yang ditulis ulang.
@@ -152,9 +164,14 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 	summary.NextBusinessDate = nextDate
 	summary.TotalPostedJournalsToday = activity.PostedJournals
 	summary.TotalDepositAmountToday = activity.TotalDepositAmount
+	summary.TotalDepositAmountTodayLabel = depositAmountLabel
 	summary.TotalDepositPlacementsToday = activity.DepositPlacementCount
 	summary.TotalDepositPlacementAmount = activity.TotalDepositPlacementAmount
 	summary.TotalWithdrawalAmountToday = activity.TotalWithdrawalAmount
+	// Saldo dana kebajikan dibaca dari akun 12500 (bukan konstanta, bukan angka
+	// produksi): EOD hanya melaporkan, tidak menulis jurnal dan tidak mengubah akrual.
+	summary.SocialFundBalance = activity.SocialFundBalance
+	summary.SocialFundNote = socialFundNote
 	summary.ExecutedBy = executedBy
 	summary.CompletedAt = time.Now().UTC()
 	return summary, nil
@@ -383,8 +400,23 @@ func reportShadowCKPN(summary *domain.EODSummaryResult, cmp domain.CKPNCompariso
 	summary.CKPNShadowAsetBaikOutstanding = cmp.AsetBaikOutstanding
 	summary.CKPNShadowParameterGaps = cmp.ParameterGaps
 
+	// Basis KEDUA "setara PPKA": aset baik tetap dinilai model yang sama agar
+	// sebanding dengan PPKA atas seluruh kredit. Bidang CKPNShadow* di atas tetap
+	// basis pertama "sesuai kebijakan" (aset baik dikecualikan); tidak ada yang diubah.
+	summary.CKPNShadowSetaraPPKAProcessed = cmp.SetaraPPKAProcessed
+	summary.CKPNShadowSetaraPPKAFailed = cmp.SetaraPPKAFailed
+	summary.CKPNShadowSetaraPPKATotalPPKA = cmp.SetaraPPKATotalPPKA
+	summary.CKPNShadowSetaraPPKATotalCKPN = cmp.SetaraPPKATotalCKPN
+	summary.CKPNShadowSetaraPPKADifference = cmp.SetaraPPKADifference
+	summary.CKPNShadowSetaraPPKAModalIntiDeduction = cmp.SetaraPPKAModalIntiDeduction
+	summary.CKPNShadowSetaraPPKAHigher = string(cmp.SetaraPPKAHigher)
+	summary.CKPNShadowBasisNote = cmp.BasisNote
+
 	note := "MODE BAYANGAN CKPN: angka ini BUKAN kewajiban akuntansi dan belum disetujui bank; tidak ada jurnal yang ditulis, tidak ada state yang diubah, dan pengurangan modal inti BELUM dilakukan. Potensi pengurang modal inti (butir 1.1.6) adalah jumlah selisih positif PPKA-CKPN PER KREDIT (ckpn_shadow_modal_inti_deduction); kredit dengan CKPN lebih besar tidak mengurangi kelebihan kredit lain. ckpn_shadow_difference adalah selisih AGREGAT dan hanya menamai pihak yang lebih tinggi, bukan dasar pengurang modal."
 	parts := []string{note}
+	if cmp.BasisNote != "" {
+		parts = append(parts, cmp.BasisNote)
+	}
 	if len(cmp.ParameterGaps) > 0 {
 		gaps := strings.Join(cmp.ParameterGaps, ", ")
 		parts = append(parts, fmt.Sprintf("CKPN belum dapat dihitung sepenuhnya; parameter berikut harus diisi/diperbaiki bank (satuan FRAKSI 0..1, bukan persen): %s.", gaps))
@@ -407,6 +439,13 @@ func reportShadowCKPN(summary *domain.EODSummaryResult, cmp domain.CKPNCompariso
 	if cmp.Failed > 0 {
 		summary.Warnings = append(summary.Warnings,
 			fmt.Sprintf("CKPN mode bayangan: %d kredit gagal dihitung", cmp.Failed))
+	}
+	// Basis setara PPKA dapat gagal pada kredit yang justru berhasil di basis pertama
+	// (aset baik tanpa PD/LGD). Tanpa peringatan, total basis kedua yang lebih kecil
+	// terbaca sebagai perbandingan utuh padahal cakupannya kurang.
+	if cmp.SetaraPPKAFailed > 0 {
+		summary.Warnings = append(summary.Warnings,
+			fmt.Sprintf("CKPN mode bayangan basis setara PPKA: %d kredit belum dapat dihitung (PD/LGD belum lengkap)", cmp.SetaraPPKAFailed))
 	}
 }
 
