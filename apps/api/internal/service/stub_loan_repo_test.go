@@ -111,7 +111,7 @@ func (s *stubLoanRepo) UpdateOutstandingTx(ctx context.Context, _ any, id uuid.U
 	return s.UpdateOutstanding(ctx, id, outstanding, penalty)
 }
 
-func (s *stubLoanRepo) ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanPenaltyCandidate, error) {
+func (s *stubLoanRepo) ListPenaltyCandidates(ctx context.Context, asOf time.Time, _ domain.Actor) ([]domain.LoanPenaltyCandidate, error) {
 	return s.penaltyCandidates, nil
 }
 
@@ -130,7 +130,7 @@ func (s *stubLoanRepo) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID u
 	return true, nil
 }
 
-func (s *stubLoanRepo) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
+func (s *stubLoanRepo) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time, _ domain.Actor) ([]domain.LoanInterestAccrualCandidate, error) {
 	return nil, nil
 }
 

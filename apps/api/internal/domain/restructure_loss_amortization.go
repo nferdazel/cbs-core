@@ -129,7 +129,8 @@ type RestructureLossAmortizationRepository interface {
 	// ListRestructureLossAmortizationCandidates mengambil kredit bersaldo kerugian
 	// bukan nol yang punya angsuran belum diamortisasi dan sudah jatuh tempo, atau
 	// yang sudah lunas/dihapusbukukan tetapi saldonya belum nol (penutupan sisa).
-	ListRestructureLossAmortizationCandidates(ctx context.Context, asOf time.Time) ([]LoanRestructureLossAmortizationCandidate, error)
+	// actor membatasi hasil pada buku yang aktif di instalasi.
+	ListRestructureLossAmortizationCandidates(ctx context.Context, asOf time.Time, actor Actor) ([]LoanRestructureLossAmortizationCandidate, error)
 	// ApplyRestructureLossAmortizationTx mengurangi saldo kerugian dan menandai
 	// angsuran sudah diamortisasi, hanya bila jurnal dengan idempotencyKey tersebut
 	// belum ada. scheduleID nil berarti penutupan sisa saldo saat kredit lunas/

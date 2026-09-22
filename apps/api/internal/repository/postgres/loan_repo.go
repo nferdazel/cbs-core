@@ -596,6 +596,9 @@ func updateOutstanding(ctx context.Context, exec execer, id uuid.UUID, outstandi
 // angsuran sebagian. Cast ::text wajib untuk kolom enum status. final_due_date
 // (jatuh tempo angsuran terakhir) ikut diambil karena penentuan kolektibilitas
 // memakai dimensi jatuh tempo Kredit, sama seperti kandidat akrual bunga.
+//
+// %s menerima filter buku instalasi/aktor (bookReadClause) agar batch denda tidak
+// memproses lini usaha yang tidak aktif.
 const listPenaltyCandidatesQuery = `
 	SELECT
 		l.id,
@@ -615,12 +618,20 @@ const listPenaltyCandidatesQuery = `
 		AND s.status <> 'PAID'
 		AND s.due_date <= $1
 	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
-		AND l.outstanding_principal > 0
+		AND l.outstanding_principal > 0%s
 	GROUP BY l.id
 	ORDER BY l.loan_number`
 
-func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanPenaltyCandidate, error) {
-	rows, err := r.db.QueryContext(ctx, listPenaltyCandidatesQuery, asOf)
+func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LoanPenaltyCandidate, error) {
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	args := []any{asOf}
+	filter := ""
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		filter = " AND " + clause
+		args = append(args, bargs...)
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(listPenaltyCandidatesQuery, filter), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -698,6 +709,9 @@ func (r *LoanRepository) AddPenaltyAccruedTx(ctx context.Context, tx any, loanID
 // pernah diakru. Hanya kredit konvensional (loan_type) yang disertakan; produk
 // syariah tidak punya pemetaan INTEREST_ACCRUAL dan tidak boleh diakru. Jatuh tempo
 // angsuran tertua yang belum dibayar ikut diambil untuk menghitung DPD/kolektibilitas.
+//
+// %s menerima filter buku instalasi/aktor (bookReadClause) agar batch akrual tidak
+// memproses lini usaha yang tidak aktif.
 const listInterestAccrualCandidatesQuery = `
 	SELECT
 		l.id,
@@ -721,11 +735,19 @@ const listInterestAccrualCandidatesQuery = `
 		AND s.profit_accrued_at IS NULL
 		AND s.profit_amount - s.paid_profit > 0
 	WHERE l.status IN ('DISBURSED', 'DEFAULTED')
-		AND l.loan_type::text IN ('CONVENTIONAL_FLAT', 'CONVENTIONAL_ANNUITY')
+		AND l.loan_type::text IN ('CONVENTIONAL_FLAT', 'CONVENTIONAL_ANNUITY')%s
 	ORDER BY l.loan_number, s.installment_no`
 
-func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
-	rows, err := r.db.QueryContext(ctx, listInterestAccrualCandidatesQuery, asOf)
+func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LoanInterestAccrualCandidate, error) {
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	args := []any{asOf}
+	filter := ""
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		filter = " AND " + clause
+		args = append(args, bargs...)
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(listInterestAccrualCandidatesQuery, filter), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -881,6 +903,8 @@ func (r *LoanRepository) GetDisbursementJournalRefTx(ctx context.Context, tx any
 // kredit aktif yang punya angsuran jatuh tempo dan belum ditandai diamortisasi, atau
 // kredit yang sudah lunas/dihapusbukukan tetapi saldonya belum nol (penutupan sisa).
 // Kredit bersaldo nol tidak pernah masuk, sehingga batch tidak menyentuhnya lagi.
+//
+// %s menerima filter buku instalasi/aktor (bookReadClause).
 const listRestructureLossAmortizationCandidatesQuery = `
 	SELECT l.id, l.loan_number
 	FROM loans l
@@ -892,11 +916,19 @@ const listRestructureLossAmortizationCandidatesQuery = `
 	              AND s.restructure_loss_amortized_at IS NULL
 	              AND s.due_date <= $1))
 	    OR l.status IN ('PAID_OFF', 'WRITTEN_OFF')
-	  )
+	  )%s
 	ORDER BY l.loan_number`
 
-func (r *LoanRepository) ListRestructureLossAmortizationCandidates(ctx context.Context, asOf time.Time) ([]domain.LoanRestructureLossAmortizationCandidate, error) {
-	rows, err := r.db.QueryContext(ctx, listRestructureLossAmortizationCandidatesQuery, asOf)
+func (r *LoanRepository) ListRestructureLossAmortizationCandidates(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LoanRestructureLossAmortizationCandidate, error) {
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	args := []any{asOf}
+	filter := ""
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		filter = " AND " + clause
+		args = append(args, bargs...)
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(listRestructureLossAmortizationCandidatesQuery, filter), args...)
 	if err != nil {
 		return nil, err
 	}

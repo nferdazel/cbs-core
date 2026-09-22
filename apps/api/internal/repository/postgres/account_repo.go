@@ -172,14 +172,20 @@ func (r *AccountRepository) UpdateBalance(ctx context.Context, tx any, accountID
 
 // ListDormantCandidates mengambil rekening nasabah yang masih ACTIVE. Cakupan
 // sengaja hanya SAVINGS/CHECKING milik nasabah: akun GL internal adalah akuntansi
-// bank dan rekening kredit bukan rekening transaksional nasabah.
-func (r *AccountRepository) ListDormantCandidates(ctx context.Context) ([]domain.Account, error) {
+// bank dan rekening kredit bukan rekening transaksional nasabah. actor membatasi
+// hasil pada buku yang aktif di instalasi agar batch dormant tidak menyentuh lini
+// usaha yang tidak dilayani.
+func (r *AccountRepository) ListDormantCandidates(ctx context.Context, actor domain.Actor) ([]domain.Account, error) {
 	query := `SELECT ` + accountColumns + `
 		FROM accounts a
 		JOIN chart_of_accounts coa ON a.coa_id = coa.id
 		WHERE a.status = 'ACTIVE'
 			AND a.customer_id IS NOT NULL
 			AND a.account_type IN ('SAVINGS', 'CHECKING')`
+	if clause, args := bookReadClause("coa.book", actor, 1); clause != "" {
+		query += " AND " + clause
+		return r.queryAccounts(ctx, query, args...)
+	}
 	return r.queryAccounts(ctx, query)
 }
 

@@ -18,6 +18,7 @@ import { DataTable, Column } from "@/components/ui/DataTable";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
+import { useAuth } from "@/lib/useAuth";
 
 const BOOK_LABEL: Record<COABook, string> = {
   CONVENTIONAL: "Konvensional",
@@ -196,6 +197,7 @@ function ProductDetail({ productId, onClose }: ProductDetailProps) {
 }
 
 export default function ProdukPage() {
+  const { user } = useAuth();
   const [products, setProducts] = useState<BankingProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +206,16 @@ export default function ProdukPage() {
   const [book, setBook] = useState("");
   const [family, setFamily] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Pemilih buku hanya menawarkan lini usaha yang aktif di instalasi. Cakupan
+  // dibaca dari server (/auth/me -> active_books); web tidak menebak.
+  const bookOptions = useMemo(() => {
+    const active = user?.active_books;
+    if (!active) return BOOK_OPTIONS;
+    return BOOK_OPTIONS.filter(
+      (option) => option.value === "" || active.includes(option.value)
+    );
+  }, [user?.active_books]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -284,7 +296,7 @@ export default function ProdukPage() {
               label="Buku"
               value={book}
               onChange={(e) => setBook(e.target.value)}
-              options={BOOK_OPTIONS}
+              options={bookOptions}
             />
           </div>
           <div className="w-56">

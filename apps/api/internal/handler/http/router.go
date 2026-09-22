@@ -55,6 +55,10 @@ type RouterParams struct {
 	AuditHandler        *AuditHandler
 	CollateralHandler   *CollateralHandler
 	AuthService         domain.AuthService
+	// ConfigService membaca cakupan buku tingkat instalasi (institution.book_scope)
+	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
+	// seluruh aktor berperilaku DUAL seperti sebelum setelan ini ada.
+	ConfigService domain.SystemConfigService
 	// Cookies menentukan nama/atribut cookie sesi & CSRF.
 	Cookies middleware.CookieConfig
 	// Logger dipakai untuk access log dan panic recovery. Bila nil, logger default.
@@ -120,6 +124,9 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// Protected auth routes (require valid token)
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.AuthMiddleware(p.AuthService, p.Cookies))
+				// Cakupan instalasi ikut dibaca agar /auth/me dapat memberi tahu web
+				// lini usaha mana yang aktif, tanpa web menebak.
+				r.Use(middleware.BookScopeMiddleware(p.ConfigService))
 				r.Use(middleware.CSRFMiddleware(p.Cookies))
 				r.Get("/me", p.AuthHandler.Me)
 			})
@@ -128,6 +135,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 		// ── All routes below require authentication ──
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware(p.AuthService, p.Cookies))
+			// Setelah identitas terverifikasi, cakupan buku instalasi diisi dari
+			// konfigurasi sebelum handler membangun Actor. Semua endpoint di bawah
+			// ini (baca maupun tulis) mewarisi batas lini usaha tersebut.
+			r.Use(middleware.BookScopeMiddleware(p.ConfigService))
 			// Token berpenanda kata sandi kedaluwarsa hanya boleh mengganti kata
 			// sandi. Didaftarkan di sini (setelah AuthMiddleware) agar rute /auth/me
 			// dan logout tetap bebas, sedangkan seluruh rute bisnis lain ditolak 403.

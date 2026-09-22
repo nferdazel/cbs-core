@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -86,6 +87,12 @@ func main() {
 
 	// 4. Core services
 	configSvc := service.NewSystemConfigService(configRepo)
+	// Peringatan cakupan buku instalasi dicatat saat mulai agar ketidakcocokan
+	// konfigurasi (mis. SYARIAH tanpa pemetaan akun CKPN syariah) terlihat sebelum
+	// transaksi berjalan, bukan setelah jurnal jatuh ke akun konvensional.
+	for _, warning := range service.InstallationValidationWarnings(context.Background(), configSvc) {
+		logger.Warn("peringatan konfigurasi instalasi", "pesan", warning)
+	}
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
@@ -219,6 +226,7 @@ func main() {
 		AuditHandler:        httpHandler.NewAuditHandler(auditRepo, limitSvc),
 		CollateralHandler:   httpHandler.NewCollateralHandler(collateralSvc),
 		AuthService:         authSvc,
+		ConfigService:       configSvc,
 		Cookies:             cookies,
 		Logger:              logger,
 		LoginRateLimiter:    loginLimiter,

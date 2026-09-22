@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,13 +18,14 @@ import (
 // database: cukup untuk memetakan error ke status HTTP dan memeriksa masukan.
 type stubProductSvc struct {
 	product   *domain.BankingProduct
+	list      []domain.BankingProduct
 	updateErr error
 	gotCode   string
 	calls     int
 }
 
 func (s *stubProductSvc) ListProducts(context.Context) ([]domain.BankingProduct, error) {
-	return nil, nil
+	return s.list, nil
 }
 
 func (s *stubProductSvc) GetProduct(context.Context, uuid.UUID) (*domain.BankingProduct, error) {
@@ -168,6 +170,55 @@ func TestRuteProdukUpdateParams_Izin(t *testing.T) {
 			}
 			if svc.calls != 0 {
 				t.Fatalf("%s: layanan dipanggil walau ditolak izin", role)
+			}
+		})
+	}
+}
+
+// Daftar produk harus menyaring lini usaha yang tidak aktif di instalasi, termasuk
+// bagi peran lintas buku, agar web tidak menawarkan produk yang akan ditolak.
+func TestProductHandlerList_MenyaringLiniTidakAktif(t *testing.T) {
+	svc := &stubProductSvc{list: []domain.BankingProduct{
+		{ID: uuid.New(), Code: "KRD-FLAT", Book: domain.BookConventional},
+		{ID: uuid.New(), Code: "PMB-MURABAHAH", Book: domain.BookSyariah},
+	}}
+	cases := []struct {
+		name      string
+		scope     domain.InstitutionBookScope
+		wantCodes []string
+	}{
+		{"SYARIAH", domain.ScopeSyariah, []string{"PMB-MURABAHAH"}},
+		{"KONVENSIONAL", domain.ScopeConventional, []string{"KRD-FLAT"}},
+		{"DUAL", domain.ScopeDual, []string{"KRD-FLAT", "PMB-MURABAHAH"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/products", nil)
+			claims := &domain.JWTClaims{Role: domain.RoleSuperAdmin, BookScope: tc.scope}
+			if b := tc.scope.SingleBook(); b != "" {
+				claims.Book = b
+			}
+			req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims, claims))
+			rec := httptest.NewRecorder()
+
+			NewProductHandler(svc).List(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d, ingin 200", rec.Code)
+			}
+			var body struct {
+				Data []domain.BankingProduct `json:"data"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("respons bukan JSON valid: %v", err)
+			}
+			if len(body.Data) != len(tc.wantCodes) {
+				t.Fatalf("produk=%v, ingin kode %v", body.Data, tc.wantCodes)
+			}
+			for i, p := range body.Data {
+				if p.Code != tc.wantCodes[i] {
+					t.Fatalf("produk[%d]=%q, ingin %q", i, p.Code, tc.wantCodes[i])
+				}
 			}
 		})
 	}

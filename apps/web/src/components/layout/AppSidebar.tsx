@@ -9,6 +9,12 @@ import { NAV_GROUPS, type NavItem } from "./nav";
 export interface AppSidebarProps {
   /** Peran pengguna; item dengan pembatasan peran yang tidak cocok tidak dirender. */
   role?: string | null;
+  /**
+   * Buku yang aktif di instalasi (GET /auth/me -> active_books). Item yang menandai
+   * buku lain tidak dirender. Bila belum diketahui (undefined), semua item ditampilkan
+   * — server tetap penentu akses — supaya sesi lama tidak kehilangan menu.
+   */
+  activeBooks?: string[] | null;
 }
 
 /**
@@ -16,7 +22,10 @@ export interface AppSidebarProps {
  * belum diketahui tidak lolos (lebih baik tidak menampilkan pintu yang akan 403).
  * `requiredRole` dipertahankan persis seperti sebelumnya agar menu lama tidak berubah.
  */
-function isItemVisible(item: NavItem, role?: string | null): boolean {
+function isItemVisible(item: NavItem, role?: string | null, activeBooks?: string[] | null): boolean {
+  if (item.book && activeBooks && !activeBooks.includes(item.book)) {
+    return false;
+  }
   if (item.requiredRoles) {
     return role != null && item.requiredRoles.includes(role);
   }
@@ -28,7 +37,7 @@ function isItemVisible(item: NavItem, role?: string | null): boolean {
  * di sisi kiri (bukan warna saja). Item yang pasti gagal karena izin backend
  * (mis. Tutup Hari) disembunyikan, bukan ditampilkan lalu ditolak.
  */
-export const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({ role, activeBooks }) => {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -44,7 +53,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
           </p>
           <ul>
             {group.items
-              .filter((item) => isItemVisible(item, role))
+              .filter((item) => isItemVisible(item, role, activeBooks))
               .map((item) => {
                 const isActive =
                   item.href === "/"

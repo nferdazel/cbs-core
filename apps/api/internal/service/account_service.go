@@ -112,6 +112,12 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	if !product.IsActive {
 		return nil, fmt.Errorf("produk %s sedang tidak aktif", product.Code)
 	}
+	// Rekening hanya boleh dibuka pada buku yang dapat diakses aktor. Tanpa ini,
+	// pengguna/instalasi buku konvensional dapat membuka rekening dari produk
+	// syariah (dan sebaliknya) hanya dengan memilih product_id.
+	if !actor.CanAccessBook(product.Book) {
+		return nil, domain.ErrCrossBookAccess
+	}
 
 	// Identitas cabang HANYA dari JWT; branch_code pada body request diabaikan. Aktor
 	// lintas cabang boleh memakai kode kantor pusat yang tidak terdaftar dan
@@ -329,7 +335,7 @@ func (s *accountService) MarkDormant(ctx context.Context, asOf time.Time, actor 
 	months, warning := dormantAfterMonths(ctx, s.configSvc)
 	summary := domain.DormantRunSummary{Warning: warning}
 
-	candidates, err := s.accountRepo.ListDormantCandidates(ctx)
+	candidates, err := s.accountRepo.ListDormantCandidates(ctx, actor)
 	if err != nil {
 		return summary, fmt.Errorf("mengambil kandidat rekening dormant: %w", err)
 	}

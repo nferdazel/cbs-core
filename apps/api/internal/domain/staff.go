@@ -316,8 +316,13 @@ type JWTClaims struct {
 	BranchCode string    `json:"branch"`
 	// Book adalah buku COA pengguna pada saat token diterbitkan (dan disegarkan
 	// saat validasi dari baris staff_users). Kosong = belum ditentukan.
-	Book      COABook   `json:"book,omitempty"`
-	SessionID uuid.UUID `json:"sid"`
+	Book COABook `json:"book,omitempty"`
+	// BookScope adalah cakupan buku tingkat instalasi. TIDAK ditanam di token:
+	// middleware mengisinya setiap permintaan dari system_config
+	// institution.book_scope sehingga perubahan setelan langsung berlaku dan token
+	// lama tidak dapat melanggarnya.
+	BookScope InstitutionBookScope `json:"-"`
+	SessionID uuid.UUID            `json:"sid"`
 	// PasswordExpired menandai token yang diterbitkan saat kata sandi sudah
 	// kedaluwarsa. Token semacam ini hanya boleh dipakai untuk mengganti kata
 	// sandi (lihat middleware.RequirePasswordChange), bukan ditolak saat login,
@@ -337,6 +342,7 @@ func (c *JWTClaims) ToActor(ip, requestID string) Actor {
 		Role:       c.Role,
 		BranchCode: c.BranchCode,
 		Book:       c.Book,
+		BookScope:  c.BookScope,
 		SessionID:  c.SessionID,
 		IPAddress:  ip,
 		RequestID:  requestID,

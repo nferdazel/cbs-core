@@ -65,6 +65,11 @@ func (s *productService) UpdateParams(ctx context.Context, code string, input do
 		if err != nil {
 			return err
 		}
+		// Parameter produk lini usaha yang tidak aktif di instalasi (atau bukan buku
+		// aktor) tidak boleh diubah, meski rutenya dijaga izin master data.
+		if !actor.CanAccessBook(product.Book) {
+			return domain.ErrCrossBookAccess
+		}
 
 		// Bekerja pada salinan: bila validasi gagal, objek yang dikembalikan
 		// repositori tidak boleh tertinggal dalam keadaan separuh berubah.

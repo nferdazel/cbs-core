@@ -70,7 +70,7 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 	rate := loanPenaltyDailyRate(ctx, s.config)
 	capPercent := loanPenaltyCapPercent(ctx, s.config)
 
-	candidates, err := s.loanRepo.ListPenaltyCandidates(ctx, day)
+	candidates, err := s.loanRepo.ListPenaltyCandidates(ctx, day, actor)
 	if err != nil {
 		return domain.LoanPenaltySummary{}, fmt.Errorf("mengambil daftar kredit menunggak: %w", err)
 	}

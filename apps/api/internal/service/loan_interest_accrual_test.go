@@ -31,7 +31,7 @@ type interestLoanRepo struct {
 	penalty     decimal.Decimal
 }
 
-func (r *interestLoanRepo) ListInterestAccrualCandidates(context.Context, time.Time) ([]domain.LoanInterestAccrualCandidate, error) {
+func (r *interestLoanRepo) ListInterestAccrualCandidates(context.Context, time.Time, domain.Actor) ([]domain.LoanInterestAccrualCandidate, error) {
 	return r.candidates, nil
 }
 

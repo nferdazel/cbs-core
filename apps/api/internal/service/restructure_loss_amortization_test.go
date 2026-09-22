@@ -157,7 +157,7 @@ type amortLoanRepoStub struct {
 	applied    map[string]decimal.Decimal
 }
 
-func (r *amortLoanRepoStub) ListRestructureLossAmortizationCandidates(_ context.Context, _ time.Time) ([]domain.LoanRestructureLossAmortizationCandidate, error) {
+func (r *amortLoanRepoStub) ListRestructureLossAmortizationCandidates(_ context.Context, _ time.Time, _ domain.Actor) ([]domain.LoanRestructureLossAmortizationCandidate, error) {
 	r.listCalled = true
 	return r.candidates, nil
 }

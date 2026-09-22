@@ -26,6 +26,18 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 		InternalError(w, r, err)
 		return
 	}
+	// Produk lini usaha yang tidak aktif di instalasi (atau bukan buku aktor) tidak
+	// disajikan, sehingga web tidak menawarkan produk yang akan ditolak jalur tulis.
+	if claims, ok := domain.ClaimsFromContext(r.Context()); ok && claims != nil {
+		actor := claims.ToActor("", "")
+		visible := make([]domain.BankingProduct, 0, len(products))
+		for _, p := range products {
+			if actor.CanAccessBook(p.Book) {
+				visible = append(visible, p)
+			}
+		}
+		products = visible
+	}
 	Success(w, http.StatusOK, "daftar produk", products)
 }
 
@@ -40,6 +52,12 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		Fail(w, r, http.StatusNotFound, err)
 		return
+	}
+	if claims, ok := domain.ClaimsFromContext(r.Context()); ok && claims != nil {
+		if !claims.ToActor("", "").CanAccessBook(product.Book) {
+			Fail(w, r, http.StatusForbidden, domain.ErrCrossBookAccess)
+			return
+		}
 	}
 	Success(w, http.StatusOK, "detail produk", product)
 }
@@ -78,6 +96,9 @@ func (h *ProductHandler) UpdateParams(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusUnprocessableEntity
 		if errors.Is(err, domain.ErrProductNotFound) {
 			status = http.StatusNotFound
+		}
+		if errors.Is(err, domain.ErrCrossBookAccess) {
+			status = http.StatusForbidden
 		}
 		Fail(w, r, status, err)
 		return

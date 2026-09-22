@@ -20,7 +20,7 @@ type penaltyLoanRepo struct {
 	keys       map[string]bool
 }
 
-func (s *penaltyLoanRepo) ListPenaltyCandidates(context.Context, time.Time) ([]domain.LoanPenaltyCandidate, error) {
+func (s *penaltyLoanRepo) ListPenaltyCandidates(context.Context, time.Time, domain.Actor) ([]domain.LoanPenaltyCandidate, error) {
 	return s.candidates, nil
 }
 

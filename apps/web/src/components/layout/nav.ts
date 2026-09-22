@@ -37,6 +37,11 @@ export interface NavItem {
    * lalu ditolak 403 oleh backend.
    */
   requiredRoles?: string[];
+  /**
+   * Bila diisi, item hanya tampil pada instalasi yang mengaktifkan buku ini
+   * (GET /auth/me -> active_books). Cakupan dibaca dari server, bukan di-hardcode.
+   */
+  book?: "CONVENTIONAL" | "SYARIAH";
 }
 
 export interface NavGroup {
@@ -109,12 +114,14 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "kredit",
         icon: Landmark,
         requiredRoles: LOANS_READ_ROLES,
+        book: "CONVENTIONAL",
       },
       {
         href: "/pembiayaan",
         labelKey: "pembiayaan",
         icon: HandCoins,
         requiredRoles: LOANS_READ_ROLES,
+        book: "SYARIAH",
       },
       {
         href: "/persetujuan",

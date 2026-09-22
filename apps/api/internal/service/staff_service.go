@@ -91,10 +91,14 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 
 	// Akun baru mengikuti buku pembuatnya bila pembuat terikat satu buku; bila
 	// pembuat lintas buku/belum ditentukan, dipakai konvensional sebagai aman
-	// bawaan (bank mayoritas konvensional). Tanpa ini kolom book akan NULL dan
-	// akun baru justru melihat kedua buku — kebocoran yang justru ingin ditutup.
+	// bawaan (bank mayoritas konvensional). Instalasi satu buku memaksa buku aktif
+	// instalasi agar staf baru tidak lahir di lini usaha yang tidak dilayani. Tanpa
+	// ini kolom book akan NULL dan akun baru justru melihat kedua buku — kebocoran
+	// yang justru ingin ditutup.
 	book := actor.Book
-	if book == "" || actor.IsCrossBook() {
+	if single := actor.BookScope.SingleBook(); single != "" {
+		book = single
+	} else if book == "" || actor.IsCrossBook() {
 		book = domain.BookConventional
 	}
 

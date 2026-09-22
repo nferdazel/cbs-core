@@ -13,6 +13,14 @@ export interface StaffUser {
   email: string;
   role: string;
   branch_code: string;
+  /**
+   * Cakupan buku tingkat instalasi dari GET /auth/me (KONVENSIONAL/SYARIAH/DUAL) dan
+   * daftar buku yang aktif. Dipakai menyaring menu, halaman, dan pemilih buku lini
+   * usaha yang tidak dilayani instalasi. Server tetap penentu akses; ini hanya UI.
+   */
+  book?: string;
+  book_scope?: string;
+  active_books?: string[];
   is_active: boolean;
   last_login_at?: string;
   password_changed_at: string;

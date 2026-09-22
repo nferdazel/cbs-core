@@ -19,7 +19,7 @@ func (s *loanService) AccrueInterest(ctx context.Context, asOf time.Time, actor 
 	// Tanggal bisnis dipakai untuk basis DPD, kunci idempotensi, dan entry_date jurnal.
 	day := time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC)
 
-	candidates, err := s.loanRepo.ListInterestAccrualCandidates(ctx, day)
+	candidates, err := s.loanRepo.ListInterestAccrualCandidates(ctx, day, actor)
 	if err != nil {
 		return domain.LoanInterestAccrualSummary{}, fmt.Errorf("mengambil daftar angsuran bunga: %w", err)
 	}

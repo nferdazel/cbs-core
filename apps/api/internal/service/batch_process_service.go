@@ -142,7 +142,7 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 	// 2. Pekerjaan harian dijalankan untuk tanggal bisnis yang sedang ditutup,
 	// sebelum tanggal dimajukan, agar jurnalnya masuk ke tanggal yang benar.
 	summary := &domain.EODSummaryResult{ExecutedDate: curDate.CurrentDate}
-	s.runDailyJobs(ctx, curDate.CurrentDate, domain.SystemActor(executedBy), summary)
+	s.runDailyJobs(ctx, curDate.CurrentDate, s.systemBatchActor(ctx, executedBy), summary)
 
 	// 3. Calculate next business date (+1 day)
 	nextDate := curDate.CurrentDate.AddDate(0, 0, 1)
@@ -198,6 +198,10 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 // PPAP dilewati (lihat komentar pada masing-masing langkah).
 func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult) {
 	logger := observability.FromContext(ctx)
+
+	// Peringatan konfigurasi mengikuti cakupan buku instalasi dan dicatat pada run
+	// yang sama agar tidak diam. Tidak mengubah langkah atau angka apa pun.
+	summary.Warnings = append(summary.Warnings, InstallationValidationWarnings(ctx, s.configSvc)...)
 
 	if s.aroSvc == nil {
 		recordEODStep(summary, eodStepARO, domain.EODStepSkipped, "layanan perpanjangan otomatis deposito tidak dikonfigurasi")
@@ -535,7 +539,10 @@ func (s *batchProcessService) RunEOM(ctx context.Context, executedBy uuid.UUID) 
 	}
 	createdBy := executedBy.String()
 
-	interest, err := s.savingsSvc.AccrueAll(ctx, period, "", createdBy)
+	// Akrual tabungan dibatasi ke buku aktif instalasi; DUAL (Book kosong) tetap
+	// memproses kedua buku persis seperti sebelumnya.
+	eomActor := s.systemBatchActor(ctx, executedBy)
+	interest, err := s.savingsSvc.AccrueAll(ctx, period, eomActor.Book, createdBy)
 	if err != nil {
 		return nil, fmt.Errorf("akrual bunga tabungan: %w", err)
 	}
@@ -740,6 +747,22 @@ func (s *batchProcessService) retainedEarningsCOA(ctx context.Context, book doma
 		return fallback
 	}
 	return s.configSvc.GetString(ctx, key, fallback)
+}
+
+// systemBatchActor membangun aktor SYSTEM untuk pekerjaan EOD dengan cakupan buku
+// instalasi terisi. Tanpa ini aktor batch selalu lintas buku, sehingga instalasi
+// satu buku tetap memproses lini usaha yang tidak dilayaninya lewat filter repository.
+func (s *batchProcessService) systemBatchActor(ctx context.Context, executedBy uuid.UUID) domain.Actor {
+	actor := domain.SystemActor(executedBy)
+	if s.configSvc == nil {
+		return actor
+	}
+	actor.BookScope = domain.ParseInstitutionBookScope(
+		s.configSvc.GetString(ctx, domain.ConfigKeyInstitutionBookScope, string(domain.ScopeDual)))
+	if book := actor.BookScope.SingleBook(); book != "" {
+		actor.Book = book
+	}
+	return actor
 }
 
 // resolveClosingBooks menerjemahkan parameter buku menjadi daftar buku yang ditutup.

@@ -29,7 +29,14 @@ type Actor struct {
 	// staff_users.book. Kosong berarti belum ditentukan; aktor dengan buku kosong
 	// tidak dibatasi agar data lama tidak hilang dari operasional (lihat
 	// CanAccessBook). Nilainya dipakai lapisan repository sebagai filter.
-	Book      COABook
+	Book COABook
+	// BookScope adalah cakupan buku tingkat instalasi (KONVENSIONAL/SYARIAH/DUAL),
+	// diisi middleware dari system_config institution.book_scope. Nilai kosong
+	// berarti DUAL agar actor yang dibangun tanpa scope berperilaku sama seperti
+	// sebelumnya. Cakupan ini menutup sisi lini usaha yang tidak dilayani instalasi
+	// bahkan untuk aktor lintas buku, sedangkan Book tetap menjadi penjaga lapis
+	// kedua per pengguna pada instalasi DUAL.
+	BookScope InstitutionBookScope
 	SessionID uuid.UUID
 	IPAddress string
 	// RequestID menghubungkan aksi bisnis ke application log permintaan asalnya.
@@ -77,7 +84,18 @@ func (a Actor) RequiresRegisteredBranch() bool {
 // tanpa penanda ini batch akan terblokir oleh pemeriksaan buku. Peran operasional
 // (ADMIN, SUPERVISOR, TELLER, CS, AO) terbatas pada buku yang ditetapkan di kolom
 // staff_users.book.
+//
+// Instalasi satu buku (KONVENSIONAL/SYARIAH) menutup lini usaha yang tidak dilayani
+// bahkan bagi peran pengawas: pada cakupan itu tidak ada "buku lain" untuk diawasi,
+// jadi IsCrossBook sengaja mengembalikan false. Akibatnya seluruh pemakaian
+// IsCrossBook yang sudah ada — bookReadClause, journalBookFilter, CanAccessBook,
+// ConstrainedBook — otomatis ikut menegakkan cakupan instalasi tanpa logika kedua.
+// Middleware menetapkan Book ke satu buku aktif sehingga filter repository berlaku.
+// Cakupan DUAL/kosong mengembalikan perilaku persis seperti sebelumnya.
 func (a Actor) IsCrossBook() bool {
+	if !a.BookScope.IsDual() {
+		return false
+	}
 	switch a.Role {
 	case RoleSuperAdmin, RoleAuditor, RoleSystem:
 		return true
@@ -92,6 +110,11 @@ func (a Actor) IsCrossBook() bool {
 // akan menghentikan operasional atas data lama; ini mengikuti semantik
 // CanAccessBranch.
 func (a Actor) CanAccessBook(book COABook) bool {
+	// Cakupan instalasi adalah batas terluar: sisi lini usaha yang tidak dilayani
+	// instalasi ini tidak dapat diakses siapa pun, termasuk peran lintas buku.
+	if !a.BookScope.AllowsBook(book) {
+		return false
+	}
 	if a.IsCrossBook() {
 		return true
 	}
@@ -107,6 +130,9 @@ func (a Actor) CanAccessBook(book COABook) bool {
 // barisnya membocorkan buku lain, sedangkan aktor lintas buku tetap boleh. Aktor yang
 // bukunya belum ditentukan (kosong) tidak diblokir, mengikuti semantik CanAccessBook.
 func (a Actor) CanAccessJournal(book COABook, mixed bool) bool {
+	if !a.BookScope.AllowsBook(book) {
+		return false
+	}
 	if a.IsCrossBook() || a.Book == "" {
 		return true
 	}
@@ -121,6 +147,11 @@ func (a Actor) CanAccessJournal(book COABook, mixed bool) bool {
 // ditentukan boleh memilih buku; aktor satu buku dipaksa ke bukunya sendiri agar
 // pengguna konvensional tidak dapat membaca posisi syariah (dan sebaliknya).
 func (a Actor) ConstrainedBook(requested string) string {
+	// Instalasi satu buku memaksa laporan/penutupan ke buku aktifnya, apa pun yang
+	// diminta klien; sisi lini usaha lain tidak punya data yang boleh dibaca.
+	if b := a.BookScope.SingleBook(); b != "" {
+		return string(b)
+	}
 	if a.IsCrossBook() || a.Book == "" {
 		return requested
 	}

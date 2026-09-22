@@ -11,6 +11,9 @@ interface MeResponse {
   username: string;
   role: string;
   branch_code: string;
+  book?: string;
+  book_scope?: string;
+  active_books?: string[];
   permissions: string[];
 }
 
@@ -51,6 +54,9 @@ export function useAuth(): UseAuthResult {
           email: "",
           role: me.role,
           branch_code: me.branch_code,
+          book: me.book,
+          book_scope: me.book_scope,
+          active_books: me.active_books,
           is_active: true,
           password_changed_at: "",
           created_at: "",

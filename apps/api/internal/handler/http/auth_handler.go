@@ -136,11 +136,26 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cakupan buku instalasi dibaca middleware dari system_config dan menempel di
+	// klaim. Web memakainya untuk menyembunyikan menu/halaman/pemilih buku lini
+	// usaha yang tidak aktif; nilai tidak di-hardcode di web.
+	scope := claims.BookScope
+	if scope == "" {
+		scope = domain.ScopeDual
+	}
+	activeBooks := make([]string, 0, 2)
+	for _, b := range scope.ActiveBooks() {
+		activeBooks = append(activeBooks, string(b))
+	}
+
 	Success(w, http.StatusOK, "current user", map[string]any{
-		"user_id":     claims.UserID,
-		"username":    claims.Username,
-		"role":        claims.Role,
-		"branch_code": claims.BranchCode,
-		"permissions": domain.RolePermissions[claims.Role],
+		"user_id":      claims.UserID,
+		"username":     claims.Username,
+		"role":         claims.Role,
+		"branch_code":  claims.BranchCode,
+		"book":         claims.Book,
+		"book_scope":   scope,
+		"active_books": activeBooks,
+		"permissions":  domain.RolePermissions[claims.Role],
 	})
 }

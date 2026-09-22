@@ -398,8 +398,10 @@ type LoanRepository interface {
 	// UpdateOutstandingTx menyimpan sisa pokok dan denda di dalam transaksi pemanggil.
 	UpdateOutstandingTx(ctx context.Context, tx any, id uuid.UUID, outstanding, penalty decimal.Decimal) error
 	// ListPenaltyCandidates mengambil kredit aktif beserta pokok angsuran yang lewat
-	// jatuh tempo pada asOf dan jatuh tempo angsuran tertua.
-	ListPenaltyCandidates(ctx context.Context, asOf time.Time) ([]LoanPenaltyCandidate, error)
+	// jatuh tempo pada asOf dan jatuh tempo angsuran tertua. actor membatasi hasil
+	// pada buku yang aktif di instalasi/aktor agar batch denda tidak memproses lini
+	// usaha yang tidak dilayani.
+	ListPenaltyCandidates(ctx context.Context, asOf time.Time, actor Actor) ([]LoanPenaltyCandidate, error)
 	// AddPenaltyAccruedTx menambah penalty_accrued dan memajukan
 	// penalty_last_accrued_on ke accruedOn di dalam transaksi pemanggil. Penambahan
 	// hanya terjadi bila jurnal denda dengan idempotencyKey tersebut belum ada,
@@ -407,8 +409,10 @@ type LoanRepository interface {
 	// false berarti denda tanggal itu sudah pernah diakru (replay idempoten).
 	AddPenaltyAccruedTx(ctx context.Context, tx any, loanID uuid.UUID, amount decimal.Decimal, idempotencyKey string, accruedOn time.Time) (bool, error)
 	// ListInterestAccrualCandidates mengambil angsuran konvensional yang sudah jatuh
-	// tempo, belum dibayar, dan belum diakru bunganya pada asOf.
-	ListInterestAccrualCandidates(ctx context.Context, asOf time.Time) ([]LoanInterestAccrualCandidate, error)
+	// tempo, belum dibayar, dan belum diakru bunganya pada asOf. actor membatasi hasil
+	// pada buku yang aktif di instalasi/aktor agar batch akrual tidak memproses lini
+	// usaha yang tidak dilayani.
+	ListInterestAccrualCandidates(ctx context.Context, asOf time.Time, actor Actor) ([]LoanInterestAccrualCandidate, error)
 	// AddScheduleProfitAccruedTx menambah profit_accrued_amount dan mengisi
 	// profit_accrued_at satu angsuran di dalam transaksi pemanggil. Penambahan hanya
 	// terjadi bila jurnal akrual dengan idempotencyKey tersebut belum ada, sehingga

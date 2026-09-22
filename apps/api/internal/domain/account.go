@@ -174,8 +174,9 @@ type AccountRepository interface {
 	ListAll(ctx context.Context, limit, offset int, search string, actor Actor) ([]Account, int, error)
 	UpdateBalance(ctx context.Context, tx any, accountID uuid.UUID, balance, available decimal.Decimal, version int) error
 	// ListDormantCandidates mengembalikan rekening nasabah (SAVINGS/CHECKING) yang
-	// masih ACTIVE untuk dinilai dormannya secara bank-wide saat EOD.
-	ListDormantCandidates(ctx context.Context) ([]Account, error)
+	// masih ACTIVE untuk dinilai dormannya saat EOD. actor membatasi hasil pada buku
+	// yang aktif di instalasi.
+	ListDormantCandidates(ctx context.Context, actor Actor) ([]Account, error)
 	// MarkDormant menandai satu rekening DORMANT hanya bila masih ACTIVE, sehingga
 	// aman dijalankan ulang (idempoten). Hasil false berarti tidak ada yang diubah.
 	MarkDormant(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)

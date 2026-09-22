@@ -53,7 +53,7 @@ func (s *loanService) AmortizeRestructureLoss(ctx context.Context, asOf time.Tim
 	if !ok {
 		return summary, errors.New("repo kredit tidak mendukung amortisasi saldo kerugian restrukturisasi")
 	}
-	candidates, err := repo.ListRestructureLossAmortizationCandidates(ctx, day)
+	candidates, err := repo.ListRestructureLossAmortizationCandidates(ctx, day, actor)
 	if err != nil {
 		return summary, fmt.Errorf("mengambil daftar kredit bersaldo kerugian: %w", err)
 	}
