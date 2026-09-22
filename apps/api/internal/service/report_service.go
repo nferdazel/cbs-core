@@ -140,15 +140,29 @@ func (s *reportService) GenerateIncomeStatement(ctx context.Context, startDate, 
 	}, nil
 }
 
+// scopedReportBook membatasi buku yang diminta klien ke buku aktor. Laporan
+// menerima query param book, dan tanpa pembatasan ini pengguna konvensional dapat
+// membaca posisi syariah (dan sebaliknya) hanya dengan mengubah param. Aktor
+// lintas buku atau yang bukunya belum ditentukan boleh memilih; aktor satu buku
+// dipaksa ke bukunya sendiri. Nilai aktor dibaca dari claims di context; pemanggil
+// non-HTTP (uji/service lain) tanpa claims tidak dibatasi.
+func scopedReportBook(ctx context.Context, requested string) string {
+	claims, ok := domain.ClaimsFromContext(ctx)
+	if !ok {
+		return requested
+	}
+	return claims.ToActor("", "").ConstrainedBook(requested)
+}
+
 // GetTrialBalance menghitung neraca saldo periode dari jurnal. Repositori melakukan
 // agregasi SQL dan saldo akhir memakai domain.ClosingBalance.
 func (s *reportService) GetTrialBalance(ctx context.Context, from, to time.Time, book string) ([]domain.TrialBalanceRow, error) {
-	return s.reportRepo.TrialBalance(ctx, from, to, book)
+	return s.reportRepo.TrialBalance(ctx, from, to, scopedReportBook(ctx, book))
 }
 
 // GetIncomeStatement menghitung laba/rugi periode dari jurnal.
 func (s *reportService) GetIncomeStatement(ctx context.Context, from, to time.Time, book string) (*domain.IncomeStatement, error) {
-	report, err := s.reportRepo.IncomeStatement(ctx, from, to, book)
+	report, err := s.reportRepo.IncomeStatement(ctx, from, to, scopedReportBook(ctx, book))
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +173,7 @@ func (s *reportService) GetIncomeStatement(ctx context.Context, from, to time.Ti
 
 // GetBalanceSheet menyusun neraca per tanggal dari jurnal.
 func (s *reportService) GetBalanceSheet(ctx context.Context, asOf time.Time, book string) (*domain.BalanceSheet, error) {
-	report, err := s.reportRepo.BalanceSheet(ctx, asOf, book)
+	report, err := s.reportRepo.BalanceSheet(ctx, asOf, scopedReportBook(ctx, book))
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +214,7 @@ func (s *reportService) ListDueObligations(ctx context.Context, asOf time.Time, 
 
 // GetCashFlow menyusun arus kas periode dari jurnal pada akun kas/bank.
 func (s *reportService) GetCashFlow(ctx context.Context, from, to time.Time, book string) (*domain.CashFlow, error) {
-	report, err := s.reportRepo.CashFlow(ctx, from, to, book)
+	report, err := s.reportRepo.CashFlow(ctx, from, to, scopedReportBook(ctx, book))
 	if err != nil {
 		return nil, err
 	}

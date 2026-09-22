@@ -11,6 +11,12 @@ import (
 // dengan pesan yang jelas, tanpa membocorkan detail internal.
 var ErrCrossBranchAccess = errors.New("akses lintas cabang ditolak: data berada di cabang lain")
 
+// ErrCrossBookAccess menandai operasi baca yang ditolak karena objeknya berada di
+// buku COA (konvensional/syariah) lain dari buku aktor. Ia sejajar dengan
+// ErrCrossBranchAccess sebagai batas keamanan sisi server: filter di klien hanya
+// tampilan, bukan penentu akses.
+var ErrCrossBookAccess = errors.New("akses lintas buku ditolak: data berada di buku lain")
+
 // Actor adalah identitas pelaku sebuah aksi bisnis. Nilainya HANYA boleh dibangun
 // dari JWT claim di middleware, tidak pernah dari body request. Ini yang mencegah
 // pemalsuan identitas pada jurnal dan audit log.
@@ -19,8 +25,13 @@ type Actor struct {
 	Username   string
 	Role       StaffRole
 	BranchCode string
-	SessionID  uuid.UUID
-	IPAddress  string
+	// Book adalah buku COA (konvensional/syariah) pengguna, dibaca dari kolom
+	// staff_users.book. Kosong berarti belum ditentukan; aktor dengan buku kosong
+	// tidak dibatasi agar data lama tidak hilang dari operasional (lihat
+	// CanAccessBook). Nilainya dipakai lapisan repository sebagai filter.
+	Book      COABook
+	SessionID uuid.UUID
+	IPAddress string
 	// RequestID menghubungkan aksi bisnis ke application log permintaan asalnya.
 	RequestID string
 }
@@ -57,6 +68,48 @@ func (a Actor) IsCrossBranch() bool {
 // dan rekening tidak tercatat di cabang yang tidak ditemukan.
 func (a Actor) RequiresRegisteredBranch() bool {
 	return !a.IsCrossBranch()
+}
+
+// IsCrossBook melaporkan apakah aktor boleh membaca dan mengubah data lintas buku
+// COA. Meniru IsCrossBranch: hanya peran pengawas yang melayani kedua buku —
+// SUPERADMIN dan AUDITOR mengawasi seluruh bank, dan SYSTEM karena pekerjaan batch
+// (akrual, PPAP, CKPN, tutup buku) memang mengolah kredit/rekening kedua buku;
+// tanpa penanda ini batch akan terblokir oleh pemeriksaan buku. Peran operasional
+// (ADMIN, SUPERVISOR, TELLER, CS, AO) terbatas pada buku yang ditetapkan di kolom
+// staff_users.book.
+func (a Actor) IsCrossBook() bool {
+	switch a.Role {
+	case RoleSuperAdmin, RoleAuditor, RoleSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// CanAccessBook melaporkan apakah aktor berwenang atas data ber-buku book. Aktor
+// lintas buku selalu boleh. Buku aktor yang kosong (belum ditentukan) dan buku
+// objek yang kosong (mis. kredit lama tanpa produk) diizinkan karena memblokirnya
+// akan menghentikan operasional atas data lama; ini mengikuti semantik
+// CanAccessBranch.
+func (a Actor) CanAccessBook(book COABook) bool {
+	if a.IsCrossBook() {
+		return true
+	}
+	if a.Book == "" || book == "" {
+		return true
+	}
+	return a.Book == book
+}
+
+// ConstrainedBook membatasi buku yang diminta klien ke buku aktor. Dipakai laporan
+// yang menerima query param book: aktor lintas buku atau yang bukunya belum
+// ditentukan boleh memilih buku; aktor satu buku dipaksa ke bukunya sendiri agar
+// pengguna konvensional tidak dapat membaca posisi syariah (dan sebaliknya).
+func (a Actor) ConstrainedBook(requested string) string {
+	if a.IsCrossBook() || a.Book == "" {
+		return requested
+	}
+	return string(a.Book)
 }
 
 // CanAccessBranch melaporkan apakah aktor berwenang atas data pada cabang

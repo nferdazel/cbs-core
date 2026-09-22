@@ -31,6 +31,12 @@ const dueHorizonLimit = 200
 // tidak punya tagihan berjalan sehingga tidak diikutkan.
 func (r *DueRepository) ListDueLoanInstallments(ctx context.Context, asOf, until time.Time, actor domain.Actor) ([]domain.DueObligation, error) {
 	where, args := branchReadClause("l.branch_id", actor)
+	// Buku kredit dari produknya; kredit lama tanpa produk tetap terlihat.
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		args = append(args, bargs...)
+		where = andCondition(where, clause)
+	}
 	untilIdx := len(args) + 1
 	args = append(args, until)
 
@@ -75,6 +81,12 @@ func (r *DueRepository) ListDueLoanInstallments(ctx context.Context, asOf, until
 // pencairan agar angka tidak berbeda dari yang akan dibayarkan.
 func (r *DueRepository) ListDueDeposits(ctx context.Context, asOf, until time.Time, actor domain.Actor) ([]domain.DueObligation, error) {
 	where, args := branchReadClause("d.branch_id", actor)
+	// Buku deposito dari produknya; deposito lama tanpa produk tetap terlihat.
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = d.product_id)"
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		args = append(args, bargs...)
+		where = andCondition(where, clause)
+	}
 	untilIdx := len(args) + 1
 	args = append(args, until)
 

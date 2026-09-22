@@ -270,6 +270,7 @@ func (s *authService) ValidateAccessToken(ctx context.Context, tokenString strin
 		Username:   identity.Username,
 		Role:       identity.Role,
 		BranchCode: identity.BranchCode,
+		Book:       identity.Book,
 		SessionID:  identity.SessionID,
 		// Penanda ini dibaca dari klaim, bukan dari basis data: status kedaluwarsa
 		// dibekukan saat token diterbitkan agar konsisten dengan keputusan login.
@@ -283,6 +284,7 @@ func (s *authService) generateAccessToken(user *domain.StaffUser, sessionID uuid
 		"username":    user.Username,
 		"role":        string(user.Role),
 		"branch":      user.BranchCode,
+		"book":        string(user.Book),
 		"sid":         sessionID.String(),
 		"pwd_expired": passwordExpired,
 		"exp":         time.Now().Add(time.Duration(ttlMinutes) * time.Minute).Unix(),

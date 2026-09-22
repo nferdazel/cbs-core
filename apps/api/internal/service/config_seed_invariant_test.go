@@ -157,7 +157,11 @@ func collectCodeConfigKeys(t *testing.T, moduleDir string) map[string]string {
 	found := map[string]string{}
 
 	record := func(key, origin string) {
-		if !configKeyShape.MatchString(key) || strings.HasSuffix(key, ".branch_id") {
+		// .branch_id dan .book adalah nama kolom SQL (klausa filter scope), bukan
+		// kunci system_config; wujudnya kebetulan berbentuk kunci konfigurasi.
+		if !configKeyShape.MatchString(key) ||
+			strings.HasSuffix(key, ".branch_id") ||
+			strings.HasSuffix(key, ".book") {
 			return
 		}
 		if _, exists := found[key]; !exists {

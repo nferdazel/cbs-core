@@ -1061,7 +1061,25 @@ func (s *depositService) GetByID(ctx context.Context, id uuid.UUID, actor domain
 	if !actor.CanAccessBranch(dep.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Deposito buku lain juga ditolak; buku dibaca dari produk deposito.
+	if !actor.CanAccessBook(s.depositBook(ctx, dep)) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	return dep, nil
+}
+
+// depositBook mengembalikan buku produk deposito. Deposito tanpa produk (data lama)
+// atau produk yang tidak terbaca mengembalikan buku kosong, yang oleh CanAccessBook
+// diizinkan agar data lama tidak hilang dari operasional.
+func (s *depositService) depositBook(ctx context.Context, dep *domain.Deposit) domain.COABook {
+	if dep.ProductID == uuid.Nil {
+		return ""
+	}
+	product, err := s.productRepo.GetByID(ctx, dep.ProductID)
+	if err != nil || product == nil {
+		return ""
+	}
+	return product.Book
 }
 
 func (s *depositService) List(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Deposit, int, error) {

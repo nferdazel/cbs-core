@@ -871,6 +871,10 @@ func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber s
 	if !actor.CanAccessBranch(acc.BranchCode) {
 		return nil, 0, domain.ErrCrossBranchAccess
 	}
+	// Mutasi rekening buku lain juga ditolak, konsisten dengan detail rekening.
+	if !actor.CanAccessBook(acc.COABook) {
+		return nil, 0, domain.ErrCrossBookAccess
+	}
 
 	if page < 1 {
 		page = 1

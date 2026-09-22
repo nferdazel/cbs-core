@@ -463,7 +463,25 @@ func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID, actor domain.Ac
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Kredit buku lain juga ditolak; buku dibaca dari produk kredit.
+	if !actor.CanAccessBook(s.loanBook(ctx, loan)) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	return loan, nil
+}
+
+// loanBook mengembalikan buku produk kredit. Kredit tanpa produk (data lama) atau
+// produk yang tidak terbaca mengembalikan buku kosong, yang oleh CanAccessBook
+// diizinkan agar data lama tidak hilang dari operasional.
+func (s *loanService) loanBook(ctx context.Context, loan *domain.Loan) domain.COABook {
+	if loan.ProductID == nil {
+		return ""
+	}
+	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
+	if err != nil || product == nil {
+		return ""
+	}
+	return product.Book
 }
 
 func (s *loanService) ListLoans(ctx context.Context, page, pageSize int, actor domain.Actor) ([]domain.Loan, int, error) {

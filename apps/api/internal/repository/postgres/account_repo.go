@@ -107,12 +107,17 @@ func (r *AccountRepository) ListAll(ctx context.Context, limit, offset int, sear
 	if clause != "" {
 		where += " AND " + clause
 	}
+	// Buku rekening mengikuti buku COA-nya (coa.book); query sudah mem-join coa.
+	if bclause, bargs := bookReadClause("coa.book", actor, len(whereArgs)+1); bclause != "" {
+		whereArgs = append(whereArgs, bargs...)
+		where = andCondition(where, bclause)
+	}
 	if pattern := likePrefixPattern(search); pattern != "" {
 		whereArgs = append(whereArgs, pattern)
 		where = andCondition(where, fmt.Sprintf("a.account_number ILIKE $%d ESCAPE '\\'", len(whereArgs)))
 	}
 
-	countQuery := "SELECT COUNT(*) FROM accounts a"
+	countQuery := "SELECT COUNT(*) FROM accounts a JOIN chart_of_accounts coa ON a.coa_id = coa.id"
 	if where != "" {
 		countQuery += " WHERE " + where
 	}

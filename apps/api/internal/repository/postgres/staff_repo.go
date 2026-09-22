@@ -23,16 +23,20 @@ func scanStaffUser(row interface{ Scan(...any) error }) (*domain.StaffUser, erro
 	var createdBy sql.NullString
 	var lockedUntil sql.NullTime
 	var lastLoginAt sql.NullTime
+	var book sql.NullString
 
 	err := row.Scan(
 		&u.ID, &u.EmployeeID, &u.Username, &u.FullName, &u.Email,
-		&u.PasswordHash, &u.Role, &u.BranchCode, &u.IsActive,
+		&u.PasswordHash, &u.Role, &u.BranchCode, &book, &u.IsActive,
 		&lastLoginAt, &u.PasswordChangedAt,
 		&u.FailedLoginCount, &lockedUntil,
 		&createdBy, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if book.Valid {
+		u.Book = domain.COABook(book.String)
 	}
 	if lastLoginAt.Valid {
 		u.LastLoginAt = &lastLoginAt.Time
@@ -49,18 +53,18 @@ func scanStaffUser(row interface{ Scan(...any) error }) (*domain.StaffUser, erro
 
 func (r *StaffRepository) Create(ctx context.Context, u *domain.StaffUser) error {
 	q := `INSERT INTO staff_users
-		(id, employee_id, username, full_name, email, password_hash, role, branch_code,
+		(id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		 is_active, password_changed_at, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`
 	_, err := r.db.ExecContext(ctx, q,
 		u.ID, u.EmployeeID, u.Username, u.FullName, u.Email, u.PasswordHash,
-		u.Role, u.BranchCode, u.IsActive, u.PasswordChangedAt, u.CreatedBy, u.CreatedAt, u.UpdatedAt,
+		u.Role, u.BranchCode, nullableBook(u.Book), u.IsActive, u.PasswordChangedAt, u.CreatedBy, u.CreatedAt, u.UpdatedAt,
 	)
 	return err
 }
 
 func (r *StaffRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.StaffUser, error) {
-	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code,
+	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		is_active, last_login_at, password_changed_at, failed_login_count, locked_until,
 		created_by, created_at, updated_at
 		FROM staff_users WHERE id = $1`
@@ -73,7 +77,7 @@ func (r *StaffRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.St
 }
 
 func (r *StaffRepository) GetByUsername(ctx context.Context, username string) (*domain.StaffUser, error) {
-	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code,
+	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		is_active, last_login_at, password_changed_at, failed_login_count, locked_until,
 		created_by, created_at, updated_at
 		FROM staff_users WHERE username = $1`
@@ -90,7 +94,7 @@ func (r *StaffRepository) List(ctx context.Context, limit, offset int) ([]domain
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM staff_users").Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code,
+	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		is_active, last_login_at, password_changed_at, failed_login_count, locked_until,
 		created_by, created_at, updated_at
 		FROM staff_users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
@@ -113,10 +117,20 @@ func (r *StaffRepository) List(ctx context.Context, limit, offset int) ([]domain
 
 func (r *StaffRepository) Update(ctx context.Context, u *domain.StaffUser) error {
 	q := `UPDATE staff_users
-		SET full_name=$1, email=$2, role=$3, branch_code=$4, is_active=$5, updated_at=NOW()
-		WHERE id=$6`
-	_, err := r.db.ExecContext(ctx, q, u.FullName, u.Email, u.Role, u.BranchCode, u.IsActive, u.ID)
+		SET full_name=$1, email=$2, role=$3, branch_code=$4, book=$5, is_active=$6, updated_at=NOW()
+		WHERE id=$7`
+	_, err := r.db.ExecContext(ctx, q, u.FullName, u.Email, u.Role, u.BranchCode, nullableBook(u.Book), u.IsActive, u.ID)
 	return err
+}
+
+// nullableBook memetakan buku kosong (belum ditentukan) ke NULL. Kolom
+// staff_users.book bertipe enum coa_book yang tidak menerima string kosong,
+// sedangkan domain memakai string kosong sebagai penanda belum ditentukan.
+func nullableBook(b domain.COABook) any {
+	if b == "" {
+		return nil
+	}
+	return string(b)
 }
 
 func (r *StaffRepository) IncrementFailedLogin(ctx context.Context, id uuid.UUID) error {

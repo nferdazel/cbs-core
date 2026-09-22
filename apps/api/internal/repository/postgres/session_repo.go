@@ -60,22 +60,26 @@ func (r *SessionRepository) GetByTokenHash(ctx context.Context, hash string) (*d
 // query. Sesi yang dicabut, kedaluwarsa, atau tidak ada diperlakukan sama: tidak ada
 // identitas, sehingga token yang mengacu padanya ditolak.
 func (r *SessionRepository) GetIdentity(ctx context.Context, sessionID uuid.UUID) (*domain.SessionIdentity, error) {
-	q := `SELECT s.id, s.user_id, u.username, u.role, u.branch_code, u.is_active, u.locked_until
+	q := `SELECT s.id, s.user_id, u.username, u.role, u.branch_code, u.book, u.is_active, u.locked_until
 		FROM staff_sessions s
 		JOIN staff_users u ON u.id = s.user_id
 		WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()`
 
 	var identity domain.SessionIdentity
 	var lockedUntil sql.NullTime
+	var book sql.NullString
 	err := r.db.QueryRowContext(ctx, q, sessionID).Scan(
 		&identity.SessionID, &identity.UserID, &identity.Username, &identity.Role,
-		&identity.BranchCode, &identity.IsActive, &lockedUntil,
+		&identity.BranchCode, &book, &identity.IsActive, &lockedUntil,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrSessionExpired
 	}
 	if err != nil {
 		return nil, fmt.Errorf("mengambil identitas sesi: %w", err)
+	}
+	if book.Valid {
+		identity.Book = domain.COABook(book.String)
 	}
 	if lockedUntil.Valid {
 		identity.LockedUntil = &lockedUntil.Time

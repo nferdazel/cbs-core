@@ -89,6 +89,15 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 		branch = "HO"
 	}
 
+	// Akun baru mengikuti buku pembuatnya bila pembuat terikat satu buku; bila
+	// pembuat lintas buku/belum ditentukan, dipakai konvensional sebagai aman
+	// bawaan (bank mayoritas konvensional). Tanpa ini kolom book akan NULL dan
+	// akun baru justru melihat kedua buku — kebocoran yang justru ingin ditutup.
+	book := actor.Book
+	if book == "" || actor.IsCrossBook() {
+		book = domain.BookConventional
+	}
+
 	now := time.Now().UTC()
 	user := &domain.StaffUser{
 		ID:                uuid.New(),
@@ -99,6 +108,7 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 		PasswordHash:      hash,
 		Role:              input.Role,
 		BranchCode:        branch,
+		Book:              book,
 		IsActive:          true,
 		PasswordChangedAt: now,
 		CreatedBy:         &actor.UserID,
@@ -115,6 +125,7 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 		"employee_id": user.EmployeeID,
 		"role":        string(user.Role),
 		"branch_code": user.BranchCode,
+		"book":        string(user.Book),
 	}); err != nil {
 		return nil, fmt.Errorf("audit pembuatan staf: %w", err)
 	}

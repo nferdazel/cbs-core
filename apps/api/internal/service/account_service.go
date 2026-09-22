@@ -241,6 +241,11 @@ func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber s
 	if !actor.CanAccessBranch(account.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Rekening buku lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Buku rekening sudah dibaca dari coa.book pada accountColumns.
+	if !actor.CanAccessBook(account.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	s.fillCustomerNames(ctx, []domain.Account{*account}, func(acc *domain.Account, name string) {
 		account.CustomerName = name
 	})

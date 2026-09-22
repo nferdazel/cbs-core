@@ -103,7 +103,14 @@ func (r *DepositRepository) GetByIDForUpdate(ctx context.Context, tx any, id uui
 }
 
 func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Deposit, int, error) {
-	where, whereArgs := branchReadClause("branch_id", actor)
+	where, whereArgs := branchReadClause("deposits.branch_id", actor)
+	// Buku deposito dibaca dari produk (subquery, bukan join) agar kolom
+	// depositColumns tidak ambigu; deposito lama tanpa produk tetap terlihat.
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = deposits.product_id)"
+	if clause, args := bookReadClause(bookColumn, actor, len(whereArgs)+1); clause != "" {
+		whereArgs = append(whereArgs, args...)
+		where = andCondition(where, clause)
+	}
 
 	countQuery := "SELECT COUNT(*) FROM deposits"
 	if where != "" {

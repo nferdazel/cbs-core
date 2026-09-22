@@ -206,7 +206,15 @@ func (r *LoanRepository) GetByNumber(ctx context.Context, loanNumber string) (*d
 }
 
 func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Loan, int, error) {
-	where, whereArgs := branchReadClause("branch_id", actor)
+	where, whereArgs := branchReadClause("loans.branch_id", actor)
+	// Buku kredit dibaca dari produk (subquery, bukan join) agar kolom loanColumns
+	// yang tidak ter-kualifikasi tidak menjadi ambigu. Kredit lama tanpa produk
+	// menghasilkan NULL dan tetap terlihat bagi semua buku (lihat bookReadClause).
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = loans.product_id)"
+	if clause, args := bookReadClause(bookColumn, actor, len(whereArgs)+1); clause != "" {
+		whereArgs = append(whereArgs, args...)
+		where = andCondition(where, clause)
+	}
 
 	countQuery := "SELECT COUNT(*) FROM loans"
 	if where != "" {

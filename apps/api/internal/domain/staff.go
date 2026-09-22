@@ -242,14 +242,18 @@ func (r StaffRole) HasPermission(p Permission) bool {
 // --- Staff User Entity ---
 
 type StaffUser struct {
-	ID                uuid.UUID  `json:"id"`
-	EmployeeID        string     `json:"employee_id"`
-	Username          string     `json:"username"`
-	FullName          string     `json:"full_name"`
-	Email             string     `json:"email"`
-	PasswordHash      string     `json:"-"` // never serialised
-	Role              StaffRole  `json:"role"`
-	BranchCode        string     `json:"branch_code"`
+	ID           uuid.UUID `json:"id"`
+	EmployeeID   string    `json:"employee_id"`
+	Username     string    `json:"username"`
+	FullName     string    `json:"full_name"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"` // never serialised
+	Role         StaffRole `json:"role"`
+	BranchCode   string    `json:"branch_code"`
+	// Book adalah buku COA (konvensional/syariah) akun staf. Kosong berarti belum
+	// ditentukan; nilainya dibaca ulang setiap permintaan lewat SessionIdentity,
+	// sehingga perubahan buku berlaku pada permintaan berikutnya.
+	Book              COABook    `json:"book,omitempty"`
 	IsActive          bool       `json:"is_active"`
 	LastLoginAt       *time.Time `json:"last_login_at,omitempty"`
 	PasswordChangedAt time.Time  `json:"password_changed_at"`
@@ -288,6 +292,7 @@ type SessionIdentity struct {
 	Username    string
 	Role        StaffRole
 	BranchCode  string
+	Book        COABook
 	IsActive    bool
 	LockedUntil *time.Time
 }
@@ -309,7 +314,10 @@ type JWTClaims struct {
 	Username   string    `json:"username"`
 	Role       StaffRole `json:"role"`
 	BranchCode string    `json:"branch"`
-	SessionID  uuid.UUID `json:"sid"`
+	// Book adalah buku COA pengguna pada saat token diterbitkan (dan disegarkan
+	// saat validasi dari baris staff_users). Kosong = belum ditentukan.
+	Book      COABook   `json:"book,omitempty"`
+	SessionID uuid.UUID `json:"sid"`
 	// PasswordExpired menandai token yang diterbitkan saat kata sandi sudah
 	// kedaluwarsa. Token semacam ini hanya boleh dipakai untuk mengganti kata
 	// sandi (lihat middleware.RequirePasswordChange), bukan ditolak saat login,
@@ -328,6 +336,7 @@ func (c *JWTClaims) ToActor(ip, requestID string) Actor {
 		Username:   c.Username,
 		Role:       c.Role,
 		BranchCode: c.BranchCode,
+		Book:       c.Book,
 		SessionID:  c.SessionID,
 		IPAddress:  ip,
 		RequestID:  requestID,
