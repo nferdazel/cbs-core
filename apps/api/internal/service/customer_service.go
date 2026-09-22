@@ -176,7 +176,7 @@ func (s *customerService) persistCustomer(ctx context.Context, record *domain.Cu
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := s.repo.CreateTx(ctx, tx, record); err != nil {
 		if isUniqueViolation(err) {

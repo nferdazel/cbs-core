@@ -1,5 +1,6 @@
 # CI paling awal. Tujuannya menjaga agar tidak mundur, bukan menegakkan seluruh gaya
-# sekaligus: hanya pemeriksaan yang memang hijau pada keadaan sekarang.
+# sekaligus: hanya pemeriksaan yang memang hijau pada keadaan sekarang. Linter Go
+# (golangci-lint, setelan di apps/api/.golangci.yml) termasuk di dalamnya.
 #
 # Uji integrasi tidak dijalankan di sini karena butuh PostgreSQL + migrasi. Seluruh uji
 # integrasi sudah melewatkan dirinya sendiri bila CBS_TEST_DB_DSN kosong (pola yang sama
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   go:
-    name: Go (build, gofmt, unit test)
+    name: Go (build, lint, gofmt, unit test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,6 +43,14 @@ jobs:
 
       - name: go build ./...
         run: go build ./...
+
+      - name: golangci-lint
+        # Setelan ada di apps/api/.golangci.yml (linter inti + batas temuan 0 agar
+        # duplikat tidak disembunyikan). Versi dipin agar hasilnya dapat diulang.
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2
+          working-directory: apps/api
 
       - name: gofmt (berkas yang berubah)
         working-directory: .

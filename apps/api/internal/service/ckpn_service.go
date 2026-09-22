@@ -60,7 +60,7 @@ func (r sqlCKPNTxRunner) Run(ctx context.Context, fn func(tx any) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(tx); err != nil {
 		return err
 	}

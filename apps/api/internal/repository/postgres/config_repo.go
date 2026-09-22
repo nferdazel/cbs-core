@@ -42,7 +42,7 @@ func (r *SystemConfigRepository) GetAll(ctx context.Context) (map[string]string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cfg := make(map[string]string)
 	for rows.Next() {

@@ -46,7 +46,7 @@ func (s *postingService) Post(ctx context.Context, req domain.PostingRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	entry, err := s.PostTx(ctx, tx, req)
 	if err != nil {

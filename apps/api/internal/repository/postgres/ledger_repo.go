@@ -28,7 +28,7 @@ func (r *LedgerRepository) GetCOAList(ctx context.Context) ([]domain.ChartOfAcco
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.ChartOfAccount
 	for rows.Next() {
@@ -160,7 +160,7 @@ func (r *LedgerRepository) loadLines(ctx context.Context, journalID uuid.UUID) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var lines []domain.JournalLine
 	for rows.Next() {
@@ -219,7 +219,7 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var line domain.JournalLine
@@ -330,7 +330,7 @@ func (r *LedgerRepository) ListJournals(ctx context.Context, limit, offset int, 
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.JournalEntry
 	for rows.Next() {
@@ -384,7 +384,7 @@ func (r *LedgerRepository) ListAccountStatements(ctx context.Context, accountID 
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var lines []domain.JournalLine
 	for rows.Next() {

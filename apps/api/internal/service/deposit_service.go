@@ -153,7 +153,7 @@ func (s *depositService) Place(ctx context.Context, input domain.PlaceDepositInp
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	deposit, err := s.persistPlacement(ctx, tx, input, actor, prep)
 	if err != nil {
@@ -676,7 +676,7 @@ func (s *depositService) Accrue(ctx context.Context, depositID uuid.UUID, asOf t
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	dep, err := s.depositRepo.GetByIDForUpdate(ctx, tx, depositID)
 	if err != nil {
@@ -746,7 +746,7 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	dep, err := s.depositRepo.GetByIDForUpdate(ctx, tx, depositID)
 	if err != nil {
@@ -894,7 +894,7 @@ func (s *depositService) rolloverOne(ctx context.Context, depositID uuid.UUID, a
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	dep, err := s.depositRepo.GetByIDForUpdate(ctx, tx, depositID)
 	if err != nil {

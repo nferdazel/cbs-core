@@ -34,7 +34,7 @@ func (r *PermissionRepository) ListGroups(ctx context.Context) ([]domain.UserGro
 	if err != nil {
 		return nil, fmt.Errorf("membaca grup: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	groups := []domain.UserGroup{}
 	index := map[string]int{}
@@ -62,7 +62,7 @@ func (r *PermissionRepository) ListGroups(ctx context.Context) ([]domain.UserGro
 	if err != nil {
 		return nil, fmt.Errorf("membaca izin grup: %w", err)
 	}
-	defer permRows.Close()
+	defer func() { _ = permRows.Close() }()
 	for permRows.Next() {
 		var code, permission string
 		if err := permRows.Scan(&code, &permission); err != nil {
@@ -88,7 +88,7 @@ func (r *PermissionRepository) ListGroups(ctx context.Context) ([]domain.UserGro
 	if err != nil {
 		return nil, fmt.Errorf("membaca anggota grup: %w", err)
 	}
-	defer memberRows.Close()
+	defer func() { _ = memberRows.Close() }()
 	for memberRows.Next() {
 		var code string
 		var m domain.GroupMember
@@ -115,7 +115,7 @@ func (r *PermissionRepository) ListMenus(ctx context.Context) ([]domain.MenuDefi
 	if err != nil {
 		return nil, fmt.Errorf("membaca katalog menu: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	menus := []domain.MenuDefinition{}
 	index := map[string]int{}
@@ -136,7 +136,7 @@ func (r *PermissionRepository) ListMenus(ctx context.Context) ([]domain.MenuDefi
 	if err != nil {
 		return nil, fmt.Errorf("membaca izin menu: %w", err)
 	}
-	defer permRows.Close()
+	defer func() { _ = permRows.Close() }()
 	for permRows.Next() {
 		var menuKey, permission string
 		if err := permRows.Scan(&menuKey, &permission); err != nil {
@@ -170,7 +170,7 @@ func (r *PermissionRepository) ResolveApprovalLimitRole(ctx context.Context, use
 	if err != nil {
 		return "", fmt.Errorf("membaca peran limit grup: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	best := domain.StaffRole("")
 	for rows.Next() {

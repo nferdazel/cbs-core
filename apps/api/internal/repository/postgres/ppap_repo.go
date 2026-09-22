@@ -103,7 +103,7 @@ func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time, actor
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.PPAPLoanSnapshot
 	for rows.Next() {

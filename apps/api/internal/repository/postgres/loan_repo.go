@@ -119,7 +119,7 @@ func (r *LoanRepository) Create(ctx context.Context, l *domain.Loan, schedules [
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	q := `INSERT INTO loans
 		(id, loan_number, customer_id, product_id, branch_id, disbursement_account_id, loan_type, status,
@@ -235,7 +235,7 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor doma
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.Loan
 	for rows.Next() {
@@ -363,7 +363,7 @@ func getSchedules(ctx context.Context, q queryer, loanID uuid.UUID) ([]domain.Lo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.LoanSchedule
 	for rows.Next() {
@@ -429,7 +429,7 @@ func (r *LoanRepository) UpdateRestructure(ctx context.Context, l *domain.Loan, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := r.updateRestructureTx(ctx, tx, l, schedules); err != nil {
 		return err
@@ -635,7 +635,7 @@ func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.LoanPenaltyCandidate
 	for rows.Next() {
@@ -751,7 +751,7 @@ func (r *LoanRepository) ListInterestAccrualCandidates(ctx context.Context, asOf
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.LoanInterestAccrualCandidate
 	for rows.Next() {
@@ -932,7 +932,7 @@ func (r *LoanRepository) ListRestructureLossAmortizationCandidates(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.LoanRestructureLossAmortizationCandidate
 	for rows.Next() {

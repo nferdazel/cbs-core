@@ -24,7 +24,7 @@ func (r *BranchRepository) List(ctx context.Context) ([]domain.Branch, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.Branch
 	for rows.Next() {
@@ -89,7 +89,7 @@ func (r *BranchRepository) ResolveScopeCodes(ctx context.Context, code string) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var codes []string
 	for rows.Next() {

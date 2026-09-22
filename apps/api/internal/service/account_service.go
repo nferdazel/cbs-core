@@ -151,7 +151,7 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	accountNumber, err := s.numbering.NextAccountNumber(ctx, tx, product, branch.Code)
 	if err != nil {
@@ -339,7 +339,7 @@ func (s *accountService) MarkDormant(ctx context.Context, asOf time.Time, actor 
 	if err != nil {
 		return summary, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, acc := range candidates {
 		base, ok := domain.AccountActivityBase(acc.LastActivityAt, acc.OpenedAt, acc.CreatedAt)
@@ -390,7 +390,7 @@ func (s *accountService) ReactivateAccount(ctx context.Context, accountNumber, n
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	changed, err := s.accountRepo.Reactivate(ctx, tx, account.ID, now)
 	if err != nil {

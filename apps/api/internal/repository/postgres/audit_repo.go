@@ -142,7 +142,7 @@ func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilte
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	events := make([]domain.AuditEvent, 0, limit)
 	for rows.Next() {
@@ -186,7 +186,7 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []domain.AuditEvent
 	for rows.Next() {

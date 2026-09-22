@@ -841,12 +841,7 @@ func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.Cust
 		if l.Amount.LessThanOrEqual(decimal.Zero) {
 			return nil, domain.ErrInvalidAmount
 		}
-		lines = append(lines, domain.PostingLine{
-			AccountNumber: l.AccountNumber,
-			Direction:     l.Direction,
-			Amount:        l.Amount,
-			Description:   l.Description,
-		})
+		lines = append(lines, domain.PostingLine(l))
 	}
 
 	return s.posting.Post(ctx, domain.PostingRequest{

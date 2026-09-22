@@ -44,7 +44,7 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.BankingProduct, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.BankingProduct
 	for rows.Next() {
@@ -166,7 +166,7 @@ func (r *ProductRepository) GetMapping(ctx context.Context, productID uuid.UUID,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rules []domain.JournalMappingRule
 	for rows.Next() {

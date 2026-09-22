@@ -86,13 +86,12 @@ func TestCreateOrgUnit_AtasanHarusLebihTinggi(t *testing.T) {
 func TestCreateOrgUnit_AreaTanpaAtasanSukses(t *testing.T) {
 	svc, repo, audit := orgUnitFixture()
 	actor := domain.Actor{Username: "super.uji", Role: domain.RoleSuperAdmin}
-	unit, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
+	if _, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
 		Code: " wilayah, dilarang ", Name: "Wilayah Timur", Level: domain.UnitLevelRegion,
-	}, actor)
-	if err == nil {
+	}, actor); err == nil {
 		t.Fatal("kode dengan koma harus ditolak")
 	}
-	unit, err = svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
+	unit, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
 		Code: " wilayah-1 ", Name: "Wilayah Timur", Level: domain.UnitLevelRegion,
 	}, actor)
 	if err != nil {

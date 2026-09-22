@@ -110,7 +110,7 @@ func (e *moneyEnv) eodStepRunRows(t *testing.T, businessDate time.Time) []eodSte
 	if err != nil {
 		t.Fatalf("membaca riwayat EOD: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []eodStepRunRow
 	for rows.Next() {

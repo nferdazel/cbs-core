@@ -131,7 +131,7 @@ func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor d
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.Deposit
 	for rows.Next() {
@@ -171,7 +171,7 @@ func (r *DepositRepository) ListMaturedARO(ctx context.Context, asOf time.Time, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.Deposit
 	for rows.Next() {

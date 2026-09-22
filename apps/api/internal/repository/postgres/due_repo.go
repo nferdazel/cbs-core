@@ -57,7 +57,7 @@ func (r *DueRepository) ListDueLoanInstallments(ctx context.Context, asOf, until
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var items []domain.DueObligation
 	for rows.Next() {
@@ -104,7 +104,7 @@ func (r *DueRepository) ListDueDeposits(ctx context.Context, asOf, until time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var items []domain.DueObligation
 	for rows.Next() {

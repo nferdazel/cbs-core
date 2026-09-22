@@ -38,7 +38,7 @@ var (
 	// yang tidak mungkin ada pada identitas bank. Format nama/alamat bebas karena
 	// bank memakai ejaan sendiri.
 	ErrBankProfileNPWPInvalid  = errors.New("NPWP hanya boleh berisi angka, titik, dan tanda hubung")
-	ErrBankProfilePhoneInvalid = errors.New("nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .")
+	ErrBankProfilePhoneInvalid = errors.New("nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .") //nolint:staticcheck // pesan operator berbahasa Indonesia; tanda baca bagian dari daftar karakter yang sah
 )
 
 // BankProfile adalah identitas bank yang dipakai dokumen cetak dan endpoint

@@ -54,7 +54,7 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
 			// Perkaya logger dengan identitas pelaku bila permintaan sudah terautentikasi.
-			reqLogger := logger
+			var reqLogger *slog.Logger
 			if claims, ok := domain.ClaimsFromContext(r.Context()); ok {
 				reqLogger = observability.WithRequest(logger,
 					observability.RequestIDFromContext(r.Context()),

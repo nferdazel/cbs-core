@@ -58,7 +58,7 @@ func (r *LPSPlacementRepository) ListPlacements(ctx context.Context, asOf time.T
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.LPSPlacement
 	for rows.Next() {

@@ -55,7 +55,7 @@ func (r *SavingsInterestRepository) ListSavingsAccounts(ctx context.Context) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.SavingsAccountInfo
 	for rows.Next() {
@@ -92,7 +92,7 @@ func (r *SavingsInterestRepository) OpeningBalances(ctx context.Context, before 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	balances := make(map[uuid.UUID]decimal.Decimal)
 	for rows.Next() {
@@ -122,7 +122,7 @@ func (r *SavingsInterestRepository) DailyNetChanges(ctx context.Context, from, t
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var changes []domain.DailyNetChange
 	for rows.Next() {
@@ -191,7 +191,7 @@ func (r *SavingsInterestRepository) ListUnpaidAccruals(ctx context.Context, peri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.InterestAccrualRecord
 	for rows.Next() {

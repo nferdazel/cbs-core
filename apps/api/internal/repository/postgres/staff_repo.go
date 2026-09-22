@@ -102,7 +102,7 @@ func (r *StaffRepository) List(ctx context.Context, limit, offset int) ([]domain
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.StaffUser
 	for rows.Next() {

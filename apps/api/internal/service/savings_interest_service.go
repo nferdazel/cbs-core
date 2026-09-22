@@ -291,7 +291,7 @@ func (s *savingsInterestService) accrue(
 	if err != nil {
 		return res, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Penanda idempotensi disisipkan lebih dulu: hanya pemanggil pertama yang menang.
 	inserted, err := s.repo.InsertInterestAccrual(ctx, tx, &domain.InterestAccrualRecord{
@@ -489,7 +489,7 @@ func (s *savingsInterestService) payAccrual(
 		res.Message = err.Error()
 		return res
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	payableAcc, err := s.resolver.ResolveGLAccount(ctx, tx, rec.PayableCOACode)
 	if err != nil {
@@ -626,7 +626,7 @@ func (s *savingsInterestService) chargeAdminFee(
 		res.Message = err.Error()
 		return res
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Kunci rekening lebih dulu lalu pastikan saldo cukup.
 	acc, err := s.accountRepo.GetByNumberForUpdate(ctx, tx, info.AccountNumber)

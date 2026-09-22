@@ -36,7 +36,7 @@ func (r *EODStepRepository) ListDefinitions(ctx context.Context) ([]domain.EODSt
 	if err != nil {
 		return nil, fmt.Errorf("membaca definisi langkah EOD: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var defs []domain.EODStepDefinition
 	for rows.Next() {
@@ -138,7 +138,7 @@ func (r *EODStepRepository) ListStepRuns(ctx context.Context, businessDate time.
 	if err != nil {
 		return nil, fmt.Errorf("membaca riwayat langkah EOD: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []domain.EODStepRunRecord
 	for rows.Next() {
@@ -185,7 +185,7 @@ func (r *EODStepRepository) listScheduledTriggers(ctx context.Context, query str
 	if err != nil {
 		return nil, fmt.Errorf("membaca pemicu EOD terjadwal: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []domain.EODTrigger
 	for rows.Next() {

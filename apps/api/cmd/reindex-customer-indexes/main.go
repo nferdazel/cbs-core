@@ -72,7 +72,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("koneksi database gagal: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	updated, skipped, err := run(context.Background(), db, cipher, *batch)
 	if err != nil {
@@ -120,16 +120,16 @@ func run(ctx context.Context, db *sql.DB, c *crypto.Cipher, batch int) (updated,
 		for rows.Next() {
 			var rec row
 			if err := rows.Scan(&rec.id, &rec.fullNameEnc, &rec.idCardEnc, &rec.emailEnc); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return updated, skipped, err
 			}
 			records = append(records, rec)
 		}
 		if err := rows.Err(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return updated, skipped, err
 		}
-		rows.Close()
+		_ = rows.Close()
 		if len(records) == 0 {
 			return updated, skipped, nil
 		}
@@ -179,7 +179,7 @@ func reindexOne(ctx context.Context, db *sql.DB, c *crypto.Cipher, id uuid.UUID,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE customers

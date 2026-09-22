@@ -285,8 +285,8 @@ func parseSQLValuesTuples(s string, start int) [][2]string {
 
 	for i := start; i < len(s); {
 		c := s[i]
-		switch {
-		case c == '\'':
+		switch c {
+		case '\'':
 			j := i + 1
 			var b strings.Builder
 			for j < len(s) {
@@ -306,12 +306,12 @@ func parseSQLValuesTuples(s string, start int) [][2]string {
 			}
 			i = j + 1
 			continue
-		case c == '(':
+		case '(':
 			depth++
 			if depth == 1 {
 				elems = nil
 			}
-		case c == ')':
+		case ')':
 			if depth == 1 {
 				if len(elems) >= 2 {
 					tuples = append(tuples, [2]string{elems[0], elems[1]})
@@ -321,7 +321,7 @@ func parseSQLValuesTuples(s string, start int) [][2]string {
 			if depth > 0 {
 				depth--
 			}
-		case c == ';':
+		case ';':
 			if depth <= 0 {
 				return tuples
 			}

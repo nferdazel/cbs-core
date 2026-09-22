@@ -38,7 +38,7 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	if err != nil {
 		t.Fatalf("membuka database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("database tidak dapat dihubungi: %v", err)
 	}

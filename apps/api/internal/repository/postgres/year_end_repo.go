@@ -43,7 +43,7 @@ func (r *YearEndRepository) NominalBalances(ctx context.Context, from, to time.T
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.NominalAccountBalance
 	for rows.Next() {

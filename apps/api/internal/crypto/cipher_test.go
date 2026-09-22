@@ -105,7 +105,9 @@ func TestRotationDecryptsOldData(t *testing.T) {
 
 func TestBlindIndexDeterministic(t *testing.T) {
 	c, _ := NewCipher("k1", testKey(t), nil)
-	if c.BlindIndex("3201234567890001") != c.BlindIndex("3201234567890001") {
+	first := c.BlindIndex("3201234567890001")
+	second := c.BlindIndex("3201234567890001")
+	if first != second {
 		t.Fatal("blind index tidak deterministik")
 	}
 	if c.BlindIndex("3201234567890001") == c.BlindIndex("3201234567890002") {
@@ -118,7 +120,9 @@ func TestBlindIndexDeterministic(t *testing.T) {
 // sama dengan BlindIndex("SITI"), agar satu indeks tidak bocor ke konteks lain.
 func TestNameTokenIndexSeparateDomain(t *testing.T) {
 	c, _ := NewCipher("k1", testKey(t), nil)
-	if c.NameTokenIndex("siti") != c.NameTokenIndex("siti") {
+	first := c.NameTokenIndex("siti")
+	second := c.NameTokenIndex("siti")
+	if first != second {
 		t.Fatal("indeks token nama tidak deterministik")
 	}
 	if c.NameTokenIndex("siti") == c.NameTokenIndex("rahayu") {

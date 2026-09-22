@@ -40,7 +40,7 @@ func (r *ReportRepository) GetTrialBalance(ctx context.Context) ([]domain.TrialB
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var items []domain.TrialBalanceItem
 	for rows.Next() {
@@ -67,7 +67,7 @@ func (r *ReportRepository) GetCOABalances(ctx context.Context) (map[string]decim
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	balances := make(map[string]decimal.Decimal)
 	types := make(map[string]domain.COAType)

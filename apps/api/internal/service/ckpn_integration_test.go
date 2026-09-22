@@ -448,7 +448,7 @@ func assertCKPNJournal(t *testing.T, e *moneyEnv, idempotencyKey, debitCOA, debi
 	if err != nil {
 		t.Fatalf("membaca baris jurnal: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type line struct {
 		code   string

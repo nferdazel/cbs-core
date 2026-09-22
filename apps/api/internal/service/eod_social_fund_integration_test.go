@@ -28,7 +28,7 @@ func TestIntegrasiSaldoDanaKebajikanCocokDenganAkun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("membuka database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {

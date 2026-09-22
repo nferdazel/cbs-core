@@ -135,7 +135,7 @@ func (e *moneyEnv) loanEODJournalLines(t *testing.T, loanNumber string) []eodJou
 	if err != nil {
 		t.Fatalf("membaca jurnal EOD kredit %s: %v", loanNumber, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	lines := []eodJournalLine{}
 	for rows.Next() {

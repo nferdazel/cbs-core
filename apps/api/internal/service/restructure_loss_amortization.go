@@ -208,7 +208,6 @@ func (s *loanService) amortizeRestructureLossForLoan(
 				}
 				items = append(items, amortizationItem(fresh, 0,
 					domain.BatchItemAccrued, "sisa saldo kerugian ditutup", lossBefore, entry.ReferenceNumber))
-				lossBefore = decimal.Zero
 			}
 		}
 		return nil

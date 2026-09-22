@@ -133,11 +133,12 @@ func ValidateDoubleEntry(lines []JournalLine) error {
 		if line.Amount.LessThanOrEqual(decimal.Zero) {
 			return ErrInvalidAmount
 		}
-		if line.Direction == DirectionDebit {
+		switch line.Direction {
+		case DirectionDebit:
 			totalDebit = totalDebit.Add(line.Amount)
-		} else if line.Direction == DirectionCredit {
+		case DirectionCredit:
 			totalCredit = totalCredit.Add(line.Amount)
-		} else {
+		default:
 			return errors.New("invalid entry direction")
 		}
 	}

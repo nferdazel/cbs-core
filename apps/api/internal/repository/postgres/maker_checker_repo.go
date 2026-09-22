@@ -158,7 +158,7 @@ func (r *MakerCheckerRepository) ListPending(ctx context.Context, actor domain.A
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.MakerCheckerRequest
 	for rows.Next() {

@@ -163,7 +163,7 @@ func (r *CollateralRepository) ListByLoan(ctx context.Context, loanID uuid.UUID)
 	if err != nil {
 		return nil, fmt.Errorf("mendaftar agunan kredit: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	list := make([]domain.LoanCollateral, 0)
 	for rows.Next() {
@@ -227,7 +227,7 @@ func (r *CollateralRepository) SummaryActive(ctx context.Context, branchCode str
 	if err != nil {
 		return nil, fmt.Errorf("merekap agunan aktif: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	list := make([]domain.CollateralSummary, 0)
 	for rows.Next() {
@@ -268,7 +268,7 @@ func (r *CollateralRepository) ListActiveByLoans(ctx context.Context, loanIDs []
 	if err != nil {
 		return nil, fmt.Errorf("mendaftar agunan aktif kredit: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	list := make([]domain.LoanCollateral, 0)
 	for rows.Next() {

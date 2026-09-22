@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		logger.Error("koneksi database gagal; server berjalan tanpa database", "error", err)
 	} else {
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		logger.Info("postgresql terhubung")
 	}
 

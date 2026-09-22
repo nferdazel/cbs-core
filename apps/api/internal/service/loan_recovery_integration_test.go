@@ -44,7 +44,7 @@ func TestIntegrasiRecoveryIdempotenSatuJurnal(t *testing.T) {
 			t.Fatalf("membuka transaksi ke-%d: %v", i+1, err)
 		}
 		if err := e.loanSvc.ExecuteApproved(e.ctx, tx, service.ActionLoanRecovery, payload, actor); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			t.Fatalf("ExecuteApproved recovery ke-%d: %v", i+1, err)
 		}
 		if err := tx.Commit(); err != nil {

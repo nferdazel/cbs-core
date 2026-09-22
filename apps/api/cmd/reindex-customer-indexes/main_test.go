@@ -44,17 +44,17 @@ func TestReindexMovesLegacyRowAndIsIdempotent(t *testing.T) {
 		t.Fatalf("membuka database admin: %v", err)
 	}
 	if err := admin.PingContext(ctx); err != nil {
-		admin.Close()
+		_ = admin.Close()
 		t.Fatalf("database tidak dapat dihubungi: %v", err)
 	}
 
 	var db *sql.DB
 	t.Cleanup(func() {
 		if db != nil {
-			db.Close()
+			_ = db.Close()
 		}
 		_, _ = admin.ExecContext(ctx, fmt.Sprintf("DROP SCHEMA IF EXISTS %q CASCADE", schema))
-		admin.Close()
+		_ = admin.Close()
 	})
 
 	if _, err := admin.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA %q", schema)); err != nil {

@@ -84,7 +84,7 @@ func (r *BusinessDateRepository) AdvanceDate(ctx context.Context, nextDate time.
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	q1 := `INSERT INTO system_config (key, value, description, updated_by, updated_at)
 		VALUES ('system.business_date', $1, $2, $3, NOW())
@@ -138,18 +138,18 @@ func (r *BusinessDateRepository) TryEODLock(ctx context.Context) (func() error, 
 
 	var acquired bool
 	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", eodAdvisoryLockKey).Scan(&acquired); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 	if !acquired {
-		conn.Close()
+		_ = conn.Close()
 		return nil, domain.ErrEODInProgress
 	}
 
 	return func() error {
 		// Pelepasan memakai konteks baru: konteks permintaan bisa sudah dibatalkan saat
 		// tutup hari selesai, dan kunci tidak boleh tertinggal sampai koneksi ditutup.
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_, err := conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", eodAdvisoryLockKey)
 		return err
 	}, nil

@@ -22,7 +22,7 @@ func (r *CustomerRepository) GetByIDs(ctx context.Context, ids []uuid.UUID) (map
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengambil nasabah berdasarkan id: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		rec, err := scanCustomer(rows)

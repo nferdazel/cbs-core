@@ -171,7 +171,7 @@ func (r *CustomerRepository) List(ctx context.Context, limit, offset int, q doma
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var customers []domain.CustomerRecord
 	for rows.Next() {

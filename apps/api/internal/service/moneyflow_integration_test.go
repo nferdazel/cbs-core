@@ -61,7 +61,7 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 	if err != nil {
 		t.Fatalf("membuka database: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {
@@ -230,7 +230,7 @@ func (e *moneyEnv) schedules(t *testing.T, loanID uuid.UUID) []domain.LoanSchedu
 	if err != nil {
 		t.Fatalf("membaca jadwal: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []domain.LoanSchedule
 	for rows.Next() {
 		var s domain.LoanSchedule
@@ -317,7 +317,7 @@ func (e *moneyEnv) journalLines(t *testing.T, journalID uuid.UUID) []journalLine
 	if err != nil {
 		t.Fatalf("membaca baris jurnal: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []journalLineRow
 	for rows.Next() {
 		var l journalLineRow

@@ -362,13 +362,13 @@ func (s *documentService) GenerateLoanAgreementHTML(ctx context.Context, loanID 
 
 	var tableRows strings.Builder
 	for _, sc := range schedules {
-		tableRows.WriteString(fmt.Sprintf(`<tr>
+		fmt.Fprintf(&tableRows, `<tr>
             <td>%d</td>
             <td>%s</td>
             <td>Rp %s</td>
             <td>Rp %s</td>
             <td><strong>Rp %s</strong></td>
-        </tr>`, sc.InstallmentNo, sc.DueDate.Format("02/01/2006"), sc.PrincipalAmount.StringFixed(2), sc.ProfitAmount.StringFixed(2), sc.TotalInstallment.StringFixed(2)))
+        </tr>`, sc.InstallmentNo, sc.DueDate.Format("02/01/2006"), sc.PrincipalAmount.StringFixed(2), sc.ProfitAmount.StringFixed(2), sc.TotalInstallment.StringFixed(2))
 	}
 
 	bankName := html.EscapeString(bank.Name)

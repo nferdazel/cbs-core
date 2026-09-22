@@ -122,7 +122,7 @@ func (r *SessionRepository) effectivePermissions(ctx context.Context, userID uui
 	if err != nil {
 		return nil, fmt.Errorf("membaca izin efektif: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	perms := []domain.Permission{}
 	for rows.Next() {
@@ -161,7 +161,7 @@ func (r *SessionRepository) allowedMenus(ctx context.Context, userID uuid.UUID, 
 	if err != nil {
 		return nil, fmt.Errorf("membaca menu: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	menus := []string{}
 	for rows.Next() {

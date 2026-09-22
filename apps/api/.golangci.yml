@@ -1,0 +1,32 @@
+# Setelan linter Go untuk apps/api. Tujuannya menegakkan pemeriksaan yang memang
+# hijau pada keadaan sekarang, bukan menyalakan seluruh gaya sekaligus.
+#
+# Linter inti yang dinyalakan: errcheck, govet, ineffassign, staticcheck, unused.
+# Itu himpunan "standard" golangci-lint; ditulis eksplisit agar tidak berubah
+# diam-diam saat versi naik.
+#
+# max-same-issues/max-issues-per-linter disetel 0 supaya semua temuan dilaporkan.
+# Bila dibiarkan pada nilai bawaan (3 dan 50), puluhan temuan dengan pesan sama
+# (mis. `defer rows.Close()`) akan disembunyikan dan CI lolos tanpa memeriksanya.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  exclusions:
+    # Berkas hasil generate tidak diperiksa; tidak ada di repo ini sekarang,
+    # tetapi tetap dicantumkan agar perilakunya eksplisit.
+    generated: lax
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -76,7 +76,7 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context, actor domain.Actor
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.CKPNLoanSnapshot
 	for rows.Next() {

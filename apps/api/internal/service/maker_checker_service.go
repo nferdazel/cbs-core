@@ -157,7 +157,7 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := s.repo.CreateTx(ctx, tx, req); err != nil {
 		return nil, err
@@ -237,7 +237,7 @@ func (s *makerCheckerService) process(ctx context.Context, req *domain.MakerChec
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Kunci permintaan agar dua pemeriksa tidak memproses bersamaan.
 	if err := s.repo.UpdateStatusTx(ctx, tx, req.ID, status, actor.UserID.String(), notes); err != nil {

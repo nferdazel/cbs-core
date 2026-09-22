@@ -32,7 +32,7 @@ func (r *OJKMappingReviewRepository) ListReviews(ctx context.Context) ([]ojkrepo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []ojkreport.MappingReview
 	for rows.Next() {

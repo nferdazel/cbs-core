@@ -922,7 +922,7 @@ func (s *batchProcessService) closeBook(ctx context.Context, fiscalYear int, boo
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	inserted, err := s.yearEndRepo.InsertYearEndClosing(ctx, tx, &domain.YearEndClosingRecord{
 		FiscalYear:          fiscalYear,
@@ -937,7 +937,7 @@ func (s *batchProcessService) closeBook(ctx context.Context, fiscalYear int, boo
 	}
 	if !inserted {
 		// Balapan dengan eksekusi lain: pakai penanda yang sudah ada.
-		tx.Rollback()
+		_ = tx.Rollback()
 		existing, err := s.yearEndRepo.GetYearEndClosing(ctx, fiscalYear, book)
 		if err != nil || existing == nil {
 			return nil, fmt.Errorf("tutup buku %d/%s sudah berjalan tetapi penanda tidak terbaca", fiscalYear, book)

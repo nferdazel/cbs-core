@@ -54,7 +54,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("koneksi database gagal: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := run(context.Background(), db, cipher); err != nil {
 		log.Fatalf("backfill token nama gagal: %v", err)
@@ -67,7 +67,7 @@ func run(ctx context.Context, db *sql.DB, cipher *crypto.Cipher) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type record struct {
 		id          uuid.UUID

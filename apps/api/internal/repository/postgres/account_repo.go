@@ -245,7 +245,7 @@ func (r *AccountRepository) queryAccounts(ctx context.Context, query string, arg
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []domain.Account
 	for rows.Next() {

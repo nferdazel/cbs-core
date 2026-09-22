@@ -208,7 +208,6 @@ func irrBisect(amounts []float64, periods []int) (float64, bool) {
 		}
 		if flo*fm < 0 {
 			hi = mid
-			fhi = fm
 		} else {
 			lo = mid
 			flo = fm

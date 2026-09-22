@@ -268,7 +268,7 @@ func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, actor d
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := s.loanRepo.UpdateStatusTx(ctx, tx, loanID, domain.LoanStatusApproved, &actor.UserID); err != nil {
 		return nil, fmt.Errorf("menyetujui kredit: %w", err)

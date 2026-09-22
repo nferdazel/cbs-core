@@ -264,7 +264,7 @@ func TestIntegrasiEODPenjadwalMenghormatiKunciTutupHari(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mengambil koneksi kunci: %v", err)
 	}
-	defer lockConn.Close()
+	defer func() { _ = lockConn.Close() }()
 	var acquired bool
 	if err := lockConn.QueryRowContext(e.ctx, "SELECT pg_try_advisory_lock($1)", eodAdvisoryLockKey).Scan(&acquired); err != nil {
 		t.Fatalf("mengambil kunci advisory: %v", err)

@@ -67,7 +67,7 @@ func (r *ReportingRepository) TrialBalance(ctx context.Context, from, to time.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	list := make([]domain.TrialBalanceRow, 0)
 	for rows.Next() {
@@ -114,7 +114,7 @@ func (r *ReportingRepository) IncomeStatement(ctx context.Context, from, to time
 	if err != nil {
 		return domain.IncomeStatement{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := domain.IncomeStatement{Rows: make([]domain.ReportRow, 0)}
 	for rows.Next() {
@@ -181,7 +181,7 @@ func (r *ReportingRepository) BalanceSheet(ctx context.Context, asOf time.Time, 
 	if err != nil {
 		return domain.BalanceSheet{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := domain.BalanceSheet{Rows: make([]domain.ReportRow, 0)}
 	totalRevenue := decimal.Zero
@@ -294,7 +294,7 @@ func (r *ReportingRepository) CashFlow(ctx context.Context, from, to time.Time, 
 	if err != nil {
 		return domain.CashFlow{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := domain.CashFlow{Rows: make([]domain.ReportRow, 0)}
 	for rows.Next() {

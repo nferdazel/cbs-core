@@ -242,7 +242,7 @@ func woffDebitAccounts(t *testing.T, e *bookWriteEnv, loanNumber string) map[str
 	if err != nil {
 		t.Fatalf("membaca baris jurnal hapus buku: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	accounts := map[string]bool{}
 	for rows.Next() {
 		var code string
