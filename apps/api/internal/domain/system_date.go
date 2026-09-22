@@ -134,6 +134,16 @@ type EODSummaryResult struct {
 	// agunan, aset baik, dasar EAD) supaya pembaca tahu ini hitungan sementara
 	// beralasan, bukan kebijakan final.
 	CKPNShadowAssumptions []string `json:"ckpn_shadow_assumptions,omitempty"`
+	// CKPNShadowAsetBaik adalah jumlah kredit yang target bayangannya nol karena
+	// dikecualikan sebagai aset baik (butir 12.3.a.2.a); CKPNShadowAsetBaikOutstanding
+	// adalah jumlah sisa pokoknya. Keduanya menjelaskan total CKPN nol sebagai hasil
+	// perhitungan, bukan tanda model belum dijalankan.
+	CKPNShadowAsetBaik            int             `json:"ckpn_shadow_aset_baik"`
+	CKPNShadowAsetBaikOutstanding decimal.Decimal `json:"ckpn_shadow_aset_baik_outstanding"`
+	// CKPNShadowParameterGaps adalah kunci parameter PD/LGD yang belum diisi atau diisi
+	// dengan satuan salah (persen alih-alih fraksi). CKPN tidak dapat dihitung untuk
+	// kredit yang membutuhkannya sampai kunci ini diperbaiki.
+	CKPNShadowParameterGaps []string `json:"ckpn_shadow_parameter_gaps,omitempty"`
 	// CKPNShadowNote menjelaskan status mode bayangan, termasuk bila parameter belum
 	// lengkap sehingga CKPN tidak dapat dihitung dan apa yang harus diisi.
 	CKPNShadowNote string    `json:"ckpn_shadow_note,omitempty"`

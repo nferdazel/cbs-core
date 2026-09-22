@@ -211,6 +211,13 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		item := ckpnCompare(itemSnap, calc)
 		summary.Processed++
 		summary.Items = append(summary.Items, item)
+		// Aset baik (butir 12.3.a.2.a) menghasilkan target nol TANPA memakai PD/LGD.
+		// Dihitung terpisah supaya laporan dapat menjelaskan TotalCKPN nol: nol karena
+		// pengecualian yang sah, bukan karena model belum dijalankan.
+		if calc.IsAsetBaik {
+			summary.AsetBaikCount++
+			summary.AsetBaikOutstanding = summary.AsetBaikOutstanding.Add(itemSnap.Outstanding)
+		}
 		summary.TotalCKPN = summary.TotalCKPN.Add(calc.Target)
 		summary.TotalPPKA = summary.TotalPPKA.Add(itemSnap.RequiredPPAP)
 		if diff := itemSnap.RequiredPPAP.Sub(calc.Target); diff.IsPositive() {
@@ -254,6 +261,7 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 func ckpnShadowAssumptions(policy domain.CKPNPolicy) []string {
 	out := []string{
 		"Rumus CKPN = EAD x PD x LGD (SAK EP via SEOJK No. 21/SEOJK.03/2024 Bab XII butir 12.9); angka BAYANGAN, belum menjadi kebijakan final bank.",
+		"Satuan PD dan LGD adalah FRAKSI 0..1, BUKAN persen: 5% ditulis 0.05 (bukan 5), 45% ditulis 0.45 (bukan 45). Nilai di luar 0..1 ditolak dan dilaporkan sebagai kekurangan parameter.",
 	}
 	for _, c := range ckpnCollectibilityOrder {
 		if v, ok := policy.PD[c]; ok {
@@ -280,7 +288,7 @@ func ckpnPolicyGaps(policy domain.CKPNPolicy) []string {
 	var gaps []string
 	for _, c := range ckpnCollectibilityOrder {
 		if _, invalid := policy.PDErrors[c]; invalid {
-			gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah)", ckpnPDKey(c)))
+			gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah; satuan harus FRAKSI 0..1, mis. 5%% = 0.05)", ckpnPDKey(c)))
 			continue
 		}
 		if _, ok := policy.PD[c]; !ok {
@@ -289,7 +297,7 @@ func ckpnPolicyGaps(policy domain.CKPNPolicy) []string {
 	}
 	switch {
 	case policy.LGDError != nil:
-		gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah)", cfgCKPNLGD))
+		gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah; satuan harus FRAKSI 0..1, mis. 45%% = 0.45)", cfgCKPNLGD))
 	case !policy.LGDIsSet:
 		gaps = append(gaps, fmt.Sprintf("%s (LGD belum diisi)", cfgCKPNLGD))
 	}
@@ -552,7 +560,7 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 			continue // belum diisi -> ErrCKPNParameterMissing saat dihitung
 		}
 		if v.LessThan(decimal.Zero) || v.GreaterThan(decimal.NewFromInt(1)) {
-			p.PDErrors[c] = fmt.Errorf("%w: probability of default golongan %s (kunci %s) di luar rentang 0 s.d. 1: %s",
+			p.PDErrors[c] = fmt.Errorf("%w: probability of default golongan %s (kunci %s) di luar rentang 0 s.d. 1 (satuan FRAKSI 0..1, mis. 5%% = 0.05; bukan persen): %s",
 				domain.ErrCKPNParameterInvalid, c.Label(), key, v)
 			continue
 		}
@@ -567,7 +575,7 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 	case !set:
 		// belum diisi -> ErrCKPNParameterMissing saat dihitung
 	case v.LessThan(decimal.Zero) || v.GreaterThan(decimal.NewFromInt(1)):
-		p.LGDError = fmt.Errorf("%w: loss given default (kunci %s) di luar rentang 0 s.d. 1: %s",
+		p.LGDError = fmt.Errorf("%w: loss given default (kunci %s) di luar rentang 0 s.d. 1 (satuan FRAKSI 0..1, mis. 45%% = 0.45; bukan persen): %s",
 			domain.ErrCKPNParameterInvalid, cfgCKPNLGD, v)
 	default:
 		p.LGD = v

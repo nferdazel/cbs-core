@@ -953,3 +953,67 @@ func TestCKPN_ModeBayanganMeneruskanAktorUntukFilterCabang(t *testing.T) {
 		t.Fatalf("aktor diteruskan ke repo %+v, mau %+v", repo.listActor, actor)
 	}
 }
+
+// Parameter yang diisi dalam PERSEN (mis. ckpn.lgd = 45) harus ditolak sebagai nilai
+// tidak sah dan dilaporkan sebagai kekurangan parameter dengan satuan yang benar
+// (fraksi 0..1), bukan diam-diam dijatuhkan menjadi nol.
+func TestCKPN_ModeBayanganParameterPersenDilaporkanSatuanFraksi(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati
+		"ckpn.pd.1":                "1",    // 1% dimaksud bank, dibaca 100% oleh mesin fraksi
+		"ckpn.pd.3":                "0.10",
+		"ckpn.lgd":                 "45", // persen, di luar fraksi 0..1
+	}}
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}} // golongan 3
+	svc, posting, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Failed != 1 || summary.Processed != 0 {
+		t.Fatalf("LGD persen harus menolak perhitungan: processed=%d failed=%d", summary.Processed, summary.Failed)
+	}
+	joined := strings.Join(summary.ParameterGaps, " ")
+	if !strings.Contains(joined, "ckpn.lgd") || !strings.Contains(joined, "FRAKSI") {
+		t.Fatalf("gap harus menyebut ckpn.lgd dan satuan FRAKSI, dapat %v", summary.ParameterGaps)
+	}
+	if len(posting.requests) != 0 || len(repo.updates) != 0 {
+		t.Fatal("mode bayangan tidak boleh memposting atau menulis state")
+	}
+}
+
+// Aset baik menghasilkan target nol tanpa memakai PD/LGD. Jumlah dan sisa pokoknya harus
+// dilaporkan supaya TotalCKPN nol dapat dibaca sebagai hasil perhitungan, bukan model
+// yang belum dijalankan.
+func TestCKPN_ModeBayanganMenghitungAsetBaik(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	snap := ckpnLoan()
+	snap.DPD = 0
+	snap.Collectibility = domain.KolLancar
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.pd.1":                "0.005",
+		"ckpn.lgd":                 "0.45",
+	}}
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
+	svc, _, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Processed != 1 || summary.Failed != 0 {
+		t.Fatalf("aset baik harus terhitung: processed=%d failed=%d", summary.Processed, summary.Failed)
+	}
+	if !summary.TotalCKPN.IsZero() {
+		t.Fatalf("CKPN aset baik %s, mau 0", summary.TotalCKPN)
+	}
+	if summary.AsetBaikCount != 1 {
+		t.Fatalf("aset baik terhitung %d, mau 1", summary.AsetBaikCount)
+	}
+	if !summary.AsetBaikOutstanding.Equal(snap.Outstanding) {
+		t.Fatalf("sisa pokok aset baik %s, mau %s", summary.AsetBaikOutstanding, snap.Outstanding)
+	}
+}

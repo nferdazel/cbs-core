@@ -862,3 +862,59 @@ func TestRunEODKeduaSaklarCKPNMatiTetapDilewati(t *testing.T) {
 		t.Fatal("saklar mati tidak boleh mengisi bidang bayangan")
 	}
 }
+
+// Total CKPN nol pada mode bayangan karena SELURUH kredit dikecualikan sebagai aset
+// baik (butir 12.3.a.2.a) harus DIJELASKAN, bukan dibiarkan terbaca seolah model belum
+// dijalankan. Reproduksi keadaan produksi: 6 kredit, total PPKA 929.407, CKPN nol.
+func TestRunEODShadowCKPNJelaskanTotalNolKarenaAsetBaik(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode:          true,
+				Processed:           6,
+				TotalPPKA:           decimal.NewFromInt(929_407),
+				TotalCKPN:           decimal.Zero,
+				Difference:          decimal.NewFromInt(929_407),
+				Higher:              domain.CKPNLargerPPKA,
+				ModalIntiDeduction:  decimal.NewFromInt(929_407),
+				AsetBaikCount:       6,
+				AsetBaikOutstanding: decimal.NewFromInt(185_000_000),
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if res.CKPNShadowAsetBaik != 6 {
+		t.Fatalf("ckpn_shadow_aset_baik = %d, mau 6", res.CKPNShadowAsetBaik)
+	}
+	if !res.CKPNShadowAsetBaikOutstanding.Equal(decimal.NewFromInt(185_000_000)) {
+		t.Fatalf("ckpn_shadow_aset_baik_outstanding = %s, mau 185000000", res.CKPNShadowAsetBaikOutstanding)
+	}
+	if !strings.Contains(res.CKPNShadowNote, "aset baik") || !strings.Contains(res.CKPNShadowNote, "bukan tanda model belum dijalankan") {
+		t.Fatalf("catatan harus menjelaskan nol karena aset baik, dapat %q", res.CKPNShadowNote)
+	}
+	warned := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "aset baik") && strings.Contains(w, "total CKPN nol") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("harus ada peringatan bahwa total CKPN nol karena aset baik, dapat %v", res.Warnings)
+	}
+	// Bidang resmi tetap tidak terisi: nol karena aset baik bukan pengurangan modal inti.
+	if res.CKPNCompared != 0 || !res.CKPNModalIntiDeduction.IsZero() {
+		t.Fatalf("mode bayangan tidak boleh mengisi bidang resmi: %+v", res)
+	}
+}

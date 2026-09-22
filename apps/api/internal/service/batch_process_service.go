@@ -376,16 +376,31 @@ func reportShadowCKPN(summary *domain.EODSummaryResult, cmp domain.CKPNCompariso
 	summary.CKPNShadowModalIntiDeduction = cmp.ModalIntiDeduction
 	summary.CKPNShadowHigher = string(cmp.Higher)
 	summary.CKPNShadowAssumptions = cmp.Assumptions
+	summary.CKPNShadowAsetBaik = cmp.AsetBaikCount
+	summary.CKPNShadowAsetBaikOutstanding = cmp.AsetBaikOutstanding
+	summary.CKPNShadowParameterGaps = cmp.ParameterGaps
 
 	note := "MODE BAYANGAN CKPN: angka ini BUKAN kewajiban akuntansi dan belum disetujui bank; tidak ada jurnal yang ditulis, tidak ada state yang diubah, dan pengurangan modal inti BELUM dilakukan. Potensi pengurang modal inti (butir 1.1.6) adalah jumlah selisih positif PPKA-CKPN PER KREDIT (ckpn_shadow_modal_inti_deduction); kredit dengan CKPN lebih besar tidak mengurangi kelebihan kredit lain. ckpn_shadow_difference adalah selisih AGREGAT dan hanya menamai pihak yang lebih tinggi, bukan dasar pengurang modal."
+	parts := []string{note}
 	if len(cmp.ParameterGaps) > 0 {
 		gaps := strings.Join(cmp.ParameterGaps, ", ")
-		summary.CKPNShadowNote = fmt.Sprintf("%s CKPN belum dapat dihitung sepenuhnya; parameter berikut harus diisi/diperbaiki bank: %s.", note, gaps)
+		parts = append(parts, fmt.Sprintf("CKPN belum dapat dihitung sepenuhnya; parameter berikut harus diisi/diperbaiki bank (satuan FRAKSI 0..1, bukan persen): %s.", gaps))
 		summary.Warnings = append(summary.Warnings,
 			fmt.Sprintf("CKPN mode bayangan belum dapat dihitung sepenuhnya: isi/perbaiki %s", gaps))
-	} else {
-		summary.CKPNShadowNote = note
 	}
+	// Penjelasan TotalCKPN nol: bila kredit yang diproses seluruhnya dikecualikan
+	// sebagai aset baik (butir 12.3.a.2.a), nol adalah HASIL perhitungan, bukan tanda
+	// model belum dijalankan. Tanpa penjelasan ini laporan menyesatkan pembaca.
+	if cmp.AsetBaikCount > 0 {
+		parts = append(parts, fmt.Sprintf(
+			"%d dari %d kredit (sisa pokok %s) dikecualikan sebagai aset baik: PD/LGD tidak dipakai dan CKPN-nya nol, jadi nol itu hasil perhitungan, bukan tanda model belum dijalankan.",
+			cmp.AsetBaikCount, cmp.Processed, cmp.AsetBaikOutstanding))
+		if cmp.TotalCKPN.IsZero() && cmp.Processed > 0 && cmp.AsetBaikCount == cmp.Processed {
+			summary.Warnings = append(summary.Warnings, fmt.Sprintf(
+				"CKPN mode bayangan: seluruh %d kredit dikecualikan sebagai aset baik sehingga total CKPN nol; bukan karena model belum dijalankan", cmp.AsetBaikCount))
+		}
+	}
+	summary.CKPNShadowNote = strings.Join(parts, " ")
 	if cmp.Failed > 0 {
 		summary.Warnings = append(summary.Warnings,
 			fmt.Sprintf("CKPN mode bayangan: %d kredit gagal dihitung", cmp.Failed))

@@ -254,6 +254,14 @@ type CKPNComparisonSummary struct {
 	// TotalCKPN dan TotalPPKA adalah jumlah target, bukan saldo GL.
 	TotalCKPN decimal.Decimal `json:"total_ckpn"`
 	TotalPPKA decimal.Decimal `json:"total_ppka"`
+	// AsetBaikCount adalah jumlah kredit yang target CKPN-nya nol karena dikecualikan
+	// sebagai aset baik (butir 12.3.a.2.a), bukan karena parameter PD/LGD belum diisi
+	// maupun model belum dijalankan. AsetBaikOutstanding adalah jumlah sisa pokok
+	// kredit-kredit itu, sebagai ukuran eksposur yang tidak dicadangkan. Keduanya diisi
+	// pada jalur hitung resmi maupun bayangan; laporan bayangan memakainya untuk
+	// menjelaskan TotalCKPN nol.
+	AsetBaikCount       int             `json:"aset_baik_count"`
+	AsetBaikOutstanding decimal.Decimal `json:"aset_baik_outstanding"`
 	// ModalIntiDeduction adalah jumlah selisih positif (PPKA > CKPN) seluruh kredit,
 	// yaitu pengurang modal inti menurut SEOJK No. 21/SEOJK.03/2024 butir 1.1.6.
 	ModalIntiDeduction decimal.Decimal `json:"modal_inti_deduction"`
