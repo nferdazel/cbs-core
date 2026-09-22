@@ -77,7 +77,9 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
    menjadi pengurang modal inti. Kode menjumlahkan selisih **per kredit**
    `Σ max(PPKA_i − CKPN_i, 0)` (`ckpn_service.go:227-229`). Alternatif tafsir adalah
    selisih **agregat** total PPKA − total CKPN. Putuskan bersama OJK/akuntan sebelum
-   angkanya dipakai untuk KPMM; jangan menganggap pilihan yang ada sudah final.
+   angkanya dipakai untuk KPMM; jangan menganggap pilihan yang ada sudah final. Sejak
+   modul KPMM, pilihan ini menjadi setelan `kpmm.deduction_basis` (`per_kredit` nilai
+   awal yang konservatif, atau `agregat`); lihat bagian (f).
 4. **Akun jurnal pemulihan.** PA BPR 12.9 mencontohkan kredit ke "Pendapatan operasional
    – Pemulihan CKPN", sedangkan 12.5.b menyebut menjurnal balik beban. Kode mengikuti
    12.5.b (mengkredit akun beban, `ckpn_service.go:552`). Bila bank/DPS memilih akun
@@ -141,12 +143,27 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
 
 ## (f) Apa yang belum dibangun
 
-- **KPMM/ATMR belum dihitung**; rasio KPMM ditandai TIDAK TERSEDIA
-  (`ojkreport/ratios.go:74-79`). Akibatnya pengurang modal inti PPKA–CKPN baru
-  dilaporkan sebagai angka pada ringkasan EOD (`batch_process_service.go:508`), belum
-  diterapkan pada perhitungan modal. Usulan urutan: (1) putuskan per-kredit vs agregat;
-  (2) susun komponen modal & ATMR sesuai POJK KPMM BPR; (3) baru terapkan pengurang.
-  **Jangan membangun modul KPMM sebelum keputusan bank.**
+- **KPMM/ATMR: modul dasar sudah ada, belum dipakai di Form 00.08.** Modul baru
+  (`apps/api/internal/ojkreport/kpmm.go`, `internal/service/kpmm_service.go`,
+  `internal/domain/kpmm.go`) menghitung modal inti (ekuitas + laba/rugi tahun
+  berjalan dikurangi selisih PPKA–CKPN), ATMR aset neraca berbobot risiko, dan
+  rasio KPMM/modal inti; disajikan baca-saja lewat
+  `GET /api/v1/reports/kpmm?period=YYYY-MM` (izin `reports:financial:read`, hanya
+  peran lintas cabang). Parameter ada di konfigurasi (migrasi `000082`), bukan
+  ditanam di kode. Yang **belum**:
+  - Form 00.08 sandi `0101` masih ditandai tidak tersedia
+    (`ojkreport/ratios.go:74-79`); angkanya belum disalurkan ke ekspor APOLO.
+  - **Modal pelengkap** (instrumen dengan persetujuan OJK, surplus revaluasi aset
+    tetap, PPKA umum ≤1,25% ATMR) belum dipisah dari data, sehingga total modal dan
+    rasio adalah batas bawah (konservatif).
+  - **Pengurang modal inti lain** (AYDA/properti terbengkalai >1 tahun, pajak
+    tangguhan, goodwill, disagio) belum dapat dihitung dari data agregat.
+  - **Bobot risiko kredit** masih satu nilai agregat (`kpmm.rwa_frac.kredit`)
+    karena jenis agunan per kredit belum tersedia pada perhitungan ATMR; idealnya
+    30% (agunan tanah), 70% (kendaraan), 50% (BUMN/BUMD), dst.
+  - **Tafsir pengurang PPKA–CKPN** per-kredit vs agregat masih setelan
+    `kpmm.deduction_basis` (nilai awal `per_kredit`, konservatif). Putuskan
+    bersama OJK/akuntan sebelum dipakai untuk laporan resmi.
 - **CKPN individual** (DCF/nilai realisasi agunan) belum ada (`domain/ckpn.go:146-152`).
 - **Perhitungan PD/LGD dari data historis** belum ada; bank mengisinya manual.
 - **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** belum tersedia di jalur

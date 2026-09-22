@@ -45,6 +45,12 @@ func (f *fakeEODDefinitionRepo) ListDueScheduledTriggers(context.Context, time.T
 func (f *fakeEODDefinitionRepo) MarkTriggerRun(context.Context, string, time.Time, *time.Time) error {
 	return nil
 }
+func (f *fakeEODDefinitionRepo) ListScheduledTriggers(context.Context) ([]domain.EODTrigger, error) {
+	return nil, nil
+}
+func (f *fakeEODDefinitionRepo) SetTriggerNextRun(context.Context, string, time.Time) error {
+	return nil
+}
 
 type fakeEODTxRunner struct{ ran bool }
 

@@ -47,6 +47,8 @@ type RouterParams struct {
 	CollectionHandler   *CollectionHandler
 	IntegrationHandler  *IntegrationHandler
 	OJKReportHandler    *OJKReportHandler
+	// KPMMHandler menyajikan laporan KPMM/ATMR BPR (baca saja, bank-wide).
+	KPMMHandler         *KPMMHandler
 	BatchProcessHandler *BatchProcessHandler
 	// EODDefinitionHandler mengelola definisi urutan langkah EOD dan riwayatnya.
 	EODDefinitionHandler *EODDefinitionHandler
@@ -327,6 +329,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// menumpuk detail form di sini.
 				if p.OJKReportHandler != nil {
 					p.OJKReportHandler.RegisterRoutes(r)
+				}
+				// Laporan KPMM/ATMR BPR: bank-wide dan bersifat keuangan, jadi dijaga
+				// reports:financial:read (bukan laporan operasional).
+				if p.KPMMHandler != nil {
+					r.With(middleware.RequirePermission(domain.PermReportsFinancialRead)).
+						Get("/kpmm", p.KPMMHandler.Report)
 				}
 			})
 

@@ -159,15 +159,29 @@ func (r *EODStepRepository) ListStepRuns(ctx context.Context, businessDate time.
 }
 
 // ListDueScheduledTriggers mengembalikan pemicu terjadwal yang aktif dan sudah jatuh
-// tempo. Penjadwal (daemon) belum ada; metode ini adalah jalur sambung yang jelas
-// begitu penjadwal dipasang.
+// tempo. Penjadwal memakainya untuk memilih pemicu yang harus dijalankan pada tick ini.
 func (r *EODStepRepository) ListDueScheduledTriggers(ctx context.Context, now time.Time) ([]domain.EODTrigger, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	return r.listScheduledTriggers(ctx, `
 		SELECT id, name, trigger_type, schedule_cron, enabled, description, last_run_at, next_run_at
 		FROM eod_triggers
 		WHERE trigger_type = 'SCHEDULED' AND enabled = TRUE
 		  AND next_run_at IS NOT NULL AND next_run_at <= $1
 		ORDER BY next_run_at`, now)
+}
+
+// ListScheduledTriggers mengembalikan seluruh pemicu terjadwal aktif, termasuk yang
+// next_run_at-nya belum diisi. Penjadwal memvalidasi cron-nya dan mengisi jadwal awal
+// lewat jalur ini sehingga pemicu yang baru diaktifkan tidak diam tanpa jadwal.
+func (r *EODStepRepository) ListScheduledTriggers(ctx context.Context) ([]domain.EODTrigger, error) {
+	return r.listScheduledTriggers(ctx, `
+		SELECT id, name, trigger_type, schedule_cron, enabled, description, last_run_at, next_run_at
+		FROM eod_triggers
+		WHERE trigger_type = 'SCHEDULED' AND enabled = TRUE
+		ORDER BY name`)
+}
+
+func (r *EODStepRepository) listScheduledTriggers(ctx context.Context, query string, args ...any) ([]domain.EODTrigger, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("membaca pemicu EOD terjadwal: %w", err)
 	}
@@ -185,12 +199,24 @@ func (r *EODStepRepository) ListDueScheduledTriggers(ctx context.Context, now ti
 }
 
 // MarkTriggerRun mencatat waktu jalan terakhir dan jadwal berikutnya untuk satu pemicu.
-// nextRunAt boleh nil: penjadwal belum menghitung jadwal, operator/penjadwal mengisinya.
+// nextRunAt dihitung penjadwal dari ekspresi cron setelah EOD benar-benar dijalankan;
+// nil hanya dipakai saat pemanggil sengaja mengosongkan jadwal.
 func (r *EODStepRepository) MarkTriggerRun(ctx context.Context, name string, ranAt time.Time, nextRunAt *time.Time) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE eod_triggers
 		   SET last_run_at = $2, next_run_at = $3, updated_at = NOW()
 		 WHERE name = $1`, name, ranAt, nextRunAt)
+	return err
+}
+
+// SetTriggerNextRun mengisi jadwal berikutnya tanpa menyentuh last_run_at. Dipakai
+// penjadwal saat mengaktifkan pemicu yang next_run_at-nya masih kosong, agar pemicu
+// tampak belum pernah berjalan dan segera memiliki jadwal yang sah.
+func (r *EODStepRepository) SetTriggerNextRun(ctx context.Context, name string, next time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE eod_triggers
+		   SET next_run_at = $2, updated_at = NOW()
+		 WHERE name = $1`, name, next)
 	return err
 }
 

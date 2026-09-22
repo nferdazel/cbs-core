@@ -74,8 +74,8 @@ var rasioKeuanganDefinisi = []rasioDefinition{
 	{
 		Sandi: sandiKPMM, Nama: "Kewajiban Penyediaan Modal Minimum (KPMM)",
 		Dasar: "Lampiran II hlm. 204 butir 1: modal dibagi ATMR sesuai POJK KPMM BPR",
-		AlasanKosong: "komponen modal dan ATMR sesuai POJK KPMM BPR belum dihitung " +
-			"di repositori; hanya total ekuitas yang tersedia",
+		AlasanKosong: "komponen modal dan ATMR sudah dihitung modul KPMM " +
+			"(lihat endpoint GET /reports/kpmm), tetapi belum disalurkan ke Form 00.08",
 	},
 	{
 		Sandi: sandiCadanganPPKA, Nama: "Rasio Cadangan terhadap PPKA",

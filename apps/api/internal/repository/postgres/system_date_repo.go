@@ -20,8 +20,9 @@ func NewBusinessDateRepository(db *sql.DB) *BusinessDateRepository {
 }
 
 // wibZone adalah zona waktu bank (Asia/Jakarta, UTC+7) tanpa ketergantungan tzdata
-// sistem. Indonesia tidak memakai daylight saving, sehingga offset tetap aman.
-var wibZone = time.FixedZone("WIB", 7*60*60)
+// sistem. Satu sumber kebenaran ada di domain.BankZone (dipakai juga oleh evaluator
+// cron EOD) supaya tanggal bisnis dan jadwal terjadwal tidak dapat berbeda zona.
+var wibZone = domain.BankZone
 
 func (r *BusinessDateRepository) GetCurrentDate(ctx context.Context) (*domain.SystemBusinessDate, error) {
 	var dateStr, statusStr string

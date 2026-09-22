@@ -200,9 +200,10 @@ func TestRunScheduledEODRejectsWithoutDueTrigger(t *testing.T) {
 // ditandai SCHEDULED; pemicunya ditandai sudah jalan.
 func TestRunScheduledEODRunsDueTrigger(t *testing.T) {
 	repo := &eodDefRepoStub{due: []domain.EODTrigger{{
-		Name:        "scheduled-daily",
-		TriggerType: "SCHEDULED",
-		Enabled:     true,
+		Name:         "scheduled-daily",
+		TriggerType:  "SCHEDULED",
+		ScheduleCron: "0 23 * * *",
+		Enabled:      true,
 	}}}
 	svc := newEODTestService(openEODDateRepo(), repo,
 		stubARORunner{rolled: 1},
@@ -230,5 +231,40 @@ func TestRunScheduledEODRunsDueTrigger(t *testing.T) {
 	}
 	if len(repo.marked) != 1 || repo.marked[0] != "scheduled-daily" {
 		t.Fatalf("pemicu harus ditandai sudah jalan, dapat %v", repo.marked)
+	}
+	// Jadwal berikutnya dihitung evaluator cron, bukan dikosongkan: pemicu harian
+	// 23:00 harus maju ke 23:00 berikutnya di zona waktu bank.
+	if len(repo.markedNext) != 1 {
+		t.Fatalf("next_run_at berikutnya harus dihitung, dapat %v", repo.markedNext)
+	}
+	next := repo.markedNext[0].In(domain.BankZone)
+	if next.Hour() != 23 || next.Minute() != 0 {
+		t.Fatalf("next_run_at = %s, mau pukul 23:00 WIB", next)
+	}
+	if !next.After(time.Now()) {
+		t.Fatalf("next_run_at %s harus di masa depan", next)
+	}
+}
+
+// Ekspresi cron rusak harus DITOLAK lebih dulu; EOD tidak berjalan dan pemicu tidak
+// ditandai, supaya salah ketik tidak diam-diam mematikan tutup hari otomatis.
+func TestRunScheduledEODRejectsInvalidCron(t *testing.T) {
+	repo := &eodDefRepoStub{due: []domain.EODTrigger{{
+		Name:         "scheduled-daily",
+		TriggerType:  "SCHEDULED",
+		ScheduleCron: "bukan cron",
+		Enabled:      true,
+	}}}
+	svc := newEODTestService(openEODDateRepo(), repo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.RunScheduledEOD(context.Background(), uuid.New())
+	if !errors.Is(err, domain.ErrEODInvalidTriggerSchedule) {
+		t.Fatalf("mau ErrEODInvalidTriggerSchedule, dapat %v", err)
+	}
+	if len(repo.runs) != 0 {
+		t.Fatalf("EOD tidak boleh berjalan saat cron tidak sah, dapat %d riwayat langkah", len(repo.runs))
+	}
+	if len(repo.marked) != 0 {
+		t.Fatalf("pemicu tidak sah tidak boleh ditandai sudah jalan, dapat %v", repo.marked)
 	}
 }

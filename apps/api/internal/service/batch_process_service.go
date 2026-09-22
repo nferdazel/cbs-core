@@ -126,16 +126,22 @@ func (s *batchProcessService) RunEOD(ctx context.Context, executedBy uuid.UUID) 
 	return s.runEOD(ctx, executedBy, eodTriggerManual)
 }
 
-// RunScheduledEOD menjalankan tutup hari dari pemicu terjadwal. Penjadwal (daemon/cron)
-// belum ada di aplikasi; metode ini menyediakan jalur yang jelas: penjadwal yang
-// dipasang kelak memanggilnya, dan ia hanya berjalan bila ada pemicu SCHEDULED aktif
-// yang jatuh tempo di eod_triggers. Tanpa pemicu jatuh tempo ia menolak dengan
-// ErrEODNoDueTrigger, bukan menutup hari atas inisiatif sendiri.
+// RunScheduledEOD menjalankan tutup hari dari pemicu terjadwal. Dipanggil penjadwal
+// (service.EODScheduler) dan hanya berjalan bila ada pemicu SCHEDULED aktif yang jatuh
+// tempo di eod_triggers. Tanpa pemicu jatuh tempo ia menolak dengan ErrEODNoDueTrigger,
+// bukan menutup hari atas inisiatif sendiri.
+//
+// EOD dijalankan lewat runEOD — mesin yang SAMA PERSIS dengan pemicu manual — sehingga
+// idempotensi advisory lock + ClaimEOD berlaku tanpa jalur kedua yang berbeda perilaku.
+// Ekspresi cron yang tidak sah DITOLAK lebih dulu dengan galat jelas; salah ketik tidak
+// boleh diam-diam dianggap "tidak pernah jatuh tempo".
 func (s *batchProcessService) RunScheduledEOD(ctx context.Context, executedBy uuid.UUID) (*domain.EODSummaryResult, error) {
 	if s.eodRepo == nil {
 		return nil, fmt.Errorf("%w: repositori definisi langkah tidak dikonfigurasi", domain.ErrEODDefinitionsUnavailable)
 	}
-	due, err := s.eodRepo.ListDueScheduledTriggers(ctx, time.Now().UTC())
+
+	now := time.Now().In(domain.BankZone)
+	due, err := s.eodRepo.ListDueScheduledTriggers(ctx, now)
 	if err != nil {
 		return nil, fmt.Errorf("membaca pemicu EOD terjadwal: %w", err)
 	}
@@ -143,18 +149,55 @@ func (s *batchProcessService) RunScheduledEOD(ctx context.Context, executedBy uu
 		return nil, domain.ErrEODNoDueTrigger
 	}
 
+	// Seluruh cron divalidasi SEBELUM EOD dijalankan: bila ada satu ekspresi rusak,
+	// tidak ada tutup hari yang berjalan dengan jadwal yang tidak dapat dipertanggung-
+	// jawabkan. next dihitung dari now sehingga jadwal yang terlewat tidak menumpuk.
+	plans := make([]eodDuePlan, 0, len(due))
+	for _, trg := range due {
+		sched, err := domain.ParseCron(trg.ScheduleCron)
+		if err != nil {
+			return nil, fmt.Errorf("%w: pemicu %q: %v", domain.ErrEODInvalidTriggerSchedule, trg.Name, err)
+		}
+		next, err := sched.Next(now)
+		if err != nil {
+			return nil, fmt.Errorf("%w: pemicu %q: %v", domain.ErrEODInvalidTriggerSchedule, trg.Name, err)
+		}
+		plans = append(plans, eodDuePlan{name: trg.Name, next: next})
+	}
+
 	result, err := s.runEOD(ctx, executedBy, eodTriggerScheduled)
 	if err != nil {
+		// Tanggal bisnis ini sudah ditutup (mis. pemicu manual lebih dulu). Jadwal
+		// terjadwal sudah "terlayani" untuk kemunculan ini, jadi next_run_at tetap
+		// dimajukan agar pemicu tidak dicoba ulang setiap tick. Galat dikembalikan apa
+		// adanya supaya pemanggil tetap melihat sebabnya.
+		if errors.Is(err, domain.ErrEODAlreadyRunForDate) {
+			s.markScheduledTriggers(ctx, plans, now)
+		}
 		return nil, err
 	}
-	for _, trg := range due {
-		// next_run_at TIDAK dihitung di sini: tidak ada evaluator cron di aplikasi.
-		// Mengosongkannya mencegah pemicu yang sama langsung jatuh tempo lagi.
-		if err := s.eodRepo.MarkTriggerRun(ctx, trg.Name, time.Now().UTC(), nil); err != nil {
-			observability.FromContext(ctx).ErrorContext(ctx, "gagal menandai pemicu EOD terjadwal", "pemicu", trg.Name, "error", err)
+	s.markScheduledTriggers(ctx, plans, now)
+	return result, nil
+}
+
+// eodDuePlan adalah pemicu terjadwal yang dilayani pada satu siklus beserta jadwal
+// berikutnya yang dihitung dari ekspresi cron.
+type eodDuePlan struct {
+	name string
+	next time.Time
+}
+
+// markScheduledTriggers mencatat pemicu yang baru dilayani beserta jadwal berikutnya.
+// Kegagalan menulis jadwal hanya menjadi log: EOD-nya sendiri sudah selesai dan tidak
+// boleh dibatalkan oleh masalah riwayat pemicu.
+func (s *batchProcessService) markScheduledTriggers(ctx context.Context, plans []eodDuePlan, now time.Time) {
+	logger := observability.FromContext(ctx)
+	for _, plan := range plans {
+		next := plan.next
+		if err := s.eodRepo.MarkTriggerRun(ctx, plan.name, now.UTC(), &next); err != nil {
+			logger.ErrorContext(ctx, "gagal menandai pemicu EOD terjadwal", "pemicu", plan.name, "error", err)
 		}
 	}
-	return result, nil
 }
 
 // loadEODDefinitions membaca definisi langkah dari database, memvalidasinya dengan

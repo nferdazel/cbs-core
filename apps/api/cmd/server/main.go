@@ -159,6 +159,15 @@ func main() {
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
 	batchSvc := service.NewBatchProcessService(dateRepo, batchRepo, savingsSvc, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, depositSvc, ppapSvc, loanSvc, accountSvc, loanSvc, ckpnSvc, eodStepRepo)
+	// Penjadwal EOD (W17): goroutine yang memeriksa pemicu terjadwal tiap menit dan
+	// menjalankannya lewat jalur yang sama dengan pemicu manual. Ia MATI secara default
+	// karena saklar eod.scheduler.enabled di-seed false (migrasi 000083); bank
+	// menyalakannya dengan mengubah kunci itu (berlaku tanpa restart) dan mengaktifkan
+	// pemicu terjadwal di eod_triggers. Tanpa database, penjadwal tidak dijalankan.
+	if db != nil {
+		eodScheduler := service.NewEODScheduler(batchSvc, eodStepRepo, configSvc, logger)
+		go eodScheduler.Start(context.Background())
+	}
 	// Definisi langkah EOD (urutan/saklar/prasyarat) dikelola lewat API berizin
 	// system:config dan teraudit; riwayat per langkah dibaca di sini.
 	eodDefinitionSvc := service.NewEODDefinitionService(db, eodStepRepo, auditRepo)
@@ -225,6 +234,12 @@ func main() {
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
 
+	// Laporan KPMM/ATMR memakai laporan journal-based, perbandingan PPKA-CKPN
+	// (baca-saja), dan parameter kpmm.* di system_config. Tidak menyentuh saklar
+	// ckpn.enabled.
+	kpmmSvc := service.NewKPMMService(reportSvc, ckpnSvc, configSvc)
+	kpmmHandler := httpHandler.NewKPMMHandler(kpmmSvc)
+
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
 		CustomerHandler:      custHandler,
@@ -238,6 +253,7 @@ func main() {
 		MakerCheckerHandler:  mcHandler,
 		ReportHandler:        reportHandler,
 		OJKReportHandler:     ojkReportHandler,
+		KPMMHandler:          kpmmHandler,
 		CollectionHandler:    collectionHandler,
 		IntegrationHandler:   integrationHandler,
 		BatchProcessHandler:  batchHandler,

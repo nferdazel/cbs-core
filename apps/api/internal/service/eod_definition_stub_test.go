@@ -29,13 +29,16 @@ func unitEODDefinitions() []domain.EODStepDefinition {
 // eodDefRepoStub menggantikan repositori definisi EOD pada unit test tanpa database.
 // Zero value mengembalikan definisi kanonik sehingga uji lama berperilaku sama.
 type eodDefRepoStub struct {
-	defs     []domain.EODStepDefinition
-	saved    []domain.EODStepDefinition
-	runs     []domain.EODStepRunRecord
-	due      []domain.EODTrigger
-	marked   []string
-	listErr  error
-	writeErr error
+	defs       []domain.EODStepDefinition
+	saved      []domain.EODStepDefinition
+	runs       []domain.EODStepRunRecord
+	due        []domain.EODTrigger
+	scheduled  []domain.EODTrigger
+	marked     []string
+	markedNext []time.Time
+	nextSet    []string
+	listErr    error
+	writeErr   error
 }
 
 func (s *eodDefRepoStub) ListDefinitions(context.Context) ([]domain.EODStepDefinition, error) {
@@ -73,10 +76,25 @@ func (s *eodDefRepoStub) ListDueScheduledTriggers(_ context.Context, _ time.Time
 	return s.due, s.listErr
 }
 
-func (s *eodDefRepoStub) MarkTriggerRun(_ context.Context, name string, _ time.Time, _ *time.Time) error {
+func (s *eodDefRepoStub) ListScheduledTriggers(_ context.Context) ([]domain.EODTrigger, error) {
+	return s.scheduled, s.listErr
+}
+
+func (s *eodDefRepoStub) SetTriggerNextRun(_ context.Context, name string, _ time.Time) error {
+	if s.writeErr != nil {
+		return s.writeErr
+	}
+	s.nextSet = append(s.nextSet, name)
+	return nil
+}
+
+func (s *eodDefRepoStub) MarkTriggerRun(_ context.Context, name string, _ time.Time, next *time.Time) error {
 	if s.writeErr != nil {
 		return s.writeErr
 	}
 	s.marked = append(s.marked, name)
+	if next != nil {
+		s.markedNext = append(s.markedNext, *next)
+	}
 	return nil
 }

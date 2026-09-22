@@ -74,6 +74,7 @@ const (
 	MsgReportCashFlowGenerated        Code = "report_cash_flow_generated"
 	MsgDueObligationsListed           Code = "due_obligations_listed"
 	MsgOJKReportDefinitions           Code = "o_j_k_report_definitions"
+	MsgKPMMReport                     Code = "k_p_m_m_report"
 	MsgOJKCOAMapping                  Code = "o_j_k_c_o_a_mapping"
 	MsgOJKMappingDecisionSaved        Code = "o_j_k_mapping_decision_saved"
 	MsgOJKSLIKCheckCompleted          Code = "o_j_k_s_l_i_k_check_completed"
@@ -222,6 +223,7 @@ var codeList = []Code{
 	MsgReportCashFlowGenerated,
 	MsgDueObligationsListed,
 	MsgOJKReportDefinitions,
+	MsgKPMMReport,
 	MsgOJKCOAMapping,
 	MsgOJKMappingDecisionSaved,
 	MsgOJKSLIKCheckCompleted,
@@ -572,6 +574,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgOJKReportDefinitions: {
 		ID: "definisi laporan OJK",
 		EN: "OJK report definitions",
+	},
+	MsgKPMMReport: {
+		ID: "laporan KPMM",
+		EN: "KPMM report",
 	},
 	MsgOJKCOAMapping: {
 		ID: "pemetaan COA ke pos OJK",

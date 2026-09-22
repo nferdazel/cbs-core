@@ -35,6 +35,14 @@ var (
 	// ErrEODNoDueTrigger: jalur terjadwal dipanggil tanpa pemicu terjadwal yang jatuh
 	// tempo.
 	ErrEODNoDueTrigger = errors.New("tidak ada pemicu EOD terjadwal yang jatuh tempo")
+	// ErrEODInvalidTriggerSchedule: ekspresi cron pemicu tidak dapat ditafsirkan.
+	// Ditolak berisik, bukan dianggap "tidak pernah jatuh tempo": salah ketik tidak
+	// boleh diam-diam mematikan tutup hari otomatis.
+	ErrEODInvalidTriggerSchedule = errors.New("ekspresi jadwal pemicu EOD tidak valid")
+	// ErrEODSchedulerExecutorInvalid: kunci staf pelaksana EOD terjadwal tidak berisi
+	// UUID staf yang sah. Tanpa staf nyata, jejak audit dan kolom updated_by tidak
+	// dapat diisi, jadi penjadwal MENOLAK berjalan daripada memakai identitas kosong.
+	ErrEODSchedulerExecutorInvalid = errors.New("staf pelaksana EOD terjadwal tidak sah")
 )
 
 // EODStepCoreCodes adalah daftar kode langkah inti akuntansi yang WAJIB ada dan aktif
@@ -114,6 +122,15 @@ type EODStepRepository interface {
 	ListStepRuns(ctx context.Context, businessDate time.Time) ([]EODStepRunRecord, error)
 	ListDueScheduledTriggers(ctx context.Context, now time.Time) ([]EODTrigger, error)
 	MarkTriggerRun(ctx context.Context, name string, ranAt time.Time, nextRunAt *time.Time) error
+	// ListScheduledTriggers mengembalikan SEMUA pemicu terjadwal aktif tanpa melihat
+	// next_run_at. Dipakai penjadwal untuk memvalidasi ekspresi cron dan mengisi
+	// next_run_at yang masih kosong; tanpa ini pemicu baru yang belum dijadwalkan
+	// tidak akan pernah jatuh tempo maupun terlihat salah.
+	ListScheduledTriggers(ctx context.Context) ([]EODTrigger, error)
+	// SetTriggerNextRun hanya memperbarui jadwal berikutnya tanpa mengubah last_run_at.
+	// Dipakai untuk mengisi jadwal awal pemicu yang baru diaktifkan, sehingga tidak
+	// tampak seolah sudah pernah berjalan.
+	SetTriggerNextRun(ctx context.Context, name string, next time.Time) error
 }
 
 // EODDefinitionService mengelola definisi langkah EOD dan membaca riwayatnya.

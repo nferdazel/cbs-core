@@ -138,6 +138,14 @@ func runtimeGeneratedConfigKeys() []string {
 		keys = append(keys, fmt.Sprintf("ppap.rate_frac.gol_%d", i))
 	}
 
+	// Bobot risiko ATMR KPMM dibangun runtime lewat kpmm.rwa_frac.<kategori>
+	// (kpmm_service.go). Kategori tetap sehingga dapat dienumerasi.
+	for _, kategori := range []string{
+		"kas", "antar_bank", "kredit", "ayda", "aset_tetap", "antar_kantor", "lainnya",
+	} {
+		keys = append(keys, "kpmm.rwa_frac."+kategori)
+	}
+
 	// makerCheckerService.Threshold(): maker_checker.<aksi>.threshold. HANYA aksi kredit
 	// yang benar-benar memanggilnya lewat guardLoanApproval (loan_service.go). Setoran,
 	// penarikan, dan transfer dibaca dari limit.<peran>.<jenis>.approval_above, dan
