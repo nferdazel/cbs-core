@@ -319,6 +319,9 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		penalty, err := s.penaltySvc.AccruePenalties(ctx, businessDate, actor)
 		summary.LoanPenaltiesAccrued = penalty.Accrued
 		summary.LoanPenaltyAmount = penalty.TotalPenalty
+		summary.LoanPenaltiesCapped = penalty.Capped
+		summary.LoanPenaltyCapPercent = penalty.CapPercent
+		summary.LoanPenaltiesSyariahSocialFund = penalty.SyariahSocialFund
 		if err != nil {
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("akrual denda kredit gagal: %v", err))
 			logger.ErrorContext(ctx, "akrual denda kredit gagal saat EOD", "error", err)

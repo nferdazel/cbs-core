@@ -85,6 +85,15 @@ type EODSummaryResult struct {
 	PPAPAdjusted         int             `json:"ppap_adjusted"`
 	LoanPenaltiesAccrued int             `json:"loan_penalties_accrued"`
 	LoanPenaltyAmount    decimal.Decimal `json:"loan_penalty_amount"`
+	// Plafon denda per kredit (persen dari pokok tunggakan). LoanPenaltiesCapped
+	// adalah jumlah kredit yang akrualnya dibatasi/dihentikan karena plafon; ia wajib
+	// terlihat agar denda tidak berhenti bertambah diam-diam. Persentase nol berarti
+	// plafon dimatikan.
+	LoanPenaltiesCapped   int             `json:"loan_penalties_capped"`
+	LoanPenaltyCapPercent decimal.Decimal `json:"loan_penalty_cap_percent"`
+	// Denda pembiayaan syariah yang diposting ke Dana Kebajikan, bukan pendapatan.
+	// Sikap sementara menunggu keputusan DPS.
+	LoanPenaltiesSyariahSocialFund int `json:"loan_penalties_syariah_social_fund"`
 	// Akrual pendapatan bunga kredit berbasis jadwal angsuran (peristiwa EOD kelima).
 	LoanInterestAccrued       int             `json:"loan_interest_accrued"`
 	LoanInterestAccruedAmount decimal.Decimal `json:"loan_interest_accrued_amount"`

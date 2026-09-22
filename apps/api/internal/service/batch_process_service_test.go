@@ -835,6 +835,62 @@ func TestRunEODKeduaSaklarCKPNMenyalaMemakaiJalurResmi(t *testing.T) {
 	}
 }
 
+// stubPenaltyRunner menggantikan akrual denda agar ringkasan EOD bisa diuji tanpa
+// database.
+type stubPenaltyRunner struct {
+	summary domain.LoanPenaltySummary
+	err     error
+}
+
+func (s stubPenaltyRunner) AccruePenalties(context.Context, time.Time, domain.Actor) (domain.LoanPenaltySummary, error) {
+	return s.summary, s.err
+}
+
+// Jumlah kredit yang dendanya dihentikan plafon dan denda syariah yang masuk Dana
+// Kebajikan harus terlihat di ringkasan EOD, beserta peringatan plafon. Tanpa ini,
+// akrual denda berhenti bertambah tanpa penjelasan.
+func TestRunEODReportsPenaltyCapAndSyariahSocialFund(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPenaltyRunner{summary: domain.LoanPenaltySummary{
+			Accrued:           4,
+			TotalPenalty:      decimal.NewFromInt(250_000),
+			CapPercent:        decimal.NewFromInt(10),
+			Capped:            2,
+			SyariahSocialFund: 3,
+			Warning:           "plafon denda 10% dari pokok tunggakan tercapai pada 2 kredit",
+		}},
+		nil, nil, nil,
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if res.LoanPenaltiesCapped != 2 {
+		t.Fatalf("loan_penalties_capped = %d, mau 2", res.LoanPenaltiesCapped)
+	}
+	if !res.LoanPenaltyCapPercent.Equal(decimal.NewFromInt(10)) {
+		t.Fatalf("loan_penalty_cap_percent = %s, mau 10", res.LoanPenaltyCapPercent)
+	}
+	if res.LoanPenaltiesSyariahSocialFund != 3 {
+		t.Fatalf("loan_penalties_syariah_social_fund = %d, mau 3", res.LoanPenaltiesSyariahSocialFund)
+	}
+	warned := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "plafon denda") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("peringatan plafon harus masuk Warnings, dapat %v", res.Warnings)
+	}
+}
+
 // Kedua saklar mati: langkah ckpn_comparison tetap dilewati seperti sebelum mode
 // bayangan ada (perilaku sekarang).
 func TestRunEODKeduaSaklarCKPNMatiTetapDilewati(t *testing.T) {

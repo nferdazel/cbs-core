@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -13,12 +14,50 @@ import (
 // Nilai 1 berarti 0,1% per hari. Tidak ada tarif bisnis yang dikarangkan di kode.
 const cfgLoanPenaltyDailyRatePerMille = "loan.penalty.rate.daily.per_mille"
 
+// Kunci plafon denda: persen dari pokok tunggakan yang menjadi batas atas denda
+// terakru per kredit. Nilai aplikasi 10 (10%). 0 = plafon dimatikan.
+const cfgLoanPenaltyCapPercent = "loan.penalty.cap.percent"
+
+// Sikap sementara menunggu keputusan DPS: denda pembiayaan syariah (ta'zir) TIDAK
+// diakui sebagai pendapatan bank, melainkan dana sosial (Dana Kebajikan). Akun
+// kewajiban itu sudah ada di bagan akun (migrasi 000024: 12500 "Dana Kebajikan",
+// note LIABILITY/CREDIT) dan pemetaan LOAN_PENALTY produk syariah menunjuk ke sana
+// (debit 11700 Piutang Denda Syariah / kredit 12500). Kode TIDAK mengarang akun:
+// nilainya dibaca dari kunci konfigurasi ini, dengan bawaan 12500, dan pemetaan
+// produk yang mengkredit akun lain akan DITOLAK, bukan diam-diam diakui sebagai
+// pendapatan. Ganti nilai ini hanya setelah DPS menetapkan perlakuan resminya.
+const cfgLoanPenaltySyariahSocialFundCOA = "loan.penalty.syariah.social_fund.coa"
+
+const defaultLoanPenaltySyariahSocialFundCOA = "12500"
+
 // loanPenaltyDailyRate membaca tarif denda harian dari system_config. Default 0 di
 // sini HANYA fallback sementara untuk lingkungan yang belum di-provision: operator
 // WAJIB mengisi kuncinya. Selama 0, tidak ada denda yang diakru dan ringkasan
 // menandainya RateConfigured=false beserta Warning, bukan sukses diam-diam.
 func loanPenaltyDailyRate(ctx context.Context, config domain.SystemConfigService) decimal.Decimal {
 	return configDecimalOr(ctx, config, cfgLoanPenaltyDailyRatePerMille, decimal.Zero)
+}
+
+// loanPenaltyCapPercent membaca plafon denda (persen dari pokok tunggakan). Bawaan
+// kode 10% dipakai bila kunci tidak ada; 0 berarti plafon dimatikan.
+func loanPenaltyCapPercent(ctx context.Context, config domain.SystemConfigService) decimal.Decimal {
+	return configDecimalOr(ctx, config, cfgLoanPenaltyCapPercent, decimal.NewFromInt(10))
+}
+
+// syariahPenaltyCreditCOA membaca kaki kredit pemetaan LOAN_PENALTY produk syariah,
+// yaitu tempat denda syariah diakui. Dipakai memastikan denda syariah tidak pernah
+// jatuh ke akun pendapatan.
+func (s *loanService) syariahPenaltyCreditCOA(ctx context.Context, product *domain.BankingProduct) (string, error) {
+	rules, err := s.productRepo.GetMapping(ctx, product.ID, domain.EventLoanPenalty)
+	if err != nil {
+		return "", fmt.Errorf("membaca pemetaan denda syariah: %w", err)
+	}
+	for _, r := range rules {
+		if r.Direction == domain.DirectionCredit {
+			return r.COACode, nil
+		}
+	}
+	return "", fmt.Errorf("pemetaan denda syariah produk %s tidak punya kaki kredit", product.Code)
 }
 
 // AccruePenalties menghitung dan memposting denda atas tunggakan untuk tanggal asOf.
@@ -29,6 +68,7 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 	// Tanggal bisnis dipakai untuk basis DPD, kunci idempotensi, dan entry_date jurnal.
 	day := time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC)
 	rate := loanPenaltyDailyRate(ctx, s.config)
+	capPercent := loanPenaltyCapPercent(ctx, s.config)
 
 	candidates, err := s.loanRepo.ListPenaltyCandidates(ctx, day)
 	if err != nil {
@@ -39,6 +79,7 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 		AsOf:           asOf,
 		RatePerMille:   rate,
 		RateConfigured: rate.IsPositive(),
+		CapPercent:     capPercent,
 		Total:          len(candidates),
 		Items:          []domain.LoanPenaltyItem{},
 		Failures:       []domain.LoanPenaltyFailure{},
@@ -51,6 +92,12 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 		// tunggakan; inilah kredit yang akan dikenai denda bila tarif diisi.
 		if item.DPD > 0 {
 			summary.Overdue++
+		}
+		if item.Capped {
+			summary.Capped++
+		}
+		if item.SyariahSocialFund {
+			summary.SyariahSocialFund++
 		}
 
 		switch item.Status {
@@ -74,11 +121,20 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 	// Tarif 0 hanya diperingatkan bila ada kredit menunggak: tanpa angka yang
 	// terdampak, "tidak ada denda yang diakru" tidak dapat ditindaklanjuti; tanpa
 	// tunggakan, peringatan itu hanya kebisingan.
+	warnings := []string{}
 	if !summary.RateConfigured && summary.Overdue > 0 {
-		summary.Warning = fmt.Sprintf(
+		warnings = append(warnings, fmt.Sprintf(
 			"tarif denda harian %s masih 0; tidak ada denda yang diakru atas %d kredit yang menunggak (jatuh tempo terlewat). Operator wajib mengisi tarifnya.",
-			cfgLoanPenaltyDailyRatePerMille, summary.Overdue)
+			cfgLoanPenaltyDailyRatePerMille, summary.Overdue))
 	}
+	// Plafon yang menghentikan akrual wajib terlihat: tanpa ini, denda berhenti
+	// bertambah tanpa penjelasan dan operator menyangka semuanya normal.
+	if summary.Capped > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"plafon denda %s%% dari pokok tunggakan tercapai pada %d kredit; akrual denda dibatasi/dihentikan agar tidak melebihi kewajiban pokoknya.",
+			capPercent, summary.Capped))
+	}
+	summary.Warning = strings.Join(warnings, "; ")
 	return summary, nil
 }
 
@@ -152,10 +208,34 @@ func (s *loanService) accruePenaltyForLoan(
 	item.DaysAccrued = daysToAccrue
 
 	penalty := domain.LoanPenaltyAmount(c.OverduePrincipal, daysToAccrue, rate)
-	item.Penalty = penalty
 	if !penalty.IsPositive() {
 		return skipPenalty(item, "hasil perhitungan denda nol")
 	}
+
+	// Plafon denda per kredit: denda terakru yang belum dibayar tidak boleh melewati
+	// capPercent persen dari pokok tunggakan saat ini. Tanpa plafon, tunggakan
+	// berbulan-bulan (DPD ratusan) dapat membuat denda melewati kewajiban pokoknya.
+	// Saat plafon tersentuh, akrual dibatasi/dihentikan dan item.Capped membuatnya
+	// terlihat di ringkasan EOD, bukan berhenti diam-diam.
+	capPercent := loanPenaltyCapPercent(ctx, s.config)
+	if capPercent.IsPositive() {
+		capAmount := domain.LoanPenaltyCap(c.OverduePrincipal, capPercent)
+		item.CapAmount = capAmount
+		remaining := capAmount.Sub(c.PenaltyAccrued)
+		if !remaining.IsPositive() {
+			item.Capped = true
+			return skipPenalty(item, fmt.Sprintf(
+				"plafon denda tercapai: denda terakru %s sudah mencapai/melampaui plafon %s (%s%% dari pokok tunggakan %s)",
+				c.PenaltyAccrued, capAmount, capPercent, c.OverduePrincipal))
+		}
+		if penalty.GreaterThan(remaining) {
+			// Sisa ruang plafon lebih kecil dari denda hari ini: tagih hanya sebesar
+			// sisa itu, lalu tandai terpotong plafon.
+			penalty = remaining
+			item.Capped = true
+		}
+	}
+	item.Penalty = penalty
 
 	if c.ProductID == nil {
 		return failPenalty(item, "kredit tidak terhubung ke produk")
@@ -163,6 +243,24 @@ func (s *loanService) accruePenaltyForLoan(
 	product, err := s.productRepo.GetByID(ctx, *c.ProductID)
 	if err != nil {
 		return failPenalty(item, "produk kredit tidak ditemukan: "+err.Error())
+	}
+
+	// Denda pembiayaan syariah (ta'zir) tidak boleh diakui sebagai pendapatan bank;
+	// dana itu milik sosial. Sikap sementara menunggu keputusan DPS: pastikan kaki
+	// kredit pemetaan menunjuk akun Dana Kebajikan, dan TOLAK (bukan diam-diam
+	// diakui) bila pemetaan produk mengarah ke akun lain.
+	if product.Book == domain.BookSyariah {
+		creditCOA, err := s.syariahPenaltyCreditCOA(ctx, product)
+		if err != nil {
+			return failPenalty(item, err.Error())
+		}
+		socialFundCOA := configStringOr(ctx, s.config, cfgLoanPenaltySyariahSocialFundCOA, defaultLoanPenaltySyariahSocialFundCOA)
+		if creditCOA != socialFundCOA {
+			return failPenalty(item, fmt.Sprintf(
+				"pemetaan denda syariah produk %s mengkredit %s, bukan dana kebajikan %s: denda syariah tidak boleh diakui sebagai pendapatan. Sikap sementara menunggu keputusan DPS.",
+				product.Code, creditCOA, socialFundCOA))
+		}
+		item.SyariahSocialFund = true
 	}
 
 	// Kunci idempotensi per kredit per tanggal. Kolom idempotency_key jurnal unik,

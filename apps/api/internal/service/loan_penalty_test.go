@@ -41,6 +41,9 @@ func (s *penaltyLoanRepo) AddPenaltyAccruedTx(_ context.Context, _ any, loanID u
 	for i := range s.candidates {
 		if s.candidates[i].LoanID == loanID {
 			s.candidates[i].LastAccruedOn = &accruedOn
+			// Meniru penambahan loans.penalty_accrued: plafon diuji pada eksekusi
+			// berikutnya memakai saldo ini.
+			s.candidates[i].PenaltyAccrued = s.candidates[i].PenaltyAccrued.Add(amount)
 		}
 	}
 	return true, nil
@@ -83,13 +86,23 @@ func (s *penaltyAccountRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.A
 
 var _ domain.AccountRepository = (*penaltyAccountRepo)(nil)
 
-type penaltyConfig struct{ rate decimal.Decimal }
+type penaltyConfig struct {
+	rate       decimal.Decimal
+	capPercent decimal.Decimal
+}
 
-func (c penaltyConfig) GetDecimal(_ context.Context, _ string, fallback decimal.Decimal) decimal.Decimal {
-	if c.rate.IsZero() && fallback.IsZero() {
+func (c penaltyConfig) GetDecimal(_ context.Context, key string, fallback decimal.Decimal) decimal.Decimal {
+	switch key {
+	case cfgLoanPenaltyDailyRatePerMille:
+		return c.rate
+	case cfgLoanPenaltyCapPercent:
+		if c.capPercent.IsZero() {
+			return fallback
+		}
+		return c.capPercent
+	default:
 		return fallback
 	}
-	return c.rate
 }
 func (penaltyConfig) GetInt(_ context.Context, _ string, fallback int) int          { return fallback }
 func (penaltyConfig) GetString(_ context.Context, _ string, fallback string) string { return fallback }
@@ -103,6 +116,10 @@ func timePtr(t time.Time) *time.Time { return &t }
 // newPenaltyTestService merangkai loanService tanpa database: transaksi dijalankan
 // stubTxRunner, jurnal dicatat stubPosting.
 func newPenaltyTestService(repo *penaltyLoanRepo, products *penaltyProductRepo, accounts *penaltyAccountRepo, posting *stubPosting, rate decimal.Decimal) *loanService {
+	return newPenaltyTestServiceWithConfig(repo, products, accounts, posting, penaltyConfig{rate: rate})
+}
+
+func newPenaltyTestServiceWithConfig(repo *penaltyLoanRepo, products *penaltyProductRepo, accounts *penaltyAccountRepo, posting *stubPosting, cfg penaltyConfig) *loanService {
 	return &loanService{
 		loanRepo:    repo,
 		productRepo: products,
@@ -110,7 +127,7 @@ func newPenaltyTestService(repo *penaltyLoanRepo, products *penaltyProductRepo, 
 		resolver:    stubResolver{},
 		poster:      NewProductPoster(products, stubResolver{}, posting),
 		posting:     posting,
-		config:      penaltyConfig{rate: rate},
+		config:      cfg,
 		txRunner:    stubTxRunner{},
 	}
 }
@@ -591,5 +608,119 @@ func TestAccruePenalties_ZeroRateNoOverdueNoWarning(t *testing.T) {
 	}
 	if summary.Warning != "" {
 		t.Fatalf("tanpa tunggakan tidak boleh ada peringatan, dapat %q", summary.Warning)
+	}
+}
+
+// Plafon denda memotong nominal yang melewati batas dan menghentikan akrual
+// berikutnya, serta terlihat di ringkasan. Basis: 1% dari pokok tunggakan
+// 1.000.000 = 10.000. Denda 20 hari (20.000) terpotong ke plafon 10.000; hari
+// berikutnya ruang plafon habis sehingga akrual dihentikan dan dihitung Capped.
+func TestAccruePenalties_CapTruncatesAndStopsAccrual(t *testing.T) {
+	day0 := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(day0)
+	f.candidate.OverduePrincipal = decimal.NewFromInt(1_000_000)
+	f.candidate.OldestDueDate = timePtr(day0.AddDate(0, 0, -20))
+	f.candidate.LastAccruedOn = nil
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestServiceWithConfig(f.repo, f.products, f.accounts, f.posting,
+		penaltyConfig{rate: decimal.NewFromInt(1), capPercent: decimal.NewFromInt(1)})
+
+	first, err := svc.AccruePenalties(context.Background(), day0, domain.Actor{})
+	if err != nil {
+		t.Fatalf("run pertama: %v", err)
+	}
+	item := first.Items[0]
+	if item.Status != domain.BatchItemAccrued {
+		t.Fatalf("status %q, ingin ACCRUED dengan nominal terpotong plafon", item.Status)
+	}
+	if !item.Penalty.Equal(decimal.NewFromInt(10_000)) {
+		t.Fatalf("denda %s, ingin terpotong ke plafon 10.000", item.Penalty)
+	}
+	if !item.Capped || !item.CapAmount.Equal(decimal.NewFromInt(10_000)) {
+		t.Fatalf("item harus ditandai Capped dengan plafon 10.000: capped=%v cap=%s", item.Capped, item.CapAmount)
+	}
+	if first.Capped != 1 || !first.TotalPenalty.Equal(decimal.NewFromInt(10_000)) {
+		t.Fatalf("ringkasan: capped=%d total=%s, ingin 1/10.000", first.Capped, first.TotalPenalty)
+	}
+
+	// Hari berikutnya: ruang plafon sudah nol, akrual dihentikan dan wajib terlihat.
+	second, err := svc.AccruePenalties(context.Background(), day0.AddDate(0, 0, 1), domain.Actor{})
+	if err != nil {
+		t.Fatalf("run kedua: %v", err)
+	}
+	if second.Accrued != 0 || second.Skipped != 1 || second.Capped != 1 {
+		t.Fatalf("run kedua: accrued=%d skipped=%d capped=%d, ingin 0/1/1", second.Accrued, second.Skipped, second.Capped)
+	}
+	if !strings.Contains(second.Warning, "plafon denda") {
+		t.Fatalf("ringkasan harus menyebut plafon, dapat %q", second.Warning)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal diposting %d kali, ingin 1 (hari kedua dihentikan plafon)", len(f.posting.requests))
+	}
+	if got := f.repo.added[f.loanID]; !got.Equal(decimal.NewFromInt(10_000)) {
+		t.Fatalf("total penalty_accrued %s, ingin tetap 10.000", got)
+	}
+}
+
+// Denda pembiayaan syariah diposting ke Dana Kebajikan (12500), BUKAN pendapatan.
+// Sikap sementara menunggu keputusan DPS.
+func TestAccruePenalties_SyariahCreditsSocialFundNotIncome(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	f.products.products[f.productID].Book = domain.BookSyariah
+	f.products.rules[domain.EventLoanPenalty] = []domain.JournalMappingRule{
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "11700", AmountSource: domain.AmountPenalty},
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionCredit, COACode: "12500", AmountSource: domain.AmountPenalty},
+	}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 1 || summary.SyariahSocialFund != 1 {
+		t.Fatalf("accrued=%d syariahSocialFund=%d, ingin 1/1", summary.Accrued, summary.SyariahSocialFund)
+	}
+	if !summary.Items[0].SyariahSocialFund {
+		t.Fatal("item syariah harus ditandai SyariahSocialFund")
+	}
+	lines := f.posting.requests[0].Lines
+	if lines[0].AccountNumber != "11700" || lines[0].Direction != domain.DirectionDebit {
+		t.Fatalf("kaki debit harus piutang denda syariah 11700: %+v", lines[0])
+	}
+	if lines[1].AccountNumber != "12500" || lines[1].Direction != domain.DirectionCredit {
+		t.Fatalf("kaki kredit harus Dana Kebajikan 12500: %+v", lines[1])
+	}
+	for _, line := range lines {
+		if line.AccountNumber == "40500" || line.AccountNumber == "14600" {
+			t.Fatalf("denda syariah tidak boleh masuk akun pendapatan: %+v", line)
+		}
+	}
+}
+
+// Pemetaan syariah yang mengkredit akun pendapatan DITOLAK, bukan diam-diam diakui.
+func TestAccruePenalties_SyariahRejectsIncomeMapping(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	f.products.products[f.productID].Book = domain.BookSyariah
+	f.products.rules[domain.EventLoanPenalty] = []domain.JournalMappingRule{
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "11700", AmountSource: domain.AmountPenalty},
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionCredit, COACode: "14600", AmountSource: domain.AmountPenalty},
+	}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Failed != 1 || summary.Accrued != 0 {
+		t.Fatalf("failed=%d accrued=%d, ingin 1/0", summary.Failed, summary.Accrued)
+	}
+	if len(f.posting.requests) != 0 || len(f.repo.added) != 0 {
+		t.Fatal("pemetaan syariah ke pendapatan tidak boleh memposting jurnal atau menambah penalty_accrued")
+	}
+	if len(summary.Failures) != 1 || !strings.Contains(summary.Failures[0].Error, "tidak boleh diakui sebagai pendapatan") {
+		t.Fatalf("kegagalan harus menjelaskan larangan pendapatan: %+v", summary.Failures)
 	}
 }

@@ -48,6 +48,23 @@ func LoanPenaltyAmount(overduePrincipal decimal.Decimal, daysToAccrue int, rateP
 	return RoundToRupiah(overduePrincipal.Mul(dailyRate).Mul(decimal.NewFromInt(int64(daysToAccrue))))
 }
 
+// LoanPenaltyCap menghitung plafon denda PER KREDIT: capPercent persen dari pokok
+// angsuran yang tertunggak saat ini. Basisnya sama dengan basis denda (pokok tunggakan,
+// bukan seluruh sisa pokok), sehingga plafon selalu sebanding dengan kewajiban yang
+// benar-benar menunggak. Plafon diterapkan pada denda TERAKRU YANG BELUM DIBAYAR
+// (loans.penalty_accrued): begitu denda dibayar, ruang plafon terbuka lagi — yang
+// dibatasi adalah saldo denda berjalan, bukan akumulasi seumur kredit.
+//
+// capPercent <= 0 berarti tanpa plafon dan fungsi mengembalikan nol; pemanggil wajib
+// memeriksa capPercent.IsPositive() lebih dulu agar nol tidak dibaca sebagai "plafon
+// nol" (tidak pernah mengakru).
+func LoanPenaltyCap(overduePrincipal, capPercent decimal.Decimal) decimal.Decimal {
+	if !overduePrincipal.IsPositive() || !capPercent.IsPositive() {
+		return decimal.Zero
+	}
+	return RoundToRupiah(overduePrincipal.Mul(capPercent).Div(decimal.NewFromInt(100)))
+}
+
 // LoanPenaltyCandidate adalah satu kredit menunggak yang perlu dihitung dendanya.
 type LoanPenaltyCandidate struct {
 	LoanID                uuid.UUID
@@ -58,6 +75,10 @@ type LoanPenaltyCandidate struct {
 	// OverduePrincipal adalah total pokok angsuran yang lewat jatuh tempo dan belum
 	// dibayar pada asOf.
 	OverduePrincipal decimal.Decimal
+	// PenaltyAccrued adalah saldo denda terakru yang belum dibayar pada kredit ini
+	// (loans.penalty_accrued). Dipakai membandingkan dengan plafon: ruang plafon yang
+	// tersisa = LoanPenaltyCap(OverduePrincipal) - PenaltyAccrued.
+	PenaltyAccrued decimal.Decimal
 	// OldestDueDate adalah jatuh tempo angsuran tertua yang belum dibayar; nil bila
 	// tidak ada tunggakan.
 	OldestDueDate *time.Time
@@ -82,6 +103,15 @@ type LoanPenaltyItem struct {
 	JournalReference string
 	Status           string // BatchItemAccrued / BatchItemSkipped / BatchItemFailed
 	Message          string
+	// Capped menandai bahwa nominal (atau seluruh akrual) hari ini dibatasi plafon
+	// denda. Terlihat di ringkasan agar tunggakan berbulan-bulan tidak menghentikan
+	// denda diam-diam.
+	Capped bool
+	// CapAmount adalah plafon denda yang berlaku (0 bila plafon tidak diaktifkan).
+	CapAmount decimal.Decimal
+	// SyariahSocialFund menandai denda pembiayaan syariah yang diposting ke Dana
+	// Kebajikan (bukan pendapatan bank). Sikap sementara menunggu keputusan DPS.
+	SyariahSocialFund bool
 }
 
 // LoanPenaltyFailure mencatat kredit yang gagal diproses tanpa menggagalkan batch.
@@ -112,6 +142,15 @@ type LoanPenaltySummary struct {
 	TotalPenalty   decimal.Decimal
 	Items          []LoanPenaltyItem
 	Failures       []LoanPenaltyFailure
+	// CapPercent adalah plafon denda berlaku dalam persen dari pokok tunggakan;
+	// 0 berarti plafon tidak diaktifkan.
+	CapPercent decimal.Decimal
+	// Capped adalah jumlah kredit yang akrualnya dibatasi atau dihentikan plafon
+	// pada eksekusi ini. Wajib terlihat di ringkasan EOD, bukan berhenti diam-diam.
+	Capped int
+	// SyariahSocialFund adalah jumlah kredit syariah yang dendanya diposting ke Dana
+	// Kebajikan, bukan pendapatan bank. Sikap sementara menunggu keputusan DPS.
+	SyariahSocialFund int
 }
 
 // LoanPenaltyService adalah kapabilitas akrual denda yang dapat dipanggil orchestrator

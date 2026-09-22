@@ -596,6 +596,7 @@ const listPenaltyCandidatesQuery = `
 		l.disbursement_account_id,
 		l.status::text,
 		COALESCE(SUM(GREATEST(s.principal_amount - s.paid_principal, 0)), 0) AS overdue_principal,
+		l.penalty_accrued,
 		MIN(s.due_date) AS oldest_due_date,
 		l.penalty_last_accrued_on,
 		(SELECT MAX(sf.due_date) FROM loan_schedules sf
@@ -626,7 +627,7 @@ func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Ti
 
 		if err := rows.Scan(
 			&c.LoanID, &c.LoanNumber, &productID, &c.DisbursementAccountID, &status,
-			&c.OverduePrincipal, &oldestDue, &lastAccrued, &finalDue,
+			&c.OverduePrincipal, &c.PenaltyAccrued, &oldestDue, &lastAccrued, &finalDue,
 		); err != nil {
 			return nil, err
 		}
