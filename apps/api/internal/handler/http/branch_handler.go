@@ -108,6 +108,17 @@ func (h *BranchHandler) SetOrgUnitParent(w http.ResponseWriter, r *http.Request)
 
 	unit, err := h.service.SetOrgUnitParent(r.Context(), chi.URLParam(r, "code"), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
+		// Pemindahan yang berdampak pada pengguna aktif bukan kegagalan: ia masuk
+		// antrean maker-checker dan dibalas 202 beserta id permintaannya.
+		var pending *domain.PendingApprovalError
+		if errors.As(err, &pending) {
+			Success(w, http.StatusAccepted, i18n.MsgTransactionPendingApproval, map[string]any{
+				"request_id":  pending.RequestID,
+				"action_type": pending.ActionType,
+				"status":      "PENDING_APPROVAL",
+			})
+			return
+		}
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}

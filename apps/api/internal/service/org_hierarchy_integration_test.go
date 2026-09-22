@@ -188,7 +188,7 @@ func TestIntegrasiTulisCakupanAreaDanBuku(t *testing.T) {
 // tercatat audit, dan atasan lintas jenjang divalidasi.
 func TestIntegrasiCreateOrgUnitProduksi(t *testing.T) {
 	e := newActorBranchEnv(t)
-	branchSvc := service.NewBranchService(e.money.db, postgres.NewBranchRepository(e.money.db), postgres.NewAuditRepository(e.money.db))
+	branchSvc := service.NewBranchService(e.money.db, postgres.NewBranchRepository(e.money.db), nil, postgres.NewAuditRepository(e.money.db))
 	actor := domain.Actor{UserID: e.money.actor.UserID, Username: "super.uji", Role: domain.RoleSuperAdmin, BranchCode: "001"}
 	codes := []string{"899", "898", "R998", "A997"}
 	for _, c := range codes {
@@ -251,39 +251,55 @@ func seedOrgStaffAt(t *testing.T, db *sql.DB, ctx context.Context, branchCode st
 	return userID
 }
 
-// Pemindahan cabang yang punya pengguna TIDAK mengunci pengguna di cabang itu,
-// tetapi mengubah cakupan pengguna di unit atasan. Perubahan itu wajib dikonfirmasi
-// agar tidak mengubah akses secara tak sengaja; setelah dikonfirmasi, staf di
-// cabang yang dipindah tetap dapat mengakses cabangnya sendiri.
-func TestIntegrasiPemindahanUnitKonfirmasiCakupanTanpaMengunci(t *testing.T) {
+// Pemindahan unit yang berdampak 0 pengguna boleh berjalan langsung; bila dampaknya
+// > 0 pengguna, perubahan WAJIB lewat maker-checker (keputusan pemilik: hierarki =
+// cakupan data, grup = kewenangan). Pembuat tidak boleh menyetujui pengajuannya
+// sendiri. Staf di cabang yang dipindah tetap mempertahankan cakupannya (tidak
+// terkunci) karena cakupan dimulai dari unit sendiri.
+func TestIntegrasiPemindahanUnitWajibMakerCheckerDanTidakBisaSetujuSendiri(t *testing.T) {
 	e := newActorBranchEnv(t)
 	seedOrgHierarchy(t, e)
 	db, ctx := e.money.db, e.money.ctx
-	branchSvc := service.NewBranchService(db, postgres.NewBranchRepository(db), postgres.NewAuditRepository(db))
-	actor := domain.Actor{UserID: e.money.actor.UserID, Username: "super.uji", Role: domain.RoleSuperAdmin, BranchCode: "001"}
+	branchRepo := postgres.NewBranchRepository(db)
+	auditRepo := postgres.NewAuditRepository(db)
+	executors := service.NewExecutorRegistry()
+	mcSvc := service.NewMakerCheckerService(db, postgres.NewMakerCheckerRepository(db), auditRepo, e.money.configSvc, executors, postgres.NewBusinessDateRepository(db), branchRepo)
+	branchSvc := service.NewBranchService(db, branchRepo, mcSvc, auditRepo)
+	executors.Register(service.ActionSetOrgUnitParent, branchSvc)
+
+	maker := domain.Actor{UserID: e.money.actor.UserID, Username: "super.uji", Role: domain.RoleSuperAdmin, BranchCode: "001"}
+	checkerID, _ := seedTempUser(t, db, ctx, domain.RoleAdmin)
+	checker := domain.Actor{UserID: checkerID, Username: "kabag.uji", Role: domain.RoleAdmin, BranchCode: "001"}
+
+	// 0 dampak: belum ada pengguna di rantai atasan 812, jadi berjalan langsung.
+	if _, err := branchSvc.SetOrgUnitParent(ctx, "812", domain.SetOrgUnitParentInput{ParentCode: "R900"}, maker); err != nil {
+		t.Fatalf("pemindahan tanpa dampak harus langsung berhasil: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(),
+			`UPDATE branches SET parent_id = (SELECT id FROM branches WHERE code='A810') WHERE code='812'`)
+	})
+	if _, err := branchSvc.SetOrgUnitParent(ctx, "812", domain.SetOrgUnitParentInput{ParentCode: "A810"}, maker); err != nil {
+		t.Fatalf("mengembalikan 812 ke A810: %v", err)
+	}
 
 	// Pengguna di area A810 akan kehilangan cabang 811; pengguna di 811 tetap.
 	seedOrgStaffAt(t, db, ctx, "A810")
 	branchUser := seedOrgStaffAt(t, db, ctx, "811")
-
-	// Kembalikan hierarki setelah uji agar tidak mempengaruhi uji lain.
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(context.Background(),
 			`UPDATE branches SET parent_id = (SELECT id FROM branches WHERE code='A810') WHERE code='811'`)
 	})
 
-	_, err := branchSvc.SetOrgUnitParent(ctx, "811", domain.SetOrgUnitParentInput{ParentCode: "R900"}, actor)
-	var scope *domain.ScopeChangeError
-	if !errors.As(err, &scope) {
-		t.Fatalf("err = %v, ingin ScopeChangeError", err)
+	_, err := branchSvc.SetOrgUnitParent(ctx, "811", domain.SetOrgUnitParentInput{ParentCode: "R900"}, maker)
+	var pending *domain.PendingApprovalError
+	if !errors.As(err, &pending) {
+		t.Fatalf("dampak > 0 pengguna harus masuk maker-checker, err = %v", err)
 	}
-	if scope.Losing < 1 {
-		t.Fatalf("harus ada pengguna yang kehilangan cakupan, dapat %+v", scope)
+	if pending.ActionType != service.ActionSetOrgUnitParent {
+		t.Fatalf("jenis aksi %s, ingin %s", pending.ActionType, service.ActionSetOrgUnitParent)
 	}
-	if scope.Gaining != 0 {
-		t.Fatalf("tidak ada yang mendapat cakupan, dapat gaining=%d", scope.Gaining)
-	}
-	t.Logf("dampak pemindahan 811: kehilangan=%d mendapat=%d", scope.Losing, scope.Gaining)
+	t.Logf("pemindahan 811 menunggu persetujuan request_id=%s", pending.RequestID)
 
 	var stillOldParent bool
 	if err := db.QueryRowContext(ctx, `
@@ -291,13 +307,19 @@ func TestIntegrasiPemindahanUnitKonfirmasiCakupanTanpaMengunci(t *testing.T) {
 		t.Fatalf("membaca parent: %v", err)
 	}
 	if !stillOldParent {
-		t.Fatal("pemindahan ditolak tetapi parent sudah berubah")
+		t.Fatal("parent sudah berubah sebelum disetujui")
 	}
 
-	if _, err := branchSvc.SetOrgUnitParent(ctx, "811", domain.SetOrgUnitParentInput{ParentCode: "R900", ConfirmScopeChange: true}, actor); err != nil {
-		t.Fatalf("dengan konfirmasi seharusnya diterima: %v", err)
+	// Pembuat tidak boleh menyetujui pengajuannya sendiri.
+	if err := mcSvc.Approve(ctx, pending.RequestID, maker, ""); !errors.Is(err, domain.ErrCannotSelfApprove) {
+		t.Fatalf("pembuat menyetujui pengajuannya sendiri: err = %v, ingin ErrCannotSelfApprove", err)
 	}
-	codes, err := postgres.NewBranchRepository(db).ResolveScopeCodes(ctx, "811")
+
+	// Pemeriksa lain menyetujui: perubahan baru terjadi.
+	if err := mcSvc.Approve(ctx, pending.RequestID, checker, ""); err != nil {
+		t.Fatalf("pemeriksa menyetujui: %v", err)
+	}
+	codes, err := branchRepo.ResolveScopeCodes(ctx, "811")
 	if err != nil {
 		t.Fatalf("ResolveScopeCodes: %v", err)
 	}

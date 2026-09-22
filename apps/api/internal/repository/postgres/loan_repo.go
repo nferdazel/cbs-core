@@ -33,7 +33,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	created_at, updated_at,
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), ''),
 	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id),
-	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance, rejection_reason`
+	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance, rejection_reason,
+	written_off_amount`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -60,6 +61,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&finalDue,
 		&l.OriginalEIRMonthly, &eirMethod, &eirBasis, &eirCalculatedAt, &l.RestructureLossBalance,
 		&rejectionReason,
+		&l.WrittenOffAmount,
 	)
 	if err != nil {
 		return nil, err
@@ -588,6 +590,44 @@ func updateOutstanding(ctx context.Context, exec execer, id uuid.UUID, outstandi
 	q := `UPDATE loans SET outstanding_principal=$1, penalty_accrued=$2, updated_at=NOW() WHERE id=$3`
 	_, err := exec.ExecContext(ctx, q, outstanding, penalty, id)
 	return err
+}
+
+// SetWrittenOffAmountTx menyimpan nilai hapus buku di dalam transaksi pemanggil. Nilai
+// ini menjadi batas akumulasi pemulihan, sehingga harus commit bersama jurnal dan
+// perubahan status: tidak boleh ada kredit WRITTEN_OFF tanpa nilai hapus buku.
+func (r *LoanRepository) SetWrittenOffAmountTx(ctx context.Context, tx any, id uuid.UUID, amount decimal.Decimal) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		UPDATE loans SET written_off_amount = $1, updated_at = NOW() WHERE id = $2`, amount, id)
+	return err
+}
+
+// SumRecoveredAmountTx menjumlahkan nominal pemulihan kredit hapus buku dari jurnal
+// RECOV-<nomor kredit>- , MENGECUALIKAN kunci idempotensi yang sedang diproses supaya
+// pengulangan permintaan yang sama (idempoten) tidak ditolak oleh jurnalnya sendiri.
+// Jurnal dipilih, bukan audit, karena idempotency_key unik mencegah satu penerimaan
+// dihitung dua kali. Kaki DEBIT dipakai: pemetaan LOAN_RECOVERY menaruh nominal
+// penerimaan di kedua kaki, sehingga satu jurnal menambah tepat sebesar nominalnya.
+func (r *LoanRepository) SumRecoveredAmountTx(ctx context.Context, tx any, loanNumber, excludeIdempotencyKey string) (decimal.Decimal, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return decimal.Zero, errors.New("loan: transaksi tidak valid")
+	}
+	var total decimal.Decimal
+	err := sqlTx.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(jl.amount), 0)
+		FROM journal_entries je
+		JOIN journal_lines jl ON jl.journal_entry_id = je.id
+		WHERE starts_with(je.idempotency_key, $1)
+		  AND je.idempotency_key <> $2
+		  AND jl.direction = 'DEBIT'`, "RECOV-"+loanNumber+"-", excludeIdempotencyKey).Scan(&total)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return total, nil
 }
 
 // listPenaltyCandidatesQuery mengambil kredit aktif beserta pokok angsuran yang lewat

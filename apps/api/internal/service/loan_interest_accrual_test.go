@@ -29,6 +29,10 @@ type interestLoanRepo struct {
 	// Saldo yang disimpan kembali lewat UpdateOutstanding (mis. saat hapus buku).
 	outstanding decimal.Decimal
 	penalty     decimal.Decimal
+
+	// recovered mensimulasikan akumulasi pemulihan yang sudah tercatat di jurnal
+	// RECOV- untuk menguji batas pemulihan tanpa database (lihat guardRecoveryCap).
+	recovered decimal.Decimal
 }
 
 func (r *interestLoanRepo) ListInterestAccrualCandidates(context.Context, time.Time, domain.Actor) ([]domain.LoanInterestAccrualCandidate, error) {
@@ -85,6 +89,17 @@ func (r *interestLoanRepo) UpdateOutstanding(_ context.Context, _ uuid.UUID, out
 
 func (r *interestLoanRepo) UpdateStatus(context.Context, uuid.UUID, domain.LoanStatus, *uuid.UUID) error {
 	return nil
+}
+
+func (r *interestLoanRepo) SetWrittenOffAmountTx(_ context.Context, _ any, id uuid.UUID, amount decimal.Decimal) error {
+	if r.loan != nil && r.loan.ID == id {
+		r.loan.WrittenOffAmount = amount
+	}
+	return nil
+}
+
+func (r *interestLoanRepo) SumRecoveredAmountTx(context.Context, any, string, string) (decimal.Decimal, error) {
+	return r.recovered, nil
 }
 
 var _ domain.LoanRepository = (*interestLoanRepo)(nil)

@@ -1465,6 +1465,12 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	if err := s.loanRepo.UpdateOutstandingTx(ctx, tx, loan.ID, decimal.Zero, decimal.Zero); err != nil {
 		return err
 	}
+	// Nilai yang dilepas disimpan pada baris kredit, satu transaksi dengan jurnal dan
+	// statusnya. Inilah satu-satunya sumber batas pemulihan setelah hapus buku; tanpa
+	// simpanan ini pemulihan hanya berbatas kejujuran operator.
+	if err := s.loanRepo.SetWrittenOffAmountTx(ctx, tx, loan.ID, terms.Total()); err != nil {
+		return err
+	}
 	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
 		"loan_number":           loan.LoanNumber,
 		"reason":                reason,
@@ -1504,14 +1510,30 @@ func (s *loanService) recoveryKey(ctx context.Context, loanNumber string, amount
 	return key
 }
 
-// recoveryTx mencatat penerimaan kas atas kredit yang sudah dihapus buku.
+// recoveryTx mencatat penerimaan kas atas kredit yang sudah dihapus buku. Sebelum
+// mencatat, akumulasi pemulihan diperiksa terhadap nilai hapus buku yang tersimpan:
+// pemulihan tidak boleh melebihi nilai yang pernah dilepas. Baris kredit dikunci lebih
+// dulu (SELECT ... FOR UPDATE) agar dua pemulihan bersamaan tidak sama-sama lolos batas.
 func (s *loanService) recoveryTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, overrides map[string]string, actor domain.Actor, providedKey string) error {
+	locked, err := s.loanRepo.LockLoanTx(ctx, tx, loan.ID)
+	if err != nil {
+		return err
+	}
+	if locked != nil {
+		loan = locked
+	}
+	// Kunci dibangun sebelum batas diperiksa supaya jurnal dari permintaan yang SAMA
+	// (retry idempoten) tidak dihitung sebagai pemulihan lain.
+	idempotencyKey := s.recoveryKey(ctx, loan.LoanNumber, amount, providedKey)
+	if err := s.guardRecoveryCap(ctx, tx, loan, amount, idempotencyKey); err != nil {
+		return err
+	}
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanRecovery, Amounts{
 		Principal: amount, Total: amount,
 	}, PostingMeta{
 		TransactionType:  domain.TxTypeAdjustment,
 		Description:      fmt.Sprintf("Recovery kredit hapus buku %s", loan.LoanNumber),
-		IdempotencyKey:   s.recoveryKey(ctx, loan.LoanNumber, amount, providedKey),
+		IdempotencyKey:   idempotencyKey,
 		CreatedBy:        actor.DisplayName(),
 		BranchCode:       actor.BranchCode,
 		AccountOverrides: overrides,
@@ -1522,6 +1544,28 @@ func (s *loanService) recoveryTx(ctx context.Context, tx any, loan *domain.Loan,
 		"loan_number":     loan.LoanNumber,
 		"recovery_amount": amount.StringFixed(2),
 	})
+}
+
+// guardRecoveryCap menolak pemulihan yang membuat akumulasi pemulihan melebihi nilai
+// hapus buku kredit. Nilai hapus buku tersimpan di baris kredit saat eksekusi hapus
+// buku (written_off_amount); data lama diisi migrasi 000085 dari audit/jurnal. Bila
+// nilainya tidak diketahui (mis. data lama yang tidak dapat dipastikan), pemulihan
+// DITOLAK dengan pesan jelas — menolak lebih aman daripada membiarkan pemulihan tanpa
+// batas. Nilai yang tepat sama dengan batas tetap boleh (tidak "melebihi").
+func (s *loanService) guardRecoveryCap(ctx context.Context, tx any, loan *domain.Loan, amount decimal.Decimal, idempotencyKey string) error {
+	if !loan.WrittenOffAmount.IsPositive() {
+		return fmt.Errorf("%w: kredit %s", domain.ErrWriteOffAmountUnavailable, loan.LoanNumber)
+	}
+	recovered, err := s.loanRepo.SumRecoveredAmountTx(ctx, tx, loan.LoanNumber, idempotencyKey)
+	if err != nil {
+		return err
+	}
+	if recovered.Add(amount).GreaterThan(loan.WrittenOffAmount) {
+		return fmt.Errorf("%w: kredit %s sudah dipulihkan %s, ditambah %s melebihi nilai hapus buku %s",
+			domain.ErrRecoveryExceedsWriteOff, loan.LoanNumber,
+			recovered.StringFixed(2), amount.StringFixed(2), loan.WrittenOffAmount.StringFixed(2))
+	}
+	return nil
 }
 
 // WriteOffLoan mengajukan hapus buku. Karena melepas tagihan dari neraca dan tidak
@@ -1583,6 +1627,7 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 
 	loan.Status = domain.LoanStatusWrittenOff
 	loan.OutstandingPrincipal = decimal.Zero
+	loan.WrittenOffAmount = terms.Total()
 	return loan, nil
 }
 

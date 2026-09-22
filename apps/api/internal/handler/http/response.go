@@ -145,6 +145,10 @@ var businessErrors = []error{
 	domain.ErrWriteOffPartial,
 	domain.ErrWriteOffReasonRequired,
 	domain.ErrWriteOffCollectionEffortsRequired,
+	// Batas pemulihan hapus buku adalah aturan uang: pesannya harus menyebut nilai
+	// hapus buku vs akumulasi pemulihan agar operator dapat menindaklanjuti.
+	domain.ErrRecoveryExceedsWriteOff,
+	domain.ErrWriteOffAmountUnavailable,
 	domain.ErrInvalidBusinessDate,
 	domain.ErrEODAlreadyRunForDate,
 	domain.ErrEODInProgress,

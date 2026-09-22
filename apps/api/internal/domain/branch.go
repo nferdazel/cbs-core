@@ -130,10 +130,12 @@ type CreateOrgUnitInput struct {
 // AREA/WILAYAH tanpa atasan tetap diperbolehkan pada jenjang mana pun).
 type SetOrgUnitParentInput struct {
 	ParentCode string `json:"parent_code"`
-	// ConfirmScopeChange wajib TRUE bila pemindahan akan mengubah cakupan
-	// pengguna aktif, agar perubahan susunan hierarki disengaja. Semantik aditif
-	// tidak berubah: staf di unit target selalu mempertahankan cakupannya, jadi
-	// tidak ada pengguna yang terkunci oleh pengaman ini.
+	// ConfirmScopeChange adalah pengaman CADANGAN: bila layanan maker-checker tidak
+	// terpasang (mis. uji unit), pemindahan yang berdampak pada pengguna aktif ditolak
+	// kecuali flag ini disetel. Di produksi maker-checker selalu terpasang, sehingga
+	// perubahan berdampak SELALU lewat persetujuan pejabat kedua dan flag ini tidak
+	// dapat dipakai melewatinya. Semantik aditif tidak berubah: staf di unit target
+	// selalu mempertahankan cakupannya, jadi tidak ada pengguna yang terkunci.
 	ConfirmScopeChange bool `json:"confirm_scope_change"`
 }
 
@@ -195,5 +197,10 @@ type BranchService interface {
 	// CreateOrgUnit membuat cabang/area/wilayah beserta atasannya.
 	CreateOrgUnit(ctx context.Context, input CreateOrgUnitInput, actor Actor) (*Branch, error)
 	// SetOrgUnitParent memindahkan unit ke bawah atasan lain atau melepasnya ke puncak.
+	// Bila pemindahan mengubah cakupan pengguna aktif, perubahan diajukan lewat
+	// maker-checker dan pemanggil menerima PendingApprovalError.
 	SetOrgUnitParent(ctx context.Context, code string, input SetOrgUnitParentInput, actor Actor) (*Branch, error)
+	// ExecuteApproved menjalankan pemindahan unit yang sudah disetujui maker-checker,
+	// di dalam transaksi milik pemanggil.
+	ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor Actor) error
 }

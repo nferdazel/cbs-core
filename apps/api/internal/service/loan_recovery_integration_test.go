@@ -24,9 +24,11 @@ func TestIntegrasiRecoveryIdempotenSatuJurnal(t *testing.T) {
 	loan := e.disburseAs(t, actor, cust.ID, acc, decimal.NewFromInt(1_000_000), 6)
 
 	// recoveryTarget menuntut status WRITTEN_OFF; tandai langsung agar fokus uji pada
-	// idempotensi jurnal recovery, bukan alur persetujuan hapus buku.
+	// idempotensi jurnal recovery, bukan alur persetujuan hapus buku. Nilai hapus buku
+	// ikut diisi karena pemulihan kini dibatasi padanya (migrasi 000085).
 	if _, err := e.db.ExecContext(e.ctx, `
-		UPDATE loans SET status = 'WRITTEN_OFF', outstanding_principal = 0, penalty_accrued = 0
+		UPDATE loans SET status = 'WRITTEN_OFF', outstanding_principal = 0, penalty_accrued = 0,
+		                 written_off_amount = 1000000
 		WHERE id = $1`, loan.ID); err != nil {
 		t.Fatalf("menandai kredit hapus buku: %v", err)
 	}

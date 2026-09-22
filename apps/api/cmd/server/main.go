@@ -116,7 +116,10 @@ func main() {
 
 	customerSvc := service.NewCustomerService(db, customerRepo, cipher, referenceGen, auditRepo)
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, configSvc, auditRepo)
-	branchSvc := service.NewBranchService(db, branchRepo, auditRepo)
+	branchSvc := service.NewBranchService(db, branchRepo, mcSvc, auditRepo)
+	// Pemindahan unit yang mengubah cakupan pengguna dieksekusi setelah disetujui
+	// pejabat kedua lewat alur maker-checker yang sama.
+	executors.Register(service.ActionSetOrgUnitParent, branchSvc)
 	productSvc := service.NewProductService(db, productRepo, auditRepo)
 	ledgerSvc := service.NewLedgerService(db, ledgerRepo, accountRepo, productRepo, ledgerRepo, postingSvc, configSvc, limitSvc, mcSvc, dateRepo, auditRepo)
 

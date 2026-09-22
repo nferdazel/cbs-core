@@ -184,3 +184,33 @@ func TestSetOrgUnitParent_KonfirmasiDampakCakupan(t *testing.T) {
 		t.Fatalf("audit = %+v, ingin satu SET_ORG_UNIT_PARENT", audit.events)
 	}
 }
+
+// Dampak > 0 pengguna: pemindahan WAJIB lewat maker-checker, dan flag konfirmasi TIDAK
+// boleh melewatinya (produksi selalu memasang maker-checker). Unit target tetap tidak
+// berubah sampai pengajuan disetujui.
+func TestSetOrgUnitParent_DampakWajibMakerChecker(t *testing.T) {
+	svc, repo, audit := orgUnitFixture()
+	repo.scopeLosing = 2
+	repo.scopeGaining = 1
+	approvals := &stubApprovals{}
+	svc.(*branchService).approvals = approvals
+	actor := domain.Actor{Username: "super.uji", Role: domain.RoleSuperAdmin}
+
+	_, err := svc.SetOrgUnitParent(context.Background(), "811", domain.SetOrgUnitParentInput{ConfirmScopeChange: true}, actor)
+	var pending *domain.PendingApprovalError
+	if !errors.As(err, &pending) {
+		t.Fatalf("err = %v, ingin PendingApprovalError (bukan konfirmasi biasa)", err)
+	}
+	if pending.ActionType != ActionSetOrgUnitParent {
+		t.Fatalf("jenis aksi %s, ingin %s", pending.ActionType, ActionSetOrgUnitParent)
+	}
+	if len(approvals.created) != 1 || approvals.created[0].ActionType != ActionSetOrgUnitParent {
+		t.Fatalf("permintaan persetujuan = %+v, ingin satu %s", approvals.created, ActionSetOrgUnitParent)
+	}
+	if repo.branches["811"].ParentID == nil {
+		t.Fatal("parent sudah berubah walau baru diajukan")
+	}
+	if len(audit.events) != 0 {
+		t.Fatalf("tidak boleh ada audit saat baru diajukan: %+v", audit.events)
+	}
+}

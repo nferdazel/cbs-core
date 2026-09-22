@@ -51,6 +51,15 @@ var (
 	ErrWriteOffPartial                   = errors.New("hapus buku sebagian dilarang; hapus buku harus atas seluruh eksposur kredit")
 	ErrWriteOffReasonRequired            = errors.New("dasar pertimbangan hapus buku wajib diisi")
 	ErrWriteOffCollectionEffortsRequired = errors.New("upaya penagihan terdokumentasi wajib diisi sebelum hapus buku")
+	// Nilai hapus buku disimpan di baris kredit (written_off_amount) supaya pemulihan
+	// setelahnya dapat dibatasi pada nominal yang benar-benar pernah dihapus. Tanpa
+	// simpanan ini, akumulasi pemulihan hanya berbatas kejujuran operator dan dapat
+	// melebihi nilai yang pernah dilepas (lubang nyata: recovery 10x lipat diterima).
+	ErrRecoveryExceedsWriteOff = errors.New("akumulasi pemulihan melebihi nilai hapus buku kredit")
+	// ErrWriteOffAmountUnavailable menolak pemulihan atas kredit hapus buku yang nilai
+	// hapus bukunya belum tersimpan dan tidak dapat dibackfill. Menolak lebih aman
+	// daripada membiarkan pemulihan tanpa batas atas data yang tidak pasti.
+	ErrWriteOffAmountUnavailable = errors.New("nilai hapus buku kredit belum tersimpan, pemulihan tidak dapat dibatasi")
 )
 
 type LoanStatus string
@@ -241,6 +250,11 @@ type Loan struct {
 	MonthlyInstallment   decimal.Decimal `json:"monthly_installment"`
 	OutstandingPrincipal decimal.Decimal `json:"outstanding_principal"`
 	PenaltyAccrued       decimal.Decimal `json:"penalty_accrued"`
+	// WrittenOffAmount adalah nilai yang dilepas dari neraca saat hapus buku (pokok +
+	// piutang bunga + denda). Disimpan saat eksekusi agar pemulihan setelahnya dapat
+	// dibatasi pada nominal yang benar-benar pernah dihapus. Nol berarti belum/tidak
+	// diketahui (data lama yang tidak dapat dibackfill).
+	WrittenOffAmount decimal.Decimal `json:"written_off_amount"`
 
 	AkadNumber string     `json:"akad_number,omitempty"`
 	AkadDate   *time.Time `json:"akad_date,omitempty"`
@@ -417,6 +431,16 @@ type LoanRepository interface {
 	UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error
 	// UpdateOutstandingTx menyimpan sisa pokok dan denda di dalam transaksi pemanggil.
 	UpdateOutstandingTx(ctx context.Context, tx any, id uuid.UUID, outstanding, penalty decimal.Decimal) error
+	// SetWrittenOffAmountTx menyimpan nilai hapus buku di dalam transaksi pemanggil,
+	// satu transaksi dengan jurnal pelepasan dan perubahan statusnya. Nilai inilah yang
+	// menjadi batas akumulasi pemulihan setelah kredit dihapus buku.
+	SetWrittenOffAmountTx(ctx context.Context, tx any, id uuid.UUID, amount decimal.Decimal) error
+	// SumRecoveredAmountTx menjumlahkan nominal pemulihan yang sudah tercatat untuk satu
+	// nomor kredit dari jurnal RECOV-, MENGECUALIKAN kunci idempotensi yang sedang
+	// diproses. Pengecualian itu penting: pengulangan permintaan recovery yang sama harus
+	// tetap lolos pemeriksaan batas (idempoten), bukan ditolak karena jurnalnya sendiri
+	// sudah terhitung.
+	SumRecoveredAmountTx(ctx context.Context, tx any, loanNumber, excludeIdempotencyKey string) (decimal.Decimal, error)
 	// ListPenaltyCandidates mengambil kredit aktif beserta pokok angsuran yang lewat
 	// jatuh tempo pada asOf dan jatuh tempo angsuran tertua. actor membatasi hasil
 	// pada buku yang aktif di instalasi/aktor agar batch denda tidak memproses lini

@@ -29,6 +29,9 @@ func writeOffFixture() (interestFixture, *loanService) {
 		Collectibility: domain.CollectibilityKol5,
 		RequiredPPAP:   decimal.NewFromInt(2_500_000),
 		DPD:            400,
+		// Nilai hapus buku yang tersimpan: pokok + bunga akru + denda = 2.610.000.
+		// Batas pemulihan mengacu ke nilai ini.
+		WrittenOffAmount: decimal.NewFromInt(2_610_000),
 	}
 	// Satu angsuran dengan bunga yang sudah diakui tetapi belum tertagih.
 	f.repo.schedules = []domain.LoanSchedule{{
@@ -332,6 +335,81 @@ func TestRecoverWrittenOffLoan_UsesCallerIdempotencyKey(t *testing.T) {
 	}
 	if got := f.posting.requests[0].IdempotencyKey; got != "RECOV-"+f.repo.loan.LoanNumber+"-kuitansi-777" {
 		t.Fatalf("kunci idempotensi %q, ingin memakai kunci pemanggil", got)
+	}
+}
+
+// Pemulihan sebagian (di bawah nilai hapus buku) tetap boleh: yang dilarang hanya
+// akumulasi yang MELEBIHI nilai hapus buku.
+func TestRecoverWrittenOffLoan_MenerimaPemulihanSebagian(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	svc.approvals = nil
+
+	if _, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(400_000),
+	}, writeOffActor()); err != nil {
+		t.Fatalf("pemulihan sebagian harus boleh: %v", err)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal recovery %d, ingin 1", len(f.posting.requests))
+	}
+}
+
+// Akumulasi pemulihan yang MELEBIHI nilai hapus buku ditolak dengan galat spesifik;
+// tidak ada jurnal yang ditulis untuk permintaan yang ditolak.
+func TestRecoverWrittenOffLoan_MenolakMelebihiNilaiHapusBuku(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	f.repo.loan.WrittenOffAmount = decimal.NewFromInt(1_000_000)
+	f.repo.recovered = decimal.NewFromInt(600_000)
+	svc.approvals = nil
+
+	_, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(500_000),
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrRecoveryExceedsWriteOff) {
+		t.Fatalf("pemulihan yang melebihi nilai hapus buku harus ditolak, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0 saat ditolak", len(f.posting.requests))
+	}
+}
+
+// Akumulasi pemulihan yang TEPAT SAMA dengan nilai hapus buku masih boleh: "melebihi"
+// berarti lebih besar, bukan sama dengan.
+func TestRecoverWrittenOffLoan_MenerimaTepatNilaiHapusBuku(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	f.repo.loan.WrittenOffAmount = decimal.NewFromInt(1_000_000)
+	f.repo.recovered = decimal.NewFromInt(500_000)
+	svc.approvals = nil
+
+	if _, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(500_000),
+	}, writeOffActor()); err != nil {
+		t.Fatalf("pemulihan tepat pada batas harus boleh: %v", err)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal recovery %d, ingin 1", len(f.posting.requests))
+	}
+}
+
+// Kredit hapus buku lama yang nilai hapus bukunya tidak dapat dipastikan (0) tidak
+// boleh dipulihkan tanpa batas: ditolak dengan pesan jelas.
+func TestRecoverWrittenOffLoan_MenolakNilaiHapusBukuTidakDiketahui(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	f.repo.loan.WrittenOffAmount = decimal.Zero
+	svc.approvals = nil
+
+	_, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(100_000),
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrWriteOffAmountUnavailable) {
+		t.Fatalf("nilai hapus buku tidak diketahui harus ditolak, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
 	}
 }
 

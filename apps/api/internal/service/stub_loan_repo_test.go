@@ -167,4 +167,17 @@ func (s *stubLoanRepo) NextCorrectionCountTx(ctx context.Context, tx any, loanID
 	return 1, nil
 }
 
+func (s *stubLoanRepo) SetWrittenOffAmountTx(ctx context.Context, tx any, id uuid.UUID, amount decimal.Decimal) error {
+	if s.loan != nil && s.loan.ID == id {
+		s.loan.WrittenOffAmount = amount
+	}
+	return nil
+}
+
+// SumRecoveredAmountTx memenuhi kontrak repo; test yang benar-benar menguji batas
+// pemulihan memakai nilai yang disetel langsung di lapisan service.
+func (s *stubLoanRepo) SumRecoveredAmountTx(ctx context.Context, tx any, loanNumber, excludeIdempotencyKey string) (decimal.Decimal, error) {
+	return decimal.Zero, nil
+}
+
 var _ domain.LoanRepository = (*stubLoanRepo)(nil)

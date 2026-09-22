@@ -4,26 +4,38 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
+
+// ActionSetOrgUnitParent adalah jenis aksi maker-checker untuk pemindahan unit
+// organisasi. Hierarki = cakupan data, grup = kewenangan; karena pemindahan unit
+// mengubah siapa yang melihat data siapa, perubahan yang berdampak pada pengguna
+// aktif wajib disetujui pejabat kedua lewat alur maker-checker yang sudah ada.
+const ActionSetOrgUnitParent = "SET_ORG_UNIT_PARENT"
 
 type branchService struct {
 	repo      domain.BranchRepository
 	auditRepo domain.AuditRepository
+	// approvals menahan pemindahan unit yang mengubah cakupan pengguna. Boleh nil
+	// (mis. pada uji unit): saat nil, pengaman lama (konfirmasi) dipakai agar
+	// perubahan tidak lolos diam-diam; produksi selalu memasang maker-checker.
+	approvals domain.MakerCheckerService
 	// txRunner membuka satu transaksi untuk penulisan cabang dan auditnya. Lewat
 	// interface agar dapat diganti stub pada test unit.
 	txRunner ppapTxRunner
 }
 
-func NewBranchService(db *sql.DB, repo domain.BranchRepository, auditSinks ...domain.AuditRepository) domain.BranchService {
+func NewBranchService(db *sql.DB, repo domain.BranchRepository, approvals domain.MakerCheckerService, auditSinks ...domain.AuditRepository) domain.BranchService {
 	var auditRepo domain.AuditRepository
 	if len(auditSinks) > 0 {
 		auditRepo = auditSinks[0]
 	}
-	return &branchService{repo: repo, auditRepo: auditRepo, txRunner: sqlPPAPTxRunner{db: db}}
+	return &branchService{repo: repo, auditRepo: auditRepo, approvals: approvals, txRunner: sqlPPAPTxRunner{db: db}}
 }
 
 func (s *branchService) ListBranches(ctx context.Context) ([]domain.Branch, error) {
@@ -193,11 +205,12 @@ func (s *branchService) CreateOrgUnit(ctx context.Context, input domain.CreateOr
 // jenjang mengikat dan menurun, siklus tidak mungkin terbentuk (pindah ke diri
 // sendiri pun ditolak sebagai atasan setingkat).
 //
-// Pengaman cakupan (W14): pemindahan mengubah siapa yang melihat cabang mana.
-// Bila ada pengguna aktif yang akan kehilangan atau mendapat cakupan, perubahan
-// DITOLAK kecuali ConfirmScopeChange disetel, sehingga reorg tidak mengubah akses
-// secara tak sengaja. Pengaman ini tidak mengunci siapa pun: staf di unit target
-// selalu mempertahankan cakupannya (cakupan dimulai dari unit sendiri).
+// Pengaman cakupan (W14): pemindahan mengubah siapa yang melihat cabang mana. Bila ada
+// pengguna aktif yang akan kehilangan atau mendapat cakupan, perubahan WAJIB lewat
+// maker-checker (bukan sekadar konfirmasi) sehingga tidak ada satu orang pun yang dapat
+// mengubah akses orang lain sendiri. Bila dampaknya nol, perubahan berjalan langsung.
+// Pengaman ini tidak mengunci siapa pun: staf di unit target selalu mempertahankan
+// cakupannya (cakupan dimulai dari unit sendiri).
 func (s *branchService) SetOrgUnitParent(ctx context.Context, code string, input domain.SetOrgUnitParentInput, actor domain.Actor) (*domain.Branch, error) {
 	targetCode := strings.ToUpper(strings.TrimSpace(code))
 	target, err := s.repo.GetByCode(ctx, targetCode)
@@ -222,8 +235,36 @@ func (s *branchService) SetOrgUnitParent(ctx context.Context, code string, input
 	if err != nil {
 		return nil, err
 	}
-	if (losing > 0 || gaining > 0) && !input.ConfirmScopeChange {
-		return nil, &domain.ScopeChangeError{Losing: losing, Gaining: gaining}
+	if losing > 0 || gaining > 0 {
+		// Dampak > 0 pengguna: perubahan susunan organisasi mengubah cakupan data
+		// orang lain, sehingga WAJIB lewat maker-checker (keputusan pemilik sistem:
+		// hierarki = cakupan data, grup = kewenangan). Pembuat tidak dapat menyetujui
+		// pengajuannya sendiri; pemeriksaan itu ada di maker-checker service.
+		if s.approvals != nil {
+			req, err := s.approvals.CreateRequest(ctx, domain.CreateMakerCheckerInput{
+				ActionType: ActionSetOrgUnitParent,
+				// Hierarki tidak bertalian dengan nominal: Amount nol, bukan angka yang
+				// dipakai untuk memutuskan (keputusan "perlu persetujuan" dibuat di sini).
+				Amount: decimal.Zero,
+				Payload: map[string]any{
+					"code":             target.Code,
+					"parent_code":      parentCode,
+					"affected_losing":  losing,
+					"affected_gaining": gaining,
+				},
+				Notes: "Pemindahan unit mengubah cakupan pengguna aktif",
+			}, actor)
+			if err != nil {
+				return nil, err
+			}
+			return nil, &domain.PendingApprovalError{RequestID: req.ID, ActionType: ActionSetOrgUnitParent}
+		}
+		// Tanpa layanan maker-checker (mis. uji unit), pengaman lama dipakai: tolak
+		// kecuali dikonfirmasi. Produksi selalu memasang maker-checker, sehingga jalur
+		// konfirmasi ini tidak pernah menjadi cara melewati persetujuan.
+		if !input.ConfirmScopeChange {
+			return nil, &domain.ScopeChangeError{Losing: losing, Gaining: gaining}
+		}
 	}
 
 	err = s.txRunner.Run(ctx, func(tx any) error {
@@ -245,4 +286,41 @@ func (s *branchService) SetOrgUnitParent(ctx context.Context, code string, input
 		return nil, err
 	}
 	return updated, nil
+}
+
+// ExecuteApproved menjalankan pemindahan unit yang sudah disetujui maker-checker, di
+// dalam transaksi milik maker-checker service sehingga keputusan dan perubahannya
+// commit bersama. Validasi jenjang diulang dari keadaan segar: payload bisa berumur,
+// dan hierarki tidak boleh berubah karena permintaan yang syaratnya sudah tidak sah.
+func (s *branchService) ExecuteApproved(ctx context.Context, tx any, actionType string, payload map[string]any, actor domain.Actor) error {
+	if normalizeAction(actionType) != ActionSetOrgUnitParent {
+		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
+	}
+	code, _ := payload["code"].(string)
+	rawParent, _ := payload["parent_code"].(string)
+	parentCode := strings.ToUpper(strings.TrimSpace(rawParent))
+	target, err := s.repo.GetByCode(ctx, code)
+	if err != nil {
+		return err
+	}
+	var parentID *uuid.UUID
+	if parentCode != "" {
+		parent, err := s.repo.GetByCode(ctx, parentCode)
+		if err != nil {
+			return err
+		}
+		if !parent.UnitLevel.CanBeParentOf(target.UnitLevel) {
+			return domain.ErrOrgUnitParentInvalid
+		}
+		parentID = &parent.ID
+	}
+	if err := s.repo.SetParentTx(ctx, tx, target.ID, parentID); err != nil {
+		return err
+	}
+	return writeAudit(ctx, s.auditRepo, tx, actor, "SET_ORG_UNIT_PARENT", "branch", target.ID.String(), map[string]any{
+		"code":             target.Code,
+		"parent_code":      parentCode,
+		"affected_losing":  payload["affected_losing"],
+		"affected_gaining": payload["affected_gaining"],
+	})
 }

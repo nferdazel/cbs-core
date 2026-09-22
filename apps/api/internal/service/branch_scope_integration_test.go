@@ -76,6 +76,7 @@ func TestIntegrasiBuatCabangDanAudit(t *testing.T) {
 	branchSvc := service.NewBranchService(
 		e.db,
 		postgres.NewBranchRepository(e.db),
+		nil,
 		postgres.NewAuditRepository(e.db),
 	)
 	actor := domain.Actor{UserID: e.actor.UserID, Username: "superadmin.uji", Role: domain.RoleSuperAdmin, BranchCode: "001"}

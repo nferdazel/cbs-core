@@ -56,12 +56,19 @@ func woffSetState(t *testing.T, e *bookWriteEnv, loanID uuid.UUID, collectibilit
 // pada alur persetujuan (alur itu sudah diuji terpisah).
 func woffBypassApproval(t *testing.T, e *bookWriteEnv, action string) {
 	t.Helper()
+	woffSetThreshold(t, e, action, "999999999999")
+}
+
+// woffSetThreshold menyetel ambang maker-checker satu jenis aksi langsung di database
+// uji, lalu membuang cache konfigurasinya agar service membaca nilai baru.
+func woffSetThreshold(t *testing.T, e *bookWriteEnv, action, value string) {
+	t.Helper()
 	key := "maker_checker." + action + ".threshold"
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
-		VALUES ($1, '999999999999', 'uji integrasi hapus buku')
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key); err != nil {
-		t.Fatalf("menaikkan ambang %s: %v", key, err)
+		VALUES ($1, $2, 'uji integrasi hapus buku')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
+		t.Fatalf("menyetel ambang %s: %v", key, err)
 	}
 	e.configSvc.Invalidate(key)
 }
