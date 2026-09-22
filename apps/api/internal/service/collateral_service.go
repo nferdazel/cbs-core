@@ -80,6 +80,17 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		return nil, err
 	}
 
+	// Batas buku ditegakkan lewat kredit: agunan berkunci loan_id tidak punya buku
+	// sendiri. Nasabah sengaja lintas buku (CIF bersama), jadi yang diperiksa adalah
+	// buku produk kreditnya, bukan buku nasabah.
+	book, err := s.repo.GetLoanBook(ctx, input.LoanID)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBook(book) {
+		return nil, domain.ErrCrossBookAccess
+	}
+
 	// Keberadaan dan dapat-dieksekusi adalah keadaan normal; hanya bila operator secara
 	// eksplisit menyatakannya tidak, agunan kehilangan status pengurang (Pasal 21(2)).
 	existsKnown := true
@@ -192,6 +203,17 @@ func (s *collateralService) GetByID(ctx context.Context, id uuid.UUID, actor dom
 
 // ListByLoan membaca seluruh agunan satu kredit dengan pemeriksaan cabang.
 func (s *collateralService) ListByLoan(ctx context.Context, loanID uuid.UUID, actor domain.Actor) ([]domain.LoanCollateral, error) {
+	// Agunan berkunci loan_id: buku ditegakkan lewat buku produk kreditnya. Cabang tetap
+	// disaring per baris karena satu kredit dapat punya agunan lintas cabang. Nasabah
+	// TIDAK disaring buku (CIF bersama disengaja).
+	book, err := s.repo.GetLoanBook(ctx, loanID)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBook(book) {
+		return nil, domain.ErrCrossBookAccess
+	}
+
 	// Penyaringan dilakukan per baris: daftar agunan satu kredit dapat memuat agunan
 	// lintas cabang, dan yang boleh terkirim hanya yang cabangnya dapat diakses aktor.
 	// Hasil kosong bukan kesalahan — pemanggil sudah menyebut kreditnya sendiri.

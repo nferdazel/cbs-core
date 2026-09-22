@@ -68,6 +68,12 @@ func (r *collateralRepoStub) ListByLoan(ctx context.Context, loanID uuid.UUID) (
 	return list, nil
 }
 
+// GetLoanBook mengembalikan buku kosong: test unit agunan tidak menyiapkan kredit,
+// dan buku kosong oleh CanAccessBook diizinkan. Batas buku diuji di uji integrasi.
+func (r *collateralRepoStub) GetLoanBook(ctx context.Context, loanID uuid.UUID) (domain.COABook, error) {
+	return "", nil
+}
+
 type collateralConfigStub struct {
 	domain.SystemConfigService
 	values map[string]string

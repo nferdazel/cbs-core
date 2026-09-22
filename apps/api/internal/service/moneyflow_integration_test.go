@@ -776,7 +776,7 @@ func TestIntegrasiJalurUangPPAPDenganAgunan(t *testing.T) {
 	e.setOldestDueDate(t, loan.ID, asOf.AddDate(0, 0, -100))
 
 	e.setCollateralEnabled(t, false)
-	off1, err := e.ppapSvc.Preview(e.ctx, asOf)
+	off1, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("preview PPAP saklar mati (sebelum agunan): %v", err)
 	}
@@ -789,7 +789,7 @@ func TestIntegrasiJalurUangPPAPDenganAgunan(t *testing.T) {
 	// Agunan aktif ditambahkan; selama saklar mati hasilnya harus identik.
 	e.addLandCollateral(t, loan.ID, 4_000_000)
 	e.setCollateralEnabled(t, false)
-	off2, err := e.ppapSvc.Preview(e.ctx, asOf)
+	off2, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("preview PPAP saklar mati (setelah agunan): %v", err)
 	}
@@ -804,7 +804,7 @@ func TestIntegrasiJalurUangPPAPDenganAgunan(t *testing.T) {
 
 	// Saklar hidup: pengurang Pasal 20 dipakai.
 	e.setCollateralEnabled(t, true)
-	on, err := e.ppapSvc.Preview(e.ctx, asOf)
+	on, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("preview PPAP saklar hidup: %v", err)
 	}
@@ -928,7 +928,7 @@ func TestIntegrasiJalurUangPPAPAgunanTunai(t *testing.T) {
 	e.setOldestDueDate(t, loanKhusus.ID, asOf.AddDate(0, 0, -100))
 	e.addCashCollateral(t, loanKhusus.ID, accKhusus, 4_000_000)
 
-	summary, err := e.ppapSvc.Preview(e.ctx, asOf)
+	summary, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("preview PPAP: %v", err)
 	}

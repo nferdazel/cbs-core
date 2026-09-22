@@ -183,6 +183,11 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 	if product.Family != domain.FamilyTimeDeposit || !product.IsActive {
 		return nil, domain.ErrDepositProductInvalid
 	}
+	// Penempatan mengikuti buku produk: pegawai satu buku tidak boleh menempatkan
+	// (atau mempratinjau) deposito produk buku lain. Produk tanpa buku (data lama) lolos.
+	if !actor.CanAccessBook(product.Book) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if input.PlacementAmount.LessThan(product.MinAmount) {
 		return nil, fmt.Errorf("nominal di bawah minimum produk %s (%s)", product.Code, product.MinAmount.String())
 	}
@@ -692,6 +697,11 @@ func (s *depositService) Accrue(ctx context.Context, depositID uuid.UUID, asOf t
 	if !actor.CanAccessBranch(dep.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Buku deposito ikut ditegakkan: akrual buku lain tidak boleh dipicu pegawai satu
+	// buku. Batch memakai RoleSystem (lintas buku) sehingga jurnal tetap berjalan.
+	if !actor.CanAccessBook(s.depositBook(ctx, dep)) {
+		return nil, domain.ErrCrossBookAccess
+	}
 
 	accrualDate := depositDateOnly(asOf)
 	// Idempotent per hari: hari yang sudah diakrual tidak diposting ulang.
@@ -756,6 +766,10 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 	// dibiarkan lewat agar pencairan data lama tidak terblokir.
 	if !actor.CanAccessBranch(dep.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
+	}
+	// Buku deposito ikut ditegakkan: pencairan/pematangan deposito buku lain ditolak.
+	if !actor.CanAccessBook(s.depositBook(ctx, dep)) {
+		return nil, domain.ErrCrossBookAccess
 	}
 
 	product, err := s.productRepo.GetByID(ctx, dep.ProductID)
@@ -862,7 +876,10 @@ func (s *depositService) MatureOrWithdraw(ctx context.Context, depositID uuid.UU
 }
 
 func (s *depositService) RunARO(ctx context.Context, asOf time.Time, actor domain.Actor) (int, error) {
-	matured, err := s.depositRepo.ListMaturedARO(ctx, asOf)
+	// Daftar sudah dibatasi cabang dan buku aktor di query, jadi aktor satu buku tidak
+	// pernah menerima deposito buku lain untuk diproses; aktor lintas buku (SYSTEM
+	// saat EOD) menerima seluruh bank.
+	matured, err := s.depositRepo.ListMaturedARO(ctx, asOf, actor)
 	if err != nil {
 		return 0, err
 	}
@@ -897,6 +914,12 @@ func (s *depositService) rolloverOne(ctx context.Context, depositID uuid.UUID, a
 	product, err := s.productRepo.GetByID(ctx, dep.ProductID)
 	if err != nil {
 		return err
+	}
+	// Pertahanan berlapis: RunARO sudah menyaring buku di query, tetapi rolloverOne
+	// juga tidak boleh menulis jurnal atas deposito buku lain bila dipanggil dari jalur
+	// lain. Buku dibaca dari produk yang sudah dimuat, tanpa kueri tambahan.
+	if !actor.CanAccessBook(product.Book) {
+		return domain.ErrCrossBookAccess
 	}
 
 	netProfit, tax, _ := depositPayoutAmounts(dep)

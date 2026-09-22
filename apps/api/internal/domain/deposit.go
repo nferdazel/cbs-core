@@ -135,7 +135,7 @@ type DepositRepository interface {
 	// List mengembalikan daftar deposito yang boleh dibaca aktor. Filter cabang
 	// diterapkan di query agar pagination dan total tetap benar.
 	List(ctx context.Context, limit, offset int, actor Actor) ([]Deposit, int, error)
-	ListMaturedARO(ctx context.Context, asOf time.Time) ([]Deposit, error)
+	ListMaturedARO(ctx context.Context, asOf time.Time, actor Actor) ([]Deposit, error)
 	AddAccrual(ctx context.Context, tx any, id uuid.UUID, profit, tax decimal.Decimal, asOf time.Time) error
 	UpdateStatus(ctx context.Context, tx any, id uuid.UUID, status DepositStatus, proceeds, paidProfit, paidTax, penalty decimal.Decimal) error
 	Rollover(ctx context.Context, tx any, id uuid.UUID, newPrincipal, paidProfit, paidTax decimal.Decimal, newStart, newMaturity time.Time, resetAccrual bool) error

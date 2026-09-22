@@ -309,6 +309,11 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.LoanID = id
+	// Header diutamakan bila body tidak memuat kunci, mengikuti pola yang sama dengan
+	// transaksi setoran/penarikan/transfer.
+	if idem := r.Header.Get("Idempotency-Key"); idem != "" && input.IdempotencyKey == "" {
+		input.IdempotencyKey = idem
+	}
 
 	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {

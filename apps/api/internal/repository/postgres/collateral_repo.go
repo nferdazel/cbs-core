@@ -139,6 +139,23 @@ func (r *CollateralRepository) GetByID(ctx context.Context, id uuid.UUID) (*doma
 	return c, nil
 }
 
+// GetLoanBook membaca buku produk kredit. Dipakai service agunan untuk menegakkan
+// batas buku pada jalur yang berkunci loan_id; kredit tanpa produk mengembalikan buku
+// kosong yang oleh CanAccessBook diizinkan agar data lama tetap dapat dioperasikan.
+func (r *CollateralRepository) GetLoanBook(ctx context.Context, loanID uuid.UUID) (domain.COABook, error) {
+	var book string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE((SELECT p.book::text FROM banking_products p WHERE p.id = l.product_id), '')
+		FROM loans l WHERE l.id = $1`, loanID).Scan(&book)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", domain.ErrLoanNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("membaca buku kredit %s: %w", loanID, err)
+	}
+	return domain.COABook(book), nil
+}
+
 func (r *CollateralRepository) ListByLoan(ctx context.Context, loanID uuid.UUID) ([]domain.LoanCollateral, error) {
 	query := `SELECT ` + collateralColumns + ` ` + collateralFrom + ` WHERE lc.loan_id = $1
 		ORDER BY lc.created_at ASC`

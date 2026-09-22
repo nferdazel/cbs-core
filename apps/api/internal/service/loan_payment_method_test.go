@@ -10,6 +10,35 @@ import (
 
 const testCustomerAccountNumber = "1110001234"
 
+// cashKeyConfig mengembalikan nilai khusus untuk kunci kas tersatu (cash.coa.*) dan
+// fallback untuk kunci lain. Dipakai membuktikan angsuran tunai benar-benar membaca
+// kunci yang sama dengan jurnal transaksi rekening.
+type cashKeyConfig struct {
+	conventional string
+	syariah      string
+}
+
+func (c cashKeyConfig) GetDecimal(context.Context, string, decimal.Decimal) decimal.Decimal {
+	return decimal.Zero
+}
+func (c cashKeyConfig) GetInt(_ context.Context, _ string, fallback int) int { return fallback }
+func (c cashKeyConfig) GetString(_ context.Context, key, fallback string) string {
+	// Literal, bukan konstanta: test harus menangkap bila kode memindahkan pembacaan
+	// ke kunci lain (mis. kembali ke payment.cash.coa.*).
+	switch key {
+	case "cash.coa.conventional":
+		return c.conventional
+	case "cash.coa.syariah":
+		return c.syariah
+	default:
+		return fallback
+	}
+}
+func (c cashKeyConfig) GetBool(_ context.Context, _ string, fallback bool) bool { return fallback }
+func (c cashKeyConfig) Invalidate(string)                                       {}
+
+var _ domain.SystemConfigService = cashKeyConfig{}
+
 // debitAccounts mengumpulkan nomor akun yang didebit pada seluruh jurnal yang tercatat.
 func debitAccounts(requests []domain.PostingRequest) map[string]bool {
 	found := map[string]bool{}
@@ -44,6 +73,29 @@ func TestPayInstallment_TunaiMendebitKasTeller(t *testing.T) {
 	}
 	if debits[testCustomerAccountNumber] {
 		t.Fatalf("rekening nasabah ikut didebit pada pembayaran tunai: %v", debits)
+	}
+}
+
+// Angsuran tunai dan jurnal rekening memakai SATU kunci kas per buku
+// (cash.coa.conventional), bukan kunci lama payment.cash.coa.conventional. Mengubah
+// nilai cash.coa.conventional harus mengubah akun kas angsuran tunai; kode lama
+// mengabaikannya dan tetap memakai bawaan 10101 sehingga test ini gagal.
+func TestPayInstallment_TunaiMemakaiKunciKasTersatu(t *testing.T) {
+	f := paymentFixture(60, 100)
+	svc := newInterestTestService(f)
+	svc.config = cashKeyConfig{conventional: "10102", syariah: "11102"}
+
+	if _, err := svc.PayInstallment(context.Background(), domain.PayInstallmentInput{
+		LoanID: f.loanID, InstallmentNo: 1, Method: domain.LoanPaymentCash,
+	}, domain.Actor{Username: "teller.uji"}); err != nil {
+		t.Fatalf("PayInstallment tunai: %v", err)
+	}
+	debits := debitAccounts(f.posting.requests)
+	if !debits["10102"] {
+		t.Fatalf("kas dari cash.coa.conventional tidak didebit; debit: %v", debits)
+	}
+	if debits["10101"] {
+		t.Fatalf("angsuran tunai masih memakai akun kas bawaan/lama: %v", debits)
 	}
 }
 

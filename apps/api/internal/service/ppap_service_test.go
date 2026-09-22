@@ -22,7 +22,7 @@ type stubPPAPRepo struct {
 	listErr   error
 }
 
-func (s *stubPPAPRepo) ListDueLoans(context.Context, time.Time) ([]domain.PPAPLoanSnapshot, error) {
+func (s *stubPPAPRepo) ListDueLoans(context.Context, time.Time, domain.Actor) ([]domain.PPAPLoanSnapshot, error) {
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
@@ -431,7 +431,7 @@ func TestPPAPPreview_DoesNotPostOrUpdate(t *testing.T) {
 	posting := &stubPosting{}
 	svc := newTestPPAPService(repo, &stubProductRepo{}, posting)
 
-	summary, err := svc.Preview(context.Background(), asOf)
+	summary, err := svc.Preview(context.Background(), asOf, domain.Actor{})
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}

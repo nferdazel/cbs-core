@@ -11,14 +11,14 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Default limit dipakai bila key system_config belum diisi. Ini tempat sementara:
-// nilai produksi wajib diisi di tabel system_config saat provisioning, karena limit
-// per role dan per jenis transaksi adalah kebijakan bank, bukan konstanta kode.
-var (
-	defaultPerTransactionLimit = decimal.NewFromInt(50_000_000)
-	defaultDailyLimit          = decimal.NewFromInt(500_000_000)
-	defaultApprovalAbove       = decimal.NewFromInt(10_000_000)
-)
+// Batas transaksi TIDAK punya angka bawaan di kode. Satu-satunya sumber kebenaran
+// adalah tabel system_config (di-seed migrasi 000051): limit per peran dan per jenis
+// transaksi adalah kebijakan bank. Sebelumnya kode menyimpan cadangan keras
+// (50 juta / 500 juta / 10 juta) yang berbeda dari seed (ambang persetujuan seed
+// 100/50 juta), sehingga kunci yang hilang mengubah batas secara SENYAP tanpa jejak.
+// Bila kunci tidak ada atau nilainya bukan angka, evaluasi batas DITOLAK dengan pesan
+// jelas. Menolak transaksi saat konfigurasi rusak lebih aman daripada diam-diam
+// memakai angka yang bukan kebijakan bank.
 
 type transactionLimitService struct {
 	config domain.SystemConfigService
@@ -61,11 +61,45 @@ func limitKey(actor domain.Actor, txType, suffix string) string {
 	)
 }
 
+// missingLimitConfig adalah nilai sentinel yang mustahil menjadi angka batas yang sah.
+// GetString mengembalikannya hanya bila kunci tidak ada (atau gagal dibaca), sehingga
+// pembaca dapat membedakan "kunci belum diisi" dari "kunci bernilai rusak" TANPA
+// kueri tambahan: GetString memakai cache konfigurasi 60 detik yang sama dengan
+// GetDecimal, sedangkan Exists/RawValue membaca repositori setiap panggilan.
+const missingLimitConfig = "\x00_limit_config_missing"
+
+// requiredLimit membaca satu kunci batas dan MENOLAK dengan galat jelas bila kunci
+// tidak ada atau nilainya bukan angka. Tidak ada fallback: angka batas hanya boleh
+// datang dari system_config.
+func (s *transactionLimitService) requiredLimit(ctx context.Context, key string) (decimal.Decimal, error) {
+	value := s.config.GetString(ctx, key, missingLimitConfig)
+	if value == missingLimitConfig {
+		return decimal.Zero, fmt.Errorf("konfigurasi batas %s belum diisi; batas transaksi tidak boleh memakai angka bawaan", key)
+	}
+	d, err := decimal.NewFromString(strings.TrimSpace(value))
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi", key, value)
+	}
+	return d, nil
+}
+
 func (s *transactionLimitService) ForActor(ctx context.Context, actor domain.Actor, txType string) (domain.TransactionLimit, error) {
+	perTransaction, err := s.requiredLimit(ctx, limitKey(actor, txType, "per_transaction"))
+	if err != nil {
+		return domain.TransactionLimit{}, err
+	}
+	daily, err := s.requiredLimit(ctx, limitKey(actor, txType, "daily"))
+	if err != nil {
+		return domain.TransactionLimit{}, err
+	}
+	approvalAbove, err := s.requiredLimit(ctx, limitKey(actor, txType, "approval_above"))
+	if err != nil {
+		return domain.TransactionLimit{}, err
+	}
 	return domain.TransactionLimit{
-		PerTransaction:        s.config.GetDecimal(ctx, limitKey(actor, txType, "per_transaction"), defaultPerTransactionLimit),
-		DailyAmount:           s.config.GetDecimal(ctx, limitKey(actor, txType, "daily"), defaultDailyLimit),
-		RequiresApprovalAbove: s.config.GetDecimal(ctx, limitKey(actor, txType, "approval_above"), defaultApprovalAbove),
+		PerTransaction:        perTransaction,
+		DailyAmount:           daily,
+		RequiresApprovalAbove: approvalAbove,
 	}, nil
 }
 
@@ -243,13 +277,16 @@ func (s *transactionLimitService) CheckDailyAtExecution(ctx context.Context, tx 
 	if s.daily == nil {
 		return nil
 	}
-	limit, err := s.ForActor(ctx, maker, txType)
+	// Hanya batas harian yang dibutuhkan di sini; membaca seluruh batas akan menolak
+	// eksekusi yang sah hanya karena kunci per_transaction/approval_above tidak ada,
+	// padahal keduanya sengaja tidak diperiksa ulang saat eksekusi.
+	dailyLimit, err := s.requiredLimit(ctx, limitKey(maker, txType, "daily"))
 	if err != nil {
 		return err
 	}
 	// 0 berarti tanpa batas: keluar sebelum mengambil kunci agar peran tanpa batas
 	// tidak pernah menunggu evaluasi peran lain.
-	if !limit.DailyAmount.IsPositive() {
+	if !dailyLimit.IsPositive() {
 		return nil
 	}
 	date, err := s.currentBusinessDate(ctx)
@@ -265,7 +302,7 @@ func (s *transactionLimitService) CheckDailyAtExecution(ctx context.Context, tx 
 	if err != nil {
 		return err
 	}
-	if posted.Add(amount).GreaterThan(limit.DailyAmount) {
+	if posted.Add(amount).GreaterThan(dailyLimit) {
 		return domain.ErrLimitDaily
 	}
 	return nil

@@ -94,7 +94,7 @@ func TestCollectibility_SatuAturanPPAPDanRestrukturisasi(t *testing.T) {
 			}}}
 			ppapSvc := newTestPPAPService(ppapRepo, &stubProductRepo{}, &stubPosting{})
 			ppapSvc.config = tc.cfg
-			summary, err := ppapSvc.Preview(ctx, asOf)
+			summary, err := ppapSvc.Preview(ctx, asOf, domain.Actor{})
 			if err != nil {
 				t.Fatalf("Preview PPAP: %v", err)
 			}

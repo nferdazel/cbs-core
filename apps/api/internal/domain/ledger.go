@@ -106,9 +106,18 @@ type JournalEntry struct {
 	// BranchCode adalah cabang tempat jurnal dibukukan. Kosong berarti jurnal
 	// sistem/batch yang memang bank-wide dan disimpan sebagai branch_id NULL.
 	// Nilai ini hanya dipakai saat insert; pembacaan mengandalkan filter SQL.
-	BranchCode string        `json:"branch_code,omitempty"`
-	Lines      []JournalLine `json:"lines,omitempty"`
-	CreatedAt  time.Time     `json:"created_at"`
+	BranchCode string `json:"branch_code,omitempty"`
+	// Book adalah buku COA jurnal, disimpulkan dari akun barisnya saat dibaca
+	// (LedgerRepository.GetJournalByRef). Kosong berarti buku tidak dapat ditentukan
+	// (mis. jurnal tanpa akun ber-buku); pemeriksaan akses memperlakukannya sebagai
+	// boleh, mengikuti semantik Actor.CanAccessBook. Kolom ini TIDAK disimpan di
+	// journal_entries; ia turunan dari chart_of_accounts akun-akun barisnya.
+	Book COABook `json:"book,omitempty"`
+	// BookMixed menandai jurnal yang baris-baranya mencakup lebih dari satu buku COA.
+	// Jurnal seperti itu tidak boleh dibaca aktor satu buku (lihat Actor.CanAccessJournal).
+	BookMixed bool          `json:"book_mixed,omitempty"`
+	Lines     []JournalLine `json:"lines,omitempty"`
+	CreatedAt time.Time     `json:"created_at"`
 }
 
 // ValidateDoubleEntry enforces fundamental accounting equation (Sum of Debits == Sum of Credits)

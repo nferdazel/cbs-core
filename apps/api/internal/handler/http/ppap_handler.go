@@ -41,7 +41,14 @@ func (h *PPAPHandler) RunDaily(w http.ResponseWriter, r *http.Request) {
 // Preview handles GET /api/v1/ppap/preview.
 // Menghitung target dan selisih PPAP tanpa memposting jurnal.
 func (h *PPAPHandler) Preview(w http.ResponseWriter, r *http.Request) {
-	summary, err := h.ppapSvc.Preview(r.Context(), parseAsOf(r))
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		Error(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	summary, err := h.ppapSvc.Preview(r.Context(), parseAsOf(r),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
 		InternalError(w, r, err)
 		return

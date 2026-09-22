@@ -31,6 +31,10 @@ func NewPPAPRepository(db *sql.DB) *PPAPRepository {
 // yang sama dengan CKPNRepository.ListActiveLoans). Sebelumnya kredit lunas/hapus buku
 // keluar dari daftar ini dan cadangannya menggantung selamanya; kini service memaksa
 // targetnya nol sehingga pelepasannya lewat jalur PPAP yang sudah ada.
+// listDueLoansQuery adalah template query. %[1]d adalah nomor placeholder tanggal
+// proses dan %[2]s adalah klausa filter cabang/buku tambahan yang menempel pada WHERE.
+// Nomor placeholder tanggal dihitung pemanggil karena filter cabang/buku memakai
+// argumen posisional lebih dulu (branchReadClause selalu memakai $1).
 const listDueLoansQuery = `
 	SELECT
 		l.id,
@@ -54,7 +58,7 @@ const listDueLoansQuery = `
 			FROM loan_schedules sc
 			WHERE sc.loan_id = l.id
 				AND sc.due_date >= l.restructured_at::date
-				AND sc.due_date <= $1
+				AND sc.due_date <= $%[1]d
 				AND sc.status = 'PAID'
 				AND sc.paid_at IS NOT NULL
 				AND sc.paid_at::date <= sc.due_date
@@ -63,7 +67,7 @@ const listDueLoansQuery = `
 					FROM loan_schedules sv
 					WHERE sv.loan_id = l.id
 						AND sv.due_date >= l.restructured_at::date
-						AND sv.due_date <= $1
+						AND sv.due_date <= $%[1]d
 						AND NOT (sv.status = 'PAID' AND sv.paid_at IS NOT NULL AND sv.paid_at::date <= sv.due_date)
 				), l.restructured_at::date - 1)
 		) END AS clean_periods
@@ -72,14 +76,30 @@ const listDueLoansQuery = `
 	LEFT JOIN loan_schedules s
 		ON s.loan_id = l.id
 		AND s.status <> 'PAID'
-		AND s.due_date <= $1
+		AND s.due_date <= $%[1]d
 	WHERE ((l.status IN ('DISBURSED', 'DEFAULTED') AND l.outstanding_principal > 0)
-		OR l.required_ppap <> 0)
+		OR l.required_ppap <> 0)%[2]s
 	GROUP BY l.id, b.code
 	ORDER BY l.loan_number`
 
-func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time) ([]domain.PPAPLoanSnapshot, error) {
-	rows, err := r.db.QueryContext(ctx, listDueLoansQuery, asOf)
+func (r *PPAPRepository) ListDueLoans(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.PPAPLoanSnapshot, error) {
+	// Filter cabang dan buku. Aktor lintas cabang/buku (SYSTEM saat EOD) tidak difilter
+	// sehingga batch bank-wide tetap berjalan; kredit tanpa cabang/produk (NULL) tetap
+	// terlihat mengikuti semantik read-clause.
+	where, args := branchReadClause("l.branch_id", actor)
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		args = append(args, bargs...)
+		where = andCondition(where, clause)
+	}
+	asOfIdx := len(args) + 1
+	args = append(args, asOf)
+	filter := ""
+	if where != "" {
+		filter = " AND " + where
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(listDueLoansQuery, asOfIdx, filter), args...)
 	if err != nil {
 		return nil, err
 	}

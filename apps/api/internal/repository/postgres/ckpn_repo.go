@@ -62,6 +62,14 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context, actor domain.Actor
 		where += " AND " + clause
 		args = append(args, branchArgs...)
 	}
+	// Filter buku dari produk kredit; aktor lintas buku tidak difilter dan kredit
+	// lama tanpa produk (buku NULL) tetap terlihat. Tanpa ini, /ckpn/run dapat
+	// membaca rincian per kredit buku lain sekaligus menjurnalnya.
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	if clause, bookArgs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		where += " AND " + clause
+		args = append(args, bookArgs...)
+	}
 
 	query := listLoansForCKPNSelect + where + " ORDER BY l.loan_number"
 	rows, err := r.db.QueryContext(ctx, query, args...)

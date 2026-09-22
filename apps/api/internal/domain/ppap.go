@@ -484,8 +484,10 @@ type PPAPRunSummary struct {
 // posting engine, bukan di sini.
 type PPAPRepository interface {
 	// ListDueLoans mengambil kredit aktif beserta outstanding dan jatuh tempo
-	// angsuran terlama yang belum dibayar, per tanggal asOf.
-	ListDueLoans(ctx context.Context, asOf time.Time) ([]PPAPLoanSnapshot, error)
+	// angsuran terlama yang belum dibayar, per tanggal asOf. actor membatasi baris
+	// pada cabang dan buku aktor; aktor lintas cabang/buku menerima seluruh bank dan
+	// kredit tanpa cabang/produk (NULL) tetap terlihat.
+	ListDueLoans(ctx context.Context, asOf time.Time, actor Actor) ([]PPAPLoanSnapshot, error)
 	// UpdateCollectibility menyimpan perubahan kolektibilitas (beserta status akrual
 	// turunannya) di dalam transaksi pemanggil.
 	UpdateCollectibility(ctx context.Context, tx any, loanID uuid.UUID, c Collectibility) error
@@ -498,5 +500,7 @@ type PPAPRepository interface {
 // PPAPService menjalankan penyisihan PPAP dan pembaruan kolektibilitas kredit.
 type PPAPService interface {
 	RunDaily(ctx context.Context, asOf time.Time, actor Actor) (PPAPRunSummary, error)
-	Preview(ctx context.Context, asOf time.Time) (PPAPRunSummary, error)
+	// Preview menghitung tanpa memposting apa pun. actor dipakai membatasi kredit
+	// pada cabang dan buku aktor agar pratinjau tidak membaca portofolio buku lain.
+	Preview(ctx context.Context, asOf time.Time, actor Actor) (PPAPRunSummary, error)
 }

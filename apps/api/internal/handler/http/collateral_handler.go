@@ -248,6 +248,8 @@ func writeCollateralError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCollateralNotFound):
 		Error(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, domain.ErrCrossBookAccess), errors.Is(err, domain.ErrCrossBranchAccess):
+		Error(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, domain.ErrCollateralDocumentRequired),
 		errors.Is(err, domain.ErrCollateralOwnerRequired),
 		errors.Is(err, domain.ErrCollateralAppraisalInvalid),

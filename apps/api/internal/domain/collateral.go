@@ -205,6 +205,10 @@ type CollateralRepository interface {
 	// tidak lagi menjamin apa pun, dan menampilkannya pada rekap jaminan akan melebihkan
 	// nilai jaminan bank.
 	SummaryActive(ctx context.Context, branchCode string) ([]CollateralSummary, error)
+	// GetLoanBook membaca buku COA produk kredit dari loan_id. Agunan berkunci loan_id
+	// tidak punya kolom buku sendiri, jadi batas buku ditegakkan lewat kreditnya.
+	// Kredit tanpa produk mengembalikan buku kosong yang oleh CanAccessBook diizinkan.
+	GetLoanBook(ctx context.Context, loanID uuid.UUID) (COABook, error)
 }
 
 // LoanCollateral adalah satu agunan yang terikat pada satu kredit.

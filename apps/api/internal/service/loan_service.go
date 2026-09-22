@@ -123,6 +123,11 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 	if !actor.CanAccessBranch(acc.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Pengajuan kredit mengikuti buku produk: pegawai satu buku tidak boleh
+	// mengajukan produk buku lain. Produk tanpa buku (data lama) lolos.
+	if !actor.CanAccessBook(product.Book) {
+		return nil, domain.ErrCrossBookAccess
+	}
 
 	loanID := uuid.New()
 	start := time.Now().UTC()
@@ -252,6 +257,9 @@ func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, actor d
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
 	}
@@ -300,6 +308,9 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID, reason s
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if loan.Status != domain.LoanStatusPendingApproval {
 		return nil, domain.ErrLoanAlreadyApproved
 	}
@@ -339,6 +350,9 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if loan.Status == domain.LoanStatusDisbursed {
 		return nil, domain.ErrLoanAlreadyDisbursed
 	}
@@ -374,6 +388,9 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 		}
 		if !canAccessLoan(actor, fresh) {
 			return domain.ErrCrossBranchAccess
+		}
+		if !s.canAccessLoanBook(ctx, actor, fresh) {
+			return domain.ErrCrossBookAccess
 		}
 		// Pemeriksaan status di pemanggil hanya gagal-cepat; yang otoritatif adalah
 		// baris hasil kunci. Kredit yang sudah cair tidak boleh dicairkan dua kali,
@@ -470,6 +487,16 @@ func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID, actor domain.Ac
 	return loan, nil
 }
 
+// canAccessLoanBook menegakkan kepemilikan buku kredit. Dipakai bersama canAccessLoan
+// pada SETIAP operasi tulis kredit (persetujuan, penolakan, pencairan, angsuran,
+// restrukturisasi, hapus buku, recovery, pembatalan, dan koreksi nominal), sehingga
+// pegawai satu buku tidak dapat mengubah kredit buku lain. Kredit tanpa produk (data
+// lama) atau produk yang tidak terbaca mengembalikan buku kosong, yang oleh
+// CanAccessBook diizinkan agar operasional data lama tidak terblokir.
+func (s *loanService) canAccessLoanBook(ctx context.Context, actor domain.Actor, loan *domain.Loan) bool {
+	return actor.CanAccessBook(s.loanBook(ctx, loan))
+}
+
 // loanBook mengembalikan buku produk kredit. Kredit tanpa produk (data lama) atau
 // produk yang tidak terbaca mengembalikan buku kosong, yang oleh CanAccessBook
 // diizinkan agar data lama tidak hilang dari operasional.
@@ -511,6 +538,9 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 	}
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
+	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, errors.New("kredit tidak dalam status aktif")
@@ -752,17 +782,12 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 // saat AKRUAL; memakainya lagi di sini akan mengakui pendapatan dua kali.
 // Sumber dana pembayaran angsuran. Pemetaan produk memakai akun kontrol tabungan untuk
 // kaki debit pembayaran, sehingga override-nya dikunci per kode COA rekening nasabah.
-// Mengikuti bagan COA migrasi 000005: 10101 Kas Teller, 11100 Kas Syariah.
-const (
-	configCashCOAConv = "payment.cash.coa.conventional"
-	configCashCOASyar = "payment.cash.coa.syariah"
-
-	defaultCashCOAConv = "10101"
-	defaultCashCOASyar = "11100"
-)
-
 // fundingSource adalah asal dana satu pembayaran angsuran: nomor akun yang didebit dan
 // override pemetaan yang membuat jurnal produk mengarah ke akun itu.
+//
+// Akun kas tunai memakai kunci yang sama dengan jurnal transaksi rekening
+// (configCashCOAConventional/Syariah, migrasi 000073 menyatukan kunci lama
+// payment.cash.coa.*): satu kunci per buku, bukan dua kunci yang bisa berbeda.
 type fundingSource struct {
 	accountNumber string
 	overrides     map[string]string
@@ -789,9 +814,9 @@ func (s *loanService) fundingSource(ctx context.Context, tx any, product *domain
 		return fundingSource{accountNumber: account.AccountNumber, overrides: overrides}, nil
 	}
 
-	key, fallback := configCashCOAConv, defaultCashCOAConv
+	key, fallback := configCashCOAConventional, defaultCashCOAConventional
 	if product.Book == domain.BookSyariah {
-		key, fallback = configCashCOASyar, defaultCashCOASyar
+		key, fallback = configCashCOASYariah, defaultCashCOASYariah
 	}
 	cashAccount, err := s.resolver.ResolveGLAccount(ctx, tx, s.configString(ctx, key, fallback))
 	if err != nil {
@@ -985,6 +1010,9 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, errors.New("hanya kredit aktif yang dapat direstrukturisasi")
 	}
@@ -1162,6 +1190,11 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 	if loan == nil {
 		return errors.New("kredit pada permintaan persetujuan tidak ditemukan")
 	}
+	// Persetujuan adalah jalur tulis: pemeriksa satu buku tidak boleh mengeksekusi
+	// operasi atas kredit buku lain, walau pembuatnya berbeda buku.
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return domain.ErrCrossBookAccess
+	}
 	maker := makerFromPayload(payload, actor)
 
 	switch normalizeAction(actionType) {
@@ -1184,7 +1217,8 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 		if err != nil {
 			return err
 		}
-		return s.recoveryTx(ctx, tx, loan, product, amount, overrides, maker)
+		idempotencyKey, _ := payload["idempotency_key"].(string)
+		return s.recoveryTx(ctx, tx, loan, product, amount, overrides, maker, idempotencyKey)
 	case ActionLoanCorrection:
 		amount, err := decimalFromPayload(payload["new_amount"])
 		if err != nil {
@@ -1351,14 +1385,35 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	})
 }
 
+// recoveryKey membangun kunci idempotensi recovery yang DETERMINISTIK. Kunci dari
+// pemanggil dipakai apa adanya bila ada, sehingga klien dapat mengulang permintaan
+// dengan aman. Tanpa kunci pemanggil, kuncinya adalah nomor kredit + nominal + tanggal
+// bisnis: pengulangan pada hari bisnis yang sama menghasilkan kunci yang sama dan
+// posting engine mengembalikan jurnal lama, bukan menulis jurnal kedua. Tanggal bisnis
+// (bukan time.Now()) dipakai agar dua penerimaan yang sah dengan nominal sama pada hari
+// berbeda tetap tercatat sebagai dua jurnal. Bila sumber tanggal bisnis tidak tersedia
+// (mis. test unit), kunci memuat nomor kredit dan nominal saja.
+func (s *loanService) recoveryKey(ctx context.Context, loanNumber string, amount decimal.Decimal, provided string) string {
+	if key := strings.TrimSpace(provided); key != "" {
+		return "RECOV-" + loanNumber + "-" + key
+	}
+	key := fmt.Sprintf("RECOV-%s-%s", loanNumber, amount.String())
+	if s.dates != nil {
+		if current, err := s.dates.GetCurrentDate(ctx); err == nil && current != nil && !current.CurrentDate.IsZero() {
+			key += "-" + current.CurrentDate.Format("20060102")
+		}
+	}
+	return key
+}
+
 // recoveryTx mencatat penerimaan kas atas kredit yang sudah dihapus buku.
-func (s *loanService) recoveryTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, overrides map[string]string, actor domain.Actor) error {
+func (s *loanService) recoveryTx(ctx context.Context, tx any, loan *domain.Loan, product *domain.BankingProduct, amount decimal.Decimal, overrides map[string]string, actor domain.Actor, providedKey string) error {
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanRecovery, Amounts{
 		Principal: amount, Total: amount,
 	}, PostingMeta{
 		TransactionType:  domain.TxTypeAdjustment,
 		Description:      fmt.Sprintf("Recovery kredit hapus buku %s", loan.LoanNumber),
-		IdempotencyKey:   fmt.Sprintf("RECOV-%s-%d", loan.LoanNumber, time.Now().Unix()),
+		IdempotencyKey:   s.recoveryKey(ctx, loan.LoanNumber, amount, providedKey),
 		CreatedBy:        actor.DisplayName(),
 		BranchCode:       actor.BranchCode,
 		AccountOverrides: overrides,
@@ -1381,6 +1436,9 @@ func (s *loanService) WriteOffLoan(ctx context.Context, input domain.WriteOffLoa
 	}
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
+	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	product, terms, err := s.writeOffTarget(ctx, loan)
 	if err != nil {
@@ -1418,6 +1476,9 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if input.RecoveryAmount.LessThanOrEqual(decimal.Zero) {
 		return nil, errors.New("nominal recovery harus positif")
 	}
@@ -1430,12 +1491,16 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		"loan_id":         loan.ID.String(),
 		"loan_number":     loan.LoanNumber,
 		"recovery_amount": input.RecoveryAmount.String(),
+		// Kunci idempotensi dibawa ke payload persetujuan agar eksekusi memakai kunci
+		// yang sama dengan pengajuan; pengulangan pengajuan yang diulang-eksekusi tidak
+		// menggandakan jurnal.
+		"idempotency_key": input.IdempotencyKey,
 	}); err != nil {
 		return nil, err
 	}
 
 	if err := s.txRunner.Run(ctx, func(tx any) error {
-		return s.recoveryTx(ctx, tx, loan, product, input.RecoveryAmount, overrides, actor)
+		return s.recoveryTx(ctx, tx, loan, product, input.RecoveryAmount, overrides, actor, input.IdempotencyKey)
 	}); err != nil {
 		return nil, err
 	}
@@ -1459,6 +1524,9 @@ func (s *loanService) CancelDisbursementLoan(ctx context.Context, input domain.C
 	// disamarkan sebagai tidak ditemukan agar keberadaannya tidak terbocor.
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrLoanNotFound
+	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, domain.ErrLoanNotCancellable
@@ -1553,6 +1621,9 @@ func (s *loanService) CorrectLoanAmount(ctx context.Context, input domain.Correc
 	// agar keberadaannya tidak terbocor.
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrLoanNotFound
+	}
+	if !s.canAccessLoanBook(ctx, actor, loan) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
 		return nil, domain.ErrLoanNotCancellable

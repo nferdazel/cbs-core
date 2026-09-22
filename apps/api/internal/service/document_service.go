@@ -129,7 +129,8 @@ func (s *documentService) bankIdentity(ctx context.Context) (bankIdentity, error
 
 // loadJournalEntry menelusuri jurnal dari nomor referensi. Tidak ada fallback
 // mock: nomor yang tidak ditemukan adalah error, bukan alasan mencetak data palsu.
-// Jurnal di luar cabang aktor ditolak, karena nomor referensi dapat diiterasi.
+// Jurnal di luar cabang atau buku aktor ditolak, karena nomor referensi dapat
+// diiterasi.
 func (s *documentService) loadJournalEntry(ctx context.Context, refNo string, actor domain.Actor) (*domain.JournalEntry, error) {
 	if s.ledgerRepo == nil {
 		return nil, errors.New("repositori jurnal tidak tersedia")
@@ -143,6 +144,12 @@ func (s *documentService) loadJournalEntry(ctx context.Context, refNo string, ac
 	}
 	if !actor.CanAccessBranch(entry.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
+	}
+	// Buku jurnal diturunkan dari akun barisnya (entry.Book/entry.BookMixed), sehingga
+	// slip setoran dan dokumen lain tidak membocorkan jurnal buku lain. Jurnal tanpa
+	// buku tetap boleh dicetak, jurnal lintas buku ditolak (CanAccessJournal).
+	if !actor.CanAccessJournal(entry.Book, entry.BookMixed) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	return entry, nil
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"cbs-core/apps/core-api/internal/observability"
 )
 
 // batchWriteTimeout adalah batas waktu penulisan respons untuk batch tutup buku.
@@ -93,7 +94,10 @@ func (h *BatchProcessHandler) RunEOY(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	result, err := h.batchSvc.RunEOY(r.Context(), body.Book, claims.UserID)
+	// Buku dari body dibatasi di service memakai ConstrainedBook aktor; identitas
+	// aktor dibangun dari JWT, bukan dari body, sehingga klaim buku tidak dapat dipalsukan.
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+	result, err := h.batchSvc.RunEOY(r.Context(), body.Book, actor)
 	if err != nil {
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return

@@ -569,7 +569,12 @@ func (s *batchProcessService) RunEOM(ctx context.Context, executedBy uuid.UUID) 
 // RunEOY memposting jurnal penutup tahun buku: saldo akun pendapatan dan beban
 // dipindahkan ke laba ditahan. book kosong berarti seluruh buku diproses, tetapi
 // setiap buku ditutup terpisah agar konvensional dan syariah tidak tercampur.
-func (s *batchProcessService) RunEOY(ctx context.Context, book string, executedBy uuid.UUID) (*domain.EOYSummaryResult, error) {
+//
+// Parameter book dari body DIBATASI pada buku aktor: permintaan buku lain ditolak
+// tegas, dan aktor satu buku yang mengirim book kosong dipaksa ke bukunya sendiri
+// (ConstrainedBook) sehingga tidak dapat menutup kedua buku. Aktor lintas buku
+// (SYSTEM/SUPERADMIN/AUDITOR) tetap dapat menutup buku mana pun atau keduanya.
+func (s *batchProcessService) RunEOY(ctx context.Context, book string, actor domain.Actor) (*domain.EOYSummaryResult, error) {
 	curDate, err := s.dateRepo.GetCurrentDate(ctx)
 	if err != nil {
 		return nil, err
@@ -578,13 +583,17 @@ func (s *batchProcessService) RunEOY(ctx context.Context, book string, executedB
 		return nil, errors.New("dependensi tutup buku belum dikonfigurasi")
 	}
 
-	books, err := resolveClosingBooks(book)
+	requested := strings.ToUpper(strings.TrimSpace(book))
+	if requested != "" && !actor.CanAccessBook(domain.COABook(requested)) {
+		return nil, domain.ErrCrossBookAccess
+	}
+	books, err := resolveClosingBooks(actor.ConstrainedBook(requested))
 	if err != nil {
 		return nil, err
 	}
 
 	fiscalYear := curDate.CurrentDate.Year()
-	createdBy := executedBy.String()
+	createdBy := actor.UserID.String()
 
 	results := make([]domain.EOYBookResult, 0, len(books))
 	var refs []string

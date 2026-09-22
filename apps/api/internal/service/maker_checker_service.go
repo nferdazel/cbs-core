@@ -65,6 +65,18 @@ func (s *makerCheckerService) resolveRequestBranchCode(ctx context.Context, acto
 	return branch.Code, nil
 }
 
+// makerCheckerBook memulihkan buku COA pengajuan dari payload yang diisi server-side
+// saat pengajuan dibuat (maker_book). Pengajuan lama atau aktor tanpa buku
+// mengembalikan buku kosong, yang oleh CanAccessBook diizinkan agar data lama tidak
+// terblokir.
+func makerCheckerBook(req *domain.MakerCheckerRequest) domain.COABook {
+	if req == nil || req.Payload == nil {
+		return ""
+	}
+	raw, _ := req.Payload["maker_book"].(string)
+	return domain.COABook(raw)
+}
+
 // Threshold membaca ambang persetujuan untuk satu jenis aksi dari system_config.
 // Key: maker_checker.<action_type>.<threshold>, mis. maker_checker.deposit.threshold.
 func (s *makerCheckerService) Threshold(ctx context.Context, actionType string) decimal.Decimal {
@@ -101,6 +113,10 @@ func (s *makerCheckerService) CreateRequest(ctx context.Context, input domain.Cr
 	payload["maker_id"] = actor.UserID.String()
 	payload["maker_username"] = actor.DisplayName()
 	payload["maker_role"] = string(actor.Role)
+	// Buku pembuat disimpan server-side dari JWT (bukan body) agar pemeriksa dan
+	// daftar antrean dapat dibatasi pada buku yang sama. Nilai kosong berarti buku
+	// pembuat belum ditentukan dan tetap lolos, mengikuti semantik CanAccessBook.
+	payload["maker_book"] = string(actor.Book)
 
 	// Cabang pembuat diselesaikan lewat satu sumber (resolveActorBranch): pelaku
 	// lintas cabang berkode 'HO' diatribusikan ke kantor pusat, bukan NULL.
@@ -170,6 +186,11 @@ func (s *makerCheckerService) Approve(ctx context.Context, id uuid.UUID, actor d
 	if !actor.CanAccessBranch(req.BranchCode) {
 		return domain.ErrCrossBranchAccess
 	}
+	// Buku pengajuan ditegakkan: pemeriksa satu buku tidak boleh menyetujui pengajuan
+	// buku lain. Penting karena persetujuan mengeksekusi tulisan lintas buku.
+	if !actor.CanAccessBook(makerCheckerBook(req)) {
+		return domain.ErrCrossBookAccess
+	}
 	if req.Status != domain.MakerCheckerPending {
 		return domain.ErrMakerCheckerNotPending
 	}
@@ -190,6 +211,11 @@ func (s *makerCheckerService) Reject(ctx context.Context, id uuid.UUID, actor do
 	if !actor.CanAccessBranch(req.BranchCode) {
 		return domain.ErrCrossBranchAccess
 	}
+	// Buku pengajuan ditegakkan juga pada penolakan: pengawas buku lain tidak boleh
+	// memutuskan pengajuan yang bukan wewenangnya.
+	if !actor.CanAccessBook(makerCheckerBook(req)) {
+		return domain.ErrCrossBookAccess
+	}
 	if req.Status != domain.MakerCheckerPending {
 		return domain.ErrMakerCheckerNotPending
 	}
@@ -200,6 +226,13 @@ func (s *makerCheckerService) Reject(ctx context.Context, id uuid.UUID, actor do
 // Status, posting jurnal, dan audit berada dalam SATU transaksi: keputusan tidak
 // pernah tercatat tanpa efeknya, dan efek tidak pernah terjadi tanpa jejak keputusan.
 func (s *makerCheckerService) process(ctx context.Context, req *domain.MakerCheckerRequest, actor domain.Actor, status domain.MakerCheckerStatus, notes, action string) error {
+	// Penjaga buku dipasang juga di sini, bukan hanya di Approve/Reject: jalur ini
+	// yang benar-benar mengeksekusi tulisan, jadi batas buku tidak boleh bergantung
+	// pada pemanggil.
+	if !actor.CanAccessBook(makerCheckerBook(req)) {
+		return domain.ErrCrossBookAccess
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

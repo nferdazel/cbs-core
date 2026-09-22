@@ -131,6 +131,14 @@ func (r *MakerCheckerRepository) UpdateStatusTx(ctx context.Context, tx any, id 
 // hanya melihat cabangnya, dan baris branch_id NULL tetap terlihat.
 func buildPendingListQuery(actor domain.Actor) (string, []any) {
 	where, whereArgs := branchReadClause("branch_id", actor)
+	// Buku pengajuan disimpan server-side di payload (maker_book). NULLIF kosong -> NULL
+	// lalu dicor ke coa_book agar klausa buku yang sama (bookReadClause) dapat dipakai;
+	// pengajuan lama tanpa maker_book tetap terlihat, mengikuti semantik CanAccessBook.
+	bookColumn := "(NULLIF(payload->>'maker_book', '')::coa_book)"
+	if clause, args := bookReadClause(bookColumn, actor, len(whereArgs)+1); clause != "" {
+		whereArgs = append(whereArgs, args...)
+		where = andCondition(where, clause)
+	}
 
 	query := `
 		SELECT id, action_type, payload, status, maker_id, checker_id,

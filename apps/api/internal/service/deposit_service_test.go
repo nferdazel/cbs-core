@@ -30,7 +30,7 @@ func (s *stubDepositRepo) GetByIDForUpdate(ctx context.Context, tx any, id uuid.
 func (s *stubDepositRepo) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Deposit, int, error) {
 	return nil, 0, nil
 }
-func (s *stubDepositRepo) ListMaturedARO(ctx context.Context, asOf time.Time) ([]domain.Deposit, error) {
+func (s *stubDepositRepo) ListMaturedARO(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.Deposit, error) {
 	return nil, nil
 }
 func (s *stubDepositRepo) AddAccrual(ctx context.Context, tx any, id uuid.UUID, profit, tax decimal.Decimal, asOf time.Time) error {

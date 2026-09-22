@@ -30,7 +30,12 @@ func (s *stubLimitConfig) GetDecimal(_ context.Context, key string, fallback dec
 
 func (s *stubLimitConfig) GetInt(_ context.Context, _ string, fallback int) int { return fallback }
 
-func (s *stubLimitConfig) GetString(_ context.Context, _ string, fallback string) string {
+func (s *stubLimitConfig) GetString(_ context.Context, key, fallback string) string {
+	// Kembalikan nilai yang tersimpan agar requiredLimit dapat membedakan kunci
+	// kosong dari kunci berisi; fallback hanya dikembalikan bila kunci tidak ada.
+	if v, ok := s.values[key]; ok {
+		return v.String()
+	}
 	return fallback
 }
 
@@ -256,21 +261,35 @@ func TestTransactionLimitService_ForActorUsesRoleLowercaseKeys(t *testing.T) {
 	}
 }
 
-func TestTransactionLimitService_DefaultWhenConfigMissing(t *testing.T) {
+// Konfigurasi batas yang hilang TIDAK BOLEH jatuh ke angka bawaan kode. Bila kode
+// kembali memakai fallback (mis. 50 juta/500 juta/10 juta), test ini gagal: satu-
+// satunya perilaku yang benar adalah penolakan dengan galat jelas.
+func TestTransactionLimitService_MissingConfigFailsLoudly(t *testing.T) {
 	svc := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{}, businessDateStub())
 
-	limit, err := svc.ForActor(context.Background(), tellerActor(), "WITHDRAWAL")
-	if err != nil {
-		t.Fatalf("ForActor error: %v", err)
+	_, err := svc.ForActor(context.Background(), tellerActor(), "WITHDRAWAL")
+	if err == nil {
+		t.Fatal("kunci batas yang kosong harus ditolak, bukan memakai angka bawaan")
 	}
-	if !limit.PerTransaction.Equal(decimal.NewFromInt(50_000_000)) {
-		t.Fatalf("default per transaksi %s, ingin 50000000", limit.PerTransaction.String())
+	if !strings.Contains(err.Error(), "limit.teller.withdrawal.per_transaction") {
+		t.Fatalf("galat harus menyebut kunci yang hilang, dapat: %v", err)
 	}
-	if !limit.DailyAmount.Equal(decimal.NewFromInt(500_000_000)) {
-		t.Fatalf("default harian %s, ingin 500000000", limit.DailyAmount.String())
+}
+
+// Satu kunci yang hilang saja sudah cukup menolak: kode lama akan diam-diam memakai
+// bawaan 10 juta untuk approval_above padahal seed bank 50 juta.
+func TestTransactionLimitService_MissingApprovalKeyFails(t *testing.T) {
+	config := &stubLimitConfig{values: map[string]decimal.Decimal{
+		"limit.teller.withdrawal.per_transaction": decimal.NewFromInt(50_000_000),
+		"limit.teller.withdrawal.daily":           decimal.NewFromInt(500_000_000),
+	}}
+	svc := service.NewTransactionLimitService(config, &stubDailyDebit{}, businessDateStub())
+
+	if _, err := svc.ForActor(context.Background(), tellerActor(), "WITHDRAWAL"); err == nil {
+		t.Fatal("approval_above yang hilang harus ditolak")
 	}
-	if !limit.RequiresApprovalAbove.Equal(decimal.NewFromInt(10_000_000)) {
-		t.Fatalf("default approval %s, ingin 10000000", limit.RequiresApprovalAbove.String())
+	if err := svc.Check(context.Background(), tellerActor(), "WITHDRAWAL", decimal.NewFromInt(5_000_000)); err == nil {
+		t.Fatal("Check harus gagal saat kunci batas hilang, bukan memakai angka bawaan")
 	}
 }
 
@@ -442,15 +461,10 @@ func TestListReportsConfiguredFromKeyPresence(t *testing.T) {
 		}
 	}
 
-	// Tanpa kunci di konfigurasi, baris harus ditandai belum ditetapkan.
+	// Tanpa kunci di konfigurasi, List menolak dengan galat jelas alih-alih
+	// menyajikan batas bawaan yang bukan kebijakan bank.
 	empty := service.NewTransactionLimitService(&stubLimitConfig{}, &stubDailyDebit{}, businessDateStub())
-	emptyViews, err := empty.List(context.Background())
-	if err != nil {
-		t.Fatalf("List tanpa kunci: %v", err)
-	}
-	for _, v := range emptyViews {
-		if v.Configured {
-			t.Fatalf("%s/%s configured=true padahal tidak ada kunci", v.Role, v.TransactionType)
-		}
+	if _, err := empty.List(context.Background()); err == nil {
+		t.Fatal("List tanpa kunci harus ditolak, bukan menyajikan batas bawaan")
 	}
 }

@@ -15,7 +15,16 @@ import (
 
 // Kas default per buku. Teller konvensional memakai kas teller; transaksi syariah
 // memakai kas syariah supaya arus kas kedua buku tidak tercampur di laporan.
+//
+// configCashCOA* adalah SATU-SATUNYA kunci konfigurasi akun kas teller per buku,
+// dipakai bersama oleh jurnal transaksi rekening (ledger_service) dan penerimaan
+// angsuran tunai (loan_service). Kunci lama payment.cash.coa.* (migrasi 000034) sudah
+// dihapus migrasi 000073 karena menyimpan konsep yang sama dengan nilai berbeda-beda
+// berpotensi mengarahkan dua alur ke akun kas yang berbeda.
 const (
+	configCashCOAConventional = "cash.coa.conventional"
+	configCashCOASYariah      = "cash.coa.syariah"
+
 	defaultCashCOAConventional = "10101"
 	defaultCashCOASYariah      = "11100"
 )
@@ -198,13 +207,13 @@ func (s *ledgerService) ExecuteApproved(ctx context.Context, tx any, actionType 
 		_, err = s.postReversalTx(ctx, tx, original, reason, maker, actor)
 		return err
 	case ActionDeposit:
-		return s.postDepositTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy)
+		return s.postDepositTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy, actor)
 	case ActionWithdraw:
-		return s.postWithdrawTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy)
+		return s.postWithdrawTx(ctx, tx, accountNumber, amount, currency, description, idempotencyKey, createdBy, actor)
 	case ActionTransfer:
 		source, _ := payload["source_account_number"].(string)
 		destination, _ := payload["destination_account_number"].(string)
-		return s.postTransferTx(ctx, tx, source, destination, amount, currency, description, idempotencyKey, createdBy)
+		return s.postTransferTx(ctx, tx, source, destination, amount, currency, description, idempotencyKey, createdBy, actor)
 	default:
 		return fmt.Errorf("%w: %s", domain.ErrNoExecutorForAction, actionType)
 	}
@@ -281,6 +290,11 @@ func (s *ledgerService) Deposit(ctx context.Context, req domain.DepositRequest) 
 	if !req.Actor.CanAccessBranch(acc.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Buku rekening ditegakkan sebelum jurnal disusun: teller satu buku tidak boleh
+	// menyetor ke rekening buku lain. Rekening tanpa buku (data pra-migrasi) lolos.
+	if !req.Actor.CanAccessBook(acc.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	cashAccount, err := s.resolveCashAccount(ctx, acc)
 	if err != nil {
 		return nil, err
@@ -324,6 +338,11 @@ func (s *ledgerService) Withdraw(ctx context.Context, req domain.WithdrawRequest
 	// dibiarkan agar pencairan data lama tidak terblokir.
 	if !req.Actor.CanAccessBranch(acc.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
+	}
+	// Buku rekening ditegakkan sebelum jurnal disusun: teller satu buku tidak boleh
+	// menarik dari rekening buku lain. Rekening tanpa buku (data pra-migrasi) lolos.
+	if !req.Actor.CanAccessBook(acc.COABook) {
+		return nil, domain.ErrCrossBookAccess
 	}
 	if acc.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
@@ -379,6 +398,11 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 	if !req.Actor.CanAccessBranch(src.BranchCode) || !req.Actor.CanAccessBranch(dest.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
+	// Transfer menyentuh dua rekening: keduanya harus berada di buku aktor. Transfer
+	// lintas buku ditolak, termasuk oleh aktor satu buku (aktor lintas buku lolos).
+	if !req.Actor.CanAccessBook(src.COABook) || !req.Actor.CanAccessBook(dest.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
 	if src.AvailableBalance.LessThan(req.Amount) {
 		return nil, domain.ErrInsufficientFunds
 	}
@@ -415,13 +439,18 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 
 // postDepositTx, postWithdrawTx, dan postTransferTx dipakai eksekusi persetujuan:
 // jurnal ditulis pada transaksi pemanggil, bukan membuka transaksi baru.
-func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
+func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string, actor domain.Actor) error {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return err
 	}
 	if err := domain.AccountCreditAllowed(acc.Status); err != nil {
 		return err
+	}
+	// Jalur persetujuan tidak melewati Deposit, jadi penegakan buku diulang di sini.
+	// Pemeriksa satu buku tidak boleh mengeksekusi setoran ke rekening buku lain.
+	if !actor.CanAccessBook(acc.COABook) {
+		return domain.ErrCrossBookAccess
 	}
 	cashAccount, err := s.resolveCashAccount(ctx, acc)
 	if err != nil {
@@ -443,13 +472,17 @@ func (s *ledgerService) postDepositTx(ctx context.Context, tx any, accountNumber
 	return err
 }
 
-func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
+func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumber string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string, actor domain.Actor) error {
 	acc, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
 		return err
 	}
 	if err := domain.AccountDebitAllowed(acc.Status); err != nil {
 		return err
+	}
+	// Jalur persetujuan tidak melewati Withdraw, jadi penegakan buku diulang di sini.
+	if !actor.CanAccessBook(acc.COABook) {
+		return domain.ErrCrossBookAccess
 	}
 	if acc.AvailableBalance.LessThan(amount) {
 		return domain.ErrInsufficientFunds
@@ -474,7 +507,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 	return err
 }
 
-func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, destination string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string) error {
+func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, destination string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string, actor domain.Actor) error {
 	if source == destination {
 		return fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
 	}
@@ -485,6 +518,11 @@ func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, dest
 	dest, err := s.accountRepo.GetByNumber(ctx, destination)
 	if err != nil {
 		return err
+	}
+	// Jalur persetujuan tidak melewati TransferInternal, jadi penegakan buku diulang:
+	// kedua rekening harus berada di buku pemeriksa.
+	if !actor.CanAccessBook(src.COABook) || !actor.CanAccessBook(dest.COABook) {
+		return domain.ErrCrossBookAccess
 	}
 	// Transfer menyentuh dua rekening: sumber wajib ACTIVE (dana keluar), tujuan
 	// boleh ACTIVE atau DORMANT (dana masuk tidak boleh tertahan).
@@ -633,6 +671,12 @@ func (s *ledgerService) guardReversible(ctx context.Context, reference string, a
 	// pemanggil bahwa referensi tertentu memang ada di bank ini.
 	if !actor.CanAccessBranch(original.BranchCode) {
 		return nil, fmt.Errorf("%w: %s", domain.ErrJournalNotFound, reference)
+	}
+	// Buku jurnal diturunkan dari akun barisnya (original.Book, original.BookMixed).
+	// Pembatalan jurnal buku lain ditolak tegas: jurnal kontra adalah tulisan lintas
+	// buku bila lolos.
+	if !actor.CanAccessJournal(original.Book, original.BookMixed) {
+		return nil, domain.ErrCrossBookAccess
 	}
 
 	switch original.Status {
@@ -822,9 +866,9 @@ func (s *ledgerService) resolveCashAccount(ctx context.Context, acc *domain.Acco
 		coaCode = defaultCashCOASYariah
 	}
 	if s.configSvc != nil {
-		key := "cash.coa.conventional"
+		key := configCashCOAConventional
 		if coaCode == defaultCashCOASYariah {
-			key = "cash.coa.syariah"
+			key = configCashCOASYariah
 		}
 		coaCode = s.configSvc.GetString(ctx, key, coaCode)
 	}

@@ -101,6 +101,21 @@ func (a Actor) CanAccessBook(book COABook) bool {
 	return a.Book == book
 }
 
+// CanAccessJournal melaporkan apakah aktor berwenang membaca jurnal ber-buku book.
+// mixed menandai jurnal yang baris-baranya berada di lebih dari satu buku (mis. data
+// lama yang kasnya belum terpisah): aktor satu buku TIDAK boleh membacanya karena satu
+// barisnya membocorkan buku lain, sedangkan aktor lintas buku tetap boleh. Aktor yang
+// bukunya belum ditentukan (kosong) tidak diblokir, mengikuti semantik CanAccessBook.
+func (a Actor) CanAccessJournal(book COABook, mixed bool) bool {
+	if a.IsCrossBook() || a.Book == "" {
+		return true
+	}
+	if mixed {
+		return false
+	}
+	return a.Book == book || book == ""
+}
+
 // ConstrainedBook membatasi buku yang diminta klien ke buku aktor. Dipakai laporan
 // yang menerima query param book: aktor lintas buku atau yang bukunya belum
 // ditentukan boleh memilih buku; aktor satu buku dipaksa ke bukunya sendiri agar

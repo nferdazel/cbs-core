@@ -182,18 +182,27 @@ type Loan struct {
 	OriginalEIRBasis        string     `json:"original_eir_basis,omitempty"`
 	OriginalEIRCalculatedAt *time.Time `json:"original_eir_calculated_at,omitempty"`
 	// RestructureLossBalance adalah saldo kerugian restrukturisasi yang belum
-	// diamortisasi (contra nilai tercatat). PPKA dihitung atas nilai tercatat setelah
-	// dikurangi saldo ini.
+	// diamortisasi (pengurang nilai tercatat). PPKA dihitung atas nilai tercatat
+	// setelah dikurangi saldo ini (domain.PPAPCarryingAmount).
 	//
-	// KEADAAN APA ADANYA: amortisasi saldo ini ke pendapatan bunga (atau penyajiannya
-	// sebagai akun kontra-aset) BELUM ADA. Jurnal kerugian restrukturisasi mengkredit
-	// akun piutang kredit, sedangkan jurnal pelunasan mengkredit pokok penuh, sehingga
-	// saat kredit ter-restrukturisasi lunas atau dihapusbukukan saldo akun piutang
-	// menjadi NEGATIF (kredit melebihi debit yang pernah dicatat). Cacat ini diketahui
-	// dan sengaja belum diperbaiki di sini karena menuntut keputusan pemilik sistem:
-	// amortisasi bunga efektif sesuai jurnal yang diwajibkan, atau pemakaian akun
-	// kontra-aset. Jangan menyebut saldo ini "hanya belum diamortisasi" tanpa
-	// menyebutkan akibat saldo negatifnya.
+	// JALUR LUNAS SUDAH AMAN: amortisasi saldo ini ADA (service
+	// amortizeRestructureLossForLoan, di balik saklar loan.restructure.loss.enabled).
+	// Setiap angsuran jatuh tempo memulihkan sebagian saldo lewat jurnal
+	// Db. Kredit yang diberikan / Kr. Pendapatan bunga sehingga akun piutang kredit
+	// tidak berakhir negatif saat pokok penuh dikredit; saat kredit lunas sisa saldo
+	// ditutup tepat nol (bukti angka: uji integrasi
+	// TestIntegrasiAmortisasiSaldoKerugianLunasNol vs pembanding
+	// TestIntegrasiAmortisasiSaklarMatiPiutangNegatif). Jadi saldo ini bukan lagi
+	// "sekadar belum diamortisasi" pada jalur pelunasan.
+	//
+	// SISA KETERBATASAN (butuh keputusan pemilik, belum dipaksa di sini): hapus buku
+	// (writeOffTx) melepas POKOK BRUTO (OutstandingPrincipal) sebesar P, padahal nilai
+	// tercatat saat itu P - saldo ini. Selisihnya membuat akun piutang kredit sempat
+	// negatif, lalu penutupan amortisasi batch mengkredit PENDAPATAN BUNGA atas kredit
+	// macet yang dihapusbukukan — perlakuan yang secara akuntansi perlu ditinjau
+	// (seharusnya beban, bukan pendapatan). Perbaikannya menyentuh nominal jurnal hapus
+	// buku dan harus diputuskan bank; jangan menyebut saldo ini tanpa menyebut akibat
+	// saldo negatif pada jalur hapus buku.
 	RestructureLossBalance decimal.Decimal `json:"restructure_loss_balance"`
 
 	IsRestructured      bool       `json:"is_restructured"`
@@ -321,6 +330,12 @@ type WriteOffLoanInput struct {
 type RecoverWrittenOffLoanInput struct {
 	LoanID         uuid.UUID       `json:"loan_id"`
 	RecoveryAmount decimal.Decimal `json:"recovery_amount"`
+	// IdempotencyKey membedakan SETIAP penerimaan kas yang sah atas kredit yang sama.
+	// Pemanggil mengisinya dari header Idempotency-Key (atau body); pengulangan
+	// permintaan dengan kunci yang sama tidak menggandakan jurnal. Kosong berarti
+	// kunci deterministik dari nomor kredit + nominal + tanggal bisnis dipakai, bukan
+	// time.Now(): pengulangan pada hari bisnis yang sama tetap idempoten.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // CancelLoanInput membatalkan pencairan kredit yang belum pernah menerima

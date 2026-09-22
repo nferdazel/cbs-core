@@ -28,3 +28,24 @@ func bookReadClause(column string, actor domain.Actor, startArg int) (string, []
 	clause := fmt.Sprintf("(%s IS NULL OR %s = $%d::coa_book)", column, column, startArg)
 	return clause, []any{string(actor.Book)}
 }
+
+// journalBookFilter membatasi jurnal pada buku aktor. Buku jurnal TIDAK satu kolom
+// melainkan gabungan buku baris-barisnya, sehingga bookReadClause (yang menguji satu
+// ekspresi kolom) tidak cukup: jurnal yang menyentuh buku lain harus dikecualikan,
+// bukan disamarkan oleh satu baris yang kebetulan sebuku. Jurnal tanpa baris ber-buku
+// tetap disertakan, dan aktor lintas buku atau yang bukunya belum ditentukan tidak
+// difilter, mengikuti semantik Actor.CanAccessJournal. alias adalah alias tabel
+// journal_entries pada query pemanggil.
+func journalBookFilter(alias string, actor domain.Actor, startArg int) (string, []any) {
+	if actor.IsCrossBook() || actor.Book == "" {
+		return "", nil
+	}
+	clause := fmt.Sprintf(`NOT EXISTS (
+		SELECT 1 FROM journal_lines jl
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts c ON c.id = a.coa_id
+		WHERE jl.journal_entry_id = %s.id
+			AND c.book IS NOT NULL
+			AND c.book <> $%d::coa_book)`, alias, startArg)
+	return clause, []any{string(actor.Book)}
+}

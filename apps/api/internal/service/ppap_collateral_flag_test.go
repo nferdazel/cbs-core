@@ -241,7 +241,7 @@ func TestPPAPPreview_SaklarHidupMengecualikanAgunanTunaiDariPPKAUmum(t *testing.
 	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "true"}}
 	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunanTunaiPPAP(loanID, asOf)}}
 
-	summary, err := svc.Preview(context.Background(), asOf)
+	summary, err := svc.Preview(context.Background(), asOf, domain.Actor{})
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestPPAPPreview_SaklarHidupAgunanTunaiTidakMengurangiPPKAKhusus(t *testing.
 	svc.config = &collateralConfigStub{values: map[string]string{"ppap.collateral.enabled": "true"}}
 	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunanTunaiPPAP(loanID, asOf)}}
 
-	summary, err := svc.Preview(context.Background(), asOf)
+	summary, err := svc.Preview(context.Background(), asOf, domain.Actor{})
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestPPAPPreview_PorsiTunaiTidakMelebihiEksposur(t *testing.T) {
 	agunan.AppraisalValue = decimal.NewFromInt(15_000_000)
 	svc.collateralRepo = &collateralRepoStub{active: []domain.LoanCollateral{agunan}}
 
-	summary, err := svc.Preview(context.Background(), asOf)
+	summary, err := svc.Preview(context.Background(), asOf, domain.Actor{})
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}

@@ -103,15 +103,16 @@ func (s *ppapService) RunDaily(ctx context.Context, asOf time.Time, actor domain
 	return s.run(ctx, asOf, actor, false)
 }
 
-// Preview menghitung tanpa memposting jurnal atau mengubah state kredit.
-func (s *ppapService) Preview(ctx context.Context, asOf time.Time) (domain.PPAPRunSummary, error) {
-	return s.run(ctx, asOf, domain.Actor{}, true)
+// Preview menghitung tanpa memposting jurnal atau mengubah state kredit. actor dipakai
+// membatasi kredit yang dibaca pada cabang dan bukunya, sama seperti RunDaily.
+func (s *ppapService) Preview(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.PPAPRunSummary, error) {
+	return s.run(ctx, asOf, actor, true)
 }
 
 func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Actor, preview bool) (domain.PPAPRunSummary, error) {
 	asOf = asOf.UTC()
 
-	snapshots, err := s.repo.ListDueLoans(ctx, asOf)
+	snapshots, err := s.repo.ListDueLoans(ctx, asOf, actor)
 	if err != nil {
 		return domain.PPAPRunSummary{}, fmt.Errorf("mengambil daftar kredit PPAP: %w", err)
 	}

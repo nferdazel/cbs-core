@@ -145,12 +145,29 @@ func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor d
 }
 
 // ListMaturedARO mengambil deposito ber-ARO yang sudah melewati jatuh tempo dan
-// belum ditutup, untuk diperpanjang otomatis.
-func (r *DepositRepository) ListMaturedARO(ctx context.Context, asOf time.Time) ([]domain.Deposit, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+depositColumns+`
+// belum ditutup, untuk diperpanjang otomatis. Filter cabang dan buku memakai konvensi
+// read-clause yang sama dengan List: aktor lintas cabang/buku (SYSTEM saat EOD) tidak
+// difilter, deposito tanpa cabang/produk (NULL) tetap terlihat. Filter di query
+// (bukan per baris di service) menghindari lookup produk per deposito saat tutup hari.
+func (r *DepositRepository) ListMaturedARO(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.Deposit, error) {
+	where, args := branchReadClause("deposits.branch_id", actor)
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = deposits.product_id)"
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		args = append(args, bargs...)
+		where = andCondition(where, clause)
+	}
+	maturityArg := len(args) + 1
+	args = append(args, asOf)
+
+	query := `SELECT ` + depositColumns + `
 		FROM deposits
-		WHERE aro = TRUE AND status IN ('PLACED', 'MATURED') AND maturity_date <= $1
-		ORDER BY maturity_date`, asOf)
+		WHERE aro = TRUE AND status IN ('PLACED', 'MATURED') AND maturity_date <= $` + fmt.Sprintf("%d", maturityArg)
+	if where != "" {
+		query += " AND " + where
+	}
+	query += " ORDER BY maturity_date"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

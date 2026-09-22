@@ -230,5 +230,7 @@ type BatchProcessService interface {
 	GetCurrentBusinessDate(ctx context.Context) (*SystemBusinessDate, error)
 	RunEOD(ctx context.Context, executedBy uuid.UUID) (*EODSummaryResult, error)
 	RunEOM(ctx context.Context, executedBy uuid.UUID) (*EOMSummaryResult, error)
-	RunEOY(ctx context.Context, book string, executedBy uuid.UUID) (*EOYSummaryResult, error)
+	// RunEOY menerima actor (bukan hanya id) karena parameter `book` dari body harus
+	// dibatasi pada buku aktor: aktor satu buku tidak boleh menutup buku lain.
+	RunEOY(ctx context.Context, book string, actor Actor) (*EOYSummaryResult, error)
 }

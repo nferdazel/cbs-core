@@ -269,3 +269,58 @@ func TestWriteOffLoan_RejectsUnmappedAccruedProfit(t *testing.T) {
 		t.Fatalf("status kredit berubah meski hapus buku ditolak: %s", f.repo.loan.Status)
 	}
 }
+
+// Retry recovery tidak boleh menggandakan jurnal. Kunci idempotensi harus
+// DETERMINISTIK; kode lama memakai time.Now().Unix() sehingga dua permintaan identik
+// mendapat kunci berbeda dan posting engine menulis jurnal kedua. Test ini gagal
+// (unix timestamp != kunci deterministik) bila perilaku lama kembali.
+func TestRecoverWrittenOffLoan_IdempotencyKeyDeterministic(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	// Jalur langsung (di bawah ambang / tanpa maker-checker) agar posting terjadi.
+	svc.approvals = nil
+
+	input := domain.RecoverWrittenOffLoanInput{LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(500_000)}
+	for i := 0; i < 2; i++ {
+		if _, err := svc.RecoverWrittenOffLoan(context.Background(), input, writeOffActor()); err != nil {
+			t.Fatalf("RecoverWrittenOffLoan ke-%d: %v", i+1, err)
+		}
+	}
+	if len(f.posting.requests) != 2 {
+		t.Fatalf("permintaan posting %d, ingin 2", len(f.posting.requests))
+	}
+	want := "RECOV-" + f.repo.loan.LoanNumber + "-500000"
+	for i, req := range f.posting.requests {
+		if req.IdempotencyKey != want {
+			t.Fatalf("kunci idempotensi permintaan ke-%d %q, ingin %q (bukan timestamp)", i+1, req.IdempotencyKey, want)
+		}
+	}
+	if len(distinctKeys(f.posting.requests)) != 1 {
+		t.Fatalf("dua permintaan identik menghasilkan %d kunci berbeda, ingin 1", len(distinctKeys(f.posting.requests)))
+	}
+}
+
+// Kunci dari pemanggil dipakai apa adanya sehingga dua recovery sah dengan nominal
+// sama dapat dibedakan, dan pengulangan dengan kunci sama tetap idempoten.
+func TestRecoverWrittenOffLoan_UsesCallerIdempotencyKey(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	svc.approvals = nil
+
+	if _, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(500_000), IdempotencyKey: "kuitansi-777",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("RecoverWrittenOffLoan: %v", err)
+	}
+	if got := f.posting.requests[0].IdempotencyKey; got != "RECOV-"+f.repo.loan.LoanNumber+"-kuitansi-777" {
+		t.Fatalf("kunci idempotensi %q, ingin memakai kunci pemanggil", got)
+	}
+}
+
+func distinctKeys(reqs []domain.PostingRequest) map[string]bool {
+	keys := map[string]bool{}
+	for _, r := range reqs {
+		keys[r.IdempotencyKey] = true
+	}
+	return keys
+}

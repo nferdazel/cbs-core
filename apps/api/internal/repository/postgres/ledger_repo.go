@@ -180,16 +180,26 @@ func (r *LedgerRepository) GetJournalByRef(ctx context.Context, ref string) (*do
 	// dan tanpa kolom ini nilai BranchCode kosong membuat pemeriksaan lolos diam-diam.
 	entryQuery := `
 		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.entry_date, je.created_by, je.created_at, je.source,
-		       COALESCE(b.code, '')
+		       COALESCE(b.code, ''),
+		       COALESCE(` + journalBookSubquery + `, ''),
+		       ` + journalBookMixedSubquery + `
 		FROM journal_entries je
 		LEFT JOIN branches b ON b.id = je.branch_id
 		WHERE je.reference_number = $1
 	`
 	var entry domain.JournalEntry
+	var book string
+	var bookCount int
 	err := r.db.QueryRowContext(ctx, entryQuery, ref).Scan(
 		&entry.ID, &entry.ReferenceNumber, &entry.IdempotencyKey, &entry.TransactionType, &entry.Description, &entry.Status, &entry.PostedAt, &entry.EntryDate, &entry.CreatedBy, &entry.CreatedAt, &entry.Source,
 		&entry.BranchCode,
+		&book,
+		&bookCount,
 	)
+	if err == nil {
+		entry.Book = domain.COABook(book)
+		entry.BookMixed = bookCount > 1
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("journal entry not found")
@@ -253,15 +263,47 @@ func (r *LedgerRepository) MarkJournalReversed(ctx context.Context, tx any, refe
 	return nil
 }
 
-// buildJournalListQuery menyusun query daftar jurnal beserta klausa filter cabang
-// dan argumennya. Klausa yang sama dipakai untuk COUNT(*) dan SELECT agar
-// total_items cocok dengan halaman yang dikembalikan. Dipisah sebagai fungsi
-// murni supaya penentuan scope cabang dapat diuji tanpa database; SQL akhirnya
-// sendiri tetap hanya terverifikasi saat runtime.
-func buildJournalListQuery(actor domain.Actor) (countQuery, listQuery string, whereArgs []any) {
-	where, whereArgs := branchReadClause("branch_id", actor)
+// journalBookSubquery menurunkan buku COA sebuah jurnal dari akun baris pertamanya:
+// journal_lines -> accounts -> chart_of_accounts. Baris tanpa buku dilewati sehingga
+// jurnal dengan sebagian akun ber-buku tetap dinilai dari akun ber-buku pertamanya
+// (urutan sequence deterministik). NULL berarti buku jurnal tidak dapat ditentukan dan
+// oleh bookReadClause tetap disertakan, mengikuti semantik Actor.CanAccessBook untuk
+// data lama. Dipakai bersama oleh daftar jurnal dan pembacaan satu jurnal.
+const journalBookSubquery = `(
+		SELECT c.book::text
+		FROM journal_lines jl
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts c ON c.id = a.coa_id
+		WHERE jl.journal_entry_id = je.id AND c.book IS NOT NULL
+		ORDER BY jl.sequence, jl.id
+		LIMIT 1
+	)`
 
-	countQuery = "SELECT COUNT(*) FROM journal_entries"
+// journalBookMixedSubquery menghitung jumlah buku COA berbeda yang muncul pada baris
+// sebuah jurnal. Lebih dari satu berarti jurnal lintas buku (lihat Actor.CanAccessJournal).
+const journalBookMixedSubquery = `(
+		SELECT COUNT(DISTINCT c.book)
+		FROM journal_lines jl
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts c ON c.id = a.coa_id
+		WHERE jl.journal_entry_id = je.id AND c.book IS NOT NULL
+	)`
+
+// buildJournalListQuery menyusun query daftar jurnal beserta klausa filter cabang
+// dan buku serta argumennya. Klausa yang sama dipakai untuk COUNT(*) dan SELECT agar
+// total_items cocok dengan halaman yang dikembalikan. Dipisah sebagai fungsi murni
+// supaya penentuan scope dapat diuji tanpa database; SQL akhirnya sendiri tetap hanya
+// terverifikasi saat runtime.
+func buildJournalListQuery(actor domain.Actor) (countQuery, listQuery string, whereArgs []any) {
+	where, whereArgs := branchReadClause("je.branch_id", actor)
+	// Buku jurnal berasal dari gabungan barisnya, bukan satu kolom; klausa khusus
+	// (journalBookFilter) mengecualikan jurnal yang menyentuh buku lain.
+	if clause, args := journalBookFilter("je", actor, len(whereArgs)+1); clause != "" {
+		whereArgs = append(whereArgs, args...)
+		where = andCondition(where, clause)
+	}
+
+	countQuery = "SELECT COUNT(*) FROM journal_entries je"
 	listQuery = `
 		SELECT je.id, je.reference_number, je.idempotency_key, je.transaction_type, je.description, je.status, je.posted_at, je.entry_date, je.created_by, je.created_at, je.source,
 		       COALESCE(b.code, '')
@@ -271,7 +313,7 @@ func buildJournalListQuery(actor domain.Actor) (countQuery, listQuery string, wh
 		countQuery += " WHERE " + where
 		listQuery += " WHERE " + where
 	}
-	listQuery += fmt.Sprintf(" ORDER BY posted_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	listQuery += fmt.Sprintf(" ORDER BY je.posted_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
 	return countQuery, listQuery, whereArgs
 }
 

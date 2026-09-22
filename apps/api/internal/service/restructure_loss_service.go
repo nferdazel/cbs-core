@@ -209,6 +209,9 @@ func (s *loanService) restructureLoanWithLoss(ctx context.Context, input domain.
 		if !canAccessLoan(actor, fresh) {
 			return domain.ErrCrossBranchAccess
 		}
+		if !s.canAccessLoanBook(ctx, actor, fresh) {
+			return domain.ErrCrossBookAccess
+		}
 		if fresh.Status != domain.LoanStatusDisbursed {
 			return errors.New("hanya kredit aktif yang dapat direstrukturisasi")
 		}

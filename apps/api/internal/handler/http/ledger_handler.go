@@ -229,6 +229,13 @@ func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) 
 		Fail(w, r, http.StatusForbidden, domain.ErrCrossBranchAccess)
 		return
 	}
+	// Buku jurnal diturunkan dari akun barisnya (entry.Book/entry.BookMixed). Jurnal
+	// tanpa buku (mis. jurnal sistem) tetap boleh dibaca, sedangkan jurnal lintas buku
+	// ditolak, mengikuti semantik CanAccessJournal.
+	if !actor.CanAccessJournal(entry.Book, entry.BookMixed) {
+		Fail(w, r, http.StatusForbidden, domain.ErrCrossBookAccess)
+		return
+	}
 
 	Success(w, http.StatusOK, "journal entry retrieved", entry)
 }

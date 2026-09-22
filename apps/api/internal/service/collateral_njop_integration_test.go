@@ -97,7 +97,7 @@ func TestIntegrasiJalurUangAgunanItem6NJOP(t *testing.T) {
 		AppraisalValue: idr(9_000_000),
 	})
 
-	summary, err := e.ppapSvc.Preview(e.ctx, asOf)
+	summary, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestIntegrasiJalurUangAgunanItem6PorsiTunai(t *testing.T) {
 		CashAccountID:  &tabungan,
 	})
 
-	summary, err := e.ppapSvc.Preview(e.ctx, asOf)
+	summary, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestIntegrasiJalurUangAgunanItem6Bumn(t *testing.T) {
 		t.Fatal("bukti kriteria BUMN/BUMD tidak tersimpan")
 	}
 
-	summary, err := e.ppapSvc.Preview(e.ctx, asOf)
+	summary, err := e.ppapSvc.Preview(e.ctx, asOf, e.actor)
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
