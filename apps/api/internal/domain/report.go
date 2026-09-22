@@ -19,11 +19,11 @@ type TrialBalanceItem struct {
 }
 
 type TrialBalanceReport struct {
-	GeneratedAt  time.Time          `json:"generated_at"`
-	Items        []TrialBalanceItem `json:"items"`
-	TotalDebit   decimal.Decimal    `json:"total_debit"`
-	TotalCredit  decimal.Decimal    `json:"total_credit"`
-	IsBalanced   bool               `json:"is_balanced"`
+	GeneratedAt time.Time          `json:"generated_at"`
+	Items       []TrialBalanceItem `json:"items"`
+	TotalDebit  decimal.Decimal    `json:"total_debit"`
+	TotalCredit decimal.Decimal    `json:"total_credit"`
+	IsBalanced  bool               `json:"is_balanced"`
 }
 
 type AccountBalanceSummary struct {
@@ -33,15 +33,15 @@ type AccountBalanceSummary struct {
 }
 
 type BalanceSheetReport struct {
-	AsOfDate                time.Time               `json:"as_of_date"`
-	Assets                  []AccountBalanceSummary `json:"assets"`
-	Liabilities             []AccountBalanceSummary `json:"liabilities"`
-	Equity                  []AccountBalanceSummary `json:"equity"`
-	TotalAssets             decimal.Decimal         `json:"total_assets"`
-	TotalLiabilities        decimal.Decimal         `json:"total_liabilities"`
-	TotalEquity             decimal.Decimal         `json:"total_equity"`
-	TotalLiabilitiesAndEquity decimal.Decimal       `json:"total_liabilities_and_equity"`
-	IsBalanced              bool                    `json:"is_balanced"`
+	AsOfDate                  time.Time               `json:"as_of_date"`
+	Assets                    []AccountBalanceSummary `json:"assets"`
+	Liabilities               []AccountBalanceSummary `json:"liabilities"`
+	Equity                    []AccountBalanceSummary `json:"equity"`
+	TotalAssets               decimal.Decimal         `json:"total_assets"`
+	TotalLiabilities          decimal.Decimal         `json:"total_liabilities"`
+	TotalEquity               decimal.Decimal         `json:"total_equity"`
+	TotalLiabilitiesAndEquity decimal.Decimal         `json:"total_liabilities_and_equity"`
+	IsBalanced                bool                    `json:"is_balanced"`
 }
 
 type IncomeStatementReport struct {

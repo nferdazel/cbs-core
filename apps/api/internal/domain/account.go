@@ -45,15 +45,15 @@ const (
 )
 
 type Account struct {
-	ID               uuid.UUID       `json:"id"`
-	AccountNumber    string          `json:"account_number"`
-	CustomerID       *uuid.UUID      `json:"customer_id,omitempty"`
-	CustomerName     string          `json:"customer_name,omitempty"`
-	ProductID        *uuid.UUID      `json:"product_id,omitempty"`
-	BranchID         *uuid.UUID      `json:"branch_id,omitempty"`
-	BranchCode       string          `json:"branch_code,omitempty"` // kode cabang rekening; kosong = data lama
-	COAID            uuid.UUID       `json:"coa_id"`
-	COACode          string          `json:"coa_code,omitempty"`
+	ID            uuid.UUID  `json:"id"`
+	AccountNumber string     `json:"account_number"`
+	CustomerID    *uuid.UUID `json:"customer_id,omitempty"`
+	CustomerName  string     `json:"customer_name,omitempty"`
+	ProductID     *uuid.UUID `json:"product_id,omitempty"`
+	BranchID      *uuid.UUID `json:"branch_id,omitempty"`
+	BranchCode    string     `json:"branch_code,omitempty"` // kode cabang rekening; kosong = data lama
+	COAID         uuid.UUID  `json:"coa_id"`
+	COACode       string     `json:"coa_code,omitempty"`
 	// COABook adalah buku COA rekening (konvensional/syariah). Dipakai untuk
 	// menolak transaksi yang mencampur buku, mis. pembiayaan syariah yang
 	// mencairkan dana ke rekening konvensional.

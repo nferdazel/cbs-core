@@ -26,20 +26,17 @@ export interface NavItem {
   labelKey: keyof Dictionary["nav"];
   icon: LucideIcon;
   /**
-   * Bila diisi, item hanya tampil bagi peran ini. Tutup hari memerlukan permission
-   * `system:config` yang menurut domain.RolePermissions hanya dimiliki SUPERADMIN.
+   * Kunci menu stabil yang dipetakan ke izin di database (user_group / menu_catalog,
+   * migrasi 000079). Web TIDAK menyimpan salinan peran maupun izin: server mengirim
+   * daftar menu yang terbuka lewat GET /auth/me -> `menus`, dan sidebar hanya
+   * merender item yang kuncinya ada di daftar itu. Pemetaan menu<->izin dapat diubah
+   * tanpa rilis kode web.
    */
-  requiredRole?: string;
-  /**
-   * Daftar peran yang boleh melihat item. Dipakai bila izin endpoint halaman dimiliki
-   * lebih dari satu peran. Bila diisi, `requiredRole` tidak dipakai. Peran yang tidak
-   * disebut disembunyikan (termasuk saat peran belum diketahui), bukan ditampilkan
-   * lalu ditolak 403 oleh backend.
-   */
-  requiredRoles?: string[];
+  menuKey: string;
   /**
    * Bila diisi, item hanya tampil pada instalasi yang mengaktifkan buku ini
-   * (GET /auth/me -> active_books). Cakupan dibaca dari server, bukan di-hardcode.
+   * (GET /auth/me -> active_books). Cakupan buku dibaca dari server, bukan
+   * di-hardcode; ini semata penyaring tampilan, bukan batas keamanan.
    */
   book?: "CONVENTIONAL" | "SYARIAH";
 }
@@ -49,60 +46,27 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-// Salinan izin dari domain.RolePermissions (apps/api/internal/domain/staff.go).
-// Peran Go tidak dibagikan ke web, jadi daftar ini dijaga manual: samakan dengan
-// RolePermissions bila permission berubah, agar menu tidak menampilkan halaman yang
-// akan ditolak backend dengan 403.
-
-// ledger:read — dipakai daftar transaksi, jatuh tempo, buku besar, dan laporan.
-const LEDGER_READ_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "TELLER", "CS", "AUDITOR"];
-// loans:read — dipakai daftar kredit/pembiayaan dan pratinjau PPAP.
-const LOANS_READ_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AO", "AUDITOR"];
-// maker_checker:approve/reject — antrean persetujuan.
-const MAKER_CHECKER_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR"];
-// users:read — daftar cabang.
-const USERS_READ_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AUDITOR"];
-// reports:export — definisi/ekspor laporan OJK dan peninjauan pemetaan (baca).
-const REPORTS_ROLES = ["SUPERADMIN", "ADMIN", "SUPERVISOR", "AUDITOR"];
-// transactions:deposit/withdraw/transfer — layar teller yang hanya memposting transaksi.
-const TRANSACTION_ROLES = ["SUPERADMIN", "ADMIN", "TELLER"];
-
 /** Navigasi per domain (DESIGN.md bagian "Navigasi"). */
 export const NAV_GROUPS: NavGroup[] = [
   {
     titleKey: "groupOperations",
     items: [
-      { href: "/", labelKey: "beranda", icon: Home },
-      {
-        href: "/teller",
-        labelKey: "teller",
-        icon: Wallet,
-        requiredRoles: TRANSACTION_ROLES,
-      },
-      {
-        href: "/transaksi",
-        labelKey: "transaksi",
-        icon: CreditCard,
-        requiredRoles: LEDGER_READ_ROLES,
-      },
-      { href: "/deposito", labelKey: "deposito", icon: PiggyBank },
+      { href: "/", labelKey: "beranda", icon: Home, menuKey: "beranda" },
+      { href: "/teller", labelKey: "teller", icon: Wallet, menuKey: "teller" },
+      { href: "/transaksi", labelKey: "transaksi", icon: CreditCard, menuKey: "transaksi" },
+      { href: "/deposito", labelKey: "deposito", icon: PiggyBank, menuKey: "deposito" },
       {
         href: "/jatuh-tempo",
         labelKey: "jatuhTempo",
         icon: CalendarClock,
-        requiredRoles: LEDGER_READ_ROLES,
+        menuKey: "jatuh_tempo",
       },
-      {
-        href: "/ppap",
-        labelKey: "ppap",
-        icon: ShieldCheck,
-        requiredRoles: LOANS_READ_ROLES,
-      },
+      { href: "/ppap", labelKey: "ppap", icon: ShieldCheck, menuKey: "ppap" },
       {
         href: "/tutup-hari",
         labelKey: "tutupHari",
         icon: CalendarCheck,
-        requiredRole: "SUPERADMIN",
+        menuKey: "tutup_hari",
       },
     ],
   },
@@ -113,36 +77,31 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/kredit",
         labelKey: "kredit",
         icon: Landmark,
-        requiredRoles: LOANS_READ_ROLES,
+        menuKey: "kredit",
         book: "CONVENTIONAL",
       },
       {
         href: "/pembiayaan",
         labelKey: "pembiayaan",
         icon: HandCoins,
-        requiredRoles: LOANS_READ_ROLES,
+        menuKey: "pembiayaan",
         book: "SYARIAH",
       },
       {
         href: "/persetujuan",
         labelKey: "persetujuan",
         icon: CheckSquare,
-        requiredRoles: MAKER_CHECKER_ROLES,
+        menuKey: "persetujuan",
       },
     ],
   },
   {
     titleKey: "groupMaster",
     items: [
-      { href: "/nasabah", labelKey: "nasabah", icon: Users },
-      { href: "/rekening", labelKey: "rekening", icon: Briefcase },
-      { href: "/produk", labelKey: "produk", icon: Package },
-      {
-        href: "/cabang",
-        labelKey: "cabang",
-        icon: Building2,
-        requiredRoles: USERS_READ_ROLES,
-      },
+      { href: "/nasabah", labelKey: "nasabah", icon: Users, menuKey: "nasabah" },
+      { href: "/rekening", labelKey: "rekening", icon: Briefcase, menuKey: "rekening" },
+      { href: "/produk", labelKey: "produk", icon: Package, menuKey: "produk" },
+      { href: "/cabang", labelKey: "cabang", icon: Building2, menuKey: "cabang" },
     ],
   },
   {
@@ -152,24 +111,19 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/buku-besar",
         labelKey: "bukuBesar",
         icon: BookOpenCheck,
-        requiredRoles: LEDGER_READ_ROLES,
+        menuKey: "buku_besar",
       },
-      {
-        href: "/laporan",
-        labelKey: "laporan",
-        icon: BarChart3,
-        requiredRoles: LEDGER_READ_ROLES,
-      },
+      { href: "/laporan", labelKey: "laporan", icon: BarChart3, menuKey: "laporan" },
       {
         href: "/pemetaan-ojk",
         labelKey: "pemetaanOjk",
         icon: ListChecks,
-        requiredRoles: REPORTS_ROLES,
+        menuKey: "pemetaan_ojk",
       },
     ],
   },
   {
     titleKey: "groupSettings",
-    items: [{ href: "/pengaturan", labelKey: "pengaturan", icon: Settings }],
+    items: [{ href: "/pengaturan", labelKey: "pengaturan", icon: Settings, menuKey: "pengaturan" }],
   },
 ];

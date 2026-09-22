@@ -59,13 +59,13 @@ type LoanAgreementData struct {
 
 // Passbook Line Entry for Dot-Matrix Printer (PLQ-20/30)
 type PassbookLine struct {
-	LineNumber    int             `json:"line_number"`
-	Date          string          `json:"date"`
-	TxCode        string          `json:"tx_code"`
-	DebitAmount   decimal.Decimal `json:"debit_amount"`
-	CreditAmount  decimal.Decimal `json:"credit_amount"`
-	Balance       decimal.Decimal `json:"balance"`
-	TellerID      string          `json:"teller_id"`
+	LineNumber   int             `json:"line_number"`
+	Date         string          `json:"date"`
+	TxCode       string          `json:"tx_code"`
+	DebitAmount  decimal.Decimal `json:"debit_amount"`
+	CreditAmount decimal.Decimal `json:"credit_amount"`
+	Balance      decimal.Decimal `json:"balance"`
+	TellerID     string          `json:"teller_id"`
 }
 
 // DocumentService membuat dokumen cetak. Setiap metode menerima aktor dan wajib

@@ -21,6 +21,12 @@ export interface StaffUser {
   book?: string;
   book_scope?: string;
   active_books?: string[];
+  /**
+   * Izin efektif dan kunci menu yang terbuka, dari GET /auth/me. Sumbernya database
+   * (grup pengguna), bukan salinan peran di web; sidebar merender menu dari `menus`.
+   */
+  permissions?: string[];
+  menus?: string[];
   is_active: boolean;
   last_login_at?: string;
   password_changed_at: string;

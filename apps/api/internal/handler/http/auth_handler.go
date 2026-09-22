@@ -148,6 +148,18 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		activeBooks = append(activeBooks, string(b))
 	}
 
+	// Izin dan menu berasal dari database (diisi middleware dari identitas sesi),
+	// bukan dari salinan pemetaan peran di kode. Web merender menu dari `menus`
+	// dan tidak lagi menyimpan daftar peran/izin; server tetap penentu akses.
+	permissions := claims.Permissions
+	if permissions == nil {
+		permissions = []domain.Permission{}
+	}
+	menus := claims.Menus
+	if menus == nil {
+		menus = []string{}
+	}
+
 	Success(w, http.StatusOK, "current user", map[string]any{
 		"user_id":      claims.UserID,
 		"username":     claims.Username,
@@ -156,6 +168,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"book":         claims.Book,
 		"book_scope":   scope,
 		"active_books": activeBooks,
-		"permissions":  domain.RolePermissions[claims.Role],
+		"permissions":  permissions,
+		"menus":        menus,
 	})
 }

@@ -15,6 +15,7 @@ interface MeResponse {
   book_scope?: string;
   active_books?: string[];
   permissions: string[];
+  menus?: string[];
 }
 
 interface UseAuthResult {
@@ -57,6 +58,8 @@ export function useAuth(): UseAuthResult {
           book: me.book,
           book_scope: me.book_scope,
           active_books: me.active_books,
+          permissions: me.permissions,
+          menus: me.menus,
           is_active: true,
           password_changed_at: "",
           created_at: "",

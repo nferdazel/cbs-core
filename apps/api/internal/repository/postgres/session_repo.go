@@ -84,7 +84,94 @@ func (r *SessionRepository) GetIdentity(ctx context.Context, sessionID uuid.UUID
 	if lockedUntil.Valid {
 		identity.LockedUntil = &lockedUntil.Time
 	}
+
+	// Izin & menu dibaca dari DATABASE setiap permintaan, bukan dari kode dan bukan
+	// dari token: perubahan pemetaan izin langsung berlaku, dan token lama tidak
+	// dapat menahan izin yang sudah dicabut. Bila tabel grup belum ada (database
+	// belum dimigrasi), identitas gagal dibaca — lebih baik terlihat daripada
+	// diam-diam jatuh ke pemetaan kode.
+	permissions, err := r.effectivePermissions(ctx, identity.UserID, identity.Role)
+	if err != nil {
+		return nil, err
+	}
+	identity.Permissions = permissions
+	menus, err := r.allowedMenus(ctx, identity.UserID, identity.Role)
+	if err != nil {
+		return nil, err
+	}
+	identity.Menus = menus
 	return &identity, nil
+}
+
+// effectivePermissions menghitung izin efektif pengguna: izin grup ROLE_<peran>
+// digabung keanggotaan grup lain. Semantiknya ADITIF, sehingga menambah grup tidak
+// pernah mencabut akses; pengguna tanpa keanggotaan tetap memperoleh izin perannya
+// lewat cabang role group.
+func (r *SessionRepository) effectivePermissions(ctx context.Context, userID uuid.UUID, role domain.StaffRole) ([]domain.Permission, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT gp.permission
+		FROM group_permissions gp
+		JOIN user_groups g ON g.id = gp.group_id
+		WHERE g.code = 'ROLE_' || $2
+		UNION
+		SELECT DISTINCT gp.permission
+		FROM user_group_members m
+		JOIN group_permissions gp ON gp.group_id = m.group_id
+		WHERE m.user_id = $1
+		ORDER BY 1`, userID, string(role))
+	if err != nil {
+		return nil, fmt.Errorf("membaca izin efektif: %w", err)
+	}
+	defer rows.Close()
+
+	perms := []domain.Permission{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		perms = append(perms, domain.Permission(p))
+	}
+	return perms, rows.Err()
+}
+
+// allowedMenus mengembalikan kunci menu yang terbuka oleh izin efektif pengguna.
+// Menu tanpa pemetaan izin selalu tampil (mis. beranda). Penyaringan buku dilakukan
+// handler memakai cakupan instalasi yang hanya diketahui middleware.
+func (r *SessionRepository) allowedMenus(ctx context.Context, userID uuid.UUID, role domain.StaffRole) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH effective AS (
+			SELECT gp.permission
+			FROM group_permissions gp
+			JOIN user_groups g ON g.id = gp.group_id
+			WHERE g.code = 'ROLE_' || $2
+			UNION
+			SELECT gp.permission
+			FROM user_group_members m
+			JOIN group_permissions gp ON gp.group_id = m.group_id
+			WHERE m.user_id = $1
+		)
+		SELECT m.menu_key
+		FROM menu_catalog m
+		WHERE NOT EXISTS (SELECT 1 FROM menu_permissions mp WHERE mp.menu_key = m.menu_key)
+		   OR EXISTS (SELECT 1 FROM menu_permissions mp
+		              WHERE mp.menu_key = m.menu_key
+		                AND mp.permission IN (SELECT permission FROM effective))
+		ORDER BY m.menu_key ASC`, userID, string(role))
+	if err != nil {
+		return nil, fmt.Errorf("membaca menu: %w", err)
+	}
+	defer rows.Close()
+
+	menus := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		menus = append(menus, key)
+	}
+	return menus, rows.Err()
 }
 
 func (r *SessionRepository) RevokeByID(ctx context.Context, sessionID uuid.UUID) error {

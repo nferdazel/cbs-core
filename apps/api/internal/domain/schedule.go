@@ -9,13 +9,13 @@ import (
 
 // ScheduleParams adalah masukan murni untuk pembentukan jadwal angsuran.
 type ScheduleParams struct {
-	Principal    decimal.Decimal
-	AnnualRate   decimal.Decimal // persen per tahun (konvensional)
-	Margin       decimal.Decimal // margin total (murabahah)
-	TermMonths   int
-	StartDate    time.Time
-	Method       ScheduleMethod
-	ProfitType   ProfitType
+	Principal  decimal.Decimal
+	AnnualRate decimal.Decimal // persen per tahun (konvensional)
+	Margin     decimal.Decimal // margin total (murabahah)
+	TermMonths int
+	StartDate  time.Time
+	Method     ScheduleMethod
+	ProfitType ProfitType
 }
 
 // BuildSchedule menghasilkan jadwal angsuran sesuai metode produk. Semua nominal

@@ -17,7 +17,7 @@ import (
 )
 
 type authService struct {
-	staffRepo  domain.StaffRepository
+	staffRepo   domain.StaffRepository
 	sessionRepo domain.SessionRepository
 	configRepo  domain.SystemConfigRepository
 	jwtSecret   []byte
@@ -30,7 +30,7 @@ func NewAuthService(
 	jwtSecret string,
 ) domain.AuthService {
 	return &authService{
-		staffRepo:  staffRepo,
+		staffRepo:   staffRepo,
 		sessionRepo: sessionRepo,
 		configRepo:  configRepo,
 		jwtSecret:   []byte(jwtSecret),
@@ -275,6 +275,12 @@ func (s *authService) ValidateAccessToken(ctx context.Context, tokenString strin
 		// Penanda ini dibaca dari klaim, bukan dari basis data: status kedaluwarsa
 		// dibekukan saat token diterbitkan agar konsisten dengan keputusan login.
 		PasswordExpired: pwdExpired,
+		// Izin & menu efektif dibaca dari database (lihat SessionIdentity) dan
+		// diisi ulang setiap permintaan, sehingga tidak dari token dan tidak dari
+		// pemetaan peran di kode.
+		Permissions:       identity.Permissions,
+		PermissionsLoaded: true,
+		Menus:             identity.Menus,
 	}, nil
 }
 

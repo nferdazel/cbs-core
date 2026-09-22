@@ -417,29 +417,24 @@ func TestSeedPreservesWrittenRoleLimitIntent(t *testing.T) {
 	}
 }
 
-// TestSeedAlignsApprovalWithMakerCheckerThreshold memastikan ambang persetujuan di
-// limit.* tidak lagi menimpa ambang maker_checker.*: nilainya sama per jenis transaksi.
-func TestSeedAlignsApprovalWithMakerCheckerThreshold(t *testing.T) {
+// TestSeedHapusAmbangMakerCheckerYangTidakDibaca menjaga agar ambang maker-checker
+// yang tidak pernah dibaca kode tetap terhapus dari seed (migrasi 000080). Sebelumnya
+// uji ini justru memastikan kunci-kunci basi itu ada; sekarang arahnya dibalik agar
+// kunci ter-seed tanpa pembaca tidak kembali dan menyamar sebagai ambang yang berlaku.
+// Setoran/penarikan/transfer memakai limit.<peran>.<jenis>.approval_above sebagai satu
+// sumber; pembatalan lintas hari selalu lewat pejabat kedua. Hanya tiga aksi kredit
+// yang dibaca Threshold() dan karena itu tetap di-seed.
+func TestSeedHapusAmbangMakerCheckerYangTidakDibaca(t *testing.T) {
 	seeded := parseSystemConfigSeed(t, filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations"))
 
-	for _, tc := range []struct{ txType, action string }{
-		{"DEPOSIT", "deposit"},
-		{"WITHDRAWAL", "withdrawal"},
-		{"TRANSFER", "transfer"},
-	} {
-		want, ok := seeded["maker_checker."+tc.action+".threshold"]
-		if !ok {
-			t.Fatalf("maker_checker.%s.threshold tidak di-seed", tc.action)
+	for _, action := range []string{"deposit", "withdrawal", "transfer", "reverse_transaction"} {
+		if _, ok := seeded["maker_checker."+action+".threshold"]; ok {
+			t.Fatalf("maker_checker.%s.threshold masih di-seed padahal tidak dibaca kode", action)
 		}
-		for _, role := range service.TransactionLimitRoles() {
-			key := fmt.Sprintf("limit.%s.%s.approval_above", strings.ToLower(string(role)), strings.ToLower(tc.txType))
-			got, ok := seeded[key]
-			if !ok {
-				t.Fatalf("kunci %s tidak di-seed", key)
-			}
-			if got != want {
-				t.Fatalf("%s = %s, ingin sama dengan maker_checker.%s.threshold = %s", key, got, tc.action, want)
-			}
+	}
+	for _, action := range []string{"loan_write_off", "loan_recovery", "loan_correction"} {
+		if _, ok := seeded["maker_checker."+action+".threshold"]; !ok {
+			t.Fatalf("maker_checker.%s.threshold tidak di-seed padahal dibaca Threshold()", action)
 		}
 	}
 }

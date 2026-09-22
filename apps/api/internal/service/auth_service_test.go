@@ -34,13 +34,13 @@ func (s *stubStaffRepo) GetByUsername(ctx context.Context, username string) (*do
 func (s *stubStaffRepo) List(ctx context.Context, limit, offset int) ([]domain.StaffUser, int, error) {
 	return nil, 0, nil
 }
-func (s *stubStaffRepo) Update(ctx context.Context, u *domain.StaffUser) error           { return nil }
-func (s *stubStaffRepo) IncrementFailedLogin(ctx context.Context, id uuid.UUID) error    { return nil }
+func (s *stubStaffRepo) Update(ctx context.Context, u *domain.StaffUser) error        { return nil }
+func (s *stubStaffRepo) IncrementFailedLogin(ctx context.Context, id uuid.UUID) error { return nil }
 func (s *stubStaffRepo) LockAccount(ctx context.Context, id uuid.UUID, until time.Time) error {
 	return nil
 }
-func (s *stubStaffRepo) ResetFailedLogin(ctx context.Context, id uuid.UUID) error       { return nil }
-func (s *stubStaffRepo) UpdateLastLogin(ctx context.Context, id uuid.UUID) error        { return nil }
+func (s *stubStaffRepo) ResetFailedLogin(ctx context.Context, id uuid.UUID) error { return nil }
+func (s *stubStaffRepo) UpdateLastLogin(ctx context.Context, id uuid.UUID) error  { return nil }
 func (s *stubStaffRepo) UpdatePassword(ctx context.Context, id uuid.UUID, hash string) error {
 	return nil
 }
@@ -81,9 +81,9 @@ func (s *stubSessionRepo) GetByTokenHash(ctx context.Context, hash string) (*dom
 	}
 	return nil, errors.New("not found")
 }
-func (s *stubSessionRepo) RevokeByID(ctx context.Context, id uuid.UUID) error         { return nil }
-func (s *stubSessionRepo) RevokeAllForUser(ctx context.Context, id uuid.UUID) error   { return nil }
-func (s *stubSessionRepo) DeleteExpired(ctx context.Context) error                     { return nil }
+func (s *stubSessionRepo) RevokeByID(ctx context.Context, id uuid.UUID) error       { return nil }
+func (s *stubSessionRepo) RevokeAllForUser(ctx context.Context, id uuid.UUID) error { return nil }
+func (s *stubSessionRepo) DeleteExpired(ctx context.Context) error                  { return nil }
 
 type stubConfigRepo struct{}
 

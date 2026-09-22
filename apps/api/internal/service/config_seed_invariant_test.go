@@ -138,10 +138,14 @@ func runtimeGeneratedConfigKeys() []string {
 		keys = append(keys, fmt.Sprintf("ppap.rate_frac.gol_%d", i))
 	}
 
-	// maker_checkerService.Threshold(): maker_checker.<aksi>.threshold. Daftar aksi
-	// mengikuti konstanta Action* di ledger_service.go dan loan_service.go.
+	// makerCheckerService.Threshold(): maker_checker.<aksi>.threshold. HANYA aksi kredit
+	// yang benar-benar memanggilnya lewat guardLoanApproval (loan_service.go). Setoran,
+	// penarikan, dan transfer dibaca dari limit.<peran>.<jenis>.approval_above, dan
+	// pembatalan lintas hari selalu menunggu pejabat kedua tanpa ambang nominal. Karena
+	// itu kunci transaksi tersebut tidak lagi di-seed (dihapus migrasi 000080) dan TIDAK
+	// boleh dicantumkan di sini — mencantumkannya akan menyamarkan kunci basi dari
+	// pemeriksaan "ter-seed tetapi tidak dibaca".
 	for _, action := range []string{
-		"deposit", "withdrawal", "transfer", "reverse_transaction",
 		"loan_write_off", "loan_recovery", "loan_correction",
 	} {
 		keys = append(keys, "maker_checker."+action+".threshold")

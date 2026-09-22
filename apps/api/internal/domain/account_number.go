@@ -16,9 +16,9 @@ import (
 //
 // Total 16 digit. Cek digit membuat salah ketik satu digit selalu terdeteksi.
 const (
-	AccountNumberLength = 16
-	accountSerialDigits = 9
-	accountBranchDigits = 3
+	AccountNumberLength  = 16
+	accountSerialDigits  = 9
+	accountBranchDigits  = 3
 	accountProductDigits = 3
 )
 

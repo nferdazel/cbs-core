@@ -152,9 +152,19 @@ const (
 	// pengawas dapat meninjau kebijakan batas tanpa ikut mendapat wewenang menulis
 	// konfigurasi, menjalankan EOD/EOM/EOY, atau mengubah state sistem.
 	PermSystemConfigRead Permission = "system:config:read"
+
+	// PermPermissionsManage mengajukan perubahan pemetaan izin lewat maker-checker.
+	// Dipisahkan dari PermSystemConfig supaya pengelolaan izin dapat dipegang ADMIN
+	// tanpa ikut membuka wewenang EOD/state sistem; disetujui peran lain mengikuti
+	// alur maker-checker (pembuat tidak boleh menyetujui pengajuannya sendiri).
+	PermPermissionsManage Permission = "permissions:manage"
 )
 
-// RolePermissions is the canonical permission map — configurable via DB overrides.
+// RolePermissions adalah SEED AWAL pemetaan izin, bukan sumber kebenaran runtime.
+// Sumber kebenaran adalah database (grup pengguna; migrasi 000079), dan runtime
+// membaca izin efektif dari sana. Peta ini dipakai migrasi untuk mengisi grup bawaan
+// per peran; uji invarian menegakkan keduanya tetap sinkron, dan bila kode diubah
+// tanpa memperbarui migrasi, uji GAGAL agar ketidaksinkronan terlihat.
 var RolePermissions = map[StaffRole][]Permission{
 	RoleSuperAdmin: {
 		PermProductsRead,
@@ -169,6 +179,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
 		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermPermissionsManage,
 		PermSystemConfig, PermSystemConfigRead,
 	},
 	RoleAdmin: {
@@ -183,6 +194,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead, PermCOAManage,
 		PermAuditLogsRead, PermReportsExport, PermReportsFinancialRead,
+		PermPermissionsManage,
 		PermSystemConfigRead,
 	},
 	RoleSupervisor: {
@@ -296,13 +308,19 @@ type StaffSession struct {
 // dapat mencerminkan logout, penguncian akun, penonaktifan pengguna, pencabutan sesi,
 // atau perubahan peran yang terjadi setelahnya.
 type SessionIdentity struct {
-	SessionID   uuid.UUID
-	UserID      uuid.UUID
-	Username    string
-	Role        StaffRole
-	BranchCode  string
-	Book        COABook
-	IsActive    bool
+	SessionID  uuid.UUID
+	UserID     uuid.UUID
+	Username   string
+	Role       StaffRole
+	BranchCode string
+	Book       COABook
+	IsActive   bool
+	// Permissions adalah izin EFEKTIF dari database (grup ROLE_<peran> digabung
+	// keanggotaan grup lain), bukan dari kode. Dibaca setiap permintaan sehingga
+	// perubahan pemetaan izin berlaku tanpa rilis kode. Menus adalah kunci menu
+	// yang terbuka oleh izin itu, juga dari database.
+	Permissions []Permission
+	Menus       []string
 	LockedUntil *time.Time
 }
 
@@ -337,6 +355,33 @@ type JWTClaims struct {
 	// sandi (lihat middleware.RequirePasswordChange), bukan ditolak saat login,
 	// supaya pengguna tetap punya jalur pulih.
 	PasswordExpired bool `json:"pwd_expired"`
+	// Permissions adalah izin efektif dari database, diisi ulang setiap permintaan
+	// (lihat SessionIdentity). Bukan dari token: perubahan pemetaan izin langsung
+	// berlaku, dan token lama tidak dapat menahan izin yang sudah dicabut.
+	Permissions []Permission `json:"-"`
+	// PermissionsLoaded membedakan "izin sudah dimuat dan memang kosong" dari
+	// "belum dimuat" (mis. claims yang dibangun di uji unit tanpa database).
+	// Tanpa penanda ini, izin yang sengaja dikosongkan akan jatuh kembali ke
+	// pemetaan peran kode dan pencabutan izin menjadi tidak berefek.
+	PermissionsLoaded bool `json:"-"`
+	// Menus adalah kunci menu yang terbuka oleh Permissions, dibaca dari database.
+	Menus []string `json:"-"`
+}
+
+// HasPermission melaporkan apakah izin p dipegang pelaku. Sumbernya adalah izin
+// efektif database; pemetaan peran kode hanya dipakai bila izin belum dimuat
+// (mis. claims yang dibangun di uji unit), sehingga runtime tidak pernah membaca
+// kode sebagai sumber kedua.
+func (c *JWTClaims) HasPermission(p Permission) bool {
+	if c.PermissionsLoaded {
+		for _, perm := range c.Permissions {
+			if perm == p {
+				return true
+			}
+		}
+		return false
+	}
+	return c.Role.HasPermission(p)
 }
 
 // ToActor membangun identitas pelaku dari claims. IP address diisi terpisah oleh

@@ -11,7 +11,7 @@ import (
 type CollectionType string
 
 const (
-	CollectionSavingsDeposit CollectionType = "SAVINGS_DEPOSIT"
+	CollectionSavingsDeposit  CollectionType = "SAVINGS_DEPOSIT"
 	CollectionLoanInstallment CollectionType = "LOAN_INSTALLMENT"
 )
 
@@ -19,7 +19,7 @@ type MobileCollectionInput struct {
 	AccountNumber  string          `json:"account_number"`
 	LoanID         *uuid.UUID      `json:"loan_id,omitempty"`
 	InstallmentNo  *int            `json:"installment_no,omitempty"`
-	CollectionType CollectionType `json:"collection_type"`
+	CollectionType CollectionType  `json:"collection_type"`
 	Amount         decimal.Decimal `json:"amount"`
 	Latitude       float64         `json:"latitude"`
 	Longitude      float64         `json:"longitude"`
@@ -27,15 +27,15 @@ type MobileCollectionInput struct {
 }
 
 type MobileCollectionResult struct {
-	ReceiptNumber   string           `json:"receipt_number"`
-	CollectionType  CollectionType   `json:"collection_type"`
-	AccountNumber   string           `json:"account_number"`
-	Amount          decimal.Decimal  `json:"amount"`
-	CollectedAt     time.Time        `json:"collected_at"`
-	CollectorID     uuid.UUID        `json:"collector_id"`
-	Latitude        float64          `json:"latitude"`
-	Longitude       float64          `json:"longitude"`
-	ReferenceNumber string           `json:"reference_number"`
+	ReceiptNumber   string          `json:"receipt_number"`
+	CollectionType  CollectionType  `json:"collection_type"`
+	AccountNumber   string          `json:"account_number"`
+	Amount          decimal.Decimal `json:"amount"`
+	CollectedAt     time.Time       `json:"collected_at"`
+	CollectorID     uuid.UUID       `json:"collector_id"`
+	Latitude        float64         `json:"latitude"`
+	Longitude       float64         `json:"longitude"`
+	ReferenceNumber string          `json:"reference_number"`
 }
 
 type CollectionService interface {

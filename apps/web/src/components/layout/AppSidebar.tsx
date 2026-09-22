@@ -7,37 +7,41 @@ import { useTranslation } from "@/i18n/context";
 import { NAV_GROUPS, type NavItem } from "./nav";
 
 export interface AppSidebarProps {
-  /** Peran pengguna; item dengan pembatasan peran yang tidak cocok tidak dirender. */
-  role?: string | null;
+  /**
+   * Kunci menu yang terbuka bagi pengguna, dihitung server dari izin efektif
+   * (GET /auth/me -> menus). Web tidak menyimpan salinan peran/izin. Bila belum
+   * diketahui (null/undefined), semua item ditampilkan — server tetap penentu
+   * akses — supaya sesi lama tidak kehilangan menu.
+   */
+  menus?: string[] | null;
   /**
    * Buku yang aktif di instalasi (GET /auth/me -> active_books). Item yang menandai
-   * buku lain tidak dirender. Bila belum diketahui (undefined), semua item ditampilkan
-   * — server tetap penentu akses — supaya sesi lama tidak kehilangan menu.
+   * buku lain tidak dirender.
    */
   activeBooks?: string[] | null;
 }
 
 /**
- * Apakah item boleh tampil untuk peran ini. `requiredRoles` didahulukan; peran yang
- * belum diketahui tidak lolos (lebih baik tidak menampilkan pintu yang akan 403).
- * `requiredRole` dipertahankan persis seperti sebelumnya agar menu lama tidak berubah.
+ * Apakah item boleh tampil. Penyaringan buku dari cakupan instalasi, lalu kunci
+ * menu harus ada di daftar yang diberikan server. Menyembunyikan menu BUKAN batas
+ * keamanan; setiap endpoint tetap dijaga izin di API.
  */
-function isItemVisible(item: NavItem, role?: string | null, activeBooks?: string[] | null): boolean {
+function isItemVisible(item: NavItem, menus?: string[] | null, activeBooks?: string[] | null): boolean {
   if (item.book && activeBooks && !activeBooks.includes(item.book)) {
     return false;
   }
-  if (item.requiredRoles) {
-    return role != null && item.requiredRoles.includes(role);
+  if (menus == null) {
+    return true;
   }
-  return !item.requiredRole || item.requiredRole === role;
+  return menus.includes(item.menuKey);
 }
 
 /**
  * Sidebar vertikal tetap 240px. Item aktif ditandai latar navy + batas aksen
- * di sisi kiri (bukan warna saja). Item yang pasti gagal karena izin backend
+ * di sisi kiri (bukan warna saja). Item yang tidak dibuka izin backend
  * (mis. Tutup Hari) disembunyikan, bukan ditampilkan lalu ditolak.
  */
-export const AppSidebar: React.FC<AppSidebarProps> = ({ role, activeBooks }) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({ menus, activeBooks }) => {
   const pathname = usePathname();
   const { t } = useTranslation();
 
@@ -53,7 +57,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ role, activeBooks }) => 
           </p>
           <ul>
             {group.items
-              .filter((item) => isItemVisible(item, role, activeBooks))
+              .filter((item) => isItemVisible(item, menus, activeBooks))
               .map((item) => {
                 const isActive =
                   item.href === "/"

@@ -1,0 +1,202 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
+	"cbs-core/apps/core-api/internal/domain"
+)
+
+// PermissionRepository membaca & mengubah pemetaan grup/izin dan katalog menu.
+// Semua perubahan nyata terjadi lewat transaksi maker-checker (lihat service),
+// sehingga repository menyediakan varian *Tx.
+type PermissionRepository struct {
+	db *sql.DB
+}
+
+func NewPermissionRepository(db *sql.DB) *PermissionRepository {
+	return &PermissionRepository{db: db}
+}
+
+var _ domain.PermissionRepository = (*PermissionRepository)(nil)
+
+// ListGroups mengembalikan seluruh grup beserta izinnya. Dua kueri (grup dan izin)
+// lalu digabung di Go agar tidak ada kueri per grup.
+func (r *PermissionRepository) ListGroups(ctx context.Context) ([]domain.UserGroup, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, code, name, COALESCE(description, ''), is_system, approval_limit_role
+		FROM user_groups
+		ORDER BY is_system DESC, code ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca grup: %w", err)
+	}
+	defer rows.Close()
+
+	groups := []domain.UserGroup{}
+	index := map[string]int{}
+	for rows.Next() {
+		var g domain.UserGroup
+		var limitRole sql.NullString
+		if err := rows.Scan(&g.ID, &g.Code, &g.Name, &g.Description, &g.IsSystem, &limitRole); err != nil {
+			return nil, err
+		}
+		if limitRole.Valid {
+			g.ApprovalLimitRole = domain.StaffRole(limitRole.String)
+		}
+		index[g.Code] = len(groups)
+		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	permRows, err := r.db.QueryContext(ctx, `
+		SELECT g.code, gp.permission
+		FROM group_permissions gp
+		JOIN user_groups g ON g.id = gp.group_id
+		ORDER BY g.code, gp.permission`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca izin grup: %w", err)
+	}
+	defer permRows.Close()
+	for permRows.Next() {
+		var code, permission string
+		if err := permRows.Scan(&code, &permission); err != nil {
+			return nil, err
+		}
+		if i, ok := index[code]; ok {
+			groups[i].Permissions = append(groups[i].Permissions, domain.Permission(permission))
+		}
+	}
+	return groups, permRows.Err()
+}
+
+// ListMenus mengembalikan katalog menu beserta izin yang membukanya. Menu tanpa
+// baris izin tetap dikembalikan dengan daftar kosong (tampil untuk semua pengguna).
+func (r *PermissionRepository) ListMenus(ctx context.Context) ([]domain.MenuDefinition, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT menu_key
+		FROM menu_catalog
+		ORDER BY menu_key ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca katalog menu: %w", err)
+	}
+	defer rows.Close()
+
+	menus := []domain.MenuDefinition{}
+	index := map[string]int{}
+	for rows.Next() {
+		var m domain.MenuDefinition
+		if err := rows.Scan(&m.MenuKey); err != nil {
+			return nil, err
+		}
+		index[m.MenuKey] = len(menus)
+		menus = append(menus, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	permRows, err := r.db.QueryContext(ctx, `
+		SELECT menu_key, permission FROM menu_permissions ORDER BY menu_key, permission`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca izin menu: %w", err)
+	}
+	defer permRows.Close()
+	for permRows.Next() {
+		var menuKey, permission string
+		if err := permRows.Scan(&menuKey, &permission); err != nil {
+			return nil, err
+		}
+		if i, ok := index[menuKey]; ok {
+			menus[i].Permissions = append(menus[i].Permissions, domain.Permission(permission))
+		}
+	}
+	return menus, permRows.Err()
+}
+
+func (r *PermissionRepository) GroupExists(ctx context.Context, groupCode string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM user_groups WHERE code = $1)`, groupCode).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (r *PermissionRepository) GroupHasPermission(ctx context.Context, groupCode string, p domain.Permission) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM group_permissions gp
+			JOIN user_groups g ON g.id = gp.group_id
+			WHERE g.code = $1 AND gp.permission = $2)`, groupCode, p).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// GrantPermissionTx menambah izin ke grup. Grup tak dikenal menjadi 0 baris, yang
+// pemanggil perlakukan sebagai error; idempoten lewat ON CONFLICT.
+func (r *PermissionRepository) GrantPermissionTx(ctx context.Context, tx any, groupCode string, p domain.Permission) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("permission: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		INSERT INTO group_permissions (group_id, permission, granted_at)
+		SELECT id, $2, NOW() FROM user_groups WHERE code = $1
+		ON CONFLICT (group_id, permission) DO NOTHING`, groupCode, p)
+	return err
+}
+
+func (r *PermissionRepository) RevokePermissionTx(ctx context.Context, tx any, groupCode string, p domain.Permission) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("permission: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		DELETE FROM group_permissions gp
+		USING user_groups g
+		WHERE gp.group_id = g.id AND g.code = $1 AND gp.permission = $2`, groupCode, p)
+	return err
+}
+
+// CountUsersLosingPermission menghitung pengguna aktif yang benar-benar kehilangan
+// izin p bila p dicabut dari grup groupCode. Sumber izin efektif: grup ROLE_<peran>
+// (selalu berlaku) digabung keanggotaan grup lain (aditif). Karena itu seorang
+// pengguna hanya "kehilangan" bila tidak ada sumber lain yang masih memberikan p.
+func (r *PermissionRepository) CountUsersLosingPermission(ctx context.Context, groupCode string, p domain.Permission) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM staff_users u
+		WHERE u.is_active
+		  -- sumber saat ini memang grup tujuan
+		  AND EXISTS (
+		      SELECT 1 FROM group_permissions gp
+		      JOIN user_groups g ON g.id = gp.group_id
+		      WHERE g.code = $1 AND gp.permission = $2
+		        AND (g.code = 'ROLE_' || u.role::text OR EXISTS (
+		              SELECT 1 FROM user_group_members m WHERE m.user_id = u.id AND m.group_id = g.id)))
+		  -- dan group tujuan BUKAN satu-satunya sumber yang tersisa
+		  AND NOT (
+		      ($1 <> 'ROLE_' || u.role::text AND EXISTS (
+		          SELECT 1 FROM group_permissions gp
+		          JOIN user_groups rg ON rg.id = gp.group_id
+		          WHERE rg.code = 'ROLE_' || u.role::text AND gp.permission = $2))
+		      OR EXISTS (
+		          SELECT 1 FROM user_group_members m
+		          JOIN group_permissions gp ON gp.group_id = m.group_id
+		          JOIN user_groups og ON og.id = m.group_id
+		          WHERE m.user_id = u.id AND gp.permission = $2 AND og.code <> $1))`,
+		groupCode, p).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

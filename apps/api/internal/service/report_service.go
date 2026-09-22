@@ -85,15 +85,15 @@ func (s *reportService) GenerateBalanceSheet(ctx context.Context, asOfDate time.
 	totalLiabEquity := totalLiabilities.Add(totalEquity)
 
 	return &domain.BalanceSheetReport{
-		AsOfDate:                asOfDate,
-		Assets:                  assets,
-		Liabilities:             liabilities,
-		Equity:                  equity,
-		TotalAssets:             totalAssets,
-		TotalLiabilities:        totalLiabilities,
-		TotalEquity:             totalEquity,
+		AsOfDate:                  asOfDate,
+		Assets:                    assets,
+		Liabilities:               liabilities,
+		Equity:                    equity,
+		TotalAssets:               totalAssets,
+		TotalLiabilities:          totalLiabilities,
+		TotalEquity:               totalEquity,
 		TotalLiabilitiesAndEquity: totalLiabEquity,
-		IsBalanced:              totalAssets.Equal(totalLiabEquity),
+		IsBalanced:                totalAssets.Equal(totalLiabEquity),
 	}, nil
 }
 

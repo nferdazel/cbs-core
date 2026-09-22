@@ -105,6 +105,13 @@ func main() {
 	mcSvc := service.NewMakerCheckerService(db, mcRepo, auditRepo, configSvc, executors, dateRepo, branchRepo)
 	limitSvc := service.NewTransactionLimitService(configSvc, ledgerRepo, dateRepo)
 
+	// Grup pengguna & pemetaan izin tinggal di database (keputusan pemilik sistem).
+	// Perubahan izin diajukan lewat maker-checker dan diterapkan eksekutor ini saat
+	// disetujui; kode hanya menjadi seed awal migrasi 000079.
+	permissionRepo := postgres.NewPermissionRepository(db)
+	permissionSvc := service.NewPermissionService(permissionRepo, auditRepo, mcSvc)
+	executors.Register(service.ActionPermissionChange, permissionSvc)
+
 	customerSvc := service.NewCustomerService(db, customerRepo, cipher, referenceGen, auditRepo)
 	accountSvc := service.NewAccountService(db, accountRepo, customerRepo, customerSvc, productRepo, branchRepo, numberingRepo, configSvc, auditRepo)
 	branchSvc := service.NewBranchService(db, branchRepo, auditRepo)
@@ -213,6 +220,7 @@ func main() {
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
+	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
 
 	// 6. Router
@@ -241,6 +249,7 @@ func main() {
 		CollateralHandler:    httpHandler.NewCollateralHandler(collateralSvc),
 		AppInfoHandler:       appInfoHandler,
 		BankProfileHandler:   bankProfileHandler,
+		PermissionHandler:    permissionHandler,
 		AuthService:          authSvc,
 		ConfigService:        configSvc,
 		Cookies:              cookies,

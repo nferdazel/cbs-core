@@ -27,13 +27,13 @@ type SLIKFacility struct {
 }
 
 type SLIKCheckResult struct {
-	NIK               string                 `json:"nik"`
-	FullName          string                 `json:"full_name"`
-	CheckedAt         time.Time              `json:"checked_at"`
+	NIK                 string                   `json:"nik"`
+	FullName            string                   `json:"full_name"`
+	CheckedAt           time.Time                `json:"checked_at"`
 	WorstCollectibility SLIKCollectibilityStatus `json:"worst_collectibility"`
-	TotalOutstanding  float64                `json:"total_outstanding"`
-	ActiveFacilities  []SLIKFacility         `json:"active_facilities"`
-	IsEligible        bool                   `json:"is_eligible"`
+	TotalOutstanding    float64                  `json:"total_outstanding"`
+	ActiveFacilities    []SLIKFacility           `json:"active_facilities"`
+	IsEligible          bool                     `json:"is_eligible"`
 }
 
 // --- Dukcapil Identity Verification Models ---

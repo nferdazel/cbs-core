@@ -85,7 +85,10 @@ func RequirePermission(perm domain.Permission) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !claims.Role.HasPermission(perm) {
+			// Izin efektif berasal dari database (grup), diisi ulang tiap permintaan
+			// oleh AuthMiddleware. Menu tersembunyi bukan batas keamanan: rute inilah
+			// penjaganya, dan ia tidak bergantung pada apa yang ditampilkan web.
+			if !claims.HasPermission(perm) {
 				writeError(w, http.StatusForbidden,
 					"forbidden: your role ("+string(claims.Role)+") does not have '"+string(perm)+"' permission")
 				return

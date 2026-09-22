@@ -60,7 +60,10 @@ type RouterParams struct {
 	AppInfoHandler *AppInfoHandler
 	// BankProfileHandler mengelola identitas bank tingkat instalasi (baca & ubah).
 	BankProfileHandler *BankProfileHandler
-	AuthService        domain.AuthService
+	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
+	// pemetaan izin (lewat maker-checker, teraudit).
+	PermissionHandler *PermissionHandler
+	AuthService       domain.AuthService
 	// ConfigService membaca cakupan buku tingkat instalasi (institution.book_scope)
 	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
 	// seluruh aktor berperilaku DUAL seperti sebelum setelan ini ada.
@@ -353,6 +356,17 @@ func NewRouter(p RouterParams) *chi.Mux {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Post("/eoy", p.BatchProcessHandler.RunEOY)
 			})
+
+			// ── Grup pengguna, izin, dan menu (dikelola di database) ──
+			// Baca katalog cukup system:config:read (pengawas dapat meninjau).
+			// MENGUBAH pemetaan izin hanya lewat pengajuan permissions:manage, dan
+			// baru berlaku setelah disetujui pemeriksa lain (maker-checker).
+			if p.PermissionHandler != nil {
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/permissions/catalog", p.PermissionHandler.Catalog)
+				r.With(middleware.RequirePermission(domain.PermPermissionsManage)).
+					Post("/permissions/requests", p.PermissionHandler.RequestChange)
+			}
 
 			// ── Maker-Checker Workflow Queue ──
 			r.Route("/maker-checker", func(r chi.Router) {
