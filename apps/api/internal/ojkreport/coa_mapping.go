@@ -28,6 +28,45 @@ import "sort"
 // MappingStatus menandai tingkat verifikasi seluruh berkas pemetaan.
 const MappingStatus = "DRAF-BELUM-TERVERIFIKASI"
 
+// Kelas modal pada pemetaan bagan akun (POJK No. 5/POJK.03/2015 Pasal 3, 5, dan 10;
+// SEOJK No. 2/SEOJK.03/2025 Bagian II.3 dan IV.2). Nilai kosong berarti kelasnya
+// BELUM PASTI dan sengaja tidak diisi: kode berkelas kosong tidak boleh
+// diperhitungkan sebagai modal.
+const (
+	// ModalClassIntiUtama: modal disetor, agio, dana setoran modal (Pasal 6), modal
+	// sumbangan (Pasal 7), cadangan umum/tujuan ber-RUPS, laba tahun lalu & berjalan.
+	ModalClassIntiUtama = "INTI_UTAMA"
+	// ModalClassIntiTambahan: instrumen yang menuntut persetujuan OJK (Pasal 5 ayat
+	// (2)); daftarnya MANUAL per bank, tidak boleh ditebak dari saldo.
+	ModalClassIntiTambahan = "INTI_TAMBAHAN"
+	// ModalClassPelengkap: instrumen ber-persetujuan OJK, surplus revaluasi aset tetap,
+	// dan PPKA umum (Pasal 10).
+	ModalClassPelengkap = "PELENGKAP"
+	// ModalClassPengurang: pajak tangguhan, goodwill, disagio, AYDA/properti
+	// terbengkalai >1 tahun, rugi tahun lalu/berjalan, selisih PPKA-CKPN (Pasal 5
+	// ayat (4); SEOJK 2/2025 Bagian IV.2).
+	ModalClassPengurang = "PENGURANG"
+)
+
+// ModalClassValid melaporkan apakah nilai kelas modal termasuk himpunan yang dikenal.
+func ModalClassValid(class string) bool {
+	switch class {
+	case "", ModalClassIntiUtama, ModalClassIntiTambahan, ModalClassPelengkap, ModalClassPengurang:
+		return true
+	default:
+		return false
+	}
+}
+
+// Catatan kelengkapan: bagan akun baku belum memisahkan sejumlah komponen modal,
+// sehingga kelasnya sengaja DIBIARKAN KOSONG dan tidak ditebak:
+//   - INTI_TAMBAHAN: instrumen dengan persetujuan OJK (daftar manual per bank).
+//   - PELENGKAP: agio/disagio tidak dipisah dari modal, surplus revaluasi aset tetap
+//     belum berakun tersendiri, dan PPKA umum dihitung dari aset produktif lancar.
+//   - PENGURANG: pajak tangguhan, goodwill, disagio, AYDA/properti terbengkalai >1
+//     tahun (umur AYDA tidak tersedia pada bagan akun), rugi tahun lalu/berjalan
+//     (tanda saldo), dan selisih PPKA-CKPN yang dihitung modul CKPN, bukan saldo COA.
+
 // MappingEntry menghubungkan satu kode COA internal ke satu pos (sandi) OJK.
 type MappingEntry struct {
 	COACode string
@@ -39,6 +78,9 @@ type MappingEntry struct {
 	Verified bool
 	// Note menjelaskan keraguan/penalaran untuk entri yang belum pasti.
 	Note string
+	// ModalClass adalah kelas modal kode COA ini (lihat konstanta ModalClass*).
+	// Kosong berarti belum pasti dan TIDAK boleh diperhitungkan sebagai modal.
+	ModalClass string
 }
 
 // COAMappingDraft adalah pemetaan usulan. Terurut menurut kode COA agar mudah dibaca.
@@ -100,17 +142,28 @@ var COAMappingDraft = []MappingEntry{
 	{COACode: "12900", Form: "01.00", Sandi: "2299000000", Sign: 1, Note: "Kewajiban Lainnya Syariah -> Liabilitas Lainnya"},
 
 	// ── Form 01.00: EKUITAS ─────────────────────────────────────────────────
-	{COACode: "30100", Form: "01.00", Sandi: "3101010000", Sign: 1, Note: "Modal Disetor -> Modal Dasar"},
-	{COACode: "30200", Form: "01.00", Sandi: "3105010000", Sign: 1, Note: "Laba Ditahan -> Laba (rugi) Tahun-Tahun Lalu"},
-	{COACode: "30300", Form: "01.00", Sandi: "3105020000", Sign: 1, Note: "Laba Tahun Berjalan"},
-	{COACode: "30400", Form: "01.00", Sandi: "3104010000", Sign: 1, Note: "Cadangan Umum -> Cadangan a. Umum"},
-	{COACode: "13100", Form: "01.00", Sandi: "3101010000", Sign: 1, Note: "Modal Disetor Syariah -> Modal Dasar"},
-	{COACode: "13200", Form: "01.00", Sandi: "3105010000", Sign: 1, Note: "Laba Ditahan Syariah -> Laba Tahun-Tahun Lalu"},
+	// Modal inti utama (POJK 5/2015 Pasal 5 ayat (1)). Laba/rugi dipetakan ke
+	// INTI_UTAMA; saldo negatifnya (rugi tahun lalu/berjalan) adalah pengurang modal
+	// inti menurut Pasal 5 ayat (4) huruf e/f, tetapi kelas statis di sini tidak dapat
+	// membedakan tanda sehingga tanda itu ditangani pemakainya, bukan diisi ke kelas
+	// PENGURANG secara buta.
+	{COACode: "30100", Form: "01.00", Sandi: "3101010000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Modal Disetor -> Modal Dasar (Pasal 5 ayat (1) huruf a)"},
+	{COACode: "30200", Form: "01.00", Sandi: "3105010000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Laba Ditahan -> Laba (rugi) Tahun-Tahun Lalu (Pasal 5 ayat (1) huruf b angka 6); saldo negatif = pengurang modal inti (Pasal 5 ayat (4) huruf e)"},
+	{COACode: "30300", Form: "01.00", Sandi: "3105020000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Laba Tahun Berjalan (Pasal 5 ayat (1) huruf b angka 7; paling tinggi 50% setelah taksiran pajak); saldo negatif = pengurang modal inti (Pasal 5 ayat (4) huruf f)"},
+	{COACode: "30400", Form: "01.00", Sandi: "3104010000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Cadangan Umum -> Cadangan a. Umum (Pasal 5 ayat (1) huruf b angka 4; wajib persetujuan RUPS)"},
+	{COACode: "13100", Form: "01.00", Sandi: "3101010000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Modal Disetor Syariah -> Modal Dasar (Pasal 5 ayat (1) huruf a)"},
+	{COACode: "13200", Form: "01.00", Sandi: "3105010000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "Laba Ditahan Syariah -> Laba Tahun-Tahun Lalu (Pasal 5 ayat (1) huruf b angka 6)"},
 
 	// Baris penyeimbang dari reporting repo: kode "-" = Laba/Rugi Berjalan.
 	// Nilainya memang laba rugi berjalan yang belum ditutup ke ekuitas.
-	{COACode: "-", Form: "01.00", Sandi: "3105020000", Sign: 1,
-		Note: "baris penyeimbang laba/rugi berjalan dari domain.BalanceSheet"},
+	{COACode: "-", Form: "01.00", Sandi: "3105020000", Sign: 1, ModalClass: ModalClassIntiUtama,
+		Note: "baris penyeimbang laba/rugi berjalan dari domain.BalanceSheet (Pasal 5 ayat (1) huruf b angka 7)"},
 
 	// ── Form 02.00: PENDAPATAN OPERASIONAL ──────────────────────────────────
 	{COACode: "40100", Form: "02.00", Sandi: "4101010302", Sign: 1, Verified: false,

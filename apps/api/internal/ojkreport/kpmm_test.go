@@ -139,3 +139,110 @@ func TestPilihPengurangModalInti(t *testing.T) {
 		t.Fatalf("setelan tak dikenal = %s/%s, mau per_kredit", got, basis)
 	}
 }
+
+// TestBatasModalPelengkap membuktikan sub-batas POJK No. 5/POJK.03/2015 dipotong
+// dengan angka: komponen ber-instrumen paling tinggi 50% modal inti (Pasal 10 ayat
+// (2)), PPKA umum paling tinggi 1,25% ATMR (Pasal 10 ayat (1) huruf c), dan total
+// modal pelengkap paling tinggi 100% modal inti (Pasal 3 ayat (2)).
+func TestBatasModalPelengkap(t *testing.T) {
+	cases := []struct {
+		name                                      string
+		instrumen, surplus, ppka, modalInti, atmr string
+		pelengkapMax, instrumenMax, ppkaMax       string
+		wantInstrumen, wantSurplus, wantPPKA      string
+		wantTotal, wantPotonganInstrumen          string
+		wantPotonganPPKA, wantPotonganTotal       string
+	}{
+		{
+			// Instrumen 100jt, modal inti 100jt: batas 50% = 50jt, jadi dipotong 50jt;
+			// total 50jt masih di bawah batas 100% (100jt).
+			name:      "instrumen dipotong 50 persen modal inti",
+			instrumen: "100000000", surplus: "0", ppka: "0",
+			modalInti: "100000000", atmr: "1000000000",
+			pelengkapMax: "1.00", instrumenMax: "0.50", ppkaMax: "0.0125",
+			wantInstrumen: "50000000", wantSurplus: "0", wantPPKA: "0",
+			wantTotal: "50000000", wantPotonganInstrumen: "50000000",
+			wantPotonganPPKA: "0", wantPotonganTotal: "0",
+		},
+		{
+			// Instrumen (dibatasi 50jt) + surplus 70jt = 120jt melebihi batas total
+			// 100% modal inti (100jt), jadi total dipotong 20jt.
+			name:      "total pelengkap dipotong 100 persen modal inti",
+			instrumen: "100000000", surplus: "70000000", ppka: "0",
+			modalInti: "100000000", atmr: "1000000000",
+			pelengkapMax: "1.00", instrumenMax: "0.50", ppkaMax: "0.0125",
+			wantInstrumen: "50000000", wantSurplus: "70000000", wantPPKA: "0",
+			wantTotal: "100000000", wantPotonganInstrumen: "50000000",
+			wantPotonganPPKA: "0", wantPotonganTotal: "20000000",
+		},
+		{
+			// PPKA umum 20jt terhadap ATMR 1M: batas 1,25% = 12,5jt, dipotong 7,5jt.
+			name:      "ppka umum dipotong 1,25 persen atmr",
+			instrumen: "0", surplus: "0", ppka: "20000000",
+			modalInti: "100000000", atmr: "1000000000",
+			pelengkapMax: "1.00", instrumenMax: "0.50", ppkaMax: "0.0125",
+			wantInstrumen: "0", wantSurplus: "0", wantPPKA: "12500000",
+			wantTotal: "12500000", wantPotonganInstrumen: "0",
+			wantPotonganPPKA: "7500000", wantPotonganTotal: "0",
+		},
+		{
+			// Tidak ada komponen: semua nol, tanpa potongan.
+			name:      "tanpa komponen",
+			instrumen: "0", surplus: "0", ppka: "0",
+			modalInti: "100000000", atmr: "1000000000",
+			pelengkapMax: "1.00", instrumenMax: "0.50", ppkaMax: "0.0125",
+			wantInstrumen: "0", wantSurplus: "0", wantPPKA: "0",
+			wantTotal: "0", wantPotonganInstrumen: "0",
+			wantPotonganPPKA: "0", wantPotonganTotal: "0",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := BatasModalPelengkap(
+				d(tc.instrumen), d(tc.surplus), d(tc.ppka), d(tc.modalInti), d(tc.atmr),
+				d(tc.pelengkapMax), d(tc.instrumenMax), d(tc.ppkaMax),
+			)
+			if !h.Instrumen.Equal(d(tc.wantInstrumen)) || !h.SurplusRevaluasi.Equal(d(tc.wantSurplus)) || !h.PPKAUmum.Equal(d(tc.wantPPKA)) {
+				t.Fatalf("komponen = instrumen %s surplus %s ppka %s, mau %s/%s/%s",
+					h.Instrumen, h.SurplusRevaluasi, h.PPKAUmum, tc.wantInstrumen, tc.wantSurplus, tc.wantPPKA)
+			}
+			if !h.TotalEfektif.Equal(d(tc.wantTotal)) {
+				t.Fatalf("total efektif = %s, mau %s", h.TotalEfektif, tc.wantTotal)
+			}
+			if !h.PotonganInstrumen.Equal(d(tc.wantPotonganInstrumen)) ||
+				!h.PotonganPPKAUmum.Equal(d(tc.wantPotonganPPKA)) ||
+				!h.PotonganTotal.Equal(d(tc.wantPotonganTotal)) {
+				t.Fatalf("potongan = instrumen %s ppka %s total %s, mau %s/%s/%s",
+					h.PotonganInstrumen, h.PotonganPPKAUmum, h.PotonganTotal,
+					tc.wantPotonganInstrumen, tc.wantPotonganPPKA, tc.wantPotonganTotal)
+			}
+		})
+	}
+}
+
+// TestKlasifikasiModalCOATidakMenghasilkanModalFiktif membuktikan kode COA yang
+// kelas modalnya belum pasti (di luar pemetaan atau kelasnya kosong) TIDAK
+// menghasilkan entri modal sama sekali, bukan nol. Hanya saldo akun berkelas pasti
+// yang diperhitungkan.
+func TestKlasifikasiModalCOATidakMenghasilkanModalFiktif(t *testing.T) {
+	rows := []domain.ReportRow{
+		{AccountCode: "30100", Amount: d("500000000")},  // Modal Disetor -> INTI_UTAMA
+		{AccountCode: "29999", Amount: d("9999999999")}, // tak terpetakan: bukan modal
+		{AccountCode: "10500", Amount: d("10000000")},   // AYDA: kelas belum pasti -> kosong
+		{AccountCode: "20100", Amount: d("12345")},      // kewajiban: bukan modal
+	}
+	kelas := KlasifikasiModalCOA(rows)
+	if len(kelas) != 1 {
+		t.Fatalf("kelas = %v, mau hanya INTI_UTAMA", kelas)
+	}
+	if !kelas[ModalClassIntiUtama].Equal(d("500000000")) {
+		t.Fatalf("INTI_UTAMA = %s, mau 500000000", kelas[ModalClassIntiUtama])
+	}
+	if got := ModalClassCOA("10500"); got != "" {
+		t.Fatalf("ModalClassCOA(10500) = %q, mau kosong (umur AYDA tidak tersedia)", got)
+	}
+	if got := ModalClassCOA("29999"); got != "" {
+		t.Fatalf("ModalClassCOA(29999) = %q, mau kosong", got)
+	}
+}

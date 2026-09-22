@@ -55,6 +55,42 @@ func (s NJOPSource) Valid() bool {
 	return s == NJOPSourceTax || s == NJOPSourceAppraiser
 }
 
+// CollateralBinding adalah ikatan hukum agunan. Inilah pemisah utama bobot risiko
+// agunan pada Lampiran II SEOJK No. 2/SEOJK.03/2025: tanah/bangunan bersertifikat yang
+// dibebani hak tanggungan/fidusia (butir 12, 30%) berbeda dari yang tanpa beban
+// (butir 17, 50%), dan kendaraan yang terikat hipotek/fidusia (butir 19, 70%) berbeda
+// dari yang tanpa ikatan (butir 21, 100%). Jenis ini hanya menyatakan ikatan yang
+// dicatat operator, bukan menetapkan bobotnya.
+type CollateralBinding string
+
+const (
+	BindingHakTanggungan CollateralBinding = "HAK_TANGGUNGAN"
+	BindingFidusia       CollateralBinding = "FIDUSIA"
+	BindingHipotek       CollateralBinding = "HIPOTEK"
+	BindingTanpaBeban    CollateralBinding = "TANPA_BEBAN"
+	BindingLainnya       CollateralBinding = "LAINNYA"
+)
+
+// Valid menandai ikatan yang dikenal domain. Nilai tak dikenal ditolak, bukan
+// diperlakukan sebagai "tanpa beban": menebak ikatan menggeser bobot risiko.
+func (b CollateralBinding) Valid() bool {
+	switch b {
+	case BindingHakTanggungan, BindingFidusia, BindingHipotek, BindingTanpaBeban, BindingLainnya:
+		return true
+	}
+	return false
+}
+
+// Bound menandai agunan yang terikat secara hukum (hak tanggungan/fidusia/hipotek).
+// Dipakai sebagai penanda pemisah butir 12/19 Lampiran II; bukan perhitungan bobot.
+func (b CollateralBinding) Bound() bool {
+	switch b {
+	case BindingHakTanggungan, BindingFidusia, BindingHipotek:
+		return true
+	}
+	return false
+}
+
 // CollateralStatus adalah keadaan agunan. Hanya ACTIVE yang dihitung sebagai pengurang.
 type CollateralStatus string
 
@@ -115,6 +151,12 @@ var (
 	// BUMN/BUMD, sehingga operator harus menyatakannya beserta buktinya. Penanda tanpa
 	// bukti tidak dapat diaudit.
 	ErrCollateralBumnEvidenceRequired = errors.New("kriteria penjamin BUMN/BUMD wajib disertai bukti/keterangan")
+	// Ikatan agunan adalah pemisah bobot Lampiran II (butir 12/19 vs 17/21). Ikatan
+	// tak dikenal ditolak agar tidak diperlakukan sebagai "tanpa beban" diam-diam.
+	ErrCollateralBindingInvalid = errors.New("ikatan agunan tidak dikenal; gunakan HAK_TANGGUNGAN, FIDUSIA, HIPOTEK, TANPA_BEBAN, atau LAINNYA")
+	// Masa berlaku taksasi yang berakhir sebelum tanggal taksasi tidak masuk akal dan
+	// membuat umur taksasi tidak dapat dipertanggungjawabkan.
+	ErrCollateralAppraisalValidityInvalid = errors.New("masa berlaku taksasi tidak boleh sebelum tanggal taksasi")
 )
 
 // CollateralInput adalah permintaan pencatatan agunan. Haircut tidak wajib diisi: bila
@@ -164,7 +206,21 @@ type CollateralInput struct {
 	// BumnBumdEvidence menyimpan bukti/keterangannya agar penanda dapat diaudit.
 	BumnBumdCriteriaMet bool
 	BumnBumdEvidence    string
-	Notes               string
+	// Informasi Lampiran II SEOJK No. 2/SEOJK.03/2025 yang belum dapat dimuat modul
+	// agunan. Semua boleh kosong pada fase persiapan; bank mengisinya bertahap.
+	//   - BindingType: ikatan hukum (butir 12/19 vs 17/21). nil = belum diisi, BUKAN
+	//     "tanpa beban".
+	//   - Disputed/DisputeEvidence: penanda sengketa/kepemilikan ganda (angka 8).
+	//   - InsuranceExpiryDate/InsurancePolicyNumber: masa berlaku asuransi (butir 15/16).
+	//   - AppraisalValidUntil: batas berlaku taksasi terakhir; kebijakan umur taksasi
+	//     ditetapkan bank karena teks SEOJK tidak mengaturnya.
+	BindingType           *CollateralBinding
+	Disputed              bool
+	DisputeEvidence       string
+	InsuranceExpiryDate   *time.Time
+	InsurancePolicyNumber string
+	AppraisalValidUntil   *time.Time
+	Notes                 string
 }
 
 // CollateralSummary adalah rekap agunan aktif per jenis. Dipakai manajemen untuk melihat
@@ -255,17 +311,26 @@ type LoanCollateral struct {
 	NJOPSource *NJOPSource     `json:"njop_source,omitempty"`
 	// Penanda kriteria penjamin BUMN/BUMD Pasal 20 ayat (1) huruf i beserta buktinya.
 	// Tanpa penanda, kriteria dianggap TIDAK terpenuhi sehingga nilainya bukan pengurang.
-	BumnBumdCriteriaMet bool             `json:"bumn_bumd_criteria_met"`
-	BumnBumdEvidence    string           `json:"bumn_bumd_evidence,omitempty"`
-	HaircutPercent      decimal.Decimal  `json:"haircut_percent"`
-	BoundAmount         decimal.Decimal  `json:"bound_amount"`
-	Status              CollateralStatus `json:"status"`
-	ReleasedAt          *time.Time       `json:"released_at,omitempty"`
-	Notes               string           `json:"notes,omitempty"`
-	CreatedBy           string           `json:"created_by"`
-	CreatedAt           time.Time        `json:"created_at"`
-	UpdatedBy           string           `json:"updated_by,omitempty"`
-	UpdatedAt           time.Time        `json:"updated_at"`
+	BumnBumdCriteriaMet bool   `json:"bumn_bumd_criteria_met"`
+	BumnBumdEvidence    string `json:"bumn_bumd_evidence,omitempty"`
+	// Informasi Lampiran II SEOJK No. 2/SEOJK.03/2025 yang dipersiapkan untuk bobot
+	// risiko agunan. Nilai kosong sah (data lama tetap valid) dan ditandai oleh
+	// MissingLampiranIIFields; bobotnya sendiri BELUM dipakai perhitungan ATMR.
+	BindingType           *CollateralBinding `json:"binding_type,omitempty"`
+	Disputed              bool               `json:"disputed"`
+	DisputeEvidence       string             `json:"dispute_evidence,omitempty"`
+	InsuranceExpiryDate   *time.Time         `json:"insurance_expiry_date,omitempty"`
+	InsurancePolicyNumber string             `json:"insurance_policy_number,omitempty"`
+	AppraisalValidUntil   *time.Time         `json:"appraisal_valid_until,omitempty"`
+	HaircutPercent        decimal.Decimal    `json:"haircut_percent"`
+	BoundAmount           decimal.Decimal    `json:"bound_amount"`
+	Status                CollateralStatus   `json:"status"`
+	ReleasedAt            *time.Time         `json:"released_at,omitempty"`
+	Notes                 string             `json:"notes,omitempty"`
+	CreatedBy             string             `json:"created_by"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedBy             string             `json:"updated_by,omitempty"`
+	UpdatedAt             time.Time          `json:"updated_at"`
 }
 
 // IsActive menandai agunan yang masih dihitung sebagai pengurang.
@@ -336,5 +401,36 @@ func (c *LoanCollateral) Validate(now time.Time) error {
 	if c.BumnBumdCriteriaMet && strings.TrimSpace(c.BumnBumdEvidence) == "" {
 		return ErrCollateralBumnEvidenceRequired
 	}
+	// Ikatan hukum adalah pemisah bobot Lampiran II (butir 12/19 vs 17/21). Nilai tak
+	// dikenal ditolak, bukan diperlakukan sebagai "tanpa beban".
+	if c.BindingType != nil && !c.BindingType.Valid() {
+		return ErrCollateralBindingInvalid
+	}
+	// Masa berlaku taksasi tidak boleh mendahului tanggal taksasinya sendiri. Tanggal
+	// yang sudah lewat tetap sah: taksasi kedaluwarsa adalah fakta, bukan masukan salah.
+	if c.AppraisalValidUntil != nil && !c.AppraisalValidUntil.IsZero() {
+		berlaku := time.Date(c.AppraisalValidUntil.Year(), c.AppraisalValidUntil.Month(), c.AppraisalValidUntil.Day(), 0, 0, 0, 0, time.UTC)
+		if berlaku.Before(taksasi) {
+			return ErrCollateralAppraisalValidityInvalid
+		}
+	}
 	return nil
+}
+
+// MissingLampiranIIFields menandai data Lampiran II SEOJK No. 2/SEOJK.03/2025 yang
+// belum diisi operator. Ini SENGAJA hanya menandai, bukan menolak: bank mengisi data
+// bertahap, dan bobot risikonya belum dipakai perhitungan ATMR. Selama daftar ini
+// tidak kosong, agunan itu belum boleh dipetakan ke bobot Lampiran II selain 100%.
+func (c *LoanCollateral) MissingLampiranIIFields() []string {
+	var missing []string
+	if c.BindingType == nil {
+		missing = append(missing, "binding_type")
+	}
+	if c.InsuranceExpiryDate == nil {
+		missing = append(missing, "insurance_expiry_date")
+	}
+	if c.AppraisalValidUntil == nil {
+		missing = append(missing, "appraisal_valid_until")
+	}
+	return missing
 }

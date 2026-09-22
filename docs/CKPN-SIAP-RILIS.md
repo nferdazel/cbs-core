@@ -18,6 +18,7 @@ dokumen OJK (teks di `/tmp/ojk/`, tidak ikut dirilis).
 | `ckpn.pd_frac.gol_1..5` | PD per golongan kolektibilitas (1 Lancar … 5 Macet) | **FRAKSI 0..1**, bukan persen | kosong | `000042_ckpn.up.sql:64-72`; divalidasi `ckpn_service.go:609` |
 | `ckpn.lgd_frac` | LGD (satu nilai *all account* bila data tidak mendukung pengelompokan) | **FRAKSI 0..1** | kosong | `000042_ckpn.up.sql:74`; divalidasi `ckpn_service.go:624` |
 | `ckpn.aset_baik.max_dpd` | batas tunggakan hari kriteria aset baik | hari | `7` | `000042_ckpn.up.sql` (seed); dibaca `ckpn_service.go:595` |
+| `ckpn.aset_baik.bentuk_ckpn` | saklar aset baik: `false` = dikecualikan (nilai awal); `true` = CKPN tahap-1 tetap dibentuk | boolean | `false` | migrasi `000086`; dibaca `ckpn_service.go` (kebijakan) |
 | `ckpn.coa.expense` | COA beban CKPN (global) | kode COA | `50301` | `packages/db-migrations/000069_ckpn_coa_config.up.sql:33` |
 | `ckpn.coa.reserve` | COA cadangan CKPN (global) | kode COA | `10950` | `000069_ckpn_coa_config.up.sql:35` |
 | `ckpn.coa.expense.syariah` | COA beban CKPN unit syariah | kode COA | **kosong** | `packages/db-migrations/000071_ckpn_coa_syariah.up.sql:24` |
@@ -66,20 +67,24 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
 
 1. **Perlakuan aset baik.** Aset yang memenuhi kriteria aset baik (tidak menunggak
    >7 hari dan tidak pernah direstrukturisasi — PA BPR 12.3.a.1.c) **boleh tidak
-   dibentuk CKPN** (PA BPR 12.3.a.2.a). Dasar hukumnya adalah pilihan kebijakan
-   akuntansi, bukan kewajiban. Mesin saat ini **selalu** mengecualikan aset baik pada
-   jalur resmi (`domain/ckpn.go:193`); cara "tetap membentuk CKPN atas aset baik" belum
-   dapat dijadikan kebijakan resmi (hanya ada sebagai basis pembanding `setara PPKA`
-   pada mode bayangan). Putuskan opsi mana yang dipakai bank, lalu sesuaikan.
+   dibentuk CKPN** (PA BPR 12.3.a.2.a). Pilihan kini menjadi saklar
+   `ckpn.aset_baik.bentuk_ckpn`: nilai awal `false` = aset baik dikecualikan
+   (perilaku sekarang; `domain/ckpn.go` `CalculateCKPN`), `true` = CKPN tahap-1 tetap
+   dibentuk memakai PD golongan lancar dan `ckpn.lgd_frac`. Bank/auditor yang menuntut
+   ECL tahap-1 dapat menyalakannya; pastikan `ckpn.pd_frac.gol_1` dan `ckpn.lgd_frac`
+   terisi agar aset baik tidak gagal parameter. Basis pembanding `setara PPKA` (mode
+   bayangan) selalu menilai aset baik tanpa memandang saklar ini.
 2. **PD dan LGD** per golongan/kategori dari data historis bank (3 tahun); sistem tidak
    menghitungnya (PA BPR 12.6-12.7).
 3. **Pengurang modal inti PPKA–CKPN.** PA BPR 1.1.6: bila PPKA > CKPN, selisihnya
    menjadi pengurang modal inti. Kode menjumlahkan selisih **per kredit**
    `Σ max(PPKA_i − CKPN_i, 0)` (`ckpn_service.go:227-229`). Alternatif tafsir adalah
-   selisih **agregat** total PPKA − total CKPN. Putuskan bersama OJK/akuntan sebelum
-   angkanya dipakai untuk KPMM; jangan menganggap pilihan yang ada sudah final. Sejak
+   selisih **agregat** total PPKA − total CKPN. Sejak
    modul KPMM, pilihan ini menjadi setelan `kpmm.deduction_basis` (`per_kredit` nilai
-   awal yang konservatif, atau `agregat`); lihat bagian (f).
+   awal yang konservatif, atau `agregat`), dan basis yang dipakai tercatat pada bidang
+   `DeductionBasis` laporan. Nilai awal `per_kredit` dipertahankan sampai laporan KPMM
+   pertama bank disahkan OJK/akuntan; setelah itu bank dapat pindah ke `agregat` (yang
+   dibaca regulasi) lewat konfigurasi. Lihat bagian (f).
 4. **Akun jurnal pemulihan.** PA BPR 12.9 mencontohkan kredit ke "Pendapatan operasional
    – Pemulihan CKPN", sedangkan 12.5.b menyebut menjurnal balik beban. Kode mengikuti
    12.5.b (mengkredit akun beban, `ckpn_service.go:552`). Bila bank/DPS memilih akun
@@ -163,7 +168,8 @@ No. 7 Tahun 2026** (berlaku 30 Juni 2026).
 | `kpmm.min_frac` | 0,12 | benar | POJK 5/2015 Pasal 2 (KPMM ≥12% ATMR) |
 | `kpmm.modal_inti_min_frac` | 0,08 | benar | POJK 5/2015 Pasal 4 (modal inti ≥8% ATMR) |
 | `kpmm.modal_inti_min_amount` | 6.000.000.000 | benar nilainya; **sitasi diperbaiki** | POJK 5/2015 **Pasal 13**, bukan Pasal 14 (dikoreksi `000084`) |
-| `kpmm.modal_pelengkap_max_frac` | 1,00 | benar | POJK 5/2015 Pasal 3 ayat (2) (modal pelengkap ≤100% modal inti); sub-batas 50% komponen tertentu (Pasal 10 ayat (2)) belum diterapkan |
+| `kpmm.modal_pelengkap_max_frac` | 1,00 | benar | POJK 5/2015 Pasal 3 ayat (2) (modal pelengkap ≤100% modal inti) |
+| `kpmm.modal_pelengkap_instrumen_max_frac` | 0,50 | benar | POJK 5/2015 Pasal 10 ayat (2) (komponen pelengkap ber-instrumen ≤50% modal inti). Baru di migrasi `000086`; diterapkan `ojkreport.BatasModalPelengkap` |
 | `kpmm.ppka_umum_rwa_max_frac` | 0,0125 | benar | POJK 5/2015 Pasal 10 ayat (1) huruf c; SEOJK 2/2025 II.1.c.3 |
 | `kpmm.deduction_basis` | `per_kredit` | **tidak dapat diverifikasi** (tafsir) | PA BPR 1.1.6 tidak menegaskan tingkat perhitungan; tetap setelan bank/OJK |
 | `kpmm.rwa_frac.kas` | 0,00 | benar | Lampiran II no. 1 (Kas 0%) |
@@ -192,7 +198,21 @@ menggantikan catatan lama "belum disalurkan ke Form 00.08".
 Yang **belum** tersambung/tersedia:
 - **Modal pelengkap** (instrumen dengan persetujuan OJK, surplus revaluasi aset
   tetap, PPKA umum) belum dipisah dari data, sehingga total modal dan rasio adalah
-  batas bawah (konservatif).
+  batas bawah (konservatif). Ketiga komponen kini disajikan eksplisit sebagai
+  `ModalPelengkapInstrumen`/`SurplusRevaluasi`/`PPKAUmum` dengan `Tersedia=false`
+  beserta alasannya (bukan nol). Sub-batas Pasal 10 ayat (2) dan Pasal 3 ayat (2)
+  sudah ditegakkan `ojkreport.BatasModalPelengkap` dan hanya berlaku pada komponen
+  yang terisi.
+- **PPKA umum** (minimum 0,5% aset produktif lancar, POJK No. 1/2024 Pasal 19 ayat
+  (2)) **ditunda**: pemetaan bagan akun masih `DRAF-BELUM-TERVERIFIKASI` dan kualitas
+  aset produktif per pos belum tersimpan, sehingga tidak dipaksakan. Yang dibutuhkan:
+  pemetaan COA aset produktif yang terverifikasi + kualitas per pos (lancar).
+- **Klasifikasi kelas modal per COA** (`internal/ojkreport/coa_mapping.go`, atribut
+  `ModalClass`): modal inti utama (modal disetor, laba, cadangan umum) sudah ditandai
+  `INTI_UTAMA`; `INTI_TAMBAHAN`, `PELENGKAP`, dan `PENGURANG` dibiarkan kosong bila
+  belum pasti (AYDA >1 tahun, pajak tangguhan, goodwill, disagio, surplus revaluasi,
+  PPKA umum). Kode tanpa kelas tidak dijumlahkan sebagai modal, sehingga tidak ada
+  modal fiktif; rinciannya disajikan pada `ModalKelasCOA`.
 - **Pengurang modal inti lain** (AYDA/properti terbengkalai >1 tahun, pajak
   tangguhan, goodwill, disagio) belum dapat dihitung dari data agregat.
 - **Bobot risiko kredit per agunan** serta AYDA/antar-bank granular (tabel di atas).

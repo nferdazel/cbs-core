@@ -30,6 +30,15 @@ type KPMMKomponen struct {
 	Alasan string `json:"alasan,omitempty"`
 }
 
+// KPMMModalKelasBaris merinci saldo baris laporan menurut kelas modal pada pemetaan
+// bagan akun (coa_mapping.go). Hanya kelas yang PASTI dijumlahkan; kode tanpa kelas
+// tidak muncul (bukan diisi nol) supaya klasifikasi yang belum pasti tidak menjadi
+// modal fiktif.
+type KPMMModalKelasBaris struct {
+	Kelas string          `json:"kelas"`
+	Nilai decimal.Decimal `json:"nilai"`
+}
+
 // KPMMATMRBaris adalah satu kelompok pos aset ATMR beserta bobot risikonya.
 type KPMMATMRBaris struct {
 	Kategori string          `json:"kategori"`
@@ -59,6 +68,13 @@ type KPMMReport struct {
 	// ModalPelengkap: hanya sejauh data mendukung (PPKA umum & surplus revaluasi
 	// belum dipisah dari data yang ada).
 	ModalPelengkap KPMMKomponen `json:"modal_pelengkap"`
+	// ModalPelengkapInstrumen, SurplusRevaluasi, dan PPKAUmum merinci komponen modal
+	// pelengkap (POJK 5/2015 Pasal 10 ayat (1)). Masing-masing Tersedia=false beserta
+	// alasannya bila datanya belum ada — BUKAN diisi nol, karena nol dan tidak
+	// tersedia adalah dua hal berbeda bagi regulator.
+	ModalPelengkapInstrumen KPMMKomponen `json:"modal_pelengkap_instrumen"`
+	SurplusRevaluasi        KPMMKomponen `json:"surplus_revaluasi"`
+	PPKAUmum                KPMMKomponen `json:"ppka_umum"`
 	// TotalModal = ModalInti + ModalPelengkap (setelah batas 100% modal inti).
 	TotalModal KPMMKomponen `json:"total_modal"`
 	// RasioKPMM dalam PERSEN. Tersedia hanya bila ATMR dan TotalModal tersedia.
@@ -72,7 +88,13 @@ type KPMMReport struct {
 	// Ambang lain yang berlaku (dibaca dari konfigurasi) supaya pembaca dapat
 	// memeriksa batas yang dipakai walau komponennya belum dapat dihitung.
 	ModalPelengkapMaxFrac decimal.Decimal `json:"modal_pelengkap_max_frac"`
-	PPKAUmumRWAMaxFrac    decimal.Decimal `json:"ppka_umum_rwa_max_frac"`
+	// ModalPelengkapInstrumenMaxFrac adalah sub-batas komponen pelengkap ber-instrumen
+	// terhadap modal inti (POJK 5/2015 Pasal 10 ayat (2)).
+	ModalPelengkapInstrumenMaxFrac decimal.Decimal `json:"modal_pelengkap_instrumen_max_frac"`
+	PPKAUmumRWAMaxFrac             decimal.Decimal `json:"ppka_umum_rwa_max_frac"`
+	// ModalKelasCOA merinci saldo baris laporan menurut kelas modal pemetaan COA.
+	// Kode yang kelasnya belum pasti tidak ikut, sehingga tidak menjadi modal fiktif.
+	ModalKelasCOA []KPMMModalKelasBaris `json:"modal_kelas_coa,omitempty"`
 	// DeductionBasis mencatat pilihan per_kredit/agregat yang dipakai.
 	DeductionBasis string `json:"deduction_basis"`
 	// ParameterGaps menyebut kunci konfigurasi yang belum diisi.

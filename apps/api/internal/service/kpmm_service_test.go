@@ -49,18 +49,19 @@ type kpmmConfig struct {
 
 func newKPMMConfig() *kpmmConfig {
 	return &kpmmConfig{values: map[string]string{
-		"kpmm.min_frac":                 "0.12",
-		"kpmm.modal_inti_min_frac":      "0.08",
-		"kpmm.modal_inti_min_amount":    "6000000000",
-		"kpmm.modal_pelengkap_max_frac": "1.00",
-		"kpmm.ppka_umum_rwa_max_frac":   "0.0125",
-		"kpmm.rwa_frac.kas":             "0.00",
-		"kpmm.rwa_frac.antar_bank":      "0.20",
-		"kpmm.rwa_frac.kredit":          "1.00",
-		"kpmm.rwa_frac.ayda":            "1.00",
-		"kpmm.rwa_frac.aset_tetap":      "1.00",
-		"kpmm.rwa_frac.antar_kantor":    "1.00",
-		"kpmm.rwa_frac.lainnya":         "1.00",
+		"kpmm.min_frac":                           "0.12",
+		"kpmm.modal_inti_min_frac":                "0.08",
+		"kpmm.modal_inti_min_amount":              "6000000000",
+		"kpmm.modal_pelengkap_max_frac":           "1.00",
+		"kpmm.ppka_umum_rwa_max_frac":             "0.0125",
+		"kpmm.modal_pelengkap_instrumen_max_frac": "0.50",
+		"kpmm.rwa_frac.kas":                       "0.00",
+		"kpmm.rwa_frac.antar_bank":                "0.20",
+		"kpmm.rwa_frac.kredit":                    "1.00",
+		"kpmm.rwa_frac.ayda":                      "1.00",
+		"kpmm.rwa_frac.aset_tetap":                "1.00",
+		"kpmm.rwa_frac.antar_kantor":              "1.00",
+		"kpmm.rwa_frac.lainnya":                   "1.00",
 	}}
 }
 
@@ -247,5 +248,63 @@ func TestKPMMATMRBelumLengkap(t *testing.T) {
 	}
 	if report.RasioKPMM.Tersedia {
 		t.Fatalf("rasio harus tidak tersedia bila ATMR belum lengkap")
+	}
+}
+
+// TestKPMMModalPelengkapTidakTersedia memastikan komponen modal pelengkap yang
+// datanya belum ada ditandai TIDAK TERSEDIA (bukan nol) beserta alasannya, sehingga
+// total modal tetap batas bawah. Sub-batas Pasal 10 ayat (2)/Pasal 3 ayat (2) hanya
+// berlaku pada komponen yang terisi.
+func TestKPMMModalPelengkapTidakTersedia(t *testing.T) {
+	svc := NewKPMMService(
+		kpmmReportStub{bs: kpmmTestBalanceSheet()},
+		kpmmCKPNStub{summary: kpmmSummary(kpmmD("20000000"), kpmmD("15000000"))},
+		newKPMMConfig(),
+	)
+	report, err := svc.Hitung(context.Background(), time.Now(), "CONVENTIONAL", domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("Hitung: %v", err)
+	}
+	komponen := map[string]domain.KPMMKomponen{
+		"modal pelengkap":   report.ModalPelengkap,
+		"instrumen":         report.ModalPelengkapInstrumen,
+		"surplus revaluasi": report.SurplusRevaluasi,
+		"ppka umum":         report.PPKAUmum,
+	}
+	for nama, k := range komponen {
+		if k.Tersedia || k.Alasan == "" {
+			t.Fatalf("%s harus tidak tersedia beserta alasan: %+v", nama, k)
+		}
+	}
+	if !report.TotalModal.Nilai.Equal(report.ModalInti.Nilai) {
+		t.Fatalf("total modal batas bawah = %s, mau = modal inti %s", report.TotalModal.Nilai, report.ModalInti.Nilai)
+	}
+	if !report.ModalPelengkapInstrumenMaxFrac.Equal(kpmmD("0.50")) {
+		t.Fatalf("sub-batas instrumen = %s, mau 0.50", report.ModalPelengkapInstrumenMaxFrac)
+	}
+}
+
+// TestKPMMModalKelasCOA memastikan rincian kelas modal memakai pemetaan COA dan kode
+// yang belum pasti tidak dianggap modal.
+func TestKPMMModalKelasCOA(t *testing.T) {
+	bs := kpmmTestBalanceSheet()
+	bs.Rows = append(bs.Rows,
+		domain.ReportRow{AccountCode: "30100", Amount: kpmmD("500000000")},
+		domain.ReportRow{AccountCode: "29999", Amount: kpmmD("9999999999")},
+	)
+	svc := NewKPMMService(
+		kpmmReportStub{bs: bs},
+		kpmmCKPNStub{summary: kpmmSummary(kpmmD("20000000"), kpmmD("15000000"))},
+		newKPMMConfig(),
+	)
+	report, err := svc.Hitung(context.Background(), time.Now(), "CONVENTIONAL", domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("Hitung: %v", err)
+	}
+	if len(report.ModalKelasCOA) != 1 {
+		t.Fatalf("kelas modal = %+v, mau hanya INTI_UTAMA", report.ModalKelasCOA)
+	}
+	if report.ModalKelasCOA[0].Kelas != "INTI_UTAMA" || !report.ModalKelasCOA[0].Nilai.Equal(kpmmD("500000000")) {
+		t.Fatalf("kelas = %+v, mau INTI_UTAMA 500000000", report.ModalKelasCOA[0])
 	}
 }

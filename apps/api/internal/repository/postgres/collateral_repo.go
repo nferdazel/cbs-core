@@ -34,7 +34,10 @@ const collateralColumns = `lc.id, lc.loan_id, lc.branch_id, lc.collateral_type, 
 	lc.exists_known, lc.executable, lc.third_party_owner, lc.owner_consent,
 	lc.is_cash, lc.cash_account_id, lc.warehouse_receipt_valued_at,
 	lc.njop_value, lc.njop_date, lc.njop_source,
-	lc.bumn_bumd_criteria_met, COALESCE(lc.bumn_bumd_evidence, '')`
+	lc.bumn_bumd_criteria_met, COALESCE(lc.bumn_bumd_evidence, ''),
+	lc.binding_type, lc.disputed, COALESCE(lc.dispute_evidence, ''),
+	lc.insurance_expiry_date, COALESCE(lc.insurance_policy_number, ''),
+	lc.appraisal_valid_until`
 
 const collateralFrom = `FROM loan_collaterals lc LEFT JOIN branches b ON b.id = lc.branch_id`
 
@@ -47,6 +50,9 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 	var warehouseReceiptValuedAt sql.NullTime
 	var njopDate sql.NullTime
 	var njopSource sql.NullString
+	var bindingType sql.NullString
+	var insuranceExpiry sql.NullTime
+	var appraisalValidUntil sql.NullTime
 	if err := row.Scan(
 		&c.ID, &c.LoanID, &branchID, &c.CollateralType, &c.Description, &c.DocumentNumber,
 		&c.OwnerName, &c.AppraisalValue, &c.AppraisalDate, &c.Appraiser, &c.HaircutPercent,
@@ -57,6 +63,9 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		&c.IsCash, &cashAccountID, &warehouseReceiptValuedAt,
 		&c.NJOPValue, &njopDate, &njopSource,
 		&c.BumnBumdCriteriaMet, &c.BumnBumdEvidence,
+		&bindingType, &c.Disputed, &c.DisputeEvidence,
+		&insuranceExpiry, &c.InsurancePolicyNumber,
+		&appraisalValidUntil,
 	); err != nil {
 		return nil, err
 	}
@@ -80,6 +89,18 @@ func scanCollateral(row rowScanner) (*domain.LoanCollateral, error) {
 		s := domain.NJOPSource(njopSource.String)
 		c.NJOPSource = &s
 	}
+	if bindingType.Valid {
+		b := domain.CollateralBinding(bindingType.String)
+		c.BindingType = &b
+	}
+	if insuranceExpiry.Valid {
+		t := insuranceExpiry.Time
+		c.InsuranceExpiryDate = &t
+	}
+	if appraisalValidUntil.Valid {
+		t := appraisalValidUntil.Time
+		c.AppraisalValidUntil = &t
+	}
 	if releasedAt.Valid {
 		t := releasedAt.Time
 		c.ReleasedAt = &t
@@ -100,11 +121,14 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 			is_cash, cash_account_id, warehouse_receipt_valued_at,
 			njop_value, njop_date, njop_source,
 			bumn_bumd_criteria_met, bumn_bumd_evidence,
+			binding_type, disputed, dispute_evidence,
+			insurance_expiry_date, insurance_policy_number, appraisal_valid_until,
 			created_by, created_at, updated_at
 		)
 		VALUES ($1, (SELECT id FROM branches WHERE code = $2), $3, $4, $5, $6, $7, $8, NULLIF($9, ''),
 		        $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20,
-		        $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''), $29, NOW(), NOW())
+		        $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''),
+		        $29, $30, NULLIF($31, ''), $32, NULLIF($33, ''), $34, $35, NOW(), NOW())
 		RETURNING id, bound_amount, created_at, updated_at
 	`
 	// bound_amount tidak ada pada daftar INSERT karena dihitung database; nilainya
@@ -119,6 +143,8 @@ func (r *CollateralRepository) Create(ctx context.Context, c *domain.LoanCollate
 		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt,
 		c.NJOPValue, c.NJOPDate, njopSourceArg(c.NJOPSource),
 		c.BumnBumdCriteriaMet, strings.TrimSpace(c.BumnBumdEvidence),
+		bindingTypeArg(c.BindingType), c.Disputed, strings.TrimSpace(c.DisputeEvidence),
+		c.InsuranceExpiryDate, strings.TrimSpace(c.InsurancePolicyNumber), c.AppraisalValidUntil,
 		c.CreatedBy,
 	).Scan(&c.ID, &c.BoundAmount, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
@@ -190,7 +216,10 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 			is_cash = $21, cash_account_id = $22, warehouse_receipt_valued_at = $23,
 			njop_value = $24, njop_date = $25, njop_source = $26,
 			bumn_bumd_criteria_met = $27, bumn_bumd_evidence = NULLIF($28, ''),
-			updated_by = $29, updated_at = NOW()
+			binding_type = $29, disputed = $30, dispute_evidence = NULLIF($31, ''),
+			insurance_expiry_date = $32, insurance_policy_number = NULLIF($33, ''),
+			appraisal_valid_until = $34,
+			updated_by = $35, updated_at = NOW()
 		WHERE id = $1
 		RETURNING bound_amount, updated_at
 	`
@@ -202,6 +231,8 @@ func (r *CollateralRepository) Update(ctx context.Context, c *domain.LoanCollate
 		c.IsCash, c.CashAccountID, c.WarehouseReceiptValuedAt,
 		c.NJOPValue, c.NJOPDate, njopSourceArg(c.NJOPSource),
 		c.BumnBumdCriteriaMet, strings.TrimSpace(c.BumnBumdEvidence),
+		bindingTypeArg(c.BindingType), c.Disputed, strings.TrimSpace(c.DisputeEvidence),
+		c.InsuranceExpiryDate, strings.TrimSpace(c.InsurancePolicyNumber), c.AppraisalValidUntil,
 		c.UpdatedBy,
 	).Scan(&c.BoundAmount, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -291,4 +322,13 @@ func njopSourceArg(s *domain.NJOPSource) any {
 		return nil
 	}
 	return string(*s)
+}
+
+// bindingTypeArg mengubah ikatan agunan menjadi parameter SQL. Pointer nil berarti
+// kolom NULL — ikatan yang belum diisi operator, BUKAN "tanpa beban".
+func bindingTypeArg(b *domain.CollateralBinding) any {
+	if b == nil {
+		return nil
+	}
+	return string(*b)
 }

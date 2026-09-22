@@ -29,16 +29,17 @@ import (
 // Kunci konfigurasi KPMM. Dibaca sebagai literali agar uji invarian seed menangkap
 // kunci yang belum di-seed (lihat config_seed_invariant_test.go).
 const (
-	kpmmMinFracKey              = "kpmm.min_frac"
-	kpmmModalIntiMinFracKey     = "kpmm.modal_inti_min_frac"
-	kpmmModalIntiMinAmountKey   = "kpmm.modal_inti_min_amount"
-	kpmmModalPelengkapMaxKey    = "kpmm.modal_pelengkap_max_frac"
-	kpmmPPKAUmumRWAMaxKey       = "kpmm.ppka_umum_rwa_max_frac"
-	kpmmDeductionBasisKey       = "kpmm.deduction_basis"
-	kpmmBobotKeyPrefix          = "kpmm.rwa_frac."
-	basisPengurangPerKredit     = "per_kredit"
-	basisPengurangAgregat       = "agregat"
-	kpmmDefaultBobotKonservatif = 1
+	kpmmMinFracKey                 = "kpmm.min_frac"
+	kpmmModalIntiMinFracKey        = "kpmm.modal_inti_min_frac"
+	kpmmModalIntiMinAmountKey      = "kpmm.modal_inti_min_amount"
+	kpmmModalPelengkapMaxKey       = "kpmm.modal_pelengkap_max_frac"
+	kpmmModalPelengkapInstrumenKey = "kpmm.modal_pelengkap_instrumen_max_frac"
+	kpmmPPKAUmumRWAMaxKey          = "kpmm.ppka_umum_rwa_max_frac"
+	kpmmDeductionBasisKey          = "kpmm.deduction_basis"
+	kpmmBobotKeyPrefix             = "kpmm.rwa_frac."
+	basisPengurangPerKredit        = "per_kredit"
+	basisPengurangAgregat          = "agregat"
+	kpmmDefaultBobotKonservatif    = 1
 )
 
 type kpmmService struct {
@@ -88,6 +89,21 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 			strings.Join(report.ATMRTidakTerkategori, ", ")
 	}
 
+	// Ambang dibaca LEBIH DAHULU supaya batas modal pelengkap sudah tersedia saat
+	// menyusun total modal. Sebelumnya urutannya terbalik: ModalPelengkapMaxFrac
+	// masih nol saat batas diterapkan (tidak terlihat karena pelengkap belum pernah
+	// terisi).
+	report.KPMMMinFrac, _ = s.fracAtauGapFallback(ctx, kpmmMinFracKey, decimal.NewFromFloat(0.12))
+	report.ModalIntiMinFrac, _ = s.fracAtauGapFallback(ctx, kpmmModalIntiMinFracKey, decimal.NewFromFloat(0.08))
+	report.ModalIntiMinAmount, _ = s.fracAtauGapFallback(ctx, kpmmModalIntiMinAmountKey, decimal.NewFromInt(6000000000))
+	report.ModalPelengkapMaxFrac, _ = s.fracAtauGapFallback(ctx, kpmmModalPelengkapMaxKey, decimal.NewFromInt(1))
+	report.ModalPelengkapInstrumenMaxFrac, _ = s.fracAtauGapFallback(ctx, kpmmModalPelengkapInstrumenKey, decimal.NewFromFloat(0.50))
+	report.PPKAUmumRWAMaxFrac, _ = s.fracAtauGapFallback(ctx, kpmmPPKAUmumRWAMaxKey, decimal.NewFromFloat(0.0125))
+
+	// Rincian kelas modal dari pemetaan COA. Kode yang kelasnya belum pasti TIDAK ikut
+	// (lihat ojkreport.KlasifikasiModalCOA) supaya tidak menjadi modal fiktif.
+	report.ModalKelasCOA = kpmmModalKelasBaris(ojkreport.KlasifikasiModalCOA(bs.Rows))
+
 	// Modal inti utama = ekuitas + laba/rugi tahun berjalan. Ini identitas laporan
 	// sumber: aset = kewajiban + ekuitas + laba/rugi berjalan.
 	modalIntiUtama := bs.TotalEquity.Add(bs.NetIncome)
@@ -107,20 +123,43 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 		}
 	}
 
-	// Modal pelengkap belum dapat dipisah dari data yang ada.
+	// Komponen modal pelengkap (POJK 5/2015 Pasal 10). Data pembilangnya belum
+	// dipisah dari bagan akun yang tersedia, sehingga tiap komponen ditandai TIDAK
+	// TERSEDIA (bukan nol) beserta apa yang dibutuhkan bank.
+	report.ModalPelengkapInstrumen = domain.KPMMKomponen{
+		Alasan: "komponen modal pelengkap ber-instrumen (persetujuan OJK) tidak dapat dipisah dari bagan akun; daftar instrumen manual per bank belum tersedia",
+	}
+	report.SurplusRevaluasi = domain.KPMMKomponen{
+		Alasan: "surplus revaluasi aset tetap belum berakun tersendiri pada bagan akun sehingga tidak dapat dipisah",
+	}
+	report.PPKAUmum = domain.KPMMKomponen{
+		Alasan: "PPKA umum minimum 0,5% aset produktif lancar (POJK 1/2024 Pasal 19 ayat (2)) belum dapat dihitung: pemetaan bagan akun masih " +
+			ojkreport.MappingStatus + " dan kualitas aset produktif per pos belum tersimpan",
+	}
 	report.ModalPelengkap = domain.KPMMKomponen{
 		Alasan: "komponen modal pelengkap (instrumen dengan persetujuan OJK, surplus revaluasi aset tetap, " +
 			"dan PPKA umum) belum dipisah dari data yang tersimpan, sehingga tidak dihitung",
 	}
 
-	// Total modal = modal inti + modal pelengkap. Batas modal pelengkap 100% modal
-	// inti diterapkan lebih dulu bila kelak pelengkap terisi.
+	// Total modal = modal inti + modal pelengkap SETELAH sub-batas: komponen
+	// ber-instrumen <= 50% modal inti (Pasal 10 ayat (2)), PPKA umum <= 1,25% ATMR
+	// (Pasal 10 ayat (1) huruf c), dan total <= 100% modal inti (Pasal 3 ayat (2)).
+	// Komponen yang tidak tersedia tidak diwakili nol: field laporannya tetap
+	// Tersedia=false beserta alasan, sedangkan nilaiTersedia hanya menyiapkan angka
+	// untuk perhitungan batas.
 	modalPelengkapDiperhitungkan := decimal.Zero
-	if report.ModalPelengkap.Tersedia && report.ModalInti.Tersedia {
-		modalPelengkapDiperhitungkan = report.ModalPelengkap.Nilai
-		if maks := report.ModalInti.Nilai.Mul(report.ModalPelengkapMaxFrac); modalPelengkapDiperhitungkan.GreaterThan(maks) {
-			modalPelengkapDiperhitungkan = maks
-		}
+	if report.ModalInti.Tersedia {
+		batas := ojkreport.BatasModalPelengkap(
+			nilaiTersedia(report.ModalPelengkapInstrumen),
+			nilaiTersedia(report.SurplusRevaluasi),
+			nilaiTersedia(report.PPKAUmum),
+			report.ModalInti.Nilai,
+			report.ATMR.Nilai,
+			report.ModalPelengkapMaxFrac,
+			report.ModalPelengkapInstrumenMaxFrac,
+			report.PPKAUmumRWAMaxFrac,
+		)
+		modalPelengkapDiperhitungkan = batas.TotalEfektif
 	}
 	if report.ModalInti.Tersedia {
 		report.TotalModal = domain.KPMMKomponen{
@@ -136,12 +175,6 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 			Alasan: "modal inti belum final: " + report.ModalInti.Alasan,
 		}
 	}
-
-	report.KPMMMinFrac, _ = s.fracAtauGapFallback(ctx, kpmmMinFracKey, decimal.NewFromFloat(0.12))
-	report.ModalIntiMinFrac, _ = s.fracAtauGapFallback(ctx, kpmmModalIntiMinFracKey, decimal.NewFromFloat(0.08))
-	report.ModalIntiMinAmount, _ = s.fracAtauGapFallback(ctx, kpmmModalIntiMinAmountKey, decimal.NewFromInt(6000000000))
-	report.ModalPelengkapMaxFrac, _ = s.fracAtauGapFallback(ctx, kpmmModalPelengkapMaxKey, decimal.NewFromInt(1))
-	report.PPKAUmumRWAMaxFrac, _ = s.fracAtauGapFallback(ctx, kpmmPPKAUmumRWAMaxKey, decimal.NewFromFloat(0.0125))
 
 	if report.ATMR.Tersedia && report.TotalModal.Tersedia {
 		if nilai, ok := ojkreport.RumusKPMM(report.TotalModal.Nilai, report.ATMR.Nilai); ok {
@@ -180,6 +213,32 @@ func alasanRasio(r domain.KPMMReport) string {
 		return "komponen rasio belum tersedia"
 	}
 	return "rasio belum dapat dihitung: " + strings.Join(sebab, " dan ")
+}
+
+// nilaiTersedia mengembalikan nilai komponen bila tersedia, selain itu nol. Hanya
+// dipakai untuk perhitungan batas; pelaporan tetap memakai field Tersedia/Alasan.
+func nilaiTersedia(k domain.KPMMKomponen) decimal.Decimal {
+	if !k.Tersedia {
+		return decimal.Zero
+	}
+	return k.Nilai
+}
+
+// kpmmModalKelasBaris menyusun rincian kelas modal terurut agar laporan stabil.
+func kpmmModalKelasBaris(perKelas map[string]decimal.Decimal) []domain.KPMMModalKelasBaris {
+	if len(perKelas) == 0 {
+		return nil
+	}
+	kelas := make([]string, 0, len(perKelas))
+	for k := range perKelas {
+		kelas = append(kelas, k)
+	}
+	sort.Strings(kelas)
+	out := make([]domain.KPMMModalKelasBaris, 0, len(kelas))
+	for _, k := range kelas {
+		out = append(out, domain.KPMMModalKelasBaris{Kelas: k, Nilai: perKelas[k]})
+	}
+	return out
 }
 
 // bobotRisiko membaca bobot tiap kategori dari konfigurasi. Kategori yang kuncinya
@@ -267,6 +326,11 @@ func kpmmCatatan(r domain.KPMMReport) []string {
 	}
 	if !r.ModalPelengkap.Tersedia {
 		catatan = append(catatan, "Modal pelengkap belum dihitung; total modal dan rasio KPMM adalah batas bawah (konservatif).")
+	}
+	catatan = append(catatan,
+		"Sub-batas modal pelengkap yang berlaku: komponen ber-instrumen <= 50% modal inti (POJK 5/2015 Pasal 10 ayat (2)); PPKA umum <= 1,25% ATMR (Pasal 10 ayat (1) huruf c); total modal pelengkap <= 100% modal inti (Pasal 3 ayat (2)). Batas diterapkan hanya pada komponen yang tersedia; komponen tidak tersedia tidak diwakili nol.")
+	if !r.PPKAUmum.Tersedia {
+		catatan = append(catatan, "PPKA umum belum dihitung: perlu pemetaan bagan akun aset produktif yang terverifikasi dan kualitas aset produktif per pos (POJK No. 1/2024 Pasal 19 ayat (2)).")
 	}
 	if r.DeductionBasis == basisPengurangAgregat {
 		catatan = append(catatan, "Pengurang modal inti memakai selisih AGREGAT PPKA-CKPN, bukan per kredit.")

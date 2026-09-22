@@ -79,6 +79,12 @@ type CKPNPolicy struct {
 	// AsetBaikMaxDPD adalah batas tunggakan hari kriteria aset baik; diisi dari
 	// konfigurasi dengan bawaan CKPNAsetBaikMaxDPDDefault.
 	AsetBaikMaxDPD int
+	// AsetBaikBentukCKPN false (bawaan) mempertahankan perilaku sekarang: aset baik
+	// boleh tidak dibentuk CKPN (butir 12.3.a.2.a). true berarti bank/auditor memilih
+	// tetap membentuk CKPN tahap-1 atas aset baik (ECL tahap 1 SAK EP) memakai PD
+	// golongan lancar dan LGD yang berlaku. Diisi dari konfigurasi
+	// ckpn.aset_baik.bentuk_ckpn.
+	AsetBaikBentukCKPN bool
 }
 
 // CKPNIsAsetBaik menilai kriteria aset baik butir 12.3.a.1.c SEOJK 21/2024. Kredit
@@ -151,8 +157,12 @@ type CKPNCalculation struct {
 //     (mis. dengan Excel PD/LGD dari OJK) lalu mengisinya sebagai parameter kebijakan.
 //
 // Parameter yang belum diisi menghasilkan ErrCKPNParameterMissing, bukan nol.
+//
+// Pengecualian aset baik (butir 12.3.a.2.a) mengikuti kebijakan policy.AsetBaikBentukCKPN:
+// bawaan false = aset baik dikecualikan (perilaku sekarang); true = aset baik tetap
+// dinilai EAD x PD x LGD (ECL tahap-1) sehingga memerlukan PD/LGD seperti kredit lain.
 func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
-	return calculateCKPN(snap, policy, true)
+	return calculateCKPN(snap, policy, !policy.AsetBaikBentukCKPN)
 }
 
 // CalculateCKPNSetaraPPKA menghitung target CKPN dengan model dan EAD yang SAMA

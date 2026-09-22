@@ -94,6 +94,40 @@ func TestMappingSignHanyaSatuAtauMinusSatu(t *testing.T) {
 	}
 }
 
+// TestMappingKelasModal memastikan atribut kelas modal hanya memakai nilai yang
+// dikenal dan menandai akun modal inti utama; akun yang kelasnya belum pasti
+// dibiarkan kosong, bukan ditebak.
+func TestMappingKelasModal(t *testing.T) {
+	want := map[string]string{
+		"30100": ModalClassIntiUtama,
+		"30200": ModalClassIntiUtama,
+		"30300": ModalClassIntiUtama,
+		"30400": ModalClassIntiUtama,
+		"13100": ModalClassIntiUtama,
+		"13200": ModalClassIntiUtama,
+		"-":     ModalClassIntiUtama,
+		// AYDA hanya pengurang bila >1 tahun (umurnya tidak tersedia), PPAP/CKPN
+		// bukan modal, dan beban pajak bukan pajak tangguhan: kelasnya wajib kosong.
+		"10500": "",
+		"10900": "",
+		"60100": "",
+	}
+	for _, e := range COAMappingDraft {
+		if !ModalClassValid(e.ModalClass) {
+			t.Fatalf("COA %s kelas modal %q tidak dikenal", e.COACode, e.ModalClass)
+		}
+		if mau, ok := want[e.COACode]; ok && e.ModalClass != mau {
+			t.Errorf("COA %s kelas = %q, mau %q", e.COACode, e.ModalClass, mau)
+		}
+	}
+	if ModalClassCOA("30100") != ModalClassIntiUtama {
+		t.Fatalf("ModalClassCOA(30100) salah")
+	}
+	if ModalClassCOA("99999") != "" {
+		t.Fatalf("kode tak terpetakan harus berkelas kosong")
+	}
+}
+
 func TestCOACodesForForm(t *testing.T) {
 	codes := COACodesForForm(COAMappingDraft, "01.00")
 	if len(codes) == 0 {

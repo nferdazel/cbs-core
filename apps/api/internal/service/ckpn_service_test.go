@@ -445,6 +445,49 @@ func TestCKPN_AsetBaikTidakButuhParameter(t *testing.T) {
 	}
 }
 
+// Saklar ckpn.aset_baik.bentuk_ckpn: bawaan (false) mempertahankan perilaku
+// sekarang — aset baik dikecualikan sehingga CKPN nol; bila dinyalakan, CKPN
+// tahap-1 tetap dibentuk dengan EAD x PD x LGD golongan lancar.
+func TestCKPN_SaklarAsetBaikBentukCKPN(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	snap := ckpnLoan()
+	snap.DPD = 0
+	snap.Collectibility = domain.KolLancar
+
+	// Bawaan: dikecualikan, CKPN nol walau PD/LGD sama sekali tidak diisi.
+	bawaan := &ckpnConfigStub{values: map[string]string{"ckpn.enabled": "true"}}
+	svcBawaan, _, _ := newTestCKPNService(&ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}, bawaan)
+	summaryBawaan, err := svcBawaan.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare bawaan: %v", err)
+	}
+	if !summaryBawaan.Items[0].IsAsetBaik || !summaryBawaan.Items[0].CKPN.IsZero() {
+		t.Fatalf("bawaan harus mengecualikan aset baik tanpa CKPN, dapat %+v", summaryBawaan.Items[0])
+	}
+
+	// Saklar menyala: aset baik tetap dihitung. 10.000.000 x 2% x 50% = 100.000.
+	menyala := &ckpnConfigStub{values: map[string]string{
+		"ckpn.enabled":               "true",
+		"ckpn.aset_baik.bentuk_ckpn": "true",
+		"ckpn.pd_frac.gol_1":         "0.02",
+		"ckpn.lgd_frac":              "0.50",
+	}}
+	svcMenyala, _, _ := newTestCKPNService(&ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}, menyala)
+	summaryMenyala, err := svcMenyala.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare saklar menyala: %v", err)
+	}
+	if len(summaryMenyala.Items) != 1 {
+		t.Fatalf("item saklar menyala %d, mau 1 (failure: %+v)", len(summaryMenyala.Items), summaryMenyala.Failures)
+	}
+	if summaryMenyala.Items[0].IsAsetBaik {
+		t.Fatal("saklar menyala tidak boleh lagi menandai kredit sebagai aset baik yang dikecualikan")
+	}
+	if !summaryMenyala.Items[0].CKPN.Equal(decimal.NewFromInt(100_000)) {
+		t.Fatalf("CKPN saklar menyala %s, mau 100000", summaryMenyala.Items[0].CKPN)
+	}
+}
+
 // Kredit yang pernah direstrukturisasi tidak pernah dianggap aset baik (butir
 // 12.3.a.1.c), walau sedang tidak menunggak.
 func TestCKPN_KreditRestrukturisasiBukanAsetBaik(t *testing.T) {

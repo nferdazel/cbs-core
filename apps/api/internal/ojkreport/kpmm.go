@@ -92,6 +92,32 @@ func KategoriRisikoCOA(code string) (string, bool) {
 	return KategoriRisikoSandi(e.Sandi)
 }
 
+// ModalClassCOA mengembalikan kelas modal kode COA dari pemetaan bagan akun
+// (coa_mapping.go). Kosong berarti kelasnya belum pasti dan tidak boleh
+// diperhitungkan sebagai modal. Kode di luar pemetaan juga kosong.
+func ModalClassCOA(code string) string {
+	if e, ok := defaultMappingIndex[code]; ok {
+		return e.ModalClass
+	}
+	return ""
+}
+
+// KlasifikasiModalCOA menjumlahkan saldo baris laporan per kelas modal. Hanya kode
+// dengan kelas PASTI (INTI_UTAMA/INTI_TAMBAHAN/PELENGKAP/PENGURANG) yang dijumlahkan;
+// kode tanpa kelas tidak menghasilkan entri sama sekali — bukan nol — supaya
+// klasifikasi yang belum pasti tidak menjadi modal fiktif.
+func KlasifikasiModalCOA(rows []domain.ReportRow) map[string]decimal.Decimal {
+	out := map[string]decimal.Decimal{}
+	for _, r := range rows {
+		class := ModalClassCOA(r.AccountCode)
+		if class == "" {
+			continue
+		}
+		out[class] = out[class].Add(r.Amount)
+	}
+	return out
+}
+
 // looksLikeAsetCode menebak apakah kode COA yang TIDAK terpetakan adalah pos aset,
 // memakai rentang bagan akun yang berlaku (aset 10xxx-11xxx). Pendapatan/beban
 // 15xxx, kewajiban 12xxx/2xxxx, dan ekuitas 13xxx/3xxxx sengaja tidak dianggap aset.
@@ -165,4 +191,59 @@ func PilihPengurangModalInti(basis string, perKredit, agregat decimal.Decimal) (
 		return decimal.Zero, "agregat"
 	}
 	return perKredit, "per_kredit"
+}
+
+// ModalPelengkapBatas adalah hasil penerapan sub-batas modal pelengkap menurut POJK
+// No. 5/POJK.03/2015:
+//   - komponen ber-instrumen <= instrumenMaxFrac x modal inti (Pasal 10 ayat (2));
+//   - PPKA umum <= ppkaUmumMaxFrac x ATMR (Pasal 10 ayat (1) huruf c);
+//   - total modal pelengkap <= pelengkapMaxFrac x modal inti (Pasal 3 ayat (2)).
+//
+// potongan* mencatat nilai yang tidak dapat diperhitungkan karena batas, supaya
+// pembaca dapat memeriksa hitungan. Semua masukan dinegasikan lebih dulu ke nol:
+// batas tidak boleh membalik tanda.
+type ModalPelengkapBatas struct {
+	Instrumen         decimal.Decimal
+	SurplusRevaluasi  decimal.Decimal
+	PPKAUmum          decimal.Decimal
+	TotalEfektif      decimal.Decimal
+	PotonganInstrumen decimal.Decimal
+	PotonganPPKAUmum  decimal.Decimal
+	PotonganTotal     decimal.Decimal
+}
+
+// BatasModalPelengkap menerapkan sub-batas modal pelengkap. Nilai yang tidak
+// tersedia TIDAK diwakili nol di sini: pemanggil hanya memanggil fungsi ini untuk
+// komponen yang benar-benar terisi, dan menandai komponen lain tidak tersedia.
+func BatasModalPelengkap(instrumen, surplusRevaluasi, ppkaUmum, modalInti, atmr, pelengkapMaxFrac, instrumenMaxFrac, ppkaUmumMaxFrac decimal.Decimal) ModalPelengkapBatas {
+	var out ModalPelengkapBatas
+
+	kotorInstrumen := nonNegatif(instrumen)
+	out.Instrumen = minDecimal(kotorInstrumen, nonNegatif(modalInti).Mul(instrumenMaxFrac))
+	out.PotonganInstrumen = kotorInstrumen.Sub(out.Instrumen)
+
+	kotorPPKA := nonNegatif(ppkaUmum)
+	out.PPKAUmum = minDecimal(kotorPPKA, nonNegatif(atmr).Mul(ppkaUmumMaxFrac))
+	out.PotonganPPKAUmum = kotorPPKA.Sub(out.PPKAUmum)
+
+	out.SurplusRevaluasi = nonNegatif(surplusRevaluasi)
+
+	kotor := out.Instrumen.Add(out.SurplusRevaluasi).Add(out.PPKAUmum)
+	out.TotalEfektif = minDecimal(kotor, nonNegatif(modalInti).Mul(pelengkapMaxFrac))
+	out.PotonganTotal = kotor.Sub(out.TotalEfektif)
+	return out
+}
+
+func nonNegatif(d decimal.Decimal) decimal.Decimal {
+	if d.IsNegative() {
+		return decimal.Zero
+	}
+	return d
+}
+
+func minDecimal(a, b decimal.Decimal) decimal.Decimal {
+	if a.LessThan(b) {
+		return a
+	}
+	return b
 }

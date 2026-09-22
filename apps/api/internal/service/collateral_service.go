@@ -133,10 +133,19 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		NJOPSource:          input.NJOPSource,
 		BumnBumdCriteriaMet: input.BumnBumdCriteriaMet,
 		BumnBumdEvidence:    strings.TrimSpace(input.BumnBumdEvidence),
-		HaircutPercent:      haircut,
-		Status:              domain.CollateralActive,
-		Notes:               strings.TrimSpace(input.Notes),
-		CreatedBy:           actor.DisplayName(),
+		// Informasi Lampiran II disalin apa adanya; semua boleh kosong dan hanya
+		// ditandai, bukan dipaksa. Nilai kosong tidak pernah ditafsirkan sebagai
+		// ikatan "tanpa beban" atau taksasi "masih berlaku".
+		BindingType:           input.BindingType,
+		Disputed:              input.Disputed,
+		DisputeEvidence:       strings.TrimSpace(input.DisputeEvidence),
+		InsuranceExpiryDate:   input.InsuranceExpiryDate,
+		InsurancePolicyNumber: strings.TrimSpace(input.InsurancePolicyNumber),
+		AppraisalValidUntil:   input.AppraisalValidUntil,
+		HaircutPercent:        haircut,
+		Status:                domain.CollateralActive,
+		Notes:                 strings.TrimSpace(input.Notes),
+		CreatedBy:             actor.DisplayName(),
 	}
 	if err := collateral.Validate(time.Now().UTC()); err != nil {
 		return nil, err
@@ -170,6 +179,10 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		// menentukan pengurang, sehingga harus dapat ditelusuri tanpa menebak.
 		"njop_value":             collateral.NJOPValue.StringFixed(2),
 		"bumn_bumd_criteria_met": collateral.BumnBumdCriteriaMet,
+		// Informasi Lampiran II ikut terekam karena inilah yang kelak menentukan
+		// bobot risiko agunan; perubahan ikatan/sengketa harus dapat ditelusuri.
+		"binding_type": collateralBindingAudit(collateral.BindingType),
+		"disputed":     collateral.Disputed,
 	}); err != nil {
 		return nil, err
 	}
@@ -228,4 +241,13 @@ func (s *collateralService) ListByLoan(ctx context.Context, loanID uuid.UUID, ac
 		}
 	}
 	return visible, nil
+}
+
+// collateralBindingAudit menyiapkan nilai audit ikatan agunan: nil berarti belum diisi
+// (bukan "tanpa beban"), string berarti ikatan yang dinyatakan operator.
+func collateralBindingAudit(b *domain.CollateralBinding) any {
+	if b == nil {
+		return nil
+	}
+	return string(*b)
 }

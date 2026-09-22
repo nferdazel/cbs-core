@@ -74,7 +74,16 @@ type collateralRequest struct {
 	// Penanda kriteria penjamin BUMN/BUMD Pasal 20(1) huruf i beserta buktinya.
 	BumnBumdCriteriaMet bool   `json:"bumn_bumd_criteria_met,omitempty"`
 	BumnBumdEvidence    string `json:"bumn_bumd_evidence,omitempty"`
-	Notes               string `json:"notes"`
+	// Informasi Lampiran II SEOJK No. 2/SEOJK.03/2025 sebagai persiapan bobot risiko
+	// agunan. Semua opsional: kosong berarti belum diisi, BUKAN "tanpa beban" atau
+	// "tidak sengketa". Bobotnya belum dipakai perhitungan ATMR.
+	BindingType           string `json:"binding_type,omitempty"`
+	Disputed              bool   `json:"disputed,omitempty"`
+	DisputeEvidence       string `json:"dispute_evidence,omitempty"`
+	InsuranceExpiryDate   string `json:"insurance_expiry_date,omitempty"`
+	InsurancePolicyNumber string `json:"insurance_policy_number,omitempty"`
+	AppraisalValidUntil   string `json:"appraisal_valid_until,omitempty"`
+	Notes                 string `json:"notes"`
 }
 
 // Create handles POST /api/v1/loans/{loanId}/collaterals
@@ -148,6 +157,31 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		njopSource = &s
 	}
 
+	// Ikatan agunan Lampiran II: bila dikirim, harus salah satu nilai yang dikenal.
+	// Ikatan tak dikenal ditolak, bukan diperlakukan sebagai "tanpa beban".
+	var bindingType *domain.CollateralBinding
+	if raw := strings.TrimSpace(req.BindingType); raw != "" {
+		b := domain.CollateralBinding(strings.ToUpper(raw))
+		if !b.Valid() {
+			Error(w, http.StatusBadRequest, domain.ErrCollateralBindingInvalid.Error())
+			return
+		}
+		bindingType = &b
+	}
+
+	// Masa berlaku asuransi dan taksasi opsional. Tanggal yang sudah lewat sah (polis
+	// atau taksasi kedaluwarsa adalah fakta); format yang salah tetap ditolak.
+	insuranceExpiryDate, err := parseOptionalDate(req.InsuranceExpiryDate, "tanggal berakhir asuransi")
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	appraisalValidUntil, err := parseOptionalDate(req.AppraisalValidUntil, "masa berlaku taksasi")
+	if err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	collateral, err := h.svc.Create(r.Context(), domain.CollateralInput{
 		LoanID:                   loanID,
 		CollateralType:           domain.CollateralType(strings.ToUpper(strings.TrimSpace(req.CollateralType))),
@@ -174,6 +208,12 @@ func (h *CollateralHandler) Create(w http.ResponseWriter, r *http.Request) {
 		NJOPSource:               njopSource,
 		BumnBumdCriteriaMet:      req.BumnBumdCriteriaMet,
 		BumnBumdEvidence:         req.BumnBumdEvidence,
+		BindingType:              bindingType,
+		Disputed:                 req.Disputed,
+		DisputeEvidence:          req.DisputeEvidence,
+		InsuranceExpiryDate:      insuranceExpiryDate,
+		InsurancePolicyNumber:    req.InsurancePolicyNumber,
+		AppraisalValidUntil:      appraisalValidUntil,
 		Notes:                    req.Notes,
 	}, actor)
 	if err != nil {
@@ -261,7 +301,9 @@ func writeCollateralError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrCollateralNJOPInvalid),
 		errors.Is(err, domain.ErrCollateralNJOPDateInvalid),
 		errors.Is(err, domain.ErrCollateralNJOPSourceInvalid),
-		errors.Is(err, domain.ErrCollateralBumnEvidenceRequired):
+		errors.Is(err, domain.ErrCollateralBumnEvidenceRequired),
+		errors.Is(err, domain.ErrCollateralBindingInvalid),
+		errors.Is(err, domain.ErrCollateralAppraisalValidityInvalid):
 		Error(w, http.StatusUnprocessableEntity, err.Error())
 	default:
 		// Kesalahan lain (mis. aturan domain yang belum punya sentinel) tetap ditampilkan
@@ -282,6 +324,23 @@ func parseDateOrRFC3339(value string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Time{}, errBadDate("format tanggal taksasi tidak dikenal; gunakan YYYY-MM-DD")
+}
+
+// parseOptionalDate mengurai tanggal opsional (YYYY-MM-DD atau RFC3339). Kosong
+// mengembalikan nil — kolom Lampiran II yang belum diisi TIDAK dipaksa dan tidak
+// ditafsirkan. Pesannya menyebut label agar operator tahu tanggal mana yang salah.
+func parseOptionalDate(value, label string) (*time.Time, error) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return nil, nil
+	}
+	if t, err := time.Parse(auditDateLayout, raw); err == nil {
+		return &t, nil
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return &t, nil
+	}
+	return nil, errBadDate("format " + label + " tidak dikenal; gunakan YYYY-MM-DD")
 }
 
 type errBadDate string

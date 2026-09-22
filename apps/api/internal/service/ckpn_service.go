@@ -21,6 +21,11 @@ const (
 	cfgCKPNShadowEnabled  = "ckpn.shadow_mode.enabled"
 	cfgCKPNLGD            = "ckpn.lgd_frac"
 	cfgCKPNAsetBaikMaxDPD = "ckpn.aset_baik.max_dpd"
+	// cfgCKPNAsetBaikBentuk adalah saklar kebijakan aset baik. false (bawaan) =
+	// aset baik boleh tidak dibentuk CKPN (butir 12.3.a.2.a, perilaku sekarang);
+	// true = CKPN tahap-1 tetap dibentuk atas aset baik (butir tersebut memakai kata
+	// "dapat", jadi kedua pilihan sah dan bank/auditor yang menentukan).
+	cfgCKPNAsetBaikBentuk = "ckpn.aset_baik.bentuk_ckpn"
 	cfgCKPNExpenseCOA     = "ckpn.coa.expense"
 	cfgCKPNReserveCOA     = "ckpn.coa.reserve"
 	// Kunci per unit syariah. KOSONG = ikut kunci global di atas, sehingga bank yang
@@ -251,8 +256,10 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	// itu summary.ModalIntiDeduction (lihat loop di atas) menjumlahkan max(PPKA-CKPN,0)
 	// tiap kredit, sedangkan summary.Difference di bawah hanya selisih AGREGAT
 	// (TotalPPKA - TotalCKPN) yang bisa 0/negatif pada portofolio campuran walau ada
-	// kelebihan per kredit. Pada mode bayangan keduanya hanya DILAPORKAN; pengurangan
-	// modal inti belum dilakukan.
+	// kelebihan per kredit. Modul CKPN sendiri hanya melaporkan keduanya; modul KPMM
+	// yang menerapkan pengurang ke modal inti memilih basis lewat kunci
+	// kpmm.deduction_basis (per_kredit bawaan yang konservatif, atau agregat) dan
+	// mencatat basisnya pada laporan — pilihan kebijakan, bukan cacat.
 	summary.Difference = summary.TotalPPKA.Sub(summary.TotalCKPN)
 	switch {
 	case summary.Difference.IsPositive():
@@ -294,7 +301,7 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 // dapat menghitung sebagian kredit (PD/LGD belum lengkap), itu disebutkan supaya
 // totalnya yang lebih kecil tidak disalahbaca sebagai CKPN yang sudah dihitung penuh.
 func ckpnDuaBasisNote(s domain.CKPNComparisonSummary) string {
-	note := "DUA BASIS CKPN: (1) sesuai kebijakan — aset baik dikecualikan sehingga CKPN-nya nol (butir 12.3.a.2.a); (2) setara PPKA — aset baik tetap dinilai EAD x PD x LGD supaya basisnya sebanding dengan PPKA yang dihitung atas SELURUH kredit. Kedua angka berbeda karena perlakuan aset baik, bukan karena rumus berbeda. Keduanya BUKAN kebijakan bank yang berlaku: tidak ada jurnal yang ditulis, required_ckpn tidak tersimpan, dan pengurangan modal inti belum dilakukan."
+	note := "DUA BASIS CKPN: (1) sesuai kebijakan — aset baik dikecualikan sehingga CKPN-nya nol (butir 12.3.a.2.a); (2) setara PPKA — aset baik tetap dinilai EAD x PD x LGD supaya basisnya sebanding dengan PPKA yang dihitung atas SELURUH kredit. Kedua angka berbeda karena perlakuan aset baik, bukan karena rumus berbeda. Keduanya BUKAN kebijakan bank yang berlaku: tidak ada jurnal yang ditulis dan required_ckpn tidak tersimpan. Pengurang modal inti diterapkan di laporan KPMM memakai basis kebijakan kpmm.deduction_basis, bukan di modul CKPN."
 	if s.SetaraPPKAFailed > 0 {
 		note += fmt.Sprintf(" Basis setara PPKA belum dapat menghitung %d kredit (PD/LGD belum lengkap), sehingga totalnya hanya mencakup kredit yang dapat dihitung.", s.SetaraPPKAFailed)
 	}
@@ -318,11 +325,15 @@ func ckpnShadowAssumptions(policy domain.CKPNPolicy) []string {
 	if policy.LGDIsSet {
 		out = append(out, fmt.Sprintf("LGD = %s (all account, berlaku untuk semua golongan).", policy.LGD))
 	}
+	frasaAsetBaik := "dikecualikan dari CKPN (butir 12.3.a.2.a; nilai awal kebijakan)"
+	if policy.AsetBaikBentukCKPN {
+		frasaAsetBaik = "TETAP dibentuk CKPN tahap-1 EAD x PD x LGD (saklar " + cfgCKPNAsetBaikBentuk + " menyala)"
+	}
 	out = append(out,
-		fmt.Sprintf("Aset baik: tunggakan <= %d hari dan belum pernah direstrukturisasi dikecualikan dari CKPN (butir 12.3.a.2.a).", policy.AsetBaikMaxDPD),
+		fmt.Sprintf("Aset baik: tunggakan <= %d hari dan belum pernah direstrukturisasi %s.", policy.AsetBaikMaxDPD, frasaAsetBaik),
 		"EAD = sisa pokok dikurangi saldo kerugian restrukturisasi yang belum diamortisasi; dasar ini sama dengan PPKA.",
 		"Perlakuan agunan: nilai realisasi agunan TIDAK dikurangkan langsung dari EAD di rumus ini; agunan diperhitungkan bank di dalam penetapan LGD (butir 12.7).",
-		"PPKA sebagai lantai PER KREDIT: potensi pengurang modal inti = Σ max(PPKA_i - CKPN_i, 0), bukan selisih agregat total PPKA - total CKPN (butir 1.1.6). Kredit dengan CKPN lebih besar tidak mengurangi kelebihan kredit lain; pengurangannya belum dilakukan.",
+		"Pengurang modal inti PPKA-CKPN adalah PILIHAN KEBIJAKAN, bukan cacat: nilai awal memakai lantai PER KREDIT Σ max(PPKA_i - CKPN_i, 0) yang secara matematis selalu >= selisih AGREGAT total PPKA - total CKPN, sehingga konservatif. Regulasi (PA BPR butir 1.1.6 dan SEOJK 2/2025 Bagian IV angka 2) membaca selisih AGREGAT 'apabila PPKA lebih besar daripada CKPN'. Bank dapat pindah ke agregat lewat kunci kpmm.deduction_basis setelah laporan KPMM pertamanya disahkan OJK/akuntan; basis yang dipakai tercatat pada bidang deduction_basis laporan KPMM.",
 	)
 	return out
 }
@@ -595,6 +606,8 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 	if v := s.config.GetInt(ctx, cfgCKPNAsetBaikMaxDPD, domain.CKPNAsetBaikMaxDPDDefault); v >= 0 {
 		p.AsetBaikMaxDPD = v
 	}
+	// Saklar kebijakan aset baik. Bawaan false = perilaku sekarang (dikecualikan).
+	p.AsetBaikBentukCKPN = s.config.GetBool(ctx, cfgCKPNAsetBaikBentuk, false)
 	for _, c := range ckpnCollectibilityOrder {
 		key := ckpnPDKey(c)
 		v, set, err := configDecimal(ctx, s.config, key)

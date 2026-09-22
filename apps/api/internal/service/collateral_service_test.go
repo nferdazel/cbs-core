@@ -320,3 +320,53 @@ func TestCollateralSummary_MengambilCabangDariAktor(t *testing.T) {
 		})
 	}
 }
+
+// Informasi Lampiran II disalin apa adanya saat pencatatan. Agunan tanpa data itu
+// tetap diterima dan ditandai; setelah dilengkapi, nilainya tidak hilang dan
+// spasi dirapikan. Bobot risiko agunan belum dipakai perhitungan ATMR.
+func TestCollateralCreate_MenyimpanInfoLampiranIITanpaMemaksa(t *testing.T) {
+	repo := &collateralRepoStub{}
+	svc := NewCollateralService(repo, &collateralConfigStub{}, collateralBranchRepo(), &reversalAuditRepo{})
+
+	kosong, err := svc.Create(context.Background(), collateralInput(), collateralActor("001"))
+	if err != nil {
+		t.Fatalf("agunan tanpa data Lampiran II ditolak: %v", err)
+	}
+	if len(kosong.MissingLampiranIIFields()) == 0 {
+		t.Fatal("data Lampiran II yang kosong seharusnya ditandai, bukan dipaksa")
+	}
+
+	ikatan := domain.BindingHakTanggungan
+	akhirAsuransi := time.Now().UTC().AddDate(1, 0, 0)
+	berlakuTaksasi := time.Now().UTC().AddDate(0, 3, 0)
+	input := collateralInput()
+	input.BindingType = &ikatan
+	input.Disputed = true
+	input.DisputeEvidence = "  sengketa waris  "
+	input.InsuranceExpiryDate = &akhirAsuransi
+	input.InsurancePolicyNumber = "  POL-77  "
+	input.AppraisalValidUntil = &berlakuTaksasi
+
+	c, err := svc.Create(context.Background(), input, collateralActor("001"))
+	if err != nil {
+		t.Fatalf("pencatatan informasi Lampiran II gagal: %v", err)
+	}
+	if c.BindingType == nil || *c.BindingType != ikatan {
+		t.Fatalf("ikatan tersimpan %v, mau %s", c.BindingType, ikatan)
+	}
+	if !c.Disputed || c.DisputeEvidence != "sengketa waris" {
+		t.Fatalf("penanda sengketa tersimpan %v/%q", c.Disputed, c.DisputeEvidence)
+	}
+	if c.InsuranceExpiryDate == nil || !c.InsuranceExpiryDate.Equal(akhirAsuransi) {
+		t.Fatalf("masa berlaku asuransi tersimpan %v, mau %v", c.InsuranceExpiryDate, akhirAsuransi)
+	}
+	if c.InsurancePolicyNumber != "POL-77" {
+		t.Fatalf("nomor polis tersimpan %q, mau POL-77", c.InsurancePolicyNumber)
+	}
+	if c.AppraisalValidUntil == nil || !c.AppraisalValidUntil.Equal(berlakuTaksasi) {
+		t.Fatalf("masa berlaku taksasi tersimpan %v, mau %v", c.AppraisalValidUntil, berlakuTaksasi)
+	}
+	if len(c.MissingLampiranIIFields()) != 0 {
+		t.Fatalf("setelah dilengkapi masih ditandai: %v", c.MissingLampiranIIFields())
+	}
+}
