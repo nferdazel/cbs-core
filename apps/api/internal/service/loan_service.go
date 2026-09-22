@@ -1373,6 +1373,53 @@ func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*d
 	return product, overrides, nil
 }
 
+// writeOffReserveOverride menentukan pengarahan kaki debit cadangan jurnal hapus buku.
+//
+// Semenjak ckpn.enabled menyala, cadangan yang dibukukan untuk kredit adalah CKPN
+// (10950 konvensional / 11950 syariah), bukan PPAP (10900/11900). Pemetaan produk
+// LOAN_WRITE_OFF di-seed melepas akun PPAP, sehingga tanpa pengarahan ini hapus buku
+// melepas akun PPAP yang saldonya milik dasar lain dan cadangan CKPN kredit itu tidak
+// pernah dilepas. Saat ckpn.enabled mati, pemetaan produk dipakai apa adanya (perilaku
+// lama) — pengarahan ini sengaja hanya berlaku pada jalur CKPN aktif.
+//
+// Nilai kembalian adalah AccountOverrides (kunci kode COA -> nomor akun GL) yang siap
+// diserahkan ke ProductPoster. Pemeriksaan apakah kode benar-benar ada di bagan akun
+// dilakukan ResolveGLAccount, sehingga pemetaan yang salah ditolak, bukan terjurnal ke
+// akun yang tidak ada.
+func (s *loanService) writeOffReserveOverride(ctx context.Context, tx any, product *domain.BankingProduct, rules []domain.JournalMappingRule) (map[string]string, error) {
+	if s.config == nil || !s.config.GetBool(ctx, cfgCKPNEnabled, false) {
+		return nil, nil
+	}
+	// Kaki debit pokok adalah akun cadangan yang dilepas; kaki kredit pokok adalah
+	// piutang kredit. Hanya kaki debit yang diarahkan.
+	reserveCOA := ""
+	for _, rule := range rules {
+		if rule.Direction == domain.DirectionDebit && rule.AmountSource == domain.AmountPrincipal {
+			reserveCOA = rule.COACode
+			break
+		}
+	}
+	if reserveCOA == "" {
+		return nil, nil
+	}
+	book := domain.BookConventional
+	if product != nil && product.Book == domain.BookSyariah {
+		book = domain.BookSyariah
+	}
+	ckpnReserve := resolveCKPNCOA(ctx, s.config, book,
+		cfgCKPNReserveCOASyariah, cfgCKPNReserveCOA,
+		fallbackCKPNReserveSyariah, fallbackCKPNReserveConventional)
+	// Pemetaan produk sudah memakai akun CKPN: tidak ada yang perlu diubah.
+	if reserveCOA == ckpnReserve {
+		return nil, nil
+	}
+	acc, err := s.resolver.ResolveGLAccount(ctx, tx, ckpnReserve)
+	if err != nil {
+		return nil, fmt.Errorf("%w: COA %s: %v", domain.ErrCKPNReserveNotFound, ckpnReserve, err)
+	}
+	return map[string]string{reserveCOA: acc}, nil
+}
+
 // writeOffTx menjalankan hapus buku di dalam transaksi pemanggil: jurnal, status, sisa
 // pokok, dan jejak auditnya commit bersama. Selain pokok, piutang bunga dan denda yang
 // masih tercatat ikut dilepas supaya tidak ada aset tanpa penopang yang tertinggal.
@@ -1389,6 +1436,13 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	if err := requireWriteOffLegs(rules, terms); err != nil {
 		return err
 	}
+	// Saat CKPN aktif, kaki debit cadangan diarahkan ke akun CKPN per buku (bukan
+	// akun PPAP pada pemetaan produk). Bila CKPN mati, overrides nil dan pemetaan
+	// produk dipakai apa adanya — perilaku lama tidak berubah.
+	overrides, err := s.writeOffReserveOverride(ctx, tx, product, rules)
+	if err != nil {
+		return err
+	}
 
 	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanWriteOff, Amounts{
 		Principal: terms.Principal,
@@ -1396,11 +1450,12 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 		Penalty:   terms.Penalty,
 		Total:     terms.Total(),
 	}, PostingMeta{
-		TransactionType: domain.TxTypeAdjustment,
-		Description:     fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, reason),
-		IdempotencyKey:  "WOFF-" + loan.LoanNumber,
-		CreatedBy:       actor.DisplayName(),
-		BranchCode:      actor.BranchCode,
+		TransactionType:  domain.TxTypeAdjustment,
+		Description:      fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, reason),
+		IdempotencyKey:   "WOFF-" + loan.LoanNumber,
+		CreatedBy:        actor.DisplayName(),
+		BranchCode:       actor.BranchCode,
+		AccountOverrides: overrides,
 	}); err != nil {
 		return fmt.Errorf("jurnal hapus buku: %w", err)
 	}

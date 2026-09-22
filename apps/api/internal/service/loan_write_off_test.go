@@ -448,3 +448,59 @@ func distinctKeys(reqs []domain.PostingRequest) map[string]bool {
 	}
 	return keys
 }
+
+// hasWriteOffLine melaporkan apakah jurnal memuat baris akun/arah tertentu.
+func hasWriteOffLine(lines []domain.PostingLine, account string, dir domain.EntryDirection) bool {
+	for _, l := range lines {
+		if l.AccountNumber == account && l.Direction == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// Saat ckpn.enabled menyala, hapus buku melepas cadangan CKPN (10950), bukan akun PPAP
+// (10900) pada pemetaan produk LOAN_WRITE_OFF. Tanpa pengarahan ini saldo CKPN kredit
+// tidak pernah dilepas dan akun PPAP dasar lain ikut terpotong. Test ini gagal bila
+// pengarahan tidak aktif (kaki debit tetap 10900).
+func TestWriteOffLoan_CKPNMenyalaMelepasAkunCKPN(t *testing.T) {
+	f, svc := writeOffFixture()
+	svc.approvals = nil
+	svc.config = &ckpnConfigStub{values: map[string]string{cfgCKPNEnabled: "true"}}
+
+	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("hapus buku dengan CKPN aktif: %v", err)
+	}
+	if len(f.posting.requests) != 1 {
+		t.Fatalf("jurnal %d, ingin 1", len(f.posting.requests))
+	}
+	lines := f.posting.requests[0].Lines
+	if !hasWriteOffLine(lines, "10950", domain.DirectionDebit) {
+		t.Fatalf("cadangan CKPN 10950 tidak dilepas saat CKPN aktif: %+v", lines)
+	}
+	if hasWriteOffLine(lines, "10900", domain.DirectionDebit) {
+		t.Fatalf("akun PPAP 10900 masih dilepas saat CKPN aktif: %+v", lines)
+	}
+}
+
+// Saat ckpn.enabled mati, perilaku lama dipertahankan: pemetaan produk melepas akun
+// PPAP 10900 dan tidak menyentuh akun CKPN 10950.
+func TestWriteOffLoan_CKPNMatiTetapLepasAkunPPAP(t *testing.T) {
+	f, svc := writeOffFixture()
+	svc.approvals = nil
+
+	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("hapus buku dengan CKPN mati: %v", err)
+	}
+	lines := f.posting.requests[0].Lines
+	if !hasWriteOffLine(lines, "10900", domain.DirectionDebit) {
+		t.Fatalf("perilaku lama berubah: akun PPAP 10900 tidak dilepas: %+v", lines)
+	}
+	if hasWriteOffLine(lines, "10950", domain.DirectionDebit) {
+		t.Fatalf("akun CKPN 10950 dipakai padahal CKPN mati: %+v", lines)
+	}
+}

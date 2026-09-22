@@ -289,3 +289,83 @@ func TestIntegrasiCKPNModeBayanganTidakMenjurnal(t *testing.T) {
 			summary.CKPNCompared, summary.CKPNModalIntiDeduction)
 	}
 }
+
+// TestIntegrasiEODCKPNMenyalaMenjurnalPortofolioCampuran membuktikan langkah tutup hari
+// (bukan panggilan Run manual) MEMBENTUK dan MENJURNAL CKPN saat ckpn.enabled menyala,
+// dengan akun per buku, dan bahwa mengulang proses CKPN pada tanggal bisnis yang sama
+// tidak menambah jurnal. Portofolio campuran: satu kredit konvensional NPL dan satu
+// pembiayaan syariah NPL. Angka dihitung manual: CKPN = EAD x PD x LGD.
+func TestIntegrasiEODCKPNMenyalaMenjurnalPortofolioCampuran(t *testing.T) {
+	e := newMoneyEnv(t)
+	setRestructureLossConfig(t, e, "ppap.collateral.enabled", "false")
+	setCKPNConfig(t, e, "ckpn.enabled", "true")
+	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.15")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.40")
+	// Kunci syariah diisi agar pembiayaan TIDAK jatuh ke akun konvensional. Kunci
+	// global sudah diisi 50301/10950 oleh migrasi 000069.
+	setCKPNConfig(t, e, "ckpn.coa.expense", "50301")
+	setCKPNConfig(t, e, "ckpn.coa.reserve", "10950")
+	setCKPNConfig(t, e, "ckpn.coa.expense.syariah", "15901")
+	setCKPNConfig(t, e, "ckpn.coa.reserve.syariah", "11950")
+	t.Cleanup(func() {
+		setCKPNConfig(t, e, "ckpn.enabled", "false")
+		setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
+	})
+
+	branchCode := ckpnTestBranchCode("E")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji EOD CKPN")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujieodckpn", Role: domain.RoleAdmin, BranchCode: branchCode}
+
+	// Konvensional NPL: angsuran pertama dimundurkan 100 hari agar PPAP (yang berjalan
+	// lebih dulu di EOD) menetapkan Kurang Lancar. EAD 20.000.000 -> CKPN =
+	// 20jt x 0,15 x 0,40 = 1.200.000 (Db 50301 / Kr 10950).
+	custN := e.newCustomer(t, "Nasabah EOD CKPN N", fmt.Sprintf("eod-ckpn-n-%d@uji.local", time.Now().UnixNano()))
+	accN := e.newAccountInBranch(t, custN.ID, branchID)
+	loanN := e.disburseAs(t, actor, custN.ID, accN, idr(20_000_000), 12)
+	e.setOldestDueDate(t, loanN.ID, time.Now().UTC().AddDate(0, 0, -100))
+
+	// Pembiayaan syariah NPL: EAD 40.000.000 -> CKPN = 40jt x 0,15 x 0,40 = 2.400.000
+	// (Db 15901 / Kr 11950).
+	custS := e.newCustomer(t, "Nasabah EOD CKPN S", fmt.Sprintf("eod-ckpn-s-%d@uji.local", time.Now().UnixNano()))
+	accS := e.newSyariahAccountInBranch(t, custS.ID, branchID)
+	loanS := e.disburseWithProductAs(t, actor, "PMB-MURABAHAH", custS.ID, accS, idr(40_000_000), 12)
+	e.setOldestDueDate(t, loanS.ID, time.Now().UTC().AddDate(0, 0, -100))
+
+	batchSvc := e.newBatchSvcForTest(t, newCKPNSvcForTest(e))
+	summary, err := batchSvc.RunEOD(e.ctx, e.actor.UserID)
+	if err != nil {
+		t.Fatalf("RunEOD: %v", err)
+	}
+	if step := eodStepStatus(t, summary, "ckpn_comparison"); step.Status != domain.EODStepRan {
+		t.Fatalf("langkah CKPN = %s (%s), mau RAN", step.Status, step.Reason)
+	}
+	asOf := summary.ExecutedDate
+
+	// Jurnal dibentuk oleh langkah EOD, akun sesuai buku, nominal sesuai hitungan manual.
+	keyN := ckpnIdempotencyKey(loanN.LoanNumber, asOf, decimal.NewFromInt(1_200_000))
+	keyS := ckpnIdempotencyKey(loanS.LoanNumber, asOf, decimal.NewFromInt(2_400_000))
+	assertCKPNJournal(t, e, keyN, "50301", "DEBIT", "10950", "CREDIT", decimal.NewFromInt(1_200_000))
+	assertCKPNJournal(t, e, keyS, "15901", "DEBIT", "11950", "CREDIT", decimal.NewFromInt(2_400_000))
+
+	// target tersimpan sama dengan hitungan manual (bukti Run benar-benar menjurnal,
+	// bukan sekadar Compare).
+	if got := e.loanDecimal(t, loanN.ID, "required_ckpn"); !got.Equal(decimal.NewFromInt(1_200_000)) {
+		t.Fatalf("required_ckpn N = %s, mau 1200000", got)
+	}
+	if got := e.loanDecimal(t, loanS.ID, "required_ckpn"); !got.Equal(decimal.NewFromInt(2_400_000)) {
+		t.Fatalf("required_ckpn S = %s, mau 2400000", got)
+	}
+
+	// Idempotensi per tanggal bisnis: retry tutup hari menjalankan langkah CKPN lagi
+	// pada tanggal yang sama; selisih nol sehingga TIDAK ada jurnal kedua.
+	if _, err := newCKPNSvcForTest(e).Run(e.ctx, asOf, domain.SystemActor(e.actor.UserID)); err != nil {
+		t.Fatalf("Run CKPN ulang pada tanggal yang sama: %v", err)
+	}
+	if n := countJournals(t, e, keyN); n != 1 {
+		t.Fatalf("run ulang menambah jurnal kredit N: %d, mau 1", n)
+	}
+	if n := countJournals(t, e, keyS); n != 1 {
+		t.Fatalf("run ulang menambah jurnal pembiayaan S: %d, mau 1", n)
+	}
+}

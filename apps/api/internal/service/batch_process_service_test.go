@@ -13,6 +13,32 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// eodTestConfig adalah SystemConfigService in-memory untuk uji gerbang ckpn.enabled:
+// GetBool benar-benar membaca nilai sehingga saklar dapat dinyalakan tanpa database.
+type eodTestConfig struct {
+	values map[string]string
+}
+
+func (c *eodTestConfig) GetString(_ context.Context, key, fallback string) string {
+	if v, ok := c.values[key]; ok {
+		return v
+	}
+	return fallback
+}
+func (c *eodTestConfig) GetDecimal(context.Context, string, decimal.Decimal) decimal.Decimal {
+	return decimal.Zero
+}
+func (c *eodTestConfig) GetInt(context.Context, string, int) int { return 0 }
+func (c *eodTestConfig) GetBool(_ context.Context, key string, fallback bool) bool {
+	if v, ok := c.values[key]; ok {
+		return v == "true"
+	}
+	return fallback
+}
+func (c *eodTestConfig) Invalidate(string) {}
+
+var _ domain.SystemConfigService = (*eodTestConfig)(nil)
+
 type stubBusinessDateRepo struct {
 	currentDate time.Time
 	status      domain.BusinessDateStatus
@@ -827,6 +853,90 @@ func TestRunEODKeduaSaklarCKPNMenyalaMemakaiJalurResmi(t *testing.T) {
 	}
 	if !res.CKPNShadowTotalCKPN.IsZero() || !res.CKPNShadowModalIntiDeduction.IsZero() {
 		t.Fatalf("bidang bayangan tidak boleh terisi pada jalur resmi: %+v", res)
+	}
+}
+
+// Saat ckpn.enabled menyala, langkah EOD CKPN harus MEMBENTUK dan MENJURNAL lewat Run,
+// bukan sekadar Compare baca-saja. Memakai Compare saat saklar menyala membuat bank
+// mengira patuh padahal pembukuan tidak memuat CKPN. Test ini gagal bila langkah kembali
+// selalu memanggil Compare (runCalled tetap false).
+func TestRunEODCKPNMenyalaMemakaiRunMenjurnal(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	runCalled := false
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil,
+		&eodTestConfig{values: map[string]string{"ckpn.enabled": "true"}}, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			runCalled: &runCalled,
+			summary: domain.CKPNComparisonSummary{
+				Enabled:            true,
+				Processed:          2,
+				TotalPPKA:          decimal.NewFromInt(1_000_000),
+				TotalCKPN:          decimal.NewFromInt(600_000),
+				ModalIntiDeduction: decimal.NewFromInt(400_000),
+			},
+		}, &eodDefRepoStub{})
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if !runCalled {
+		t.Fatal("ckpn.enabled menyala harus memakai Run yang menjurnal, bukan Compare baca-saja")
+	}
+	if res.CKPNCompared != 2 {
+		t.Fatalf("ckpn_compared = %d, mau 2 (jalur resmi)", res.CKPNCompared)
+	}
+	if !res.CKPNModalIntiDeduction.Equal(decimal.NewFromInt(400_000)) {
+		t.Fatalf("ckpn_modal_inti_deduction = %s, mau 400000", res.CKPNModalIntiDeduction)
+	}
+	if step := eodStepStatus(t, res, "ckpn_comparison"); step.Status != domain.EODStepRan {
+		t.Fatalf("status CKPN = %s, mau RAN", step.Status)
+	}
+}
+
+// Saat ckpn.enabled mati, EOD tetap memakai Compare baca-saja (perilaku lama): mode
+// bayangan dihitung dan dilaporkan tanpa jurnal. Test ini mengunci gerbang saklar.
+func TestRunEODCKPNMatiTetapCompareBacaSaja(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	runCalled := false
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil,
+		&eodTestConfig{values: map[string]string{"ckpn.enabled": "false"}}, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			runCalled: &runCalled,
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode: true,
+				Processed:  1,
+				TotalPPKA:  decimal.NewFromInt(1_000_000),
+				TotalCKPN:  decimal.NewFromInt(500_000),
+			},
+		}, &eodDefRepoStub{})
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if runCalled {
+		t.Fatal("ckpn.enabled mati tidak boleh memakai Run yang menjurnal")
+	}
+	if !res.CKPNShadowMode {
+		t.Fatal("mode bayangan harus tetap dilaporkan saat ckpn.enabled mati")
+	}
+	if res.CKPNCompared != 0 {
+		t.Fatalf("bidang resmi tidak boleh terisi saat saklar mati: compared=%d", res.CKPNCompared)
 	}
 }
 

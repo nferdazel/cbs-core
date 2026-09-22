@@ -463,17 +463,37 @@ func (s *batchProcessService) runPPAPStep(ctx context.Context, def domain.EODSte
 	return eodStepRan(map[string]any{"processed": ppap.Processed, "adjusted": ppap.Adjusted})
 }
 
-// runCKPNStep membandingkan CKPN dengan required_ppap hasil PPAP pada tanggal bisnis
-// yang sama. Bila PPAP tidak RAN, perbandingan menolak berjalan agar tidak melaporkan
-// dasar run sebelumnya seolah sah.
+// runCKPNStep menjalankan langkah CKPN pada tutup hari. Saat ckpn.enabled menyala,
+// langkah ini MEMBENTUK dan MENJURNAL CKPN (debit beban, kredit cadangan) per buku
+// lewat Run, lalu membandingkannya dengan required_ppap hasil PPAP pada tanggal bisnis
+// yang sama; saat saklar mati, perilakunya persis seperti sebelumnya (Compare baca-saja:
+// mode bayangan menghitung tanpa menjurnal, kedua saklar mati berarti dilewati). Bila
+// PPAP tidak RAN, langkah menolak berjalan agar tidak melaporkan dasar run sebelumnya
+// seolah sah.
+//
+// Idempotensi per tanggal bisnis: Run menghitung selisih dari required_ckpn yang
+// tersimpan, sehingga menjalankan ulang pada tanggal bisnis yang sama menghasilkan
+// selisih nol dan tidak menulis jurnal kedua (kunci idempotensi memuat selisih).
 func (s *batchProcessService) runCKPNStep(ctx context.Context, def domain.EODStepDefinition, businessDate time.Time, actor domain.Actor, summary *domain.EODSummaryResult, logger *slog.Logger) eodStepOutcome {
 	if s.ckpnSvc == nil {
 		return eodStepSkipped("layanan CKPN tidak dikonfigurasi")
 	}
-	if out, skip := eodPrerequisiteSkip(summary, "perbandingan CKPN vs PPKA", def.Prerequisites...); skip {
+	if out, skip := eodPrerequisiteSkip(summary, "langkah CKPN vs PPKA", def.Prerequisites...); skip {
 		return out
 	}
-	cmp, err := s.ckpnSvc.Compare(ctx, businessDate, actor)
+	// Jalur dipilih dari ckpn.enabled SEBELUM memanggil service: Compare tidak pernah
+	// menjurnal, sehingga memakainya saat saklar menyala membuat pembukuan bank tidak
+	// memuat CKPN walau laporan tampak patuh. Config nil (mis. uji tanpa database)
+	// diperlakukan sebagai saklar mati, sama seperti perilaku lama.
+	var (
+		cmp domain.CKPNComparisonSummary
+		err error
+	)
+	if s.configSvc != nil && s.configSvc.GetBool(ctx, cfgCKPNEnabled, false) {
+		cmp, err = s.ckpnSvc.Run(ctx, businessDate, actor)
+	} else {
+		cmp, err = s.ckpnSvc.Compare(ctx, businessDate, actor)
+	}
 	switch {
 	case err != nil:
 		summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA gagal: %v", err))

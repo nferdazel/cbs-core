@@ -210,3 +210,93 @@ func TestIntegrasiHapusBukuSahRecoveryTetapBisa(t *testing.T) {
 		t.Fatalf("audit recovery %d, ingin 1", auditCount)
 	}
 }
+
+// woffSetCKPNEnabled menyalakan/mematikan ckpn.enabled pada database uji, lalu
+// membuang cache konfigurasinya agar loanService membaca nilai baru.
+func woffSetCKPNEnabled(t *testing.T, e *bookWriteEnv, enabled bool) {
+	t.Helper()
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ('ckpn.enabled', $1, 'uji integrasi hapus buku CKPN')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, value); err != nil {
+		t.Fatalf("menyetel ckpn.enabled: %v", err)
+	}
+	e.configSvc.Invalidate("ckpn.enabled")
+}
+
+// woffDebitAccounts mengembalikan himpunan kode COA yang didebit jurnal hapus buku
+// (kunci WOFF-) untuk satu nomor kredit.
+func woffDebitAccounts(t *testing.T, e *bookWriteEnv, loanNumber string) map[string]bool {
+	t.Helper()
+	rows, err := e.db.QueryContext(e.ctx, `
+		SELECT coa.code
+		FROM journal_entries je
+		JOIN journal_lines jl ON jl.journal_entry_id = je.id
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts coa ON coa.id = a.coa_id
+		WHERE je.idempotency_key = 'WOFF-' || $1 AND jl.direction = 'DEBIT'`, loanNumber)
+	if err != nil {
+		t.Fatalf("membaca baris jurnal hapus buku: %v", err)
+	}
+	defer rows.Close()
+	accounts := map[string]bool{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			t.Fatalf("memindai akun jurnal: %v", err)
+		}
+		accounts[code] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("baris jurnal hapus buku: %v", err)
+	}
+	return accounts
+}
+
+// Hapus buku harus melepas akun cadangan yang benar menurut saklar CKPN: saat CKPN
+// aktif, cadangan yang dibukukan adalah CKPN 10950; saat CKPN mati, perilaku lama
+// (PPAP 10900) tidak boleh berubah. Keduanya dibuktikan pada database sungguhan.
+func TestIntegrasiHapusBukuMelepasCadanganSesuaiSaklarCKPN(t *testing.T) {
+	e := newBookWriteEnv(t)
+
+	// CKPN mati: pemetaan produk melepas PPAP 10900, tidak menyentuh CKPN 10950.
+	woffSetCKPNEnabled(t, e, false)
+	loanOff, actorOff := writeOffIntegrationLoan(t, e, "WC")
+	woffSetState(t, e, loanOff.ID, string(domain.CollectibilityKol5), 1_000_000)
+	woffBypassApproval(t, e, "loan_write_off")
+	if _, err := e.loanSvc.WriteOffLoan(e.ctx, domain.WriteOffLoanInput{
+		LoanID: loanOff.ID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x",
+	}, actorOff); err != nil {
+		t.Fatalf("hapus buku dengan CKPN mati: %v", err)
+	}
+	off := woffDebitAccounts(t, e, loanOff.LoanNumber)
+	if !off["10900"] {
+		t.Fatalf("CKPN mati harus melepas PPAP 10900, dapat %v", off)
+	}
+	if off["10950"] {
+		t.Fatalf("CKPN mati tidak boleh menyentuh akun CKPN 10950: %v", off)
+	}
+
+	// CKPN aktif: kaki debit cadangan diarahkan ke CKPN 10950, bukan PPAP 10900.
+	woffSetCKPNEnabled(t, e, true)
+	t.Cleanup(func() { woffSetCKPNEnabled(t, e, false) })
+	loanOn, actorOn := writeOffIntegrationLoan(t, e, "WK")
+	woffSetState(t, e, loanOn.ID, string(domain.CollectibilityKol5), 1_000_000)
+	woffBypassApproval(t, e, "loan_write_off")
+	if _, err := e.loanSvc.WriteOffLoan(e.ctx, domain.WriteOffLoanInput{
+		LoanID: loanOn.ID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x",
+	}, actorOn); err != nil {
+		t.Fatalf("hapus buku dengan CKPN aktif: %v", err)
+	}
+	on := woffDebitAccounts(t, e, loanOn.LoanNumber)
+	if !on["10950"] {
+		t.Fatalf("CKPN aktif harus melepas CKPN 10950, dapat %v", on)
+	}
+	if on["10900"] {
+		t.Fatalf("CKPN aktif tidak boleh melepas PPAP 10900: %v", on)
+	}
+}

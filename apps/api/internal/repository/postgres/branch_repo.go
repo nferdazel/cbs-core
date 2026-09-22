@@ -122,6 +122,10 @@ func (r *BranchRepository) SetParentTx(ctx context.Context, tx any, id uuid.UUID
 // (dan turunannya) selalu memuat target, sehingga tidak pernah ikut kehilangan.
 func (r *BranchRepository) ScopeImpactUsers(ctx context.Context, targetID uuid.UUID, oldParentID, newParentID *uuid.UUID) (int, int, error) {
 	var losing, gaining int
+	// parent_id WAJIB ikut dipilih pada kedua istilah CTE rekursif: daftar kolom
+	// CTE ditentukan istilah non-rekursif, dan istilah rekursif membaca c.parent_id
+	// dari alias CTE. Menghilangkannya membuat query gagal
+	// "column c.parent_id does not exist" (SQLSTATE 42703), bukan sekadar salah hasil.
 	err := r.db.QueryRowContext(ctx, `
 		WITH RECURSIVE old_chain AS (
 			SELECT id, code, parent_id FROM branches WHERE id = $1

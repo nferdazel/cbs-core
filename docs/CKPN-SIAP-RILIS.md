@@ -85,9 +85,13 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
 5. **Perlakuan agunan.** Mesin CKPN **tidak** mengurangi nilai realisasi agunan dari
    EAD; agunan harus sudah tercermin di LGD (PA BPR 12.7). Pastikan LGD bank memang
    memakai *expected recoveries*/*collateral shortfall* (PA BPR 12.7.1/12.7.2).
-6. **Hapus buku.** Syarat "cadangan 100%" pada `write-off` sekarang diukur dari
-   `required_ppap` (`loan_service.go:1335-1341`), bukan CKPN. Putuskan ukuran yang
-   dipakai setelah CKPN berlaku.
+6. **Hapus buku.** Akun cadangan yang dilepas sudah mengikuti saklar: saat `ckpn.enabled`
+   menyala, kaki debit cadangan diarahkan ke akun CKPN per buku (`10950`/`11950`,
+   `loan_service.go:1376-1419`); saat mati, pemetaan produk (PPAP `10900`/`11900`) dipakai
+   apa adanya. Namun **ukurannya** masih memakai `required_ppap` (`loan_service.go:1335-1341`)
+   dan dilepas sebesar kaki pokok. Bila saldo CKPN yang dibukukan lebih kecil dari pokok,
+   pelepasan penuh berpotensi membuat saldo CKPN negatif; putuskan bersama akuntan apakah
+   selisihnya diakui sebagai beban dan apakah syarat "cadangan 100%" diukur dari CKPN.
 7. **Perlakuan CKPN individual** (discounted cash flow / nilai realisasi agunan)
    memerlukan estimasi arus kas dan suku bunga efektif awal per debitur — belum
    dibangun (`domain/ckpn.go:146-152`).
@@ -118,12 +122,12 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
    sesuai (kredit aset baik tidak butuh PD), dan `ModalIntiDeduction` wajar. Mode
    bayangan tidak menjurnal dan tidak menulis `required_ckpn`
    (`ckpn_service.go:135-144`; uji `ckpn_shadow_integration_test.go`).
-4. **Catat keterbatasan penting:** langkah tutup hari (`ckpn_comparison`) saat ini
-   **hanya membandingkan, tidak menjurnal** — ia memanggil `Compare`
-   (`batch_process_service.go:476`), bukan `Run`. Menyalakan `ckpn.enabled` membuat
-   jalur resmi `POST /api/v1/ckpn/run` menjurnal dengan benar, tetapi EOD belum
-   membentuk CKPN otomatis. Jangan menyalakan CKPN di produksi sebelum bank memahami
-   bahwa pembentukan harus dipicu lewat `POST /ckpn/run` (atau sampai EOD diubah).
+4. Langkah tutup hari (`ckpn_comparison`) kini **membentuk dan menjurnal** CKPN saat
+   `ckpn.enabled` menyala: memanggil `Run` (`batch_process_service.go:492-496`), lalu
+   melaporkan hasilnya. Saat saklar mati, ia tetap memanggil `Compare` baca-saja persis
+   seperti sebelumnya (mode bayangan menghitung tanpa menjurnal). Karena pembentukan
+   kini otomatis di EOD, jalur manual `POST /api/v1/ckpn/run` hanya diperlukan untuk
+   menjalankan ulang di luar tutup hari.
 5. Ubah `ckpn.enabled = true`. Matikan mode bayangan (`ckpn.shadow_mode.enabled =
    false`) agar tidak ada dua angka yang membingungkan.
 6. Verifikasi setelah menyala:
@@ -137,19 +141,21 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
 
 ## (f) Apa yang belum dibangun
 
-- **EOD tidak menjurnal CKPN** (hanya `Compare`, `batch_process_service.go:476`). Ini
-  penghambat operasional utama: pembentukan CKPN harus dipicu manual.
 - **KPMM/ATMR belum dihitung**; rasio KPMM ditandai TIDAK TERSEDIA
   (`ojkreport/ratios.go:74-79`). Akibatnya pengurang modal inti PPKA–CKPN baru
-  dilaporkan sebagai angka, belum diterapkan pada perhitungan modal.
+  dilaporkan sebagai angka pada ringkasan EOD (`batch_process_service.go:508`), belum
+  diterapkan pada perhitungan modal. Usulan urutan: (1) putuskan per-kredit vs agregat;
+  (2) susun komponen modal & ATMR sesuai POJK KPMM BPR; (3) baru terapkan pengurang.
+  **Jangan membangun modul KPMM sebelum keputusan bank.**
 - **CKPN individual** (DCF/nilai realisasi agunan) belum ada (`domain/ckpn.go:146-152`).
 - **Perhitungan PD/LGD dari data historis** belum ada; bank mengisinya manual.
 - **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** belum tersedia di jalur
   resmi.
 - **Akun pemulihan CKPN tersendiri** (bila bank memilih pendapatan, bukan balik beban)
   belum ada.
-- **Pelepasan CKPN saat hapus buku**: jurnal hapus buku melepas PPAP (`10900`), bukan
-  CKPN (`10950`); pelepasan CKPN baru terjadi pada run CKPN berikutnya lewat
-  `required_ckpn <> 0` (`ckpn_repo.go:56-58`). Ada jeda satu run.
+- **Pelepasan CKPN saat hapus buku**: akunnya kini mengikuti saklar (CKPN `10950`/`11950`
+  saat aktif; PPAP saat mati, `loan_service.go:1376-1419`), tetapi target `required_ckpn`
+  baru dinolkan pada run CKPN berikutnya lewat `required_ckpn <> 0` (`ckpn_repo.go:56-58`).
+  Ada jeda satu run; urutan pelepasan akun vs target belum menjadi kebijakan bank.
 - **Pemisahan CKPN per golongan kualitas (stage 1/2/3)** untuk pelaporan belum
   disimpan; `required_ckpn` hanya total per kredit (`ojkreport/form06.go:152-156`).
