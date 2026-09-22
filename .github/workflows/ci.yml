@@ -1,6 +1,7 @@
 # CI paling awal. Tujuannya menjaga agar tidak mundur, bukan menegakkan seluruh gaya
 # sekaligus: hanya pemeriksaan yang memang hijau pada keadaan sekarang. Linter Go
-# (golangci-lint, setelan di apps/api/.golangci.yml) termasuk di dalamnya.
+# (golangci-lint, setelan di apps/api/.golangci.yml) dan linter web (eslint + prettier,
+# setelan di apps/web/eslint.config.mjs dan apps/web/prettier.config.mjs) termasuk di dalamnya.
 #
 # Uji integrasi tidak dijalankan di sini karena butuh PostgreSQL + migrasi. Seluruh uji
 # integrasi sudah melewatkan dirinya sendiri bila CBS_TEST_DB_DSN kosong (pola yang sama
@@ -85,7 +86,7 @@ jobs:
         run: go test ./...
 
   web:
-    name: Web (build + tsc)
+    name: Web (lint + format + build + tsc)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -103,6 +104,14 @@ jobs:
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
+
+      - name: Lint web (eslint)
+        # Berkas penuh (bukan hanya yang berubah) karena repo web sudah bersih:
+        # 0 galat, 4 peringatan react-hooks yang sengaja dibiarkan (lihat laporan).
+        run: pnpm --filter web lint
+
+      - name: Format web (prettier --check)
+        run: pnpm --filter web format:check
 
       - name: Build web
         run: pnpm --filter web build
