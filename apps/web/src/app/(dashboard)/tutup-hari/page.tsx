@@ -78,6 +78,94 @@ const BOOK_COLUMNS: Column<EOYBookResult>[] = [
   },
 ];
 
+/** Nama pihak yang lebih tinggi pada perbandingan bayangan (domain.CKPNLarger). */
+function ckpnShadowHigherLabel(higher: string): string {
+  if (higher === "PPKA") return "PPKA lebih tinggi";
+  if (higher === "CKPN") return "CKPN lebih tinggi";
+  if (higher === "SAMA") return "Keduanya sama";
+  return higher || "-";
+}
+
+/**
+ * Bagian mode bayangan CKPN. Sengaja diberi label tegas "MODE BAYANGAN": angka ini
+ * belum dijurnal dan belum mengurangi modal inti, jadi tidak boleh terbaca sebagai
+ * laporan final.
+ */
+function CKPNShadowSection({ eod }: { eod: EODSummaryResult }) {
+  return (
+    <Card className="mb-4 border-accent-600/40">
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>Simulasi CKPN (Mode Bayangan)</CardTitle>
+          <Badge variant="accent">
+            Mode bayangan · bukan kewajiban akuntansi · modal inti belum dikurangi
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {eod.ckpn_shadow_note && (
+          <p className="mb-4 rounded-md border border-accent-600/40 bg-accent-50 px-4 py-3 text-body text-ink-900">
+            {eod.ckpn_shadow_note}
+          </p>
+        )}
+        <DefinitionList
+          items={[
+            {
+              label: "Kredit Diproses",
+              value: eod.ckpn_shadow_processed,
+              isMono: true,
+            },
+            {
+              label: "Kredit Gagal",
+              value: (
+                <span
+                  className={
+                    eod.ckpn_shadow_failed > 0
+                      ? "text-debit-700"
+                      : "text-ink-900"
+                  }
+                >
+                  {eod.ckpn_shadow_failed}
+                </span>
+              ),
+              isMono: true,
+            },
+            {
+              label: "Total PPKA",
+              value: <MoneyText value={eod.ckpn_shadow_total_ppka} />,
+            },
+            {
+              label: "Total CKPN (Bayangan)",
+              value: <MoneyText value={eod.ckpn_shadow_total_ckpn} />,
+            },
+            {
+              label: "Selisih (PPKA - CKPN)",
+              value: <MoneyText value={eod.ckpn_shadow_difference} />,
+            },
+            {
+              label: "Nilai Lebih Tinggi",
+              value: ckpnShadowHigherLabel(eod.ckpn_shadow_higher),
+            },
+          ]}
+        />
+        {eod.ckpn_shadow_assumptions &&
+          eod.ckpn_shadow_assumptions.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-meta font-medium uppercase tracking-wide text-ink-600">
+                Asumsi Perhitungan
+              </p>
+              <ul className="list-disc space-y-1 pl-5 text-body text-ink-900">
+                {eod.ckpn_shadow_assumptions.map((assumption, index) => (
+                  <li key={index}>{assumption}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TutupHariPage() {
   const { user } = useAuth();
   const canRun = user?.role === CLOSING_ROLE;
@@ -404,6 +492,8 @@ export default function TutupHariPage() {
               </div>
             </CardContent>
           </Card>
+
+          {eod.ckpn_shadow_mode && <CKPNShadowSection eod={eod} />}
         </>
       )}
 

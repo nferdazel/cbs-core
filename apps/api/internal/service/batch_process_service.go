@@ -283,23 +283,33 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, reason, eodStepPPAP)
 	} else {
 		cmp, err := s.ckpnSvc.Compare(ctx, businessDate, actor)
-		summary.CKPNCompared = cmp.Processed
-		summary.CKPNFailed = cmp.Failed
-		summary.CKPNTotalPPKA = cmp.TotalPPKA
-		summary.CKPNTotalCKPN = cmp.TotalCKPN
-		summary.CKPNModalIntiDeduction = cmp.ModalIntiDeduction
 		switch {
 		case err != nil:
 			summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA gagal: %v", err))
 			logger.ErrorContext(ctx, "perbandingan CKPN vs PPKA gagal saat EOD", "error", err)
 			recordEODStep(summary, eodStepCKPN, domain.EODStepFailed, err.Error(), eodStepPPAP)
-		case !cmp.Enabled:
-			recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, "saklar ckpn.enabled mati", eodStepPPAP)
-		default:
+		case cmp.Enabled:
+			// Jalur resmi (perilaku lama): bidang lama diisi persis seperti sebelumnya.
+			// ShadowMode dari service hanya true bila bayangan benar-benar dipakai, jadi
+			// kombinasi kedua saklar menyala tidak lagi menghasilkan peringatan di sini:
+			// service yang memutuskan mode mana yang berlaku.
+			summary.CKPNCompared = cmp.Processed
+			summary.CKPNFailed = cmp.Failed
+			summary.CKPNTotalPPKA = cmp.TotalPPKA
+			summary.CKPNTotalCKPN = cmp.TotalCKPN
+			summary.CKPNModalIntiDeduction = cmp.ModalIntiDeduction
 			if cmp.Failed > 0 {
 				summary.Warnings = append(summary.Warnings, fmt.Sprintf("perbandingan CKPN vs PPKA: %d kredit gagal dihitung", cmp.Failed))
 			}
 			recordEODStep(summary, eodStepCKPN, domain.EODStepRan, "", eodStepPPAP)
+		case cmp.ShadowMode:
+			// Saklar bayangan menyala sementara ckpn.enabled masih mati: hitung dan
+			// laporkan, tetapi TIDAK menulis jurnal dan TIDAK menghitung pengurangan
+			// modal inti. Langkah tetap dicatat RAN karena perhitungannya dijalankan.
+			reportShadowCKPN(summary, cmp)
+			recordEODStep(summary, eodStepCKPN, domain.EODStepRan, "", eodStepPPAP)
+		default:
+			recordEODStep(summary, eodStepCKPN, domain.EODStepSkipped, "saklar ckpn.enabled mati", eodStepPPAP)
 		}
 	}
 
@@ -340,6 +350,45 @@ func (s *batchProcessService) runDailyJobs(ctx context.Context, businessDate tim
 		if dormant.Warning != "" {
 			summary.Warnings = append(summary.Warnings, dormant.Warning)
 		}
+	}
+}
+
+// reportShadowCKPN mengisi bidang-bidang ADITIF mode bayangan CKPN pada ringkasan
+// tutup hari. Ia TIDAK menyentuh bidang resmi (CKPNCompared/CKPNTotal*/
+// CKPNModalIntiDeduction), TIDAK menulis jurnal, dan TIDAK mengubah state apa pun:
+// hanya melaporkan hasil perhitungan baca-saja dari ckpnService.Compare.
+//
+// Pelabelan tegas: angka ini BAYANGAN — belum menjadi kewajiban akuntansi, perlu
+// persetujuan bank, dan pengurangan modal inti belum dilakukan. Pengurang modal inti
+// dihitung PER KREDIT, jadi potensinya adalah Σ max(PPKA_i - CKPN_i, 0) yang diteruskan
+// dari cmp.ModalIntiDeduction (CKPNShadowModalIntiDeduction). CKPNShadowDifference
+// adalah selisih AGREGAT total PPKA - total CKPN yang pada portofolio campuran bisa
+// 0/negatif walau ada kelebihan per kredit; ia hanya menamai pihak yang lebih tinggi,
+// BUKAN dasar pengurang modal. Bila parameter PD/LGD belum lengkap, CKPN tidak dapat
+// dihitung: yang dilaporkan adalah daftar kunci yang harus diisi, bukan angka karangan.
+func reportShadowCKPN(summary *domain.EODSummaryResult, cmp domain.CKPNComparisonSummary) {
+	summary.CKPNShadowMode = true
+	summary.CKPNShadowProcessed = cmp.Processed
+	summary.CKPNShadowFailed = cmp.Failed
+	summary.CKPNShadowTotalPPKA = cmp.TotalPPKA
+	summary.CKPNShadowTotalCKPN = cmp.TotalCKPN
+	summary.CKPNShadowDifference = cmp.Difference
+	summary.CKPNShadowModalIntiDeduction = cmp.ModalIntiDeduction
+	summary.CKPNShadowHigher = string(cmp.Higher)
+	summary.CKPNShadowAssumptions = cmp.Assumptions
+
+	note := "MODE BAYANGAN CKPN: angka ini BUKAN kewajiban akuntansi dan belum disetujui bank; tidak ada jurnal yang ditulis, tidak ada state yang diubah, dan pengurangan modal inti BELUM dilakukan. Potensi pengurang modal inti (butir 1.1.6) adalah jumlah selisih positif PPKA-CKPN PER KREDIT (ckpn_shadow_modal_inti_deduction); kredit dengan CKPN lebih besar tidak mengurangi kelebihan kredit lain. ckpn_shadow_difference adalah selisih AGREGAT dan hanya menamai pihak yang lebih tinggi, bukan dasar pengurang modal."
+	if len(cmp.ParameterGaps) > 0 {
+		gaps := strings.Join(cmp.ParameterGaps, ", ")
+		summary.CKPNShadowNote = fmt.Sprintf("%s CKPN belum dapat dihitung sepenuhnya; parameter berikut harus diisi/diperbaiki bank: %s.", note, gaps)
+		summary.Warnings = append(summary.Warnings,
+			fmt.Sprintf("CKPN mode bayangan belum dapat dihitung sepenuhnya: isi/perbaiki %s", gaps))
+	} else {
+		summary.CKPNShadowNote = note
+	}
+	if cmp.Failed > 0 {
+		summary.Warnings = append(summary.Warnings,
+			fmt.Sprintf("CKPN mode bayangan: %d kredit gagal dihitung", cmp.Failed))
 	}
 }
 

@@ -19,11 +19,19 @@ import (
 // Bab XII butir 12.4.g.2.c dan 12.6–12.7).
 const (
 	cfgCKPNEnabled        = "ckpn.enabled"
+	cfgCKPNShadowEnabled  = "ckpn.shadow_mode.enabled"
 	cfgCKPNLGD            = "ckpn.lgd"
 	cfgCKPNAsetBaikMaxDPD = "ckpn.aset_baik.max_dpd"
 	cfgCKPNExpenseCOA     = "ckpn.coa.expense"
 	cfgCKPNReserveCOA     = "ckpn.coa.reserve"
 )
+
+// ckpnCollectibilityOrder adalah urutan golongan kolektibilitas untuk enumerasi PD
+// (kunci ckpn.pd.<n>) dan penyusunan asumsi mode bayangan. Urutannya tetap agar pesan
+// yang dibaca bank konsisten.
+var ckpnCollectibilityOrder = []domain.Collectibility{
+	domain.KolLancar, domain.KolDPK, domain.KolKurangLancar, domain.KolDiragukan, domain.KolMacet,
+}
 
 // Fallback kode COA CKPN bila bank belum mengisi pemetaannya. Kode ini di-seed
 // migrasi 000042; 10900/50200 tetap milik PPAP dan tidak boleh dicampur agar
@@ -116,16 +124,32 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	asOf = asOf.UTC()
 
 	policy := s.policy(ctx)
-	summary := domain.CKPNComparisonSummary{
-		Enabled: policy.Enabled,
-		AsOf:    asOf,
-		Preview: !post,
+
+	// Mode bayangan tidak pernah memposting dan tidak pernah menulis state: ia hanya
+	// menghitung lalu melaporkan. Bila ckpn.enabled true, saklar bayangan diabaikan
+	// demi perilaku lama (mode resmi) yang berlaku.
+	if policy.ShadowMode && !policy.Enabled {
+		post = false
 	}
 
-	// Saklar mati berarti tidak ada query tambahan sama sekali: kredit tidak dibaca dan
-	// tidak ada state/jurnal yang disentuh. Ini pola yang sama dengan
+	// ShadowMode yang dilaporkan hanya true bila bayangan benar-benar yang dipakai.
+	// Saat kedua saklar menyala, mode resmi (ckpn.enabled) yang berlaku dan bayangan
+	// diabaikan; melaporkan ShadowMode=true akan bertentangan dengan makna bidang itu
+	// (lihat domain.CKPNComparisonSummary.ShadowMode: "Enabled harus false") dan lewat
+	// HTTP dapat dibaca sebagai dua angka yang dihitung.
+	shadowEffective := policy.ShadowMode && !policy.Enabled
+
+	summary := domain.CKPNComparisonSummary{
+		Enabled:    policy.Enabled,
+		ShadowMode: shadowEffective,
+		AsOf:       asOf,
+		Preview:    !post,
+	}
+
+	// Kedua saklar mati berarti tidak ada query tambahan sama sekali: kredit tidak
+	// dibaca dan tidak ada state/jurnal yang disentuh. Ini pola yang sama dengan
 	// ppap.collateral.enabled.
-	if !policy.Enabled {
+	if !policy.Enabled && !policy.ShadowMode {
 		return summary, nil
 	}
 
@@ -194,7 +218,82 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		}
 	}
 
+	// Selisih agregat dan pihak yang lebih tinggi. PPKA diperlakukan sebagai lantai
+	// pembanding PER KREDIT, karena pengurang modal inti dihitung per kredit. Karena
+	// itu summary.ModalIntiDeduction (lihat loop di atas) menjumlahkan max(PPKA-CKPN,0)
+	// tiap kredit, sedangkan summary.Difference di bawah hanya selisih AGREGAT
+	// (TotalPPKA - TotalCKPN) yang bisa 0/negatif pada portofolio campuran walau ada
+	// kelebihan per kredit. Pada mode bayangan keduanya hanya DILAPORKAN; pengurangan
+	// modal inti belum dilakukan.
+	summary.Difference = summary.TotalPPKA.Sub(summary.TotalCKPN)
+	switch {
+	case summary.Difference.IsPositive():
+		summary.Higher = domain.CKPNLargerPPKA
+	case summary.Difference.IsNegative():
+		summary.Higher = domain.CKPNLargerCKPN
+	default:
+		summary.Higher = domain.CKPNLargerSame
+	}
+
+	// Asumsi dan kekurangan parameter hanya relevan (dan hanya diisi) untuk mode
+	// bayangan yang benar-benar dipakai (shadowEffective), supaya bentuk respons jalur
+	// resmi tidak berubah. ParameterGaps tidak menebak nilai: ia menyebut kunci yang
+	// harus diisi bank.
+	if shadowEffective {
+		summary.Assumptions = ckpnShadowAssumptions(policy)
+		summary.ParameterGaps = ckpnPolicyGaps(policy)
+	}
+
 	return summary, nil
+}
+
+// ckpnShadowAssumptions merangkum asumsi yang BENAR-BENAR dipakai perhitungan mode
+// bayangan, supaya pembaca tahu angkanya hitungan sementara beralasan, bukan kebijakan
+// final. Isinya mengikuti rumus yang ada (CKPN = EAD x PD x LGD); tidak ada parameter
+// yang dikarang di sini maupun di perhitungan.
+func ckpnShadowAssumptions(policy domain.CKPNPolicy) []string {
+	out := []string{
+		"Rumus CKPN = EAD x PD x LGD (SAK EP via SEOJK No. 21/SEOJK.03/2024 Bab XII butir 12.9); angka BAYANGAN, belum menjadi kebijakan final bank.",
+	}
+	for _, c := range ckpnCollectibilityOrder {
+		if v, ok := policy.PD[c]; ok {
+			out = append(out, fmt.Sprintf("PD golongan %s (%s) = %s.", c.Label(), ckpnPDKey(c), v))
+		}
+	}
+	if policy.LGDIsSet {
+		out = append(out, fmt.Sprintf("LGD = %s (all account, berlaku untuk semua golongan).", policy.LGD))
+	}
+	out = append(out,
+		fmt.Sprintf("Aset baik: tunggakan <= %d hari dan belum pernah direstrukturisasi dikecualikan dari CKPN (butir 12.3.a.2.a).", policy.AsetBaikMaxDPD),
+		"EAD = sisa pokok dikurangi saldo kerugian restrukturisasi yang belum diamortisasi; dasar ini sama dengan PPKA.",
+		"Perlakuan agunan: nilai realisasi agunan TIDAK dikurangkan langsung dari EAD di rumus ini; agunan diperhitungkan bank di dalam penetapan LGD (butir 12.7).",
+		"PPKA sebagai lantai PER KREDIT: potensi pengurang modal inti = Σ max(PPKA_i - CKPN_i, 0), bukan selisih agregat total PPKA - total CKPN (butir 1.1.6). Kredit dengan CKPN lebih besar tidak mengurangi kelebihan kredit lain; pengurangannya belum dilakukan.",
+	)
+	return out
+}
+
+// ckpnPolicyGaps menyebutkan kunci parameter kebijakan yang belum diisi atau diisi
+// tetapi tidak sah. Daftar ini dipakai mode bayangan untuk melaporkan bahwa CKPN tidak
+// dapat dihitung beserta apa yang harus diisi, TANPA mengarang nilai dan TANPA
+// menggagalkan tutup hari.
+func ckpnPolicyGaps(policy domain.CKPNPolicy) []string {
+	var gaps []string
+	for _, c := range ckpnCollectibilityOrder {
+		if _, invalid := policy.PDErrors[c]; invalid {
+			gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah)", ckpnPDKey(c)))
+			continue
+		}
+		if _, ok := policy.PD[c]; !ok {
+			gaps = append(gaps, fmt.Sprintf("%s (PD golongan %s belum diisi)", ckpnPDKey(c), c.Label()))
+		}
+	}
+	switch {
+	case policy.LGDError != nil:
+		gaps = append(gaps, fmt.Sprintf("%s (diisi tetapi tidak sah)", cfgCKPNLGD))
+	case !policy.LGDIsSet:
+		gaps = append(gaps, fmt.Sprintf("%s (LGD belum diisi)", cfgCKPNLGD))
+	}
+	return gaps
 }
 
 // requireFreshPPAP menolak perbandingan CKPN bila tidak ada run PPAP yang berhasil
@@ -430,16 +529,18 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 	}
 
 	p.Enabled = s.config.GetBool(ctx, cfgCKPNEnabled, false)
-	if !p.Enabled {
+	p.ShadowMode = s.config.GetBool(ctx, cfgCKPNShadowEnabled, false)
+	// Kedua saklar mati: berhenti sebelum membaca parameter apa pun, persis seperti
+	// perilaku sebelum modul CKPN ada. Bila mode bayangan menyala, parameter tetap
+	// dibaca supaya dapat dilaporkan apa yang belum diisi.
+	if !p.Enabled && !p.ShadowMode {
 		return p
 	}
 
 	if v := s.config.GetInt(ctx, cfgCKPNAsetBaikMaxDPD, domain.CKPNAsetBaikMaxDPDDefault); v >= 0 {
 		p.AsetBaikMaxDPD = v
 	}
-	for _, c := range []domain.Collectibility{
-		domain.KolLancar, domain.KolDPK, domain.KolKurangLancar, domain.KolDiragukan, domain.KolMacet,
-	} {
+	for _, c := range ckpnCollectibilityOrder {
 		key := ckpnPDKey(c)
 		v, set, err := configDecimal(ctx, s.config, key)
 		if err != nil {

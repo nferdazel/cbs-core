@@ -233,6 +233,9 @@ type stubCKPNService struct {
 	summary domain.CKPNComparisonSummary
 	err     error
 	called  *bool
+	// runCalled menandai pemanggilan Run (jalur yang memposting jurnal). EOD harus
+	// memakai Compare yang baca-saja, sehingga runCalled tetap false.
+	runCalled *bool
 }
 
 func (s stubCKPNService) Compare(context.Context, time.Time, domain.Actor) (domain.CKPNComparisonSummary, error) {
@@ -243,6 +246,9 @@ func (s stubCKPNService) Compare(context.Context, time.Time, domain.Actor) (doma
 }
 
 func (s stubCKPNService) Run(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.CKPNComparisonSummary, error) {
+	if s.runCalled != nil {
+		*s.runCalled = true
+	}
 	return s.Compare(ctx, asOf, actor)
 }
 
@@ -641,5 +647,218 @@ func TestRunEODReportsPPAPProcessedAndAdjusted(t *testing.T) {
 	}
 	if res.PPAPAdjusted != 1 {
 		t.Fatalf("ppap_adjusted = %d, mau 1", res.PPAPAdjusted)
+	}
+}
+
+// Mode bayangan CKPN pada tutup hari: hasil dilaporkan di bidang ADITIF, tetapi jalur
+// resmi tidak diisi, tidak ada pengurangan modal inti, dan EOD tidak pernah memanggil
+// Run (jalur yang memposting jurnal) — hanya Compare yang baca-saja.
+func TestRunEODReportsShadowCKPNWithoutJournaling(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	runCalled := false
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			runCalled: &runCalled,
+			summary: domain.CKPNComparisonSummary{
+				Enabled:     false,
+				ShadowMode:  true,
+				Processed:   1,
+				TotalPPKA:   decimal.NewFromInt(1_000_000),
+				TotalCKPN:   decimal.NewFromInt(500_000),
+				Difference:  decimal.NewFromInt(500_000),
+				Higher:      domain.CKPNLargerPPKA,
+				Assumptions: []string{"PD golongan 3 = 0.1"},
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if runCalled {
+		t.Fatal("EOD harus memakai Compare yang baca-saja, bukan Run yang memposting")
+	}
+	if !res.CKPNShadowMode {
+		t.Fatal("bidang mode bayangan harus terisi")
+	}
+	if res.CKPNShadowProcessed != 1 {
+		t.Fatalf("ckpn_shadow_processed = %d, mau 1", res.CKPNShadowProcessed)
+	}
+	if !res.CKPNShadowTotalPPKA.Equal(decimal.NewFromInt(1_000_000)) || !res.CKPNShadowTotalCKPN.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("total bayangan PPKA/CKPN = %s/%s, mau 1000000/500000", res.CKPNShadowTotalPPKA, res.CKPNShadowTotalCKPN)
+	}
+	if res.CKPNShadowHigher != string(domain.CKPNLargerPPKA) {
+		t.Fatalf("ckpn_shadow_higher = %q, mau PPKA", res.CKPNShadowHigher)
+	}
+	if !strings.Contains(res.CKPNShadowNote, "MODE BAYANGAN") || !strings.Contains(res.CKPNShadowNote, "pengurangan modal inti") {
+		t.Fatalf("catatan bayangan harus melabeli angka ini, dapat %q", res.CKPNShadowNote)
+	}
+	if len(res.CKPNShadowAssumptions) != 1 {
+		t.Fatalf("asumsi bayangan %v, mau diteruskan dari perhitungan", res.CKPNShadowAssumptions)
+	}
+	// Bidang jalur resmi TIDAK boleh terisi oleh mode bayangan.
+	if res.CKPNCompared != 0 || !res.CKPNTotalCKPN.IsZero() || !res.CKPNModalIntiDeduction.IsZero() {
+		t.Fatalf("mode bayangan tidak boleh mengisi bidang resmi: %+v", res)
+	}
+	if step := eodStepStatus(t, res, "ckpn_comparison"); step.Status != domain.EODStepRan {
+		t.Fatalf("status CKPN bayangan = %s, mau RAN", step.Status)
+	}
+}
+
+// P1: bidang bayangan potensi pengurang modal inti harus meneruskan Σ max per kredit,
+// BUKAN selisih agregat. Ringkasan sengaja dibuat dengan agregat 0 (SAMA) tetapi
+// potensi pengurang 500.000 agar kesalahan pemetaan bidang langsung terlihat.
+func TestRunEODLaporkanPengurangModalIntiBayanganPerKredit(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode:         true,
+				Processed:          2,
+				TotalPPKA:          decimal.NewFromInt(1_000_000),
+				TotalCKPN:          decimal.NewFromInt(1_000_000),
+				Difference:         decimal.Zero,
+				Higher:             domain.CKPNLargerSame,
+				ModalIntiDeduction: decimal.NewFromInt(500_000),
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if !res.CKPNShadowModalIntiDeduction.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("ckpn_shadow_modal_inti_deduction = %s, mau 500000 (Σ per kredit)", res.CKPNShadowModalIntiDeduction)
+	}
+	if !res.CKPNShadowDifference.IsZero() {
+		t.Fatalf("ckpn_shadow_difference = %s, mau 0 (agregat, berbeda dari potensi pengurang)", res.CKPNShadowDifference)
+	}
+	if !strings.Contains(res.CKPNShadowNote, "PER KREDIT") {
+		t.Fatalf("catatan harus menjelaskan dasar per kredit, dapat %q", res.CKPNShadowNote)
+	}
+}
+
+// Parameter PD/LGD kosong pada mode bayangan: EOD tidak boleh gagal, langkah tetap
+// dilaporkan, dan peringatan menyebut kunci yang harus diisi — bukan angka karangan.
+func TestRunEODShadowCKPNParameterKosongTidakMenggagalkanEOD(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				ShadowMode:    true,
+				Failed:        1,
+				ParameterGaps: []string{"ckpn.pd.3 (PD golongan Kurang Lancar belum diisi)", "ckpn.lgd (LGD belum diisi)"},
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("parameter kosong tidak boleh menggagalkan EOD: %v", err)
+	}
+	if !strings.Contains(res.CKPNShadowNote, "belum dapat dihitung") {
+		t.Fatalf("catatan harus menyatakan CKPN belum dapat dihitung, dapat %q", res.CKPNShadowNote)
+	}
+	warned := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "ckpn.pd.3") && strings.Contains(w, "ckpn.lgd") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("peringatan harus menyebut kunci yang harus diisi, dapat %v", res.Warnings)
+	}
+	if step := eodStepStatus(t, res, "ckpn_comparison"); step.Status != domain.EODStepSkipped && step.Status != domain.EODStepRan {
+		t.Fatalf("status CKPN bayangan tak terduga: %s", step.Status)
+	}
+}
+
+// Kedua saklar menyala: service melaporkan ShadowMode=false karena bayangan diabaikan,
+// sehingga EOD memakai jalur resmi dan TIDAK mengisi bidang bayangan. Kontrak
+// "ShadowMode hanya true bila bayangan benar-benar dipakai" diuji di
+// ckpn_service_test.go (TestCKPN_KeduaSaklarMenyalaModeResmiBerlaku).
+func TestRunEODKeduaSaklarCKPNMenyalaMemakaiJalurResmi(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{
+			summary: domain.CKPNComparisonSummary{
+				Enabled:   true,
+				Processed: 2,
+				TotalPPKA: decimal.NewFromInt(2_000_000),
+				TotalCKPN: decimal.NewFromInt(1_000_000),
+			},
+		},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	if res.CKPNCompared != 2 {
+		t.Fatalf("ckpn_compared = %d, mau 2 (jalur resmi)", res.CKPNCompared)
+	}
+	if res.CKPNShadowMode {
+		t.Fatal("mode bayangan diabaikan saat ckpn.enabled menyala, bidang bayangan tidak boleh terisi")
+	}
+	if !res.CKPNShadowTotalCKPN.IsZero() || !res.CKPNShadowModalIntiDeduction.IsZero() {
+		t.Fatalf("bidang bayangan tidak boleh terisi pada jalur resmi: %+v", res)
+	}
+}
+
+// Kedua saklar mati: langkah ckpn_comparison tetap dilewati seperti sebelum mode
+// bayangan ada (perilaku sekarang).
+func TestRunEODKeduaSaklarCKPNMatiTetapDilewati(t *testing.T) {
+	dateRepo := &stubBusinessDateRepo{
+		currentDate: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		status:      domain.BusinessDateStatusOpen,
+	}
+	svc := service.NewBatchProcessService(
+		dateRepo, nil, nil, nil, nil, nil, nil, nil, nil,
+		stubPPAPRunner{processed: 1},
+		nil, nil,
+		stubInterestAccrualRunner{accrued: 1},
+		stubCKPNService{summary: domain.CKPNComparisonSummary{}},
+	)
+
+	res, err := svc.RunEOD(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("EOD gagal: %v", err)
+	}
+	step := eodStepStatus(t, res, "ckpn_comparison")
+	if step.Status != domain.EODStepSkipped {
+		t.Fatalf("status CKPN = %s, mau SKIPPED", step.Status)
+	}
+	if res.CKPNShadowMode {
+		t.Fatal("saklar mati tidak boleh mengisi bidang bayangan")
 	}
 }

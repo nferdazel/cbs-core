@@ -105,9 +105,41 @@ type EODSummaryResult struct {
 	CKPNTotalPPKA          decimal.Decimal `json:"ckpn_total_ppka"`
 	CKPNTotalCKPN          decimal.Decimal `json:"ckpn_total_ckpn"`
 	CKPNModalIntiDeduction decimal.Decimal `json:"ckpn_modal_inti_deduction"`
-	Warnings               []string        `json:"warnings,omitempty"`
-	ExecutedBy             uuid.UUID       `json:"executed_by"`
-	CompletedAt            time.Time       `json:"completed_at"`
+	// Bidang ADITIF mode bayangan CKPN (ckpn.shadow_mode.enabled). Terisi hanya saat
+	// saklar bayangan menyala dan saklar resmi ckpn.enabled mati; perilaku jalur resmi
+	// tidak berubah. Angka-angka ini BUKAN kewajiban akuntansi: tidak ada jurnal yang
+	// ditulis, tidak ada state yang diubah, dan pengurangan modal inti BELUM dilakukan.
+	// Asumsinya sementara sampai bank menyetujui parameter dan menyalakan ckpn.enabled.
+	CKPNShadowMode      bool            `json:"ckpn_shadow_mode"`
+	CKPNShadowProcessed int             `json:"ckpn_shadow_processed"`
+	CKPNShadowFailed    int             `json:"ckpn_shadow_failed"`
+	CKPNShadowTotalPPKA decimal.Decimal `json:"ckpn_shadow_total_ppka"`
+	CKPNShadowTotalCKPN decimal.Decimal `json:"ckpn_shadow_total_ckpn"`
+	// CKPNShadowDifference = total PPKA - total CKPN pada tingkat AGREGAT portofolio.
+	// Ia hanya membandingkan kedua total; ia BUKAN dasar pengurang modal inti. Pada
+	// portofolio campuran (satu kredit PPKA>CKPN, kredit lain CKPN>PPKA) angka ini bisa
+	// 0 atau negatif walaupun tiap kredit memiliki kelebihan PPKA. Dasar yang benar ada
+	// di CKPNShadowModalIntiDeduction.
+	CKPNShadowDifference decimal.Decimal `json:"ckpn_shadow_difference"`
+	// CKPNShadowModalIntiDeduction = Σ max(PPKA_i - CKPN_i, 0) PER KREDIT, yaitu
+	// potensi pengurang modal inti menurut SEOJK No. 21/SEOJK.03/2024 butir 1.1.6.
+	// Berbeda dari CKPNShadowDifference yang agregat: pengurang modal dihitung per
+	// kredit, sehingga kredit dengan CKPN>PPKA TIDAK boleh mengurangi kelebihan kredit
+	// lain. Pengurangannya BELUM dijalankan pada mode bayangan; angka ini hanya potensi.
+	CKPNShadowModalIntiDeduction decimal.Decimal `json:"ckpn_shadow_modal_inti_deduction"`
+	// CKPNShadowHigher menamai pihak yang lebih tinggi pada tingkat agregat: "PPKA",
+	// "CKPN", atau "SAMA". Ia TIDAK dipakai sebagai dasar pengurang modal inti.
+	CKPNShadowHigher string `json:"ckpn_shadow_higher"`
+	// CKPNShadowAssumptions adalah asumsi yang dipakai (PD per golongan, LGD, perlakuan
+	// agunan, aset baik, dasar EAD) supaya pembaca tahu ini hitungan sementara
+	// beralasan, bukan kebijakan final.
+	CKPNShadowAssumptions []string `json:"ckpn_shadow_assumptions,omitempty"`
+	// CKPNShadowNote menjelaskan status mode bayangan, termasuk bila parameter belum
+	// lengkap sehingga CKPN tidak dapat dihitung dan apa yang harus diisi.
+	CKPNShadowNote string    `json:"ckpn_shadow_note,omitempty"`
+	Warnings       []string  `json:"warnings,omitempty"`
+	ExecutedBy     uuid.UUID `json:"executed_by"`
+	CompletedAt    time.Time `json:"completed_at"`
 }
 
 type EOMSummaryResult struct {

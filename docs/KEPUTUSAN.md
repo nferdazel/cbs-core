@@ -533,3 +533,25 @@ ke sini, setelah diverifikasi ulang ke kode. Item 9 (housekeeping) ada di bagian
 `ppap.collateral.enabled`, `ckpn.enabled`, `loan.restructure.loss.enabled`, modul
 Pasal 23 (LPS), dan kebijakan kedaluwarsa kata sandi (`auth.password_expiry_days = 0`,
 0 berarti nonaktif).
+
+## 6. Keputusan bank yang menyusul (saran pengembang)
+
+### 6.1 Tarif denda keterlambatan
+Satuan: `loan.penalty.rate.daily.per_mille` (per-mille **per hari**); saat ini `0` = tidak ada denda.
+- **Fakta yang ditemukan:** akrual denda untuk kredit kolektibilitas 3–5 **belum** dihentikan — kodenya hanya memeriksa status kredit, berbeda dari akrual bunga yang punya gerbang `IsNPL()`. Kalau tarif denda dinyalakan sebelum ini diperbaiki, bank akan mengakui pendapatan denda atas kredit macet. **Sudah diperbaiki**: denda kini memakai gerbang kolektibilitas yang sama dengan bunga (berlaku ke depan; data historis tidak diubah).
+- **Saran:** isi 0,5–1 per-mille per hari dengan batas atas (mis. tidak melebihi 10% pokok tertunggak). Angkanya wajib berasal dari **perjanjian kredit bank** — bukan angka regulasi, dan bukan angka yang ditentukan pengembang.
+- **Konsekuensi bila kredit sembuh dari NPL:** hari-hari selama masa NPL ikut tertagih saat akrual berjalan lagi (konsisten dengan perilaku akrual bunga). Bank perlu memutuskan apakah itu memang dikehendaki.
+- **Keputusan bank:** _menunggu angka tarif dan konfirmasi kebijakan di atas._
+
+### 6.2 CKPN — mode bayangan
+- `ckpn.enabled` tetap `false` (jalur penjurnalan/pengurangan modal inti tidak aktif).
+- `ckpn.shadow_mode.enabled` menjalankan perhitungan CKPN dan membandingkannya dengan PPKA **tanpa menjurnal apa pun**.
+- **Asumsi yang dipakai dan dilabeli sebagai sementara:** PPKA sebagai lantai; PD per bucket kolektibilitas; LGD default dengan mempertimbangkan agunan. Baris yang dihitung per kredit, sehingga potensi pengurang modal inti = Σ max(PPKA − CKPN, 0) per kredit — **bukan** selisih agregat.
+- **Saran:** jalankan sebagai bayangan 2–3 bulan, bandingkan dengan PPKA, baru nyalakan `ckpn.enabled` bila modal inti tahan dan angkanya masuk akal.
+- **Keputusan bank:** _menyetujui asumsi sementara di atas dan menetapkan kapan `ckpn.enabled` dinyalakan._
+
+### 6.3 Proyeksi bagi hasil mudharabah
+- Nilai contoh pengembang (12,5% per tahun) untuk produk `PMB-MUDHARABAH` **ditarik kembali menjadi 0**; jadwal pembiayaan mudharabah ditolak dengan pesan yang menyebut parameter yang wajib diisi.
+- **Alasan:** bagi hasil mudharabah bergantung pada pendapatan/laba **aktual** usaha yang dibiayai dan dibagi menurut nisbah. Angka tetap di awal akad berisiko menyimpang dari akad, sehingga tidak boleh ditetapkan pengembang.
+- **Saran:** asumsi proyeksi per jenis usaha ditetapkan bersama **Dewan Pengawas Syariah**, dan bank memutuskan dasar pengakuan pendapatan (realisasi atau proyeksi). Parameter produk kini dapat diubah lewat `PUT /api/v1/products/{code}` tanpa menyentuh database.
+- **Keputusan bank/DPS:** _menunggu arahan proyeksi dan dasar pengakuan._

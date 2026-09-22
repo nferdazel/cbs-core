@@ -1128,6 +1128,45 @@ func TestIntegrasiJalurUangDuaKoreksiBersamaan(t *testing.T) {
 	}
 }
 
+// Akrual denda menghentikan kredit NPL (kol 3-5) memakai gerbang kolektibilitas
+// yang sama seperti akrual bunga: tarif denda diisi > 0, tetapi hanya kredit lancar
+// yang menambah penalty_accrued dan menerbitkan jurnal; kredit NPL tidak.
+func TestIntegrasiJalurUangAkrualDendaNPLDihentikan(t *testing.T) {
+	e := newMoneyEnv(t)
+	asOf := time.Now().UTC()
+	e.setPenaltyRatePerMille(t, 10)
+
+	// Kredit lancar: DPD 1 -> kolektibilitas Lancar, denda diakru.
+	custLancar := e.newCustomer(t, "Rina Lestari", "")
+	accLancar := e.newAccount(t, custLancar.ID)
+	loanLancar := e.disburse(t, custLancar.ID, accLancar, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanLancar.ID, asOf.AddDate(0, 0, -1))
+
+	// Kredit NPL: DPD 100 -> Kurang Lancar, denda tidak diakru.
+	custNpl := e.newCustomer(t, "Bayu Pratama", "")
+	accNpl := e.newAccount(t, custNpl.ID)
+	loanNpl := e.disburse(t, custNpl.ID, accNpl, idr(10_000_000), 4)
+	e.setOldestDueDate(t, loanNpl.ID, asOf.AddDate(0, 0, -100))
+
+	if _, err := e.loanSvc.AccruePenalties(e.ctx, asOf, e.actor); err != nil {
+		t.Fatalf("akrual denda: %v", err)
+	}
+
+	if got := e.loanDecimal(t, loanNpl.ID, "penalty_accrued"); !got.IsZero() {
+		t.Fatalf("kredit NPL menambah penalty_accrued %s, mau 0", got)
+	}
+	if got := e.loanDecimal(t, loanLancar.ID, "penalty_accrued"); !got.IsPositive() {
+		t.Fatalf("kredit lancar tidak diakru, penalty_accrued=%s", got)
+	}
+	day := asOf.Format("2006-01-02")
+	if n := e.countJournalsByKey(t, "PENALTY-"+loanNpl.LoanNumber+"-"+day); n != 0 {
+		t.Fatalf("jurnal denda NPL terbit %d, mau 0", n)
+	}
+	if n := e.countJournalsByKey(t, "PENALTY-"+loanLancar.LoanNumber+"-"+day); n != 1 {
+		t.Fatalf("jurnal denda lancar terbit %d, mau 1", n)
+	}
+}
+
 func containsCustomer(list []domain.Customer, id uuid.UUID) bool {
 	for _, c := range list {
 		if c.ID == id {

@@ -66,7 +66,10 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 	}
 
 	ckpnSvc := newCKPNSvcForTest(e)
-	asOf := time.Now().UTC()
+	// Titik waktu uji ditetapkan eksplisit di tengah hari UTC, bukan time.Now() mentah:
+	// gerbang PPAP segar membandingkan TANGGAL, sehingga pada dini hari asOf.Add(-time.Hour)
+	// melintasi tengah malam dan ditolak ErrCKPNStalePPAP. Lihat ckpnTestAsOf.
+	asOf := ckpnTestAsOf()
 	// Gerbang tanggal bisnis CKPN menuntut penanda run PPAP pada tanggal yang sama.
 	// Uji ini menyuntik required_ppap langsung, jadi penandanya ditulis langsung.
 	e.recordPPAPRun(t, asOf)
@@ -267,6 +270,18 @@ type staleCKPNRepo struct {
 
 func (r *staleCKPNRepo) ListActiveLoans(context.Context, domain.Actor) ([]domain.CKPNLoanSnapshot, error) {
 	return r.stale, nil
+}
+
+// ckpnTestAsOf mengembalikan satu titik waktu eksplisit di TENGAH HARI UTC pada tanggal
+// kalender hari ini. Uji CKPN memakainya alih-alih time.Now() mentah karena gerbang
+// requireFreshPPAP membandingkan TANGGAL bisnis: pada dini hari UTC, asOf.Add(-time.Hour)
+// (dipakai uji perbandingan) melintasi tengah malam sehingga tanggalnya berbeda dari
+// penanda run PPAP dan Compare gagal dengan ErrCKPNStalePPAP. Tengah hari selalu berada
+// satu hari bisnis yang sama dengan pergeseran ±1 jam, jadi hasil uji tidak bergantung
+// pada jam dinding.
+func ckpnTestAsOf() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
 }
 
 // recordPPAPRun menulis penanda tanggal bisnis run PPAP agar gerbang tanggal CKPN

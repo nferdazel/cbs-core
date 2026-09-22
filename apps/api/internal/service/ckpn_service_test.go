@@ -313,6 +313,46 @@ func TestCKPN_PerbandinganDenganPPKA(t *testing.T) {
 	}
 }
 
+// P1: pengurang modal inti dihitung PER KREDIT, bukan dari selisih agregat. Portofolio
+// campuran (satu kredit PPKA>CKPN, satu kredit CKPN>PPKA) harus menghasilkan
+// Σ max(PPKA_i - CKPN_i, 0). Angka di bawah sengaja dibuat agar keduanya BERBEDA:
+// selisih agregat 0 (SAMA) padahal potensi pengurang modal inti 500.000.
+func TestCKPN_PengurangModalIntiPerKreditBukanAgregat(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true", // murni pelaporan; tak ada jurnal
+		"ckpn.pd.3":                "0.10",
+		"ckpn.lgd":                 "0.50",
+	}}
+
+	// Kredit A: PPKA 1.000.000 > CKPN 500.000 -> pengurang 500.000.
+	a := ckpnLoan()
+	a.LoanNumber = "KRD-2026-0001"
+	a.RequiredPPAP = decimal.NewFromInt(1_000_000)
+	// Kredit B: PPKA 0 < CKPN 500.000 -> TIDAK boleh mengurangi kelebihan A.
+	b := ckpnLoan()
+	b.LoanID = uuid.New()
+	b.LoanNumber = "KRD-2026-0002"
+	b.RequiredPPAP = decimal.Zero
+
+	svc, _, _ := newTestCKPNService(&ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{a, b}}, cfg)
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Processed != 2 {
+		t.Fatalf("processed=%d, mau 2 (%+v)", summary.Processed, summary.Failures)
+	}
+	// Σ per kredit = 500.000 + 0 = 500.000.
+	if !summary.ModalIntiDeduction.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("pengurang modal inti %s, mau 500000 (Σ max per kredit)", summary.ModalIntiDeduction)
+	}
+	// Agregat = 1.000.000 - 1.000.000 = 0; inilah bukti kedua angka berbeda.
+	if !summary.Difference.IsZero() || summary.Higher != domain.CKPNLargerSame {
+		t.Fatalf("selisih agregat %s higher %q, mau 0/SAMA", summary.Difference, summary.Higher)
+	}
+}
+
 // Parameter yang belum diisi harus menghasilkan kegagalan yang jelas, bukan CKPN nol.
 func TestCKPN_ParameterBelumDiisiGagalJelas(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
@@ -754,5 +794,162 @@ func TestCKPN_MenolakPPAPBasi(t *testing.T) {
 	}
 	if !repo.listCalled {
 		t.Fatal("kredit harus dibaca setelah gerbang tanggal terpenuhi")
+	}
+}
+
+// --- Mode bayangan CKPN ---
+
+// Saklar bayangan menyala sementara ckpn.enabled mati: CKPN dihitung dan dilaporkan
+// lengkap dengan asumsi serta peran PPKA sebagai lantai, TETAPI tidak ada jurnal dan
+// tidak ada state yang ditulis. Ini inti pemisahan "hitung & tampilkan" dari
+// "jurnal & regulasi".
+func TestCKPN_ModeBayanganMenghitungTanpaMenjurnal(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		// ckpn.enabled sengaja TIDAK ada -> false; yang menyala hanya mode bayangan.
+		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.pd.1":                "0.005",
+		"ckpn.pd.2":                "0.05",
+		"ckpn.pd.3":                "0.10",
+		"ckpn.pd.4":                "0.30",
+		"ckpn.pd.5":                "0.50",
+		"ckpn.lgd":                 "0.50",
+	}}
+	snap := ckpnLoan() // PPKA 1.000.000, target CKPN 10.000.000 x 10% x 50% = 500.000
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
+	svc, posting, locker := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if summary.Enabled {
+		t.Fatal("ckpn.enabled mati: ringkasan tidak boleh menandai mode resmi")
+	}
+	if !summary.ShadowMode {
+		t.Fatal("ringkasan harus menandai mode bayangan")
+	}
+	if summary.Processed != 1 || summary.Failed != 0 {
+		t.Fatalf("processed=%d failed=%d, mau 1/0 (%+v)", summary.Processed, summary.Failed, summary.Failures)
+	}
+	if !summary.TotalCKPN.Equal(decimal.NewFromInt(500_000)) || !summary.TotalPPKA.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("total CKPN/PPKA = %s/%s, mau 500000/1000000", summary.TotalCKPN, summary.TotalPPKA)
+	}
+	// PPKA lebih tinggi: PPKA adalah lantai, selisih positifnya 500.000.
+	if summary.Higher != domain.CKPNLargerPPKA {
+		t.Fatalf("pihak lebih tinggi %q, mau PPKA", summary.Higher)
+	}
+	if !summary.Difference.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("selisih %s, mau 500000", summary.Difference)
+	}
+	if len(summary.Assumptions) == 0 {
+		t.Fatal("mode bayangan harus melaporkan asumsi yang dipakai")
+	}
+	if len(summary.ParameterGaps) != 0 {
+		t.Fatalf("parameter lengkap, gap harus kosong, dapat %v", summary.ParameterGaps)
+	}
+
+	// Run pada mode bayangan juga tidak boleh memposting/mengubah state: post dipaksa
+	// mati selama ckpn.enabled masih false.
+	runSummary, err := svc.Run(context.Background(), asOf, domain.Actor{Username: "tester"})
+	if err != nil {
+		t.Fatalf("Run bayangan: %v", err)
+	}
+	if !runSummary.Preview {
+		t.Fatal("Run mode bayangan harus tetap Preview (tanpa posting)")
+	}
+	if len(posting.requests) != 0 {
+		t.Fatalf("mode bayangan tidak boleh memposting jurnal, dapat %d", len(posting.requests))
+	}
+	if len(repo.updates) != 0 {
+		t.Fatalf("mode bayangan tidak boleh menulis state, dapat %d", len(repo.updates))
+	}
+	if len(locker.locked) != 0 {
+		t.Fatalf("mode bayangan tidak boleh mengunci kredit, dapat %d", len(locker.locked))
+	}
+}
+
+// Parameter PD/LGD kosong di mode bayangan: CKPN tidak dapat dihitung. Yang dilaporkan
+// adalah daftar kunci yang harus diisi (bukan angka karangan), tetap tanpa jurnal dan
+// tanpa menggagalkan pemanggil.
+func TestCKPN_ModeBayanganParameterKosongDilaporkan(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati, PD/LGD kosong
+	}}
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
+	svc, posting, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Run(context.Background(), asOf, domain.Actor{Username: "tester"})
+	if err != nil {
+		t.Fatalf("parameter kosong tidak boleh menggagalkan pemanggil: %v", err)
+	}
+	if summary.Processed != 0 || summary.Failed != 1 {
+		t.Fatalf("processed=%d failed=%d, mau 0/1", summary.Processed, summary.Failed)
+	}
+	joined := strings.Join(summary.ParameterGaps, " ")
+	if !strings.Contains(joined, "ckpn.pd.3") || !strings.Contains(joined, "ckpn.lgd") {
+		t.Fatalf("gap parameter %v harus menyebut ckpn.pd.3 dan ckpn.lgd", summary.ParameterGaps)
+	}
+	if len(posting.requests) != 0 || len(repo.updates) != 0 {
+		t.Fatal("parameter kosong tidak boleh memposting atau menulis state")
+	}
+}
+
+// Kedua saklar menyala: mode resmi (ckpn.enabled) yang berlaku dan penjurnalan tetap
+// seperti perilaku lama; mode bayangan tidak menghalangi posting.
+func TestCKPN_KeduaSaklarMenyalaModeResmiBerlaku(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.enabled":             "true",
+		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.pd.3":                "0.10",
+		"ckpn.lgd":                 "0.50",
+	}}
+	snap := ckpnLoan()
+	snap.RequiredCKPN = decimal.NewFromInt(100_000) // selisih 400.000 -> 1 jurnal
+	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
+	svc, posting, _ := newTestCKPNService(repo, cfg)
+
+	summary, err := svc.Run(context.Background(), asOf, domain.Actor{Username: "tester"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !summary.Enabled {
+		t.Fatal("ckpn.enabled menyala: jalur resmi yang berlaku")
+	}
+	// K3: bayangan diabaikan, jadi ShadowMode yang dilaporkan TIDAK boleh true; kalau
+	// true, respons HTTP/EOD dapat dibaca seolah bayangan yang dipakai.
+	if summary.ShadowMode {
+		t.Fatal("kedua saklar menyala: bayangan diabaikan, ShadowMode yang dilaporkan harus false")
+	}
+	if len(summary.Assumptions) != 0 || len(summary.ParameterGaps) != 0 {
+		t.Fatalf("jalur resmi tidak boleh membawa asumsi/gap bayangan: asumsi=%v gap=%v", summary.Assumptions, summary.ParameterGaps)
+	}
+	if summary.Preview {
+		t.Fatal("jalur resmi harus benar-benar memposting (Preview=false)")
+	}
+	if len(posting.requests) != 1 {
+		t.Fatalf("jalur resmi harus memposting 1 jurnal, dapat %d", len(posting.requests))
+	}
+	if len(repo.updates) != 1 || !repo.updates[0].target.Equal(decimal.NewFromInt(500_000)) {
+		t.Fatalf("jalur resmi harus menyimpan target 500000, dapat %+v", repo.updates)
+	}
+}
+
+// Aktor tetap wajib diteruskan ke repo pada mode bayangan agar filter cabang diterapkan
+// di query; mode bayangan tidak boleh membuka kebocoran lintas cabang.
+func TestCKPN_ModeBayanganMeneruskanAktorUntukFilterCabang(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	actor := domain.Actor{Username: "teller", Role: domain.RoleTeller, BranchCode: "001"}
+	repo := &ckpnRepoStub{}
+	cfg := &ckpnConfigStub{values: map[string]string{"ckpn.shadow_mode.enabled": "true"}}
+	svc, _, _ := newTestCKPNService(repo, cfg)
+
+	if _, err := svc.Compare(context.Background(), asOf, actor); err != nil {
+		t.Fatalf("Compare mode bayangan: %v", err)
+	}
+	if repo.listActor != actor {
+		t.Fatalf("aktor diteruskan ke repo %+v, mau %+v", repo.listActor, actor)
 	}
 }

@@ -187,6 +187,23 @@ export interface EODSummaryResult {
   loan_interest_accrued: number;
   loan_interest_accrued_amount: string;
   accounts_marked_dormant: number;
+  /**
+   * Bidang ADITIF mode bayangan CKPN (domain.EODSummaryResult, system_date.go).
+   * Terisi hanya saat `ckpn.shadow_mode.enabled` menyala dan `ckpn.enabled` masih mati.
+   * Angka ini BUKAN kewajiban akuntansi: tidak ada jurnal yang ditulis dan pengurangan
+   * modal inti BELUM dilakukan. `ckpn_shadow_note` juga memuat daftar kekurangan
+   * parameter (parameter_gaps pada domain.CKPNComparisonSummary) bila ada.
+   */
+  ckpn_shadow_mode: boolean;
+  ckpn_shadow_processed: number;
+  ckpn_shadow_failed: number;
+  ckpn_shadow_total_ppka: string;
+  ckpn_shadow_total_ckpn: string;
+  ckpn_shadow_difference: string;
+  /** "PPKA", "CKPN", atau "SAMA": pihak yang nilainya lebih tinggi. */
+  ckpn_shadow_higher: string;
+  ckpn_shadow_assumptions?: string[];
+  ckpn_shadow_note?: string;
   /** Pekerjaan harian best-effort yang gagal/tidak lengkap; teks dari server. */
   warnings?: string[];
   executed_by: string;

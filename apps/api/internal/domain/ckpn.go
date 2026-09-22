@@ -52,6 +52,12 @@ type CKPNPolicy struct {
 	// Enabled adalah saklar utama. false berarti CKPN tidak dihitung sama sekali dan
 	// tidak ada query tambahan (pola yang sama dengan ppap.collateral.enabled).
 	Enabled bool
+	// ShadowMode adalah saklar mode bayangan. Bila Enabled masih false sementara
+	// ShadowMode true, CKPN dihitung dan dibandingkan dengan PPKA TANPA menjurnal dan
+	// TANPA mengubah state, lalu dilaporkan sebagai angka BAYANGAN (asumsi sementara,
+	// belum disetujui bank, pengurangan modal inti belum dilakukan). Bila Enabled true,
+	// mode resmi yang berlaku dan nilai ini diabaikan demi perilaku lama.
+	ShadowMode bool
 	// PD adalah probability of default per golongan kolektibilitas. Kunci yang tidak
 	// ada berarti bank belum mengisi golongan itu, dan perhitungannya menolak berjalan
 	// untuk kredit tersebut — bukan diam-diam memakai nol.
@@ -253,6 +259,29 @@ type CKPNComparisonSummary struct {
 	ModalIntiDeduction decimal.Decimal `json:"modal_inti_deduction"`
 	// Preview true berarti hanya simulasi, tanpa posting dan tanpa tulis state.
 	Preview bool `json:"preview"`
+	// ShadowMode true berarti ringkasan berasal dari mode bayangan: Enabled harus
+	// false. Angka-angka di bawah BUKAN kewajiban akuntansi; tidak ada jurnal yang
+	// ditulis dan pengurangan modal inti belum dilakukan. Asumsinya sementara sampai
+	// bank menyetujui parameter dan menyalakan ckpn.enabled.
+	ShadowMode bool `json:"shadow_mode"`
+	// Difference adalah TotalPPKA - TotalCKPN pada tingkat AGREGAT portofolio. Ia
+	// hanya menamai pihak yang lebih tinggi; ia BUKAN dasar pengurang modal inti.
+	// Pada portofolio campuran (sebagian kredit PPKA>CKPN, sebagian CKPN>PPKA) angka
+	// ini bisa 0 atau negatif walaupun ada kelebihan PPKA per kredit, sehingga pembaca
+	// tidak boleh memakainya sebagai dasar pengurang modal. Dasar yang benar adalah
+	// ModalIntiDeduction.
+	Difference decimal.Decimal `json:"difference"`
+	// Higher menamai pihak yang lebih tinggi pada tingkat agregat: PPKA, CKPN, atau
+	// SAMA. Ia hanya penjelas Difference dan TIDAK menentukan pengurang modal inti.
+	Higher CKPNLarger `json:"higher"`
+	// Assumptions adalah asumsi parameter yang benar-benar dipakai perhitungan (PD per
+	// golongan, LGD, perlakuan agunan, aset baik, dasar EAD) supaya pembaca tahu ini
+	// hitungan sementara beralasan, bukan kebijakan final. Hanya diisi mode bayangan.
+	Assumptions []string `json:"assumptions,omitempty"`
+	// ParameterGaps adalah kunci parameter kebijakan yang belum diisi atau diisi tetapi
+	// tidak sah; CKPN tidak dapat dihitung sepenuhnya sampai bank mengisinya. Daftarnya
+	// menyebutkan kunci yang harus diisi, bukan menebak nilainya.
+	ParameterGaps []string `json:"parameter_gaps,omitempty"`
 }
 
 // CKPNRepository adalah akses data proses CKPN. Seluruh penulisan jurnal tetap lewat

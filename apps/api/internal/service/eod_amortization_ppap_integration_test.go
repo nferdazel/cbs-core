@@ -211,3 +211,80 @@ func TestIntegrasiCKPNMenolakPPAPTanggalLain(t *testing.T) {
 		t.Fatalf("pesan %q harus menyebut tanggal bisnis PPAP terakhir %s", err, want)
 	}
 }
+
+// countCKPNJournals menghitung jurnal ber-kunci idempotensi CKPN (prefix "CKPN-").
+// Jurnal PPAP/akrual memakai prefix lain sehingga tidak tercampur.
+func (e *moneyEnv) countCKPNJournals(t *testing.T) int {
+	t.Helper()
+	var n int
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT count(*) FROM journal_entries WHERE idempotency_key LIKE 'CKPN-%'`).Scan(&n); err != nil {
+		t.Fatalf("menghitung jurnal CKPN: %v", err)
+	}
+	return n
+}
+
+// TestIntegrasiCKPNModeBayanganTidakMenjurnal menjalankan tutup hari sungguhan dengan
+// ckpn.enabled mati dan ckpn.shadow_mode.enabled hidup. Dibuktikan bahwa CKPN dihitung
+// dan dilaporkan di bidang bayangan, TETAPI tidak ada jurnal CKPN bertambah dan
+// required_ckpn tidak berubah. Ini bukti "nol jurnal" pada database nyata, bukan stub.
+func TestIntegrasiCKPNModeBayanganTidakMenjurnal(t *testing.T) {
+	e := newMoneyEnv(t)
+	setRestructureLossConfig(t, e, "ppap.collateral.enabled", "false")
+	setCKPNConfig(t, e, "ckpn.enabled", "false")
+	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "true")
+	// Kembalikan saklar ke bawaan produksi agar uji integrasi lain tidak terpengaruh.
+	t.Cleanup(func() {
+		setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
+		setCKPNConfig(t, e, "ckpn.enabled", "false")
+	})
+	// Semua PD + LGD diisi agar CKPN dapat dihitung, bukan dilaporkan sebagai gap.
+	setCKPNConfig(t, e, "ckpn.pd.1", "0.005")
+	setCKPNConfig(t, e, "ckpn.pd.2", "0.05")
+	setCKPNConfig(t, e, "ckpn.pd.3", "0.10")
+	setCKPNConfig(t, e, "ckpn.pd.4", "0.30")
+	setCKPNConfig(t, e, "ckpn.pd.5", "0.50")
+	setCKPNConfig(t, e, "ckpn.lgd", "0.50")
+
+	branchCode := ckpnTestBranchCode("S")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji Bayangan")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujibayangan", Role: domain.RoleAdmin, BranchCode: branchCode}
+	cust := e.newCustomer(t, "Nasabah Uji Bayangan", fmt.Sprintf("bayangan-%d@uji.local", time.Now().UnixNano()))
+	acc := e.newAccountInBranch(t, cust.ID, branchID)
+	loan := e.disburseAs(t, actor, cust.ID, acc, idr(10_000_000), 12)
+
+	beforeJournals := e.countCKPNJournals(t)
+	beforeRequired := e.loanDecimal(t, loan.ID, "required_ckpn")
+
+	ckpnSvc := newCKPNSvcForTest(e)
+	batchSvc := e.newBatchSvcForTest(t, ckpnSvc)
+	summary, err := batchSvc.RunEOD(e.ctx, e.actor.UserID)
+	if err != nil {
+		t.Fatalf("RunEOD: %v", err)
+	}
+
+	if step := eodStepStatus(t, summary, "ckpn_comparison"); step.Status != domain.EODStepRan {
+		t.Fatalf("perbandingan CKPN bayangan = %s, mau RAN: %s", step.Status, step.Reason)
+	}
+	if !summary.CKPNShadowMode {
+		t.Fatal("ringkasan EOD harus menandai mode bayangan")
+	}
+	if summary.CKPNShadowProcessed == 0 {
+		t.Fatal("mode bayangan harus menghitung kredit, tidak ada yang diproses")
+	}
+	if !strings.Contains(summary.CKPNShadowNote, "MODE BAYANGAN") {
+		t.Fatalf("catatan harus melabeli angka bayangan, dapat %q", summary.CKPNShadowNote)
+	}
+
+	if after := e.countCKPNJournals(t); after != beforeJournals {
+		t.Fatalf("mode bayangan TIDAK boleh menambah jurnal CKPN: sebelum %d, sesudah %d", beforeJournals, after)
+	}
+	if after := e.loanDecimal(t, loan.ID, "required_ckpn"); !after.Equal(beforeRequired) || !after.IsZero() {
+		t.Fatalf("mode bayangan tidak boleh mengubah required_ckpn: sebelum %s, sesudah %s", beforeRequired, after)
+	}
+	// Field resmi tidak diisi: tidak ada pengurangan modal inti yang diklaim.
+	if summary.CKPNCompared != 0 || !summary.CKPNModalIntiDeduction.IsZero() {
+		t.Fatalf("bidang resmi tidak boleh terisi oleh mode bayangan: compared=%d deduction=%s",
+			summary.CKPNCompared, summary.CKPNModalIntiDeduction)
+	}
+}
