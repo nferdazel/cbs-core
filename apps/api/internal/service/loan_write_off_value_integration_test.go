@@ -121,6 +121,10 @@ func TestIntegrasiPemulihanTepatBatasDiizinkan(t *testing.T) {
 // Migrasi dijalankan dua kali untuk membuktikan idempotensi.
 func TestIntegrasiBackfillNilaiHapusBukuDataLama(t *testing.T) {
 	e := newBookWriteEnv(t)
+	// Migrasi 000085 yang dijalankan uji ini juga menyetel ambang recovery bawaan
+	// (0 -> 10.000.000). Nilai lama dipulihkan saat uji selesai agar kunci itu tidak
+	// tercemar ke uji berikutnya, sama seperti helper konfigurasi lain.
+	woffSnapshotConfig(t, e, "maker_checker.loan_recovery.threshold")
 
 	// (a) Punya audit WRITE_OFF_LOAN dengan changes.amount.
 	loanAudit, actorA := woffLoanOf(t, e, "W2", 1_000_000)

@@ -250,6 +250,24 @@ func looksLikeInternalError(msg string) bool {
 	return false
 }
 
+// isSecurityDenial melaporkan galat batas keamanan yang tidak boleh keluar dengan
+// status default pemanggil, melainkan selalu 403. Dipisahkan agar Fail dapat
+// memeriksanya lebih dulu daripada terjemahan katalog (lihat Fail).
+func isSecurityDenial(err error) bool {
+	return errors.Is(err, domain.ErrCrossBranchAccess) ||
+		errors.Is(err, domain.ErrCrossBookAccess) ||
+		errors.Is(err, domain.ErrStaffRoleNotManageable)
+}
+
+// localizedOrDefault mengembalikan pesan katalog untuk galat domain berkode, atau
+// pesan domainnya sendiri bila tidak berkode katalog.
+func localizedOrDefault(err error) string {
+	if msg, ok := translatedDomainError(err); ok {
+		return msg
+	}
+	return err.Error()
+}
+
 // Fail membalas error dengan satu aturan: error bisnis yang dikenali ditampilkan
 // apa adanya, sisanya dicatat ke log dan diganti pesan generik. Ini mencegah detail
 // internal (SQL, nama tabel, path) bocor lewat status 4xx sekalipun.
@@ -258,22 +276,24 @@ func Fail(w http.ResponseWriter, r *http.Request, status int, err error) {
 		InternalError(w, r, errors.New("Fail dipanggil tanpa error"))
 		return
 	}
+	// Penolakan batas keamanan (lintas cabang/buku, kewenangan atas akun staf)
+	// SELALU 403, apa pun status default pemanggil, dan pesannya tetap dari katalog
+	// i18n. Diperiksa SEBELUM terjemahan katalog karena galat ini berkode katalog:
+	// bila didahulukan, jalur terjemahan memakai status pemanggil dan menelan
+	// override 403 ini.
+	//
+	// Pengecualian 404: pemanggil yang memilih 404 sedang menyamarkan keberadaan
+	// data untuk pembacaan lintas cabang/buku yang disaring (tulis → 403; baca
+	// tersaring → 404). Status itu dipertahankan apa adanya agar pembacaan tidak
+	// membocorkan keberadaan data.
+	if status != http.StatusNotFound && isSecurityDenial(err) {
+		Error(w, http.StatusForbidden, localizedOrDefault(err))
+		return
+	}
 	// Sentinel galat domain yang tampil ke pengguna diterjemahkan dari katalog
 	// supaya pesannya konsisten dengan pesan API lain (ID + EN).
 	if msg, ok := translatedDomainError(err); ok {
 		Error(w, status, msg)
-		return
-	}
-	// Penolakan lintas cabang selalu 403, apa pun status default pemanggil.
-	// Dipusatkan di sini agar seluruh handler konsisten tanpa memetakan sendiri.
-	if errors.Is(err, domain.ErrCrossBranchAccess) {
-		Error(w, http.StatusForbidden, err.Error())
-		return
-	}
-	// Penolakan kewenangan atas akun staf juga 403: klien perlu membedakannya dari
-	// kesalahan validasi masukan, bukan dari status yang dipilih pemanggil.
-	if errors.Is(err, domain.ErrStaffRoleNotManageable) {
-		Error(w, http.StatusForbidden, err.Error())
 		return
 	}
 	if isBusinessError(err) {

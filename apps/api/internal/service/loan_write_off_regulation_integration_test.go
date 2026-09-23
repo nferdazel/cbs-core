@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
@@ -59,11 +60,44 @@ func woffBypassApproval(t *testing.T, e *bookWriteEnv, action string) {
 	woffSetThreshold(t, e, action, "999999999999")
 }
 
+// woffSnapshotConfig mencatat nilai system_config sebuah kunci SEBELUM uji
+// mengubahnya dan mendaftarkan pemulihannya lewat t.Cleanup. Nilai yang dipulihkan
+// adalah nilai lama yang benar-benar dibaca, bukan nilai yang diasumsikan, termasuk
+// mengembalikan status "tidak ada baris" bila kunci itu memang belum ada. Ini
+// menjaga isolasi: uji berikutnya dan pengulangan suite memulai dari keadaan yang
+// sama, tidak mewarisi nilai yang disetel uji sebelumnya.
+func woffSnapshotConfig(t *testing.T, e *bookWriteEnv, key string) {
+	t.Helper()
+	var oldValue string
+	err := e.db.QueryRowContext(e.ctx, `SELECT value FROM system_config WHERE key = $1`, key).Scan(&oldValue)
+	existed := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("membaca konfigurasi %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		var restoreErr error
+		if existed {
+			_, restoreErr = e.db.ExecContext(e.ctx,
+				`UPDATE system_config SET value = $2 WHERE key = $1`, key, oldValue)
+		} else {
+			_, restoreErr = e.db.ExecContext(e.ctx,
+				`DELETE FROM system_config WHERE key = $1`, key)
+		}
+		if restoreErr != nil {
+			t.Errorf("memulihkan konfigurasi %s: %v", key, restoreErr)
+		}
+		e.configSvc.Invalidate(key)
+	})
+}
+
 // woffSetThreshold menyetel ambang maker-checker satu jenis aksi langsung di database
-// uji, lalu membuang cache konfigurasinya agar service membaca nilai baru.
+// uji, lalu membuang cache konfigurasinya agar service membaca nilai baru. Nilai lama
+// ikut dipulihkan saat uji selesai (lihat woffSnapshotConfig) supaya kunci ini tidak
+// tercemar ke uji lain.
 func woffSetThreshold(t *testing.T, e *bookWriteEnv, action, value string) {
 	t.Helper()
 	key := "maker_checker." + action + ".threshold"
+	woffSnapshotConfig(t, e, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji integrasi hapus buku')
@@ -219,9 +253,12 @@ func TestIntegrasiHapusBukuSahRecoveryTetapBisa(t *testing.T) {
 }
 
 // woffSetCKPNEnabled menyalakan/mematikan ckpn.enabled pada database uji, lalu
-// membuang cache konfigurasinya agar loanService membaca nilai baru.
+// membuang cache konfigurasinya agar loanService membaca nilai baru. Nilai lama
+// dipulihkan saat uji selesai (lihat woffSnapshotConfig), bukan diasumsikan "false",
+// supaya saklar CKPN tidak tertinggal menyala/mati setelah suite.
 func woffSetCKPNEnabled(t *testing.T, e *bookWriteEnv, enabled bool) {
 	t.Helper()
+	woffSnapshotConfig(t, e, "ckpn.enabled")
 	value := "false"
 	if enabled {
 		value = "true"
@@ -358,7 +395,6 @@ func TestIntegrasiHapusBukuMelepasCadanganSesuaiSaklarCKPN(t *testing.T) {
 
 	// CKPN aktif: kaki debit cadangan diarahkan ke CKPN 10950, bukan PPAP 10900.
 	woffSetCKPNEnabled(t, e, true)
-	t.Cleanup(func() { woffSetCKPNEnabled(t, e, false) })
 	loanOn, actorOn := writeOffIntegrationLoan(t, e, "WK")
 	woffSetState(t, e, loanOn.ID, string(domain.CollectibilityKol5), 1_000_000)
 	// Cadangan CKPN kredit diisi penuh menutup pokok, sehingga seluruhnya dilepas.
@@ -386,7 +422,6 @@ func TestIntegrasiHapusBukuMelepasCadanganSesuaiSaklarCKPN(t *testing.T) {
 func TestIntegrasiHapusBukuCKPNMelepasSejumlahCadangan(t *testing.T) {
 	e := newBookWriteEnv(t)
 	woffSetCKPNEnabled(t, e, true)
-	t.Cleanup(func() { woffSetCKPNEnabled(t, e, false) })
 
 	loan, actor := writeOffIntegrationLoan(t, e, "WQ")
 	// Pokok 1.000.000; cadangan CKPN kredit hanya 600.000 (PD x LGD < 100%), sedangkan
@@ -427,5 +462,47 @@ func TestIntegrasiHapusBukuCKPNMelepasSejumlahCadangan(t *testing.T) {
 	// dan tidak menyisakan cadangan.
 	if got := woffGLBalance(t, e, ckpnAcc); got.IsNegative() || !got.IsZero() {
 		t.Fatalf("saldo akun CKPN %s, ingin tepat 0 (tidak negatif, tidak menyisakan)", got)
+	}
+}
+
+// Isolasi uji: helper penyetel konfigurasi harus memulihkan nilai SEBELUMNYA saat uji
+// selesai, bukan meninggalkan nilai uji atau mengembalikan nilai yang diasumsikan.
+// t.Cleanup subtest berjalan sebelum subtest berikutnya, sehingga pemulihan dapat
+// diperiksa tepat setelah blok yang mengubah. Tanpa snapshot+restore, kunci ini
+// tertinggal tercemar dan regresi bisa tersamarkan pada pengulangan suite.
+func TestIntegrasiKonfigurasiHelperDipulihkan(t *testing.T) {
+	e := newBookWriteEnv(t)
+
+	baca := func(key string) string {
+		t.Helper()
+		var value string
+		if err := e.db.QueryRowContext(e.ctx, `SELECT value FROM system_config WHERE key = $1`, key).Scan(&value); err != nil {
+			t.Fatalf("membaca konfigurasi %s: %v", key, err)
+		}
+		return value
+	}
+
+	const ambangKey = "maker_checker.loan_recovery.threshold"
+	ambangAsli := baca(ambangKey)
+	t.Run("ambang maker-checker", func(t *testing.T) {
+		woffSetThreshold(t, e, "loan_recovery", "123456789")
+		if got := baca(ambangKey); got != "123456789" {
+			t.Fatalf("helper tidak menyetel ambang: %q", got)
+		}
+	})
+	if got := baca(ambangKey); got != ambangAsli {
+		t.Fatalf("ambang tidak dipulihkan: %q, ingin %q", got, ambangAsli)
+	}
+
+	const ckpnKey = "ckpn.enabled"
+	ckpnAsli := baca(ckpnKey)
+	t.Run("saklar CKPN", func(t *testing.T) {
+		woffSetCKPNEnabled(t, e, ckpnAsli != "true")
+		if got := baca(ckpnKey); got == ckpnAsli {
+			t.Fatalf("helper tidak mengubah saklar CKPN: %q", got)
+		}
+	})
+	if got := baca(ckpnKey); got != ckpnAsli {
+		t.Fatalf("saklar CKPN tidak dipulihkan: %q, ingin %q", got, ckpnAsli)
 	}
 }

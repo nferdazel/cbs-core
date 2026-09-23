@@ -214,3 +214,75 @@ func TestFailTerjemahkanGalatDomainBerkode(t *testing.T) {
 		t.Fatalf("detail galat terbungkus hilang: %q", got)
 	}
 }
+
+// Temuan E2E: override 403 batas keamanan sempat tertelan jalur terjemahan katalog.
+// Sejak translatedDomainError didahulukan, penolakan TULIS lintas cabang keluar
+// dengan status default pemanggil (mis. 422), bukan 403 seperti yang dinyatakan
+// komentar. Uji ini mengunci: batas keamanan SELALU 403, apa pun status defaultnya,
+// dengan pesan tetap dari katalog i18n.
+func TestFailPenolakanKeamananSelaluForbidden(t *testing.T) {
+	t.Setenv("CBS_LANGUAGE", "id")
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/loans", nil)
+
+	kasus := []struct {
+		nama   string
+		status int
+		err    error
+		pesan  string
+	}{
+		{"lintas cabang dari 422", http.StatusUnprocessableEntity, domain.ErrCrossBranchAccess, i18n.Text(i18n.MsgCrossBranchAccess)},
+		{"lintas cabang dari 400", http.StatusBadRequest, domain.ErrCrossBranchAccess, i18n.Text(i18n.MsgCrossBranchAccess)},
+		{"lintas buku dari 422", http.StatusUnprocessableEntity, domain.ErrCrossBookAccess, domain.ErrCrossBookAccess.Error()},
+		{"kewenangan staf dari 422", http.StatusUnprocessableEntity, domain.ErrStaffRoleNotManageable, i18n.Text(i18n.MsgStaffRoleNotManageable)},
+	}
+	for _, tc := range kasus {
+		t.Run(tc.nama, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			httpHandler.Fail(rec, r, tc.status, tc.err)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, ingin 403 (default %d tidak boleh menang)", rec.Code, tc.status)
+			}
+			if got := decodeError(t, rec); got != tc.pesan {
+				t.Fatalf("pesan = %q, ingin %q", got, tc.pesan)
+			}
+		})
+	}
+
+	// Galat berkode yang dibungkus %w tetap 403 dan detail dinamisnya dipertahankan.
+	rec := httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusUnprocessableEntity,
+		fmt.Errorf("%w: nasabah cabang 821", domain.ErrCrossBranchAccess))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status terbungkus = %d, ingin 403", rec.Code)
+	}
+	got := decodeError(t, rec)
+	if !strings.HasPrefix(got, i18n.Text(i18n.MsgCrossBranchAccess)) || !strings.Contains(got, "nasabah cabang 821") {
+		t.Fatalf("pesan terbungkus = %q, ingin katalog + detail", got)
+	}
+}
+
+// Pembacaan lintas cabang/buku yang disamarkan pemanggil sebagai 404 TETAP 404:
+// status itu sengaja dipilih supaya keberadaan data tidak bocor. Hanya penulisan
+// (status validasi) yang dipaksa 403.
+func TestFailPembacaanLintasCabangTetap404(t *testing.T) {
+	t.Setenv("CBS_LANGUAGE", "id")
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/customers/1", nil)
+
+	rec := httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusNotFound, domain.ErrCrossBranchAccess)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("baca lintas cabang = %d, ingin tetap 404", rec.Code)
+	}
+	if got, want := decodeError(t, rec), i18n.Text(i18n.MsgCrossBranchAccess); got != want {
+		t.Fatalf("pesan baca lintas cabang = %q, ingin %q", got, want)
+	}
+
+	rec = httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusNotFound, domain.ErrCrossBookAccess)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("baca lintas buku = %d, ingin tetap 404", rec.Code)
+	}
+	if got, want := decodeError(t, rec), domain.ErrCrossBookAccess.Error(); got != want {
+		t.Fatalf("pesan baca lintas buku = %q, ingin %q", got, want)
+	}
+}
