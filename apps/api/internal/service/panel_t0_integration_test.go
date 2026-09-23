@@ -105,8 +105,9 @@ func TestIntegrasiPanelT0MigrasiBawaanAmanDanIdempotent(t *testing.T) {
 	}
 }
 
-// Gerbang aktivasi bobot agunan: ditolak dengan menyebut syarat, lalu lolos setelah
-// semua syarat dipenuhi; kategori benar-benar menyala di database.
+// Gerbang aktivasi bobot agunan: pengajuan ditolak saat syarat kurang dan lolos
+// setelah semua syarat dipenuhi lewat persetujuan pemeriksa LAIN; kategori benar-benar
+// menyala di database. Pembuat dan penyetuju selalu diambil dari token.
 func TestIntegrasiPanelT0GerbangAktivasiBobotAgunan(t *testing.T) {
 	e := newMoneyEnv(t)
 	jalankanMigrasiPanelT0(t, e)
@@ -127,6 +128,7 @@ func TestIntegrasiPanelT0GerbangAktivasiBobotAgunan(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_, _ = e.db.ExecContext(e.ctx, `DELETE FROM collateral_lampiran_ii_weights WHERE category_code = $1`, kategoriUji)
+		_, _ = e.db.ExecContext(e.ctx, `DELETE FROM maker_checker_requests WHERE action_type = $1`, domain.CollateralWeightActivateAction)
 	})
 
 	// Agunan lengkap pada satu kredit baru.
@@ -158,43 +160,58 @@ func TestIntegrasiPanelT0GerbangAktivasiBobotAgunan(t *testing.T) {
 		_, _ = e.db.ExecContext(e.ctx, `DELETE FROM loan_collaterals WHERE id = $1`, col.ID)
 	})
 
-	svc := service.NewCollateralWeightService(postgres.NewCollateralWeightRepository(e.db), e.configSvc)
-	actor := e.actor
+	auditRepo := postgres.NewAuditRepository(e.db)
+	svc := service.NewCollateralWeightService(postgres.NewCollateralWeightRepository(e.db), e.configSvc, auditRepo)
+	executors := service.NewExecutorRegistry()
+	executors.Register(domain.CollateralWeightActivateAction, svc)
+	mcSvc := service.NewMakerCheckerService(e.db, postgres.NewMakerCheckerRepository(e.db), auditRepo,
+		e.configSvc, executors, postgres.NewBusinessDateRepository(e.db), postgres.NewBranchRepository(e.db))
+	checkerActor := e.newCheckerStaff(t, "checker.panel.t0")
 
-	// 1. Ditolak: tanpa kebijakan Direksi (C8) dan tanpa izin (C9). Kategori harus tetap mati.
-	_, err := svc.Activate(e.ctx, kategoriUji, service.CollateralWeightActivationApproval{
-		Maker:   "maker.uji",
-		Checker: "checker.uji",
-	}, actor)
-	if err == nil {
-		t.Fatal("aktivasi tanpa C8/C9 harus ditolak")
+	// 1. Ditolak: pengajuan tanpa kebijakan Direksi (C8) tidak lolos saat disetujui,
+	// sekalipun pemeriksa sah. Kategori harus tetap mati.
+	req, err := mcSvc.CreateRequest(e.ctx, domain.CreateMakerCheckerInput{
+		ActionType: domain.CollateralWeightActivateAction,
+		Payload: map[string]any{
+			"category_code":         kategoriUji,
+			"has_config_permission": true,
+		},
+	}, e.actor)
+	if err != nil {
+		t.Fatalf("mengajukan aktivasi: %v", err)
 	}
-	if !strings.Contains(err.Error(), "C8") || !strings.Contains(err.Error(), "C9") {
-		t.Fatalf("galat harus menyebut syarat yang gagal (C8/C9), dapat: %v", err)
+	err = mcSvc.Approve(e.ctx, req.ID, checkerActor, "")
+	if err == nil {
+		t.Fatal("aktivasi tanpa C8 harus ditolak")
+	}
+	if !strings.Contains(err.Error(), "C8") {
+		t.Fatalf("galat harus menyebut syarat yang gagal (C8), dapat: %v", err)
 	}
 	if enabled := bacaEnabledKategori(t, e, kategoriUji); enabled {
 		t.Fatal("kategori tidak boleh menyala saat gerbang menolak")
 	}
 
-	// 2. Syarat dipenuhi: mode bayangan 3 bulan, kebijakan Direksi, maker-checker.
+	// 2. Syarat dipenuhi: mode bayangan 3 bulan, kebijakan Direksi, maker-checker dua
+	// orang. Pengajuan baru membawa kebijakan; pemeriksa LAIN yang menyetujui.
 	if _, err := e.db.ExecContext(e.ctx,
 		`UPDATE collateral_lampiran_ii_weights SET shadow_started_at = NOW() - INTERVAL '3 months' WHERE category_code = $1`,
 		kategoriUji); err != nil {
 		t.Fatalf("menyetel mulai mode bayangan: %v", err)
 	}
-	deskripsi := time.Now().UTC().AddDate(0, -1, 0)
-	res, err := svc.Activate(e.ctx, kategoriUji, service.CollateralWeightActivationApproval{
-		DireksiPolicyNumber: "SK-DIR-PANEL-T0",
-		DireksiPolicyDate:   &deskripsi,
-		Maker:               "maker.uji",
-		Checker:             "checker.uji",
-		HasConfigPermission: true,
-	}, actor)
+	req2, err := mcSvc.CreateRequest(e.ctx, domain.CreateMakerCheckerInput{
+		ActionType: domain.CollateralWeightActivateAction,
+		Payload: map[string]any{
+			"category_code":         kategoriUji,
+			"direksi_policy_number": "SK-DIR-PANEL-T0",
+			"direksi_policy_date":   time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02"),
+			"has_config_permission": true,
+		},
+	}, e.actor)
 	if err != nil {
-		t.Fatalf("aktivasi dengan seluruh syarat harus lolos: %v (failures=%v)", err, res.Failures)
+		t.Fatalf("mengajukan aktivasi lengkap: %v", err)
 	}
-	if !res.Allowed {
-		t.Fatalf("hasil gerbang harus Allowed, failures=%v", res.Failures)
+	if err := mcSvc.Approve(e.ctx, req2.ID, checkerActor, ""); err != nil {
+		t.Fatalf("persetujuan dengan seluruh syarat harus lolos: %v", err)
 	}
 	if !bacaEnabledKategori(t, e, kategoriUji) {
 		t.Fatal("kategori harus menyala di database setelah gerbang lolos")
@@ -209,8 +226,8 @@ func TestIntegrasiPanelT0GerbangAktivasiBobotAgunan(t *testing.T) {
 	if applied != "0.70000" {
 		t.Fatalf("applied_weight_frac = %q, mau sama dengan official 0.70000 (C7)", applied)
 	}
-	if checker != "checker.uji" {
-		t.Fatalf("activated_by = %q, mau checker.uji (C9)", checker)
+	if checker != checkerActor.Username {
+		t.Fatalf("activated_by = %q, mau %s (C9, identitas dari token)", checker, checkerActor.Username)
 	}
 }
 

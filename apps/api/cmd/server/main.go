@@ -9,6 +9,7 @@ import (
 
 	"cbs-core/apps/core-api/internal/config"
 	"cbs-core/apps/core-api/internal/crypto"
+	"cbs-core/apps/core-api/internal/domain"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/observability"
@@ -175,6 +176,10 @@ func main() {
 	// target PPKA yang sudah disimpan (loans.required_ppap) untuk membandingkannya,
 	// bukan menghitung ulang PPKA. Kredit dikunci lewat LoanRepository saat menulis.
 	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, ppapRunMarker)
+	// CKPN individual TAHAP T1 (keputusan panel butir 4): DCF dengan EIR orisinal dan
+	// proyeksi arus kas manual, MODE BAYANGAN BACA-SAJA. Ia tidak menulis required_ckpn
+	// dan tidak menyentuh saklar ckpn.enabled; hanya menyimpan data operasional bank.
+	ckpnIndividualSvc := service.NewCKPNIndividualService(loanRepo, postgres.NewCKPNIndividualRepository(db), configSvc)
 	// Pasal 23 POJK No. 1 Tahun 2024: pengurang PPKA umum dan khusus untuk bagian
 	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
 	// bawaan false sehingga belum mengubah angka PPKA mana pun.
@@ -205,6 +210,8 @@ func main() {
 	appInfoSvc := service.NewAppInfoService(bankProfileRepo, configSvc)
 	// Profil bank: bank mengisi identitasnya lewat API/web, teraudit, tanpa SQL.
 	bankProfileSvc := service.NewBankProfileService(db, bankProfileRepo, auditRepo)
+	// Identitas Form 00.00 di luar tabel bank_profile (kunci system_config ojk.*).
+	ojkProfileSvc := service.NewOJKProfileService(db, postgres.NewOJKProfileRepository(db), auditRepo)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
@@ -262,45 +269,56 @@ func main() {
 	docHandler := httpHandler.NewDocumentHandler(docSvc)
 	appInfoHandler := httpHandler.NewAppInfoHandler(appInfoSvc)
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
+	ojkProfileHandler := httpHandler.NewOJKProfileHandler(ojkProfileSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc, configSvc)
+	ckpnHandler.Individual = ckpnIndividualSvc
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
+	// Gerbang aktivasi bobot agunan (Lampiran II SEOJK 2/2025): baca-saja untuk audit
+	// dan aktivasi teraudit yang menegakkan C1-C9. Bobot tetap 100%/mati sampai sebuah
+	// kategori benar-benar lolos gerbang; service ini tidak mengubah perhitungan ATMR.
+	collateralWeightSvc := service.NewCollateralWeightService(postgres.NewCollateralWeightRepository(db), configSvc, auditRepo)
+	// Aktivasi bobot agunan selalu lewat antrean maker-checker: pengaju dan penyetuju
+	// dua aktor terautentikasi berbeda (C9), dieksekusi saat disetujui.
+	executors.Register(domain.CollateralWeightActivateAction, collateralWeightSvc)
 
 	kpmmHandler := httpHandler.NewKPMMHandler(kpmmSvc)
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
-		CustomerHandler:      custHandler,
-		AccountHandler:       accHandler,
-		BranchHandler:        branchHandler,
-		ProductHandler:       productHandler,
-		LedgerHandler:        ledHandler,
-		AuthHandler:          authHandler,
-		StaffHandler:         staffHandler,
-		LoanHandler:          loanHandler,
-		MakerCheckerHandler:  mcHandler,
-		ReportHandler:        reportHandler,
-		OJKReportHandler:     ojkReportHandler,
-		KPMMHandler:          kpmmHandler,
-		CollectionHandler:    collectionHandler,
-		IntegrationHandler:   integrationHandler,
-		BatchProcessHandler:  batchHandler,
-		EODDefinitionHandler: eodDefinitionHandler,
-		DocumentHandler:      docHandler,
-		DepositHandler:       depositHandler,
-		PPAPHandler:          ppapHandler,
-		CKPNHandler:          ckpnHandler,
-		LPSPlacementHandler:  lpsPlacementHandler,
-		AuditHandler:         httpHandler.NewAuditHandler(auditRepo, limitSvc),
-		CollateralHandler:    httpHandler.NewCollateralHandler(collateralSvc),
-		AppInfoHandler:       appInfoHandler,
-		BankProfileHandler:   bankProfileHandler,
-		PermissionHandler:    permissionHandler,
-		AuthService:          authSvc,
-		ConfigService:        configSvc,
+		CustomerHandler:         custHandler,
+		AccountHandler:          accHandler,
+		BranchHandler:           branchHandler,
+		ProductHandler:          productHandler,
+		LedgerHandler:           ledHandler,
+		AuthHandler:             authHandler,
+		StaffHandler:            staffHandler,
+		LoanHandler:             loanHandler,
+		MakerCheckerHandler:     mcHandler,
+		ReportHandler:           reportHandler,
+		OJKReportHandler:        ojkReportHandler,
+		KPMMHandler:             kpmmHandler,
+		CollectionHandler:       collectionHandler,
+		IntegrationHandler:      integrationHandler,
+		BatchProcessHandler:     batchHandler,
+		EODDefinitionHandler:    eodDefinitionHandler,
+		DocumentHandler:         docHandler,
+		DepositHandler:          depositHandler,
+		PPAPHandler:             ppapHandler,
+		CKPNHandler:             ckpnHandler,
+		LPSPlacementHandler:     lpsPlacementHandler,
+		AuditHandler:            httpHandler.NewAuditHandler(auditRepo, limitSvc),
+		CollateralHandler:       httpHandler.NewCollateralHandler(collateralSvc),
+		CollateralWeightHandler: httpHandler.NewCollateralWeightHandler(collateralWeightSvc, mcSvc),
+		AppInfoHandler:          appInfoHandler,
+		BankProfileHandler:      bankProfileHandler,
+		OJKProfileHandler:       ojkProfileHandler,
+		PermissionHandler:       permissionHandler,
+		AuthService:             authSvc,
+		ConfigService:           configSvc,
 		// Cakupan unit organisasi (cabang/area/wilayah) diresolusi per permintaan
 		// dari tabel branches, sama seperti cakupan buku dibaca dari konfigurasi.
 		BranchScopeResolver: branchRepo,

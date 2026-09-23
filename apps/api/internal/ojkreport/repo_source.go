@@ -91,6 +91,19 @@ func (s RepoSource) GetBankProfileConfig(ctx context.Context) (*BankProfileConfi
 		cfg.PICDivision = values[OJKPICDivisionKey]
 		cfg.PICPhone = values[OJKPICPhoneKey]
 		cfg.PICEmail = values[OJKPICEmailKey]
+		// Butir 10 s.d. 21 Form 00.00 (migrasi 000096).
+		cfg.DividendsPaid = values[domain.OJKDividendsPaidKey]
+		cfg.AnnualBonusTantiem = values[domain.OJKAnnualBonusKey]
+		cfg.AuditInfo = values[domain.OJKAuditInfoKey]
+		cfg.ShareNominalValue = values[domain.OJKShareNominalKey]
+		cfg.PublicOfferingStatus = values[domain.OJKPublicOfferingKey]
+		cfg.PVAStatus = values[domain.OJKPVAStatusKey]
+		cfg.EBankingStatus = values[domain.OJKEBankingKey]
+		cfg.ITProvider = values[domain.OJKITProviderKey]
+		cfg.LakuPandaiProvider = values[domain.OJKLakuPandaiProvKey]
+		cfg.LakuPandaiAgentCount = values[domain.OJKLakuPandaiAgentKey]
+		cfg.RUPSOwnershipChange = values[domain.OJKRUPSOwnershipKey]
+		cfg.UltimateShareholders = values[domain.OJKUltimateHolderKey]
 	}
 	cfg.Configured = strings.TrimSpace(cfg.Name) != ""
 	return cfg, nil

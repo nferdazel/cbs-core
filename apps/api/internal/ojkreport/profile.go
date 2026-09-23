@@ -1,6 +1,10 @@
 package ojkreport
 
-import "strings"
+import (
+	"strings"
+
+	"cbs-core/apps/core-api/internal/domain"
+)
 
 // profile.go membangun Form 00.00 INFORMASI POKOK BPR dari konfigurasi bank.
 //
@@ -45,18 +49,32 @@ var form00Fields = []form00Field{
 	{Label: "9.d E-mail Penanggung Jawab Laporan", Value: func(c BankProfileConfig) string { return c.PICEmail },
 		ConfigKey: OJKPICEmailKey},
 
-	{Label: "10. Dividen yang Dibayar", Reason: "tidak tersimpan pada bank_profile maupun kunci konfigurasi OJK; perlu ditambahkan lebih dulu"},
-	{Label: "11. Bonus Tahunan dan Tantiem", Reason: "tidak tersimpan pada bank_profile maupun kunci konfigurasi OJK; perlu ditambahkan lebih dulu"},
-	{Label: "12. Informasi Audit Laporan Keuangan Tahunan (KAP/AP)", Reason: "data audit tahunan belum tersimpan di sistem"},
-	{Label: "13. Nilai Nominal per Lembar Saham", Reason: "nominal saham belum dimodelkan pada data modal bank"},
-	{Label: "14. Status Penawaran Umum Efek", Reason: "status penawaran umum efek belum tersimpan"},
-	{Label: "15. Pedagang Valuta Asing (PVA)", Reason: "izin PVA dan jumlahnya belum tersimpan"},
-	{Label: "16. Layanan Perbankan Elektronik (E-Banking)", Reason: "status e-banking belum tersimpan"},
-	{Label: "17. Penyelenggara Teknologi Informasi", Reason: "data penyelenggara TI (mandiri/PJTI) belum tersimpan"},
-	{Label: "18. Penyelenggara Laku Pandai", Reason: "data Laku Pandai belum tersimpan"},
-	{Label: "19. Jumlah Agen Laku Pandai", Reason: "data agen Laku Pandai belum tersimpan"},
-	{Label: "20. Informasi RUPS Perubahan Kepemilikan", Reason: "data akta RUPS perubahan kepemilikan belum tersimpan"},
-	{Label: "21. Nama Ultimate Shareholders", Reason: "ultimate shareholder belum dimodelkan pada data pemegang saham"},
+	// Butir 10 s.d. 21 kini punya kunci system_config (migrasi 000096) sehingga bank
+	// dapat mengisinya lewat API; kosong tetap berarti belum tersedia.
+	{Label: "10. Dividen yang Dibayar", Value: func(c BankProfileConfig) string { return c.DividendsPaid },
+		ConfigKey: domain.OJKDividendsPaidKey},
+	{Label: "11. Bonus Tahunan dan Tantiem", Value: func(c BankProfileConfig) string { return c.AnnualBonusTantiem },
+		ConfigKey: domain.OJKAnnualBonusKey},
+	{Label: "12. Informasi Audit Laporan Keuangan Tahunan (KAP/AP)", Value: func(c BankProfileConfig) string { return c.AuditInfo },
+		ConfigKey: domain.OJKAuditInfoKey},
+	{Label: "13. Nilai Nominal per Lembar Saham", Value: func(c BankProfileConfig) string { return c.ShareNominalValue },
+		ConfigKey: domain.OJKShareNominalKey},
+	{Label: "14. Status Penawaran Umum Efek", Value: func(c BankProfileConfig) string { return c.PublicOfferingStatus },
+		ConfigKey: domain.OJKPublicOfferingKey},
+	{Label: "15. Pedagang Valuta Asing (PVA)", Value: func(c BankProfileConfig) string { return c.PVAStatus },
+		ConfigKey: domain.OJKPVAStatusKey},
+	{Label: "16. Layanan Perbankan Elektronik (E-Banking)", Value: func(c BankProfileConfig) string { return c.EBankingStatus },
+		ConfigKey: domain.OJKEBankingKey},
+	{Label: "17. Penyelenggara Teknologi Informasi", Value: func(c BankProfileConfig) string { return c.ITProvider },
+		ConfigKey: domain.OJKITProviderKey},
+	{Label: "18. Penyelenggara Laku Pandai", Value: func(c BankProfileConfig) string { return c.LakuPandaiProvider },
+		ConfigKey: domain.OJKLakuPandaiProvKey},
+	{Label: "19. Jumlah Agen Laku Pandai", Value: func(c BankProfileConfig) string { return c.LakuPandaiAgentCount },
+		ConfigKey: domain.OJKLakuPandaiAgentKey},
+	{Label: "20. Informasi RUPS Perubahan Kepemilikan", Value: func(c BankProfileConfig) string { return c.RUPSOwnershipChange },
+		ConfigKey: domain.OJKRUPSOwnershipKey},
+	{Label: "21. Nama Ultimate Shareholders", Value: func(c BankProfileConfig) string { return c.UltimateShareholders },
+		ConfigKey: domain.OJKUltimateHolderKey},
 }
 
 // buildForm00 menyusun Form 00.00. ok=false berarti identitas inti bank belum

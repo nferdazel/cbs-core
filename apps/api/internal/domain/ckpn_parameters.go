@@ -2,8 +2,11 @@ package domain
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // ckpn_parameters.go memuat status SEMENTARA/FINAL parameter CKPN beserta pengamannya.
@@ -35,6 +38,24 @@ const (
 	// (karena itu wajib diblokir) atau laporan masih memakai PPKA (sehingga menutup
 	// laporannya justru memblokir hal yang benar).
 	ConfigKeyCKPNEnabled = "ckpn.enabled"
+
+	// Kunci BUKTI RATIFIKASI parameter CKPN (keputusan panel butir 1). Ratifikasi adalah
+	// tindakan manusia bertanda tangan (Direksi + akuntan; DPS untuk BPRS), sehingga
+	// status FINAL HANYA boleh disetel bila bukti-bukti ini lengkap. Format bukti
+	// sengaja paling sederhana: kunci konfigurasi bernilai teks/tanggal/penanda, tanpa
+	// tabel baru. Migrasi 000095 menegakkan syarat ini lewat trigger pada system_config,
+	// sehingga jalur SQL langsung pun ditolak bila bukti kurang.
+	//
+	// Nama pengesah/nomor berita acara adalah DATA BANK, bukan nilai yang boleh dikarang
+	// sistem; panel tidak mengisinya. Yang dapat diputuskan mesin hanyalah KELENGKAPAN.
+	ConfigKeyCKPNRatificationBANumber   = "ckpn.ratification.ba_number"
+	ConfigKeyCKPNRatificationBADate     = "ckpn.ratification.ba_date"
+	ConfigKeyCKPNRatificationApprovedBy = "ckpn.ratification.approved_by"
+	ConfigKeyCKPNRatificationPDLGDBasis = "ckpn.ratification.pd_lgd_basis"
+	// ConfigKeyCKPNRatificationPDLGDFromBank menandai PD/LGD benar-benar dihitung dari
+	// data historis bank (PA BPR 12.6/12.7), bukan angka turunan tarif PPKA. Nilai
+	// selain true membuat perubahan ke FINAL ditolak.
+	ConfigKeyCKPNRatificationPDLGDFromBank = "ckpn.ratification.pd_lgd_from_bank"
 )
 
 const (
@@ -71,6 +92,16 @@ type CKPNParametersStatus struct {
 	OJKExportBlocked bool `json:"ojk_export_blocked"`
 	// OJKExportBlockReason menjelaskan sebab dan langkah perbaikan, bukan hanya menolak.
 	OJKExportBlockReason string `json:"ojk_export_block_reason,omitempty"`
+	// RatificationReady true berarti bukti ratifikasi (nomor/tanggal berita acara,
+	// pengesah, dasar PD/LGD dari data bank) sudah lengkap sehingga status FINAL SAH
+	// disetel. RatificationMissing menyebut bukti yang kurang — bukan hanya menolak.
+	RatificationReady   bool     `json:"ratification_ready"`
+	RatificationMissing []string `json:"ratification_missing,omitempty"`
+	// EnablementGaps adalah daftar yang masih menahan penyalakan ckpn.enabled pada
+	// instalasi ini (keputusan panel butir 2). Kosong berarti tidak ada penahan yang
+	// dapat diperiksa mesin. Daftarnya menyebut kunci yang harus diselesaikan, bukan
+	// menebak nilainya.
+	EnablementGaps []string `json:"enablement_gaps,omitempty"`
 	// Warnings adalah peringatan yang wajib ditampilkan (start, EOD, KPMM/PPAP, status).
 	Warnings []string `json:"warnings,omitempty"`
 }
@@ -118,9 +149,17 @@ func CKPNParametersStatusFromConfig(ctx context.Context, cfg SystemConfigService
 		out.FloorPPKAEnforced = out.Sementara || cfg.GetBool(ctx, ConfigKeyCKPNFloorPPKA, true)
 	}
 
+	// Bukti ratifikasi dan daftar penahan penyalakan diperiksa mesin (butir 1 & 2).
+	out.RatificationReady, out.RatificationMissing = CKPNRatificationReadiness(ctx, cfg, now)
+	out.EnablementGaps = ckpnEnablementGaps(ctx, cfg)
+
 	if out.Sementara {
 		out.Warnings = append(out.Warnings,
 			"PARAMETER SEMENTARA — belum disetujui bank/akuntan. Angka CKPN ini HANYA untuk internal (mode bayangan/laporan manajemen) dan DILARANG dipakai sebagai dasar kolom CKPN laporan OJK/APOLO. Ratifikasi Direksi + akuntan (DPS untuk BPRS), lalu setel "+ConfigKeyCKPNParametersStatus+"=FINAL.")
+		if len(out.RatificationMissing) > 0 {
+			out.Warnings = append(out.Warnings,
+				"bukti ratifikasi parameter CKPN belum lengkap; perubahan ke "+ConfigKeyCKPNParametersStatus+"=FINAL akan DITOLAK sampai dilengkapi: "+strings.Join(out.RatificationMissing, "; ")+".")
+		}
 		// Blokir ekspor hanya berlaku bila angka sementara ini benar-benar mengalir ke
 		// laporan, yaitu saat CKPN resmi menyala. Selama ckpn.enabled masih mati, laporan
 		// OJK memuat angka PPKA (bukan CKPN dari PD/LGD sementara), sehingga memblokirnya
@@ -152,6 +191,112 @@ func CKPNParametersStatusFromConfig(ctx context.Context, cfg SystemConfigService
 		}
 	}
 	return out
+}
+
+// CKPNRatificationReadiness memeriksa KELENGKAPAN bukti ratifikasi parameter CKPN
+// (keputusan panel butir 1). Ia mengembalikan ready=true hanya bila seluruh bukti
+// tersedia, beserta daftar yang kurang supaya bank tahu persis apa yang harus diisi.
+//
+// Ini BUKAN ratifikasi: sistem tidak dapat dan tidak boleh meratifikasi atas nama bank.
+// Yang diperiksa mesin hanya kelengkapan/format — kebenaran isi tetap tanggung jawab
+// Direksi + akuntan (dan DPS untuk BPRS) yang menandatangani berita acara.
+//
+// cfg nil diperlakukan belum lengkap (gagal-aman), bukan siap.
+func CKPNRatificationReadiness(ctx context.Context, cfg SystemConfigService, now time.Time) (bool, []string) {
+	if cfg == nil {
+		return false, []string{"konfigurasi tidak terbaca (SystemConfigService nil); bukti ratifikasi tidak dapat diverifikasi"}
+	}
+	var missing []string
+
+	requireText := func(key, label string) {
+		if strings.TrimSpace(cfg.GetString(ctx, key, "")) == "" {
+			missing = append(missing, key+" ("+label+")")
+		}
+	}
+	requireText(ConfigKeyCKPNRatificationBANumber, "nomor berita acara ratifikasi Direksi + akuntan/DPS")
+	requireText(ConfigKeyCKPNRatificationApprovedBy, "nama dan jabatan pengesah")
+	requireText(ConfigKeyCKPNRatificationPDLGDBasis, "dasar perhitungan PD (PA BPR 12.6) dan LGD (12.7) dari data historis bank")
+
+	if !cfg.GetBool(ctx, ConfigKeyCKPNRatificationPDLGDFromBank, false) {
+		missing = append(missing, ConfigKeyCKPNRatificationPDLGDFromBank+"=true (PD/LGD dihitung dari data historis bank, bukan turunan tarif PPKA)")
+	}
+
+	rawDate := strings.TrimSpace(cfg.GetString(ctx, ConfigKeyCKPNRatificationBADate, ""))
+	switch {
+	case rawDate == "":
+		missing = append(missing, ConfigKeyCKPNRatificationBADate+" (tanggal berita acara ratifikasi, YYYY-MM-DD)")
+	default:
+		t, err := time.Parse("2006-01-02", rawDate)
+		if err != nil {
+			missing = append(missing, ConfigKeyCKPNRatificationBADate+" bukan format YYYY-MM-DD: "+rawDate)
+		} else if t.After(tanggalSaja(now)) {
+			missing = append(missing, ConfigKeyCKPNRatificationBADate+" tidak boleh di masa depan: "+rawDate)
+		}
+	}
+	return len(missing) == 0, missing
+}
+
+// ckpnEnablementGaps mengembalikan daftar yang menahan penyalakan ckpn.enabled pada
+// instalasi ini (keputusan panel butir 2). Ia baca-saja dan tidak menyalakan apa pun.
+// Daftarnya dapat diperiksa mesin: parameter terisi sah, sudah diratifikasi, dan akun
+// syariah terpetakan bila instalasi melayani buku syariah.
+//
+// Bila ckpn.enabled sudah menyala, tidak ada penahan (kosong). Peringatan kesiapan
+// instalasi (jurnal/tanggal bisnis) tetap milik service.CKPNReadinessWarnings.
+func ckpnEnablementGaps(ctx context.Context, cfg SystemConfigService) []string {
+	if cfg == nil {
+		return []string{"konfigurasi tidak terbaca (SystemConfigService nil); penahan penyalakan CKPN tidak dapat diperiksa"}
+	}
+	if cfg.GetBool(ctx, ConfigKeyCKPNEnabled, false) {
+		return nil
+	}
+	var gaps []string
+
+	status := strings.ToUpper(strings.TrimSpace(cfg.GetString(ctx, ConfigKeyCKPNParametersStatus, CKPNParameterStatusSementara)))
+	if status != CKPNParameterStatusFinal {
+		if ready, missing := CKPNRatificationReadiness(ctx, cfg, time.Now()); ready {
+			gaps = append(gaps, "parameter CKPN belum FINAL padahal bukti ratifikasi lengkap; setel "+ConfigKeyCKPNParametersStatus+"=FINAL")
+		} else {
+			gaps = append(gaps, "parameter CKPN belum diratifikasi (status "+ConfigKeyCKPNParametersStatus+" bukan FINAL); bukti kurang: "+strings.Join(missing, "; "))
+		}
+	}
+
+	// PD per golongan dan LGD wajib berupa fraksi 0..1 yang benar-benar terisi.
+	for i := 1; i <= 5; i++ {
+		key := fmt.Sprintf("ckpn.pd_frac.gol_%d", i)
+		if !validCKPNFraction(ctx, cfg, key) {
+			gaps = append(gaps, key+" belum diisi atau bukan fraksi 0..1 (satuan FRAKSI, bukan persen)")
+		}
+	}
+	if !validCKPNFraction(ctx, cfg, "ckpn.lgd_frac") {
+		gaps = append(gaps, "ckpn.lgd_frac belum diisi atau bukan fraksi 0..1 (satuan FRAKSI, bukan persen)")
+	}
+
+	// Instalasi yang melayani buku syariah wajib memetakan akun CKPN syariah; bila
+	// kosong, jurnal CKPN pembiayaan jatuh ke akun konvensional.
+	scope := ParseInstitutionBookScope(cfg.GetString(ctx, ConfigKeyInstitutionBookScope, string(ScopeDual)))
+	if scope.AllowsBook(BookSyariah) {
+		for _, key := range []string{"ckpn.coa.expense.syariah", "ckpn.coa.reserve.syariah"} {
+			if strings.TrimSpace(cfg.GetString(ctx, key, "")) == "" {
+				gaps = append(gaps, key+" belum dipetakan ke akun CKPN syariah")
+			}
+		}
+	}
+	return gaps
+}
+
+// validCKPNFraction melaporkan apakah kunci terisi angka dan berada pada rentang 0..1.
+// Kunci kosong dan nilai di luar rentang sama-sama dianggap belum sah.
+func validCKPNFraction(ctx context.Context, cfg SystemConfigService, key string) bool {
+	raw := strings.TrimSpace(cfg.GetString(ctx, key, ""))
+	if raw == "" {
+		return false
+	}
+	d, err := decimal.NewFromString(raw)
+	if err != nil {
+		return false
+	}
+	return d.GreaterThanOrEqual(decimal.Zero) && d.LessThanOrEqual(decimal.NewFromInt(1))
 }
 
 // itoa menghindari impor strconv hanya untuk satu bilangan; nilai selalu positif.

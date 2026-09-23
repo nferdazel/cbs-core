@@ -244,13 +244,15 @@ func (s *accountService) GetAccountByNumber(ctx context.Context, accountNumber s
 	if err != nil {
 		return nil, err
 	}
-	// Rekening cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Rekening cabang lain ditolak. Pembacaan ini disamarkan menjadi 404 oleh
+	// pemanggil (lihat Fail): status 404 dipertahankan agar keberadaan data tidak
+	// bocor, sedangkan operasi tulis lintas cabang tetap dibalas 403.
 	// Rekening tanpa cabang (data pra-migrasi) tetap boleh dibaca.
 	if !actor.CanAccessBranch(account.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess
 	}
-	// Rekening buku lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
-	// Buku rekening sudah dibaca dari coa.book pada accountColumns.
+	// Rekening buku lain ditolak dengan aturan yang sama: baca disamarkan 404,
+	// tulis 403. Buku rekening sudah dibaca dari coa.book pada accountColumns.
 	if !actor.CanAccessBook(account.COABook) {
 		return nil, domain.ErrCrossBookAccess
 	}

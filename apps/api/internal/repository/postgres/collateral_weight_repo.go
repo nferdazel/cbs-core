@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -73,6 +74,9 @@ func (r *CollateralWeightRepository) GetCategory(ctx context.Context, categoryCo
 		t := shadowStarted.Time
 		c.ShadowStartedAt = &t
 	}
+	if maker.Valid {
+		c.ActivatedMaker = maker.String
+	}
 	if activatedBy.Valid {
 		c.ActivatedBy = activatedBy.String
 	}
@@ -140,7 +144,26 @@ func (r *CollateralWeightRepository) ListActiveCollateralsWithExposure(ctx conte
 // WAJIB memastikan gerbang lolos; fungsi ini tidak menilai ulang. Nilai applied
 // dipaksa sama dengan bobot resmi oleh service (C7), bukan diterima dari pengguna.
 func (r *CollateralWeightRepository) EnableCategory(ctx context.Context, categoryCode string, approval domain.CollateralWeightApproval) error {
-	res, err := r.db.ExecContext(ctx, `
+	return enableCategory(ctx, r.db, categoryCode, approval)
+}
+
+// EnableCategoryTx menyalakan kategori memakai transaksi pemanggil, sehingga penulisan
+// bukti aktivasi dan audit persetujuan maker-checker commit bersama.
+func (r *CollateralWeightRepository) EnableCategoryTx(ctx context.Context, tx any, categoryCode string, approval domain.CollateralWeightApproval) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("aktivasi bobot agunan: transaksi tidak valid")
+	}
+	return enableCategory(ctx, sqlTx, categoryCode, approval)
+}
+
+// dbExecer adalah irisan *sql.DB dan *sql.Tx yang cukup untuk satu UPDATE.
+type dbExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func enableCategory(ctx context.Context, exec dbExecer, categoryCode string, approval domain.CollateralWeightApproval) error {
+	res, err := exec.ExecContext(ctx, `
 		UPDATE collateral_lampiran_ii_weights
 		SET applied_weight_frac = $2,
 		    enabled = TRUE,

@@ -17,6 +17,10 @@ type CKPNHandler struct {
 	// config dipakai endpoint status parameter SEMENTARA/FINAL agar dapat diperiksa
 	// tanpa menjalankan EOD. Boleh nil (uji lama): status diperlakukan SEMENTARA.
 	config domain.SystemConfigService
+	// Individual menyajikan CKPN individual tahap T1 (mode bayangan baca-saja) dan
+	// input proyeksi arus kas manual. Boleh nil: rute individual tidak dipasang, sehingga
+	// instalasi/uji yang belum menyiapkannya berperilaku sama seperti sebelumnya.
+	Individual domain.CKPNIndividualService
 }
 
 func NewCKPNHandler(ckpnSvc domain.CKPNService, config domain.SystemConfigService) *CKPNHandler {
@@ -107,5 +111,15 @@ func (h *CKPNHandler) RegisterRoutes(r chi.Router) {
 		// batas ratifikasi, dan status blokir ekspor OJK. Cukup izin baca kredit.
 		r.With(middleware.RequirePermission(domain.PermLoansRead)).
 			Get("/status", h.Status)
+
+		// CKPN individual T1 (mode bayangan baca-saja). Hanya dipasang bila layanan
+		// disiapkan; menilai cukup izin baca kredit, mengisi proyeksi arus kas (data
+		// operasional pengelola kredit) memakai izin approve kredit.
+		if h.Individual != nil {
+			r.With(middleware.RequirePermission(domain.PermLoansRead)).
+				Get("/individual/{loanNumber}/assessment", h.IndividualAssessment)
+			r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+				Put("/individual/{loanNumber}/projections", h.ReplaceIndividualProjections)
+		}
 	})
 }

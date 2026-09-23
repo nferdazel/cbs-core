@@ -41,7 +41,9 @@ const (
 
 // ErrCollateralWeightActivationRejected menandai aktivasi kategori bobot agunan yang
 // ditolak gerbang. Pesannya menyebut syarat yang gagal; pemanggil tidak boleh menebak.
-var ErrCollateralWeightActivationRejected = fmt.Errorf("aktivasi bobot agunan ditolak")
+// Dibuat LocalizedError agar pesan dasarnya mengikuti bahasa instalasi, sementara
+// daftar syarat yang gagal ditambahkan pemanggil sebagai akhiran tetap.
+var ErrCollateralWeightActivationRejected = NewLocalizedError("collateral_weight_activation_rejected", "aktivasi bobot agunan ditolak")
 
 // CollateralWeightCategory adalah satu baris kategori pada
 // collateral_lampiran_ii_weights beserta penanda persetujuannya.
@@ -59,9 +61,18 @@ type CollateralWeightCategory struct {
 	DireksiPolicyNumber string
 	DireksiPolicyDate   *time.Time
 	ShadowStartedAt     *time.Time
-	ActivatedBy         string
-	ActivatedAt         *time.Time
+	// ActivatedMaker/ActivatedBy adalah pembuat dan penyetuju aktivasi (C9). Keduanya
+	// HANYA diisi dari aktor terautentikasi, tidak pernah dari body/kueri.
+	ActivatedMaker string
+	ActivatedBy    string
+	ActivatedAt    *time.Time
 }
+
+// CollateralWeightActivateAction adalah jenis aksi maker-checker aktivasi kategori
+// bobot agunan. Aktivasi selalu melewati antrean maker-checker: pengaju (maker) dan
+// penyetuju (checker) adalah dua aktor terautentikasi yang berbeda (C9), sehingga
+// identitas tidak mungkin diklaim dari body/kueri.
+const CollateralWeightActivateAction = "COLLATERAL_WEIGHT_ACTIVATE"
 
 // CollateralWeightCollateral adalah satu agunan aktif dalam cakupan kategori. Nilai
 // pengurang memakai BoundAmount (database generated dari taksasi x (1-haircut)),
@@ -110,12 +121,51 @@ type CollateralWeightActivationRequest struct {
 
 // CollateralWeightActivationResult adalah hasil gerbang. Allowed true berarti kategori
 // boleh dinyalakan; Failures berisi kode syarat yang gagal (kosong bila lolos).
+// Field status dipakai endpoint baca-saja agar syarat, cakupan, dan umur mode bayangan
+// dapat diaudit tanpa menyalakan kategori.
 type CollateralWeightActivationResult struct {
 	Allowed       bool
 	Failures      []string
 	CoverageFrac  decimal.Decimal
 	EligibleValue decimal.Decimal
 	TotalValue    decimal.Decimal
+
+	// CategoryCode/CategoryEnabled menyalin keadaan kategori saat dinilai.
+	CategoryCode    string
+	CategoryEnabled bool
+	// CoverageMinFrac adalah ambang cakupan yang dipakai gerbang.
+	CoverageMinFrac decimal.Decimal
+	// ShadowStartedAt nol berarti mode bayangan belum dimulai. ShadowMonthsElapsed
+	// adalah jumlah bulan penuh mode bayangan berjalan per AsOf (-1 bila belum mulai).
+	ShadowStartedAt      *time.Time
+	ShadowMonthsElapsed  int
+	ShadowMonthsRequired int
+}
+
+// CollateralWeightActivationApproval adalah permintaan aktivasi dari pemanggil.
+// Dibawa terpisah dari data agunan agar gerbang dapat menilai syarat C8/C9 tanpa
+// menyentuh database.
+type CollateralWeightActivationApproval struct {
+	DireksiPolicyNumber string
+	DireksiPolicyDate   *time.Time
+	// Maker adalah pengaju, Checker adalah penyetuju. Gerbang menuntut keduanya terisi
+	// dan berbeda; pengaju tidak boleh menyetujui pengajuannya sendiri.
+	Maker string
+	// Checker diisi handler dari identitas aktor yang benar-benar memanggil aktivasi.
+	Checker string
+	// AppliedWeightFrac nil berarti memakai bobot resmi (C7 lolos); diisi nilai lain
+	// akan ditolak gerbang.
+	AppliedWeightFrac   *decimal.Decimal
+	HasConfigPermission bool
+}
+
+// CollateralWeightService adalah gerbang aktivasi bobot agunan. Assess menilai syarat
+// tanpa mengubah apa pun (baca-saja). Aktivasi tidak lagi diekspos sebagai satu operasi
+// yang menerima identitas: ia dieksekusi lewat antrean maker-checker (MakerCheckerExecutor),
+// sehingga pembuat dan penyetuju selalu berasal dari aktor terautentikasi yang berbeda.
+type CollateralWeightService interface {
+	MakerCheckerExecutor
+	Assess(ctx context.Context, categoryCode string, approval CollateralWeightActivationApproval, actor Actor) (CollateralWeightActivationResult, error)
 }
 
 // EvaluateCollateralWeightActivation menjalankan seluruh syarat C1-C9 dan gerbang
@@ -245,7 +295,35 @@ func EvaluateCollateralWeightActivation(req CollateralWeightActivationRequest) C
 
 	res.Failures = failures
 	res.Allowed = len(failures) == 0
+	res.CategoryCode = req.Category.CategoryCode
+	res.CategoryEnabled = req.Category.Enabled
+	res.CoverageMinFrac = req.CoverageMinFrac
+	res.ShadowMonthsRequired = req.ShadowMonthsRequired
+	res.ShadowStartedAt = req.Category.ShadowStartedAt
+	if req.Category.ShadowStartedAt != nil && !req.Category.ShadowStartedAt.IsZero() {
+		res.ShadowMonthsElapsed = businessMonthsElapsed(*req.Category.ShadowStartedAt, req.AsOf)
+	} else {
+		res.ShadowMonthsElapsed = -1
+	}
 	return res
+}
+
+// businessMonthsElapsed menghitung jumlah bulan penuh dari start sampai asOf,
+// memperhitungkan tanggal sehingga 15 Jan -> 14 Mar = 1 bulan, 15 Jan -> 15 Mar = 2.
+// Dipakai melaporkan berapa bulan bisnis mode bayangan sudah berjalan.
+func businessMonthsElapsed(start, asOf time.Time) int {
+	start, asOf = tanggalSaja(start), tanggalSaja(asOf)
+	if start.IsZero() || start.After(asOf) {
+		return 0
+	}
+	months := (asOf.Year()-start.Year())*12 + int(asOf.Month()) - int(start.Month())
+	if asOf.Day() < start.Day() {
+		months--
+	}
+	if months < 0 {
+		return 0
+	}
+	return months
 }
 
 // AppraisalExpiredFor menilai kedaluwarsa taksasi dari data mentah (tanpa struct
@@ -273,6 +351,9 @@ type CollateralWeightRepository interface {
 	// EnableCategory menyalakan satu kategori. Pemanggil WAJIB memastikan gerbang
 	// lolos lebih dulu; fungsi ini tidak menilai ulang syarat.
 	EnableCategory(ctx context.Context, categoryCode string, approval CollateralWeightApproval) error
+	// EnableCategoryTx sama dengan EnableCategory tetapi memakai transaksi pemanggil,
+	// sehingga penulisan bukti aktivasi dan audit persetujuan commit bersama.
+	EnableCategoryTx(ctx context.Context, tx any, categoryCode string, approval CollateralWeightApproval) error
 }
 
 // CollateralWeightApproval adalah bukti persetujuan yang disimpan saat aktivasi.

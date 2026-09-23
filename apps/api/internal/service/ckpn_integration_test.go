@@ -26,6 +26,7 @@ import (
 // filter cabang pada pembacaan kredit benar-benar berlaku.
 func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 	e := newMoneyEnv(t)
+	simpanPulihkanConfigCKPN(t, e)
 
 	setConfig := func(key, value, desc string) {
 		t.Helper()
@@ -155,7 +156,11 @@ func TestIntegrasiCKPNPerbandinganDanPenyimpanan(t *testing.T) {
 // kredit di cabang uji.
 func TestIntegrasiCKPNPelepasanCadanganKreditLunas(t *testing.T) {
 	e := newMoneyEnv(t)
-	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	simpanPulihkanConfigCKPN(t, e)
+	// Uji ini menuntut jalur TULIS (menjurnal pelepasan). Pada database segar
+	// ckpn.enabled=false dan mode bayangan tidak pernah menjurnal, jadi parameternya
+	// disiapkan sendiri — bukan mengandalkan sisa uji lain — dan dipulihkan setelahnya.
+	siapkanParameterCKPNTulis(t, e)
 
 	branchCode := ckpnTestBranchCode("D")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Lunas")
@@ -208,7 +213,10 @@ func TestIntegrasiCKPNPelepasanCadanganKreditLunas(t *testing.T) {
 // required_ckpn-nya ditulis dari angka basi.
 func TestIntegrasiCKPNSnapshotBasiTidakDipakai(t *testing.T) {
 	e := newMoneyEnv(t)
-	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	simpanPulihkanConfigCKPN(t, e)
+	// Sama seperti uji pelepasan: jalur tulis disiapkan sendiri agar tidak bergantung
+	// pada ckpn.enabled yang mungkin ditinggalkan uji lain.
+	siapkanParameterCKPNTulis(t, e)
 
 	branchCode := ckpnTestBranchCode("E")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji CKPN Basi")
@@ -296,6 +304,32 @@ func (e *moneyEnv) recordPPAPRun(t *testing.T, asOf time.Time) {
 		asOf.UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("menulis penanda run PPAP: %v", err)
 	}
+}
+
+// simpanPulihkanConfigCKPN mengunci parameter CKPN yang lazim diubah uji integrasi ini
+// dan memulihkannya setelah selesai. Tanpa ini, uji yang menyalakan ckpn.enabled atau
+// mengubah PD/LGD bocor ke uji lain di database yang sama sehingga hasil suite bergantung
+// urutan (mis. uji pelepasan hanya lulus bila berjalan setelah uji perbandingan).
+func simpanPulihkanConfigCKPN(t *testing.T, e *moneyEnv) {
+	t.Helper()
+	snaps := snapshotConfig(t, e.db, e.ctx,
+		"ckpn.enabled",
+		"ckpn.shadow_mode.enabled",
+		"ckpn.pd_frac.gol_3",
+		"ckpn.lgd_frac",
+		"ppap.last_run_business_date",
+	)
+	t.Cleanup(func() { restoreConfig(t, e.db, e.ctx, snaps) })
+}
+
+// siapkanParameterCKPNTulis menyalakan jalur tulis CKPN (ckpn.enabled) beserta PD/LGD
+// yang valid untuk uji integrasi yang menjurnal. Nilainya dipulihkan oleh
+// simpanPulihkanConfigCKPN, sehingga tidak mengubah konfigurasi setelah uji selesai.
+func siapkanParameterCKPNTulis(t *testing.T, e *moneyEnv) {
+	t.Helper()
+	setCKPNConfig(t, e, "ckpn.enabled", "true")
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_3", "0.10")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 }
 
 // setCKPNConfig menyetel satu kunci CKPN sambil membuang cache konfigurasinya.

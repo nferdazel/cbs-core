@@ -34,6 +34,8 @@ id_ed25519
 
 # Go
 apps/core-api/core-api
+# Biner server hasil build lokal (bukan artefak sumber)
+apps/api/server
 
 # Logs
 logs/

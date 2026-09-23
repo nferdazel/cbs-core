@@ -3,6 +3,8 @@ package ojkreport
 import (
 	"strings"
 	"testing"
+
+	"cbs-core/apps/core-api/internal/domain"
 )
 
 // Profil bank yang belum diisi membuat Form 00.00 belum dapat dibangun.
@@ -45,8 +47,13 @@ func TestBuildForm00MengisiNilaiDanMenandaiKunci(t *testing.T) {
 		t.Fatalf("alasan email harus menyebut kunci %s, dapat %q", OJKBankEmailKey, email.Reason)
 	}
 
-	// Field tanpa sumber sama sekali tetap didaftarkan dengan alasan.
-	if r := rowByKey(t, sec, "12. Informasi Audit Laporan Keuangan Tahunan (KAP/AP)"); r.Reason == "" {
-		t.Fatal("informasi audit harus dinyatakan belum tersedia")
+	// Field butir 10 s.d. 21 kini punya kunci konfigurasi (migrasi 000096); yang belum
+	// diisi tetap didaftarkan dengan alasan yang menyebut kuncinya.
+	audit := rowByKey(t, sec, "12. Informasi Audit Laporan Keuangan Tahunan (KAP/AP)")
+	if audit.Reason == "" {
+		t.Fatal("informasi audit kosong harus dinyatakan belum tersedia")
+	}
+	if !strings.Contains(audit.Reason, domain.OJKAuditInfoKey) {
+		t.Fatalf("alasan audit harus menyebut kunci %s, dapat %q", domain.OJKAuditInfoKey, audit.Reason)
 	}
 }

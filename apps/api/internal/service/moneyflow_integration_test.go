@@ -50,6 +50,56 @@ type moneyEnv struct {
 	configSvc      domain.SystemConfigService
 }
 
+// configSnapshot menyimpan nilai satu kunci system_config sebelum diubah harness,
+// termasuk ketiadaan barisnya, agar t.Cleanup dapat memulihkannya persis. Tanpa ini
+// kunci yang disetel uji bocor ke uji lain di database yang sama dan hasil suite
+// bergantung urutan.
+type configSnapshot struct {
+	key    string
+	value  string
+	exists bool
+}
+
+// snapshotConfig membaca nilai awal kunci-kunci konfigurasi. Ketiadaan baris dicatat
+// sebagai exists=false agar pemulihannya menghapus baris itu, bukan menulis nilai
+// kosong yang berbeda.
+func snapshotConfig(t *testing.T, db *sql.DB, ctx context.Context, keys ...string) []configSnapshot {
+	t.Helper()
+	snaps := make([]configSnapshot, 0, len(keys))
+	for _, key := range keys {
+		var value string
+		err := db.QueryRowContext(ctx, `SELECT value FROM system_config WHERE key = $1`, key).Scan(&value)
+		switch {
+		case err == sql.ErrNoRows:
+			snaps = append(snaps, configSnapshot{key: key})
+		case err != nil:
+			t.Fatalf("membaca konfigurasi awal %s: %v", key, err)
+		default:
+			snaps = append(snaps, configSnapshot{key: key, value: value, exists: true})
+		}
+	}
+	return snaps
+}
+
+// restoreConfig mengembalikan kunci-kunci yang diubah harness ke nilai semula.
+func restoreConfig(t *testing.T, db *sql.DB, ctx context.Context, snaps []configSnapshot) {
+	t.Helper()
+	for _, s := range snaps {
+		if !s.exists {
+			if _, err := db.ExecContext(ctx, `DELETE FROM system_config WHERE key = $1`, s.key); err != nil {
+				t.Errorf("menghapus konfigurasi uji %s: %v", s.key, err)
+			}
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO system_config (key, value, description)
+			VALUES ($1, $2, 'dipulihkan setelah uji integrasi jalur uang')
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, s.key, s.value); err != nil {
+			t.Errorf("memulihkan konfigurasi %s: %v", s.key, err)
+		}
+	}
+}
+
 func newMoneyEnv(t *testing.T) *moneyEnv {
 	t.Helper()
 	dsn := os.Getenv("CBS_TEST_DB_DSN")
@@ -68,6 +118,23 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 		t.Fatalf("database tidak dapat dihubungi: %v", err)
 	}
 
+	// Nilai awal kunci yang diubah harness dipulihkan lewat t.Cleanup, sehingga
+	// tanggal bisnis dan parameter CKPN uji tidak tertinggal di database bersama.
+	// Cleanup didaftarkan setelah Close sehingga berjalan lebih dulu (LIFO).
+	awal := snapshotConfig(t, db, ctx,
+		"system.business_date",
+		domain.ConfigKeyCKPNParametersStatus,
+		domain.ConfigKeyCKPNFloorPPKA,
+		// Bukti ratifikasi (migrasi 000095): trigger menolak status FINAL tanpa bukti,
+		// jadi harness harus mengisi bukti uji lebih dulu dan memulihkannya setelahnya.
+		domain.ConfigKeyCKPNRatificationBANumber,
+		domain.ConfigKeyCKPNRatificationBADate,
+		domain.ConfigKeyCKPNRatificationApprovedBy,
+		domain.ConfigKeyCKPNRatificationPDLGDBasis,
+		domain.ConfigKeyCKPNRatificationPDLGDFromBank,
+	)
+	t.Cleanup(func() { restoreConfig(t, db, ctx, awal) })
+
 	// Tanggal bisnis = hari ini: seluruh jalur same-day berjalan langsung, bukan
 	// jalur persetujuan. Jurnal akan diuji bertanggal bisnis ini.
 	hariIni := time.Now().UTC().Format("2006-01-02")
@@ -76,6 +143,24 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 		VALUES ('system.business_date', $1, 'tanggal bisnis untuk uji integrasi jalur uang')
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, hariIni); err != nil {
 		t.Fatalf("menyetel tanggal bisnis: %v", err)
+	}
+
+	// Bukti ratifikasi uji HARUS diisi sebelum status FINAL: trigger 000095 menolak
+	// transisi ke FINAL tanpa bukti. Ini data uji, bukan klaim ratifikasi bank —
+	// uji yang menguji penjaga itu mengosongkannya sendiri.
+	for _, kv := range [][2]string{
+		{domain.ConfigKeyCKPNRatificationBANumber, "BA-UJI/001"},
+		{domain.ConfigKeyCKPNRatificationBADate, hariIni},
+		{domain.ConfigKeyCKPNRatificationApprovedBy, "Direksi Uji + Akuntan Uji"},
+		{domain.ConfigKeyCKPNRatificationPDLGDBasis, "data historis uji (12.6/12.7)"},
+		{domain.ConfigKeyCKPNRatificationPDLGDFromBank, "true"},
+	} {
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO system_config (key, value, description)
+			VALUES ($1, $2, 'bukti ratifikasi uji integrasi')
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, kv[0], kv[1]); err != nil {
+			t.Fatalf("menyetel bukti ratifikasi uji %s: %v", kv[0], err)
+		}
 	}
 
 	// Pengaman parameter CKPN: uji integrasi lama menilai model apa adanya, jadi

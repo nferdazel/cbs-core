@@ -471,3 +471,53 @@ dihitung atau (lebih buruk, bila salah desain) jatuh ke nol.
    `pa_bpr.txt` (salinan penuh PA BPR). Bila ada perbedaan teks antara petikan dan salinan
    penuh, salinan penuh yang saya pakai.
 7. **Tidak menyentuh git, kode, host, atau database** — dokumen ini murni rancangan.
+
+---
+
+## 9. KEPUTUSAN PANEL — cakupan minimum T1, bentuk masukan, dan ambang (putaran lanjutan)
+
+Bagian ini mengubah §8.1 dari "pertanyaan terbuka" menjadi keputusan yang dapat
+dieksekusi. T0 sudah terpasang (migrasi `000094`: kolom `loans.ckpn_*`, tabel
+`loan_cashflow_projections`, `loan_ckpn_individual_assessments`, kolom
+`loan_collaterals.selling_cost_amount`, dan kunci `ckpn.individual.*`). Karena tabel
+proyeksi arus kas sudah ada sejak T0, **T1 tidak memerlukan migrasi baru**; migrasi
+`000095` hanya penjaga ratifikasi parameter (lihat `docs/CKPN-SIAP-RILIS.md` §g).
+
+### 9.1 Cakupan minimum T1 yang layak dirilis
+
+**KEPUTUSAN:** T1 mencakup **pemicu wajib non-nominal** lebih dulu:
+
+1. kolektibilitas **Macet** (golongan 5) atau **DPD > 90 hari**;
+2. **pernah direstrukturisasi** (konsesi = bukti objektif);
+3. **penurunan nilai agunan signifikan** atau **bukti objektif lain** yang ditandai
+   pengelola kredit.
+
+Cakupan minumum ini **tidak** menunggu penghitungan peringkat 20 debitur terbesar
+(ranking ekposur), yang tetap direncanakan **T3**. Kredit yang masuk cakupan tetapi
+belum memiliki proyeksi arus kas **dilaporkan gagal dengan alasan** (bukan dihitung nol).
+T1 berjalan **mode bayangan baca-saja**: `ckpn.individual.enabled` tetap `false` dan
+`loans.required_ckpn` tidak disentuh.
+
+### 9.2 Bentuk masukan paling sederhana yang tetap benar
+
+**KEPUTUSAN:** proyeksi arus kas **manual per kredit**, satu baris per periode bulan
+(`period` >= 1, unik; `amount` non-negatif; minimal satu baris), dengan validasi sebelum
+disimpan. Tersedia lewat:
+
+- `PUT /api/v1/ckpn/individual/{loanNumber}/projections` (izin `loans:approve`) — data
+  operasional bank, dibuat oleh pejabat berwenang; setiap baris mencatat `created_by`.
+- `GET /api/v1/ckpn/individual/{loanNumber}/assessment` (izin `loans:read`) —menghitung
+  `PV_DCF = Σ CF_t/(1+EIR_bulanan)^t` dan `target = max(0, nilai tercatat − PV)` memakai
+  EIR **orisinal** tersimpan; bila EIR kosong dan override `ckpn.individual.discount_rate_annual_pct`
+  kosong → **gagal `ErrEIRMissing`**, bukan nol dan bukan suku bunga kontraktual.
+
+Kredit pasca `000043` sudah menyimpan `original_eir_monthly`; kredit lama memakai override
+tahunan. Agunan `net proceed` dan aturan `max(dcf, agunan, sebelumnya)` tetap **T2**.
+
+### 9.3 Ambang final Rp1.000.000.000 / 20 debitur terbesar
+
+**KEPUTUSAN: DIPERTAHANKAN sebagai kebijakan bank (praktik industri), bukan aturan
+tertulis.** PA BPR 12.4.e.1.(1) menyerahkan tingkat signifikansi ke bank; tidak ada angka
+di POJK/SEOJK. Nilai tetap sebagai kunci konfigurasi (bukan ditanam di kode) dan wajib
+ditinjau **sekali setahun**. Ambang nominal dan peringkat 20 debitur terbesar menjadi
+pintu masuk jalur individual pada **T3**, setelah T1 (pemicu wajib) dan T2 (agunan) stabil.

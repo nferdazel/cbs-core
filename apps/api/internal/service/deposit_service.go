@@ -189,7 +189,7 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 		return nil, domain.ErrCrossBookAccess
 	}
 	if input.PlacementAmount.LessThan(product.MinAmount) {
-		return nil, fmt.Errorf("nominal di bawah minimum produk %s (%s)", product.Code, product.MinAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PlacementAmount.GreaterThan(product.MaxAmount) {
 		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
@@ -495,7 +495,7 @@ func (s *depositService) Preview(ctx context.Context, input domain.PlaceDepositI
 		return nil, domain.ErrDepositProductInvalid
 	}
 	if input.PlacementAmount.LessThan(product.MinAmount) {
-		return nil, fmt.Errorf("nominal di bawah minimum produk %s (%s)", product.Code, product.MinAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PlacementAmount.GreaterThan(product.MaxAmount) {
 		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
@@ -1072,7 +1072,9 @@ func (s *depositService) GetByID(ctx context.Context, id uuid.UUID, actor domain
 	if err != nil {
 		return nil, err
 	}
-	// Deposito cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Deposito cabang lain ditolak. Pembacaan ini disamarkan menjadi 404 oleh
+	// pemanggil (lihat Fail): status 404 dipertahankan agar keberadaan data tidak
+	// bocor, sedangkan operasi tulis lintas cabang tetap dibalas 403.
 	// Deposito tanpa cabang (data pra-migrasi) tetap boleh dibaca.
 	if !actor.CanAccessBranch(dep.BranchCode) {
 		return nil, domain.ErrCrossBranchAccess

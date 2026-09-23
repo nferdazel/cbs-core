@@ -184,6 +184,93 @@ secara mundur. Sebagai gantinya sistem memberi mekanisme yang jujur dan aman:
    lebih tua dari umur itu dianggap **data agunan tidak lengkap** sehingga agunan memakai
    bobot risiko 100% (tidak mengurangi eksposur) sampai dinilai ulang.
 
+## (g) Ratifikasi parameter — prosedur langkah demi langkah (KEPUTUSAN panel)
+
+Panel **tidak** meratifikasi atas nama bank: ratifikasi adalah tindakan manusia yang
+bertanda tangan (Direksi + akuntan; DPS untuk BPRS). Yang dilakukan sistem adalah
+**menolak** perubahan `ckpn.parameters.status` ke `FINAL` selama bukti belum lengkap,
+dengan pesan yang menyebut apa yang kurang. Penegakannya ada di database (trigger
+`ckpn_ratification_guard_row`, migrasi `000095`), sehingga jalur SQL langsung pun
+ditolak, bukan hanya API. Status bukti dapat diperiksa tanpa EOD lewat
+`GET /api/v1/ckpn/status` (`ratification_ready`, `ratification_missing`).
+
+**Format bukti (paling sederhana yang tetap sah — kunci konfigurasi, tanpa tabel baru):**
+
+| Kunci | Isi | Divalidasi mesin |
+|---|---|---|
+| `ckpn.ratification.ba_number` | nomor berita acara ratifikasi | wajib tidak kosong |
+| `ckpn.ratification.ba_date` | tanggal berita acara `YYYY-MM-DD` | format benar & tidak di masa depan |
+| `ckpn.ratification.approved_by` | nama dan jabatan pengesah | wajib tidak kosong |
+| `ckpn.ratification.pd_lgd_basis` | dasar PD (PA BPR 12.6) & LGD (12.7) dari data historis bank | wajib tidak kosong |
+| `ckpn.ratification.pd_lgd_from_bank` | penanda PD/LGD dari data bank, bukan turunan tarif PPKA | wajib `true` |
+
+Kewenangan: mengubah bukti/status memakai izin **`system:config`** (sama dengan setelan
+instalasi lain); setiap perubahan tercatat pada `system_config.updated_by`/`updated_at`.
+Yang **hanya boleh diisi bank** dan tidak pernah dikarang sistem: nomor/tanggal berita
+acara, nama/jabatan pengesah, dan dasar perhitungan PD/LGD.
+
+**Langkah bank:**
+
+1. Hitung PD menurut PA BPR **12.6** (mis. net flow/migration analysis) dan LGD menurut
+   **12.7** (expected recoveries/collateral shortfall) dari data historis bank sendiri
+   (observasi minimal 3 tahun) atau pakai excel parameter resmi OJK. Angka turunan tarif
+   PPKA (yang sekarang berstatus SEMENTARA) **bukan** pengganti.
+2. Susun berita acara ratifikasi dan mintakan tanda tangan Direksi + akuntan (DPS untuk
+   BPRS). Lampirkan perhitungan PD/LGD.
+3. Isi kelima kunci bukti (contoh lewat SQL; menu konfigurasi memakai izin yang sama):
+
+   ```sql
+   UPDATE system_config SET value='BA/001/DIR-2026' WHERE key='ckpn.ratification.ba_number';
+   UPDATE system_config SET value='2026-09-30'      WHERE key='ckpn.ratification.ba_date';
+   UPDATE system_config SET value='Direktur A; Akuntan B' WHERE key='ckpn.ratification.approved_by';
+   UPDATE system_config SET value='12.6 net flow 3 tahun; 12.7 LGD agunan; lampiran BA/001'
+     WHERE key='ckpn.ratification.pd_lgd_basis';
+   UPDATE system_config SET value='true' WHERE key='ckpn.ratification.pd_lgd_from_bank';
+   ```
+
+4. Periksa `GET /api/v1/ckpn/status`: `ratification_missing` kosong dan
+   `ratification_ready=true`.
+5. Setel `ckpn.parameters.status=FINAL`. Bila ada bukti yang kurang, trigger menolak
+   dan menyebut kuncinya; lengkapi dulu, jangan mengakalinya.
+6. Setelah FINAL: lantai PPKA menjadi pilihan bank lewat `ckpn.floor.ppka_enabled`
+   (bawaan `true`; direkomendasikan tetap `true`), dan blokir ekspor OJK parameter
+   sementara hilang. Penonaktifan lantai wajib persetujuan Direksi + akuntan dan tercatat.
+
+Siklus hidup: maksimum **12 bulan** sejak `ckpn.parameters.temporary_since`; lewat batas,
+sistem memberi peringatan tingkat tinggi. Perpanjangan hanya lewat berita acara
+bertanggal (isi bukti baru), maksimal 12 bulan lagi.
+
+## (h) KEPUTUSAN: kapan `ckpn.enabled` dinyalakan pada instalasi ini (butir 2)
+
+**Keputusan panel: instalasi ini tetap `ckpn.enabled=false`** sampai butir (g) tuntas
+(status `FINAL` + bukti ratifikasi lengkap) **dan** PD/LGD sah sebagai fraksi 0..1.
+Selama itu mode bayangan (`ckpn.shadow_mode.enabled=true`, bawaan `000066`) dijalankan
+untuk verifikasi; ia **tidak** menjurnal dan **tidak** menulis `required_ckpn`. Alasan:
+menyalakan CKPN sebelum ratifikasi mengalirkan angka PD/LGD sementara ke pembukuan dan
+otomatis menutup ekspor OJK — memperbesar masalah, bukan menyelesaikannya. Untuk
+**instalasi BARU** (belum punya jurnal/tanggal bisnis), keputusan panel sebelumnya tetap
+berlaku: CKPN **diharapkan menyala** saat onboarding sebelum transaksi pertama, karena
+tidak ada risiko pembentukan/jurnal mundur. Syarat PD/LGD (fraksi 0..1) dan ratifikasi
+tetap wajib dipenuhi lebih dulu pada instalasi baru; perbedaannya hanya waktu (sebelum
+transaksi, bukan menunggu). Untuk **instalasi ini** (sudah beroperasi) risiko jurnal
+mundur nyata, sehingga keputusannya **tetap mati** sampai butir (g) tuntas.
+
+Sistem memberi tahu apa yang menahan lewat **satu daftar yang dapat diperiksa mesin**
+pada `GET /api/v1/ckpn/status` (`enablement_gaps`) dan peringatan start/EOD:
+
+| Penahan | Sumber pemeriksaan |
+|---|---|
+| Parameter belum `FINAL` (bukti ratifikasi kurang) | `ckpn.parameters.status`, kunci `ckpn.ratification.*` |
+| PD/LGD belum diisi atau bukan fraksi 0..1 | `ckpn.pd_frac.gol_1..5`, `ckpn.lgd_frac` |
+| Akun CKPN syariah belum dipetakan (instalasi SYARIAH/DUAL) | `ckpn.coa.expense.syariah`, `ckpn.coa.reserve.syariah` |
+| Instalasi sudah beroperasi tapi CKPN mati | peringatan start `CKPNReadinessWarnings` |
+
+Setelah seluruh penahan kosong: setel `ckpn.enabled=true` dan matikan mode bayangan
+(`ckpn.shadow_mode.enabled=false`) agar tidak ada dua angka. Urutan verifikasi lanjutan
+ada di (e). Syarat pengawasan: bank melaporkan tanggal penyalakan, dasar PD/LGD, dan
+berita acara ratifikasi kepada pengawas; sebelum ratifikasi, kolom CKPN laporan OJK
+tetap memakai PPKA dengan pengungkapan selisih.
+
 ## (f) KPMM/ATMR — verifikasi bobot risiko & penyambungan ke Form 00.08
 
 Modul KPMM (`apps/api/internal/ojkreport/kpmm.go`,

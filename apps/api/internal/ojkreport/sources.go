@@ -23,17 +23,19 @@ import (
 // atas seluruh bank.
 var ErrOJKBankWide = errors.New("laporan OJK bersifat bank-wide dan hanya dapat dibangun oleh peran lintas cabang")
 
-// Kunci konfigurasi identitas bank Form 00.00 yang tidak muat di tabel bank_profile
-// (lihat migrasi 000046). Field yang nilainya kosong ditandai belum tersedia.
+// Kunci konfigurasi identitas bank Form 00.00 yang tidak muat di tabel bank_profile.
+// Nilai kanoniknya dimiliki paket domain supaya penyimpanan (repository), layanan,
+// dan pengekspor OJK tidak mendefinisikan kunci yang sama dua kali. Kunci 8 butir
+// pertama di-seed migrasi 000046; 12 butir sisanya di-seed migrasi 000096.
 const (
-	OJKBankEmailKey     = "ojk.bank.email"
-	OJKBankWebsiteKey   = "ojk.bank.website"
-	OJKBankCityCodeKey  = "ojk.bank.city_code"
-	OJKBankOJKRegionKey = "ojk.bank.ojk_region_code"
-	OJKPICNameKey       = "ojk.report.pic_name"
-	OJKPICDivisionKey   = "ojk.report.pic_division"
-	OJKPICPhoneKey      = "ojk.report.pic_phone"
-	OJKPICEmailKey      = "ojk.report.pic_email"
+	OJKBankEmailKey     = domain.OJKBankEmailKey
+	OJKBankWebsiteKey   = domain.OJKBankWebsiteKey
+	OJKBankCityCodeKey  = domain.OJKBankCityCodeKey
+	OJKBankOJKRegionKey = domain.OJKBankOJKRegionKey
+	OJKPICNameKey       = domain.OJKPICNameKey
+	OJKPICDivisionKey   = domain.OJKPICDivisionKey
+	OJKPICPhoneKey      = domain.OJKPICPhoneKey
+	OJKPICEmailKey      = domain.OJKPICEmailKey
 )
 
 // LoanRow adalah satu fasilitas kredit yang dibutuhkan Form 06.00 dan rasio NPL.
@@ -82,7 +84,20 @@ type BankProfileConfig struct {
 	PICDivision   string
 	PICPhone      string
 	PICEmail      string
-	Configured    bool
+	// Butir 10 s.d. 21 Form 00.00 (migrasi 000096). Kosong berarti belum diisi.
+	DividendsPaid        string
+	AnnualBonusTantiem   string
+	AuditInfo            string
+	ShareNominalValue    string
+	PublicOfferingStatus string
+	PVAStatus            string
+	EBankingStatus       string
+	ITProvider           string
+	LakuPandaiProvider   string
+	LakuPandaiAgentCount string
+	RUPSOwnershipChange  string
+	UltimateShareholders string
+	Configured           bool
 }
 
 // BankProfileSource membaca identitas bank dari konfigurasi. Implementasi tidak

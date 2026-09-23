@@ -29,6 +29,10 @@ var (
 	ErrLoanHasAccrualPostings = errors.New("kredit sudah memiliki akrual bunga/denda/PPAP terposting; selesaikan atau balik akrualnya lebih dulu sebelum membatalkan pencairan")
 	ErrInvalidLoanAmount      = errors.New("nominal pokok harus positif")
 	ErrInvalidLoanTerm        = errors.New("jangka waktu minimal 1 bulan")
+	// ErrProductAmountBelowMin adalah basis pesan berkode untuk batas minimum produk.
+	// Kode produk dan nominal minimum ditambahkan pemanggil sebagai akhiran lewat %w,
+	// sehingga pesan dasar mengikuti bahasa instalasi dan detailnya tetap utuh.
+	ErrProductAmountBelowMin = NewLocalizedError("product_amount_below_min", "nominal di bawah minimum produk")
 	// Penolakan kredit wajib punya alasan yang bisa dipertanggungjawabkan. Alasan
 	// kosong atau kepanjangan ditolak dengan pesan yang jelas, bukan disimpan apa adanya.
 	ErrLoanRejectionReasonRequired = errors.New("alasan penolakan kredit wajib diisi")

@@ -59,10 +59,16 @@ type RouterParams struct {
 	LPSPlacementHandler  *LPSPlacementHandler
 	AuditHandler         *AuditHandler
 	CollateralHandler    *CollateralHandler
+	// CollateralWeightHandler menyajikan gerbang aktivasi bobot agunan (baca-saja +
+	// aktivasi). Bobot tetap mati bawaan; rutenya tidak dipasang bila nil.
+	CollateralWeightHandler *CollateralWeightHandler
 	// AppInfoHandler melayani identitas aplikasi publik untuk halaman login/web.
 	AppInfoHandler *AppInfoHandler
 	// BankProfileHandler mengelola identitas bank tingkat instalasi (baca & ubah).
 	BankProfileHandler *BankProfileHandler
+	// OJKProfileHandler mengelola identitas Form 00.00 yang disimpan sebagai kunci
+	// system_config ojk.* (baca & ubah), melengkapi BankProfileHandler.
+	OJKProfileHandler *OJKProfileHandler
 	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
 	// pemetaan izin (lewat maker-checker, teraudit).
 	PermissionHandler *PermissionHandler
@@ -395,6 +401,16 @@ func NewRouter(p RouterParams) *chi.Mux {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Put("/system/bank-profile", p.BankProfileHandler.Update)
 			}
+			// ── Identitas Form 00.00 yang tidak muat di bank_profile ──
+			// Kunci ojk.* (surel, situs web, sandi kota/wilayah, penanggung jawab
+			// laporan) sebelumnya hanya dapat diisi lewat SQL. Rute ini membuat bank
+			// mengisinya sendiri, dengan izin dan audit yang sama dengan bank-profile.
+			if p.OJKProfileHandler != nil {
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/system/ojk-profile", p.OJKProfileHandler.Get)
+				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+					Put("/system/ojk-profile", p.OJKProfileHandler.Update)
+			}
 			r.Route("/batch", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Post("/eod", p.BatchProcessHandler.RunEOD)
@@ -465,6 +481,11 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// ── Agunan kredit ──
 			if p.CollateralHandler != nil {
 				p.CollateralHandler.RegisterRoutes(r)
+			}
+
+			// ── Gerbang aktivasi bobot agunan (Lampiran II SEOJK 2/2025) ──
+			if p.CollateralWeightHandler != nil {
+				p.CollateralWeightHandler.RegisterRoutes(r)
 			}
 
 			// ── Chart of Accounts (Admin & above) ──

@@ -36,7 +36,7 @@ var (
 	// ErrBankProfileNPWPInvalid dan ErrBankProfilePhoneInvalid menolak karakter
 	// yang tidak mungkin ada pada identitas bank. Format nama/alamat bebas karena
 	// bank memakai ejaan sendiri.
-	ErrBankProfileNPWPInvalid  = NewLocalizedError("bank_profile_npwp_invalid", "NPWP hanya boleh berisi angka, titik, dan tanda hubung")
+	ErrBankProfileNPWPInvalid  = NewLocalizedError("bank_profile_npwp_invalid", "NPWP harus 15 atau 16 digit angka (titik/tanda hubung/spasi sebagai pemisah diperbolehkan)")
 	ErrBankProfilePhoneInvalid = NewLocalizedError("bank_profile_phone_invalid", "nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .") //nolint:staticcheck // pesan operator berbahasa Indonesia; tanda baca bagian dari daftar karakter yang sah
 )
 
@@ -123,10 +123,28 @@ func ValidateBankProfile(p *BankProfile) error {
 	if p.Phone != "" && !allowedChars(p.Phone, "0123456789 +-().") {
 		return ErrBankProfilePhoneInvalid
 	}
-	if p.NPWP != "" && !allowedChars(p.NPWP, "0123456789.- ") {
+	if p.NPWP != "" && !validNPWP(p.NPWP) {
 		return ErrBankProfileNPWPInvalid
 	}
 	return nil
+}
+
+// validNPWP menerima NPWP 15 atau 16 digit angka. Titik, tanda hubung, dan spasi
+// sebagai pemisah format yang lazim diizinkan, tetapi tidak dihitung sebagai digit
+// dan TIDAK dinormalkan diam-diam: nilai tersimpan tetap seperti yang dikirim bank.
+func validNPWP(value string) bool {
+	digits := 0
+	for _, r := range value {
+		switch {
+		case r >= '0' && r <= '9':
+			digits++
+		case r == '.' || r == '-' || unicode.IsSpace(r):
+			// pemisah format; tidak menambah jumlah digit
+		default:
+			return false
+		}
+	}
+	return digits == 15 || digits == 16
 }
 
 // allowedChars melaporkan apakah seluruh karakter ada di himpunan yang diizinkan.

@@ -102,7 +102,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		return nil, fmt.Errorf("produk %s bukan produk kredit/pembiayaan", product.Code)
 	}
 	if input.PrincipalAmount.LessThan(product.MinAmount) {
-		return nil, fmt.Errorf("nominal di bawah minimum produk %s (%s)", product.Code, product.MinAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PrincipalAmount.GreaterThan(product.MaxAmount) {
 		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
@@ -475,7 +475,9 @@ func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID, actor domain.Ac
 	if err != nil {
 		return nil, err
 	}
-	// Kredit cabang lain ditolak tegas dengan 403, bukan disamarkan menjadi 404.
+	// Kredit cabang lain ditolak. Pembacaan ini disamarkan menjadi 404 oleh
+	// pemanggil (lihat Fail): status 404 dipertahankan agar keberadaan data tidak
+	// bocor, sedangkan operasi tulis lintas cabang tetap dibalas 403.
 	// Kredit tanpa cabang (data pra-migrasi) tetap boleh dibaca.
 	if !canAccessLoan(actor, loan) {
 		return nil, domain.ErrCrossBranchAccess
