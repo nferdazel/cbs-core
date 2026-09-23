@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,9 +9,9 @@ import (
 )
 
 var (
-	ErrLimitPerTransaction = errors.New("nominal melebihi batas per transaksi")
-	ErrLimitDaily          = errors.New("akumulasi transaksi harian melebihi batas")
-	ErrRequiresApproval    = errors.New("nominal melebihi ambang yang memerlukan persetujuan")
+	ErrLimitPerTransaction = NewLocalizedError("limit_per_transaction", "nominal melebihi batas per transaksi")
+	ErrLimitDaily          = NewLocalizedError("limit_daily", "akumulasi transaksi harian melebihi batas")
+	ErrRequiresApproval    = NewLocalizedError("requires_approval", "nominal melebihi ambang yang memerlukan persetujuan")
 )
 
 // TransactionLimit adalah batas transaksi seorang pelaku untuk satu jenis transaksi.

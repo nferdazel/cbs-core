@@ -259,3 +259,38 @@ func TestIntegrasiBuatCabangDanAudit(t *testing.T) {
 		t.Fatalf("kode ganda: err = %v, ingin ErrBranchCodeExists", err)
 	}
 }
+
+// N4: staf bercabang biasa yang cakupannya teresolusi KOSONG (branch_code tidak cocok
+// dengan unit mana pun) tidak boleh melihat data apa pun. Memperluas cakupan diam-diam
+// akan membuka kebocoran; yang benar adalah menolak/memperbaiki, bukan melebarkan.
+func TestIntegrasiCakupanKosongTidakMembocorkanData(t *testing.T) {
+	e := newMoneyEnv(t)
+
+	superadmin := domain.Actor{
+		UserID: e.actor.UserID, Username: "superadmin.uji",
+		Role: domain.RoleSuperAdmin, BranchCode: "001",
+	}
+	cust, err := e.customerSvc.RegisterCustomer(e.ctx, domain.CreateCustomerInput{
+		FullName: "Nasabah 001", IDCardNumber: branchScopeNik(),
+	}, superadmin)
+	if err != nil {
+		t.Fatalf("mendaftarkan nasabah: %v", err)
+	}
+
+	// Cakupan kosong: meniru middleware yang gagal mencocokkan branch_code 'HO'
+	// dengan unit mana pun (Loaded=true, himpunan kode kosong).
+	empty := domain.Actor{
+		UserID: e.actor.UserID, Username: "adminho", Role: domain.RoleAdmin,
+		BranchCode: "HO", BranchScope: domain.NewBranchScope(nil),
+	}
+	repo := postgres.NewCustomerRepository(e.db)
+	list, _, err := repo.List(e.ctx, 200, 0, domain.CustomerQuery{}, empty)
+	if err != nil {
+		t.Fatalf("daftar nasabah cakupan kosong: %v", err)
+	}
+	for _, rec := range list {
+		if rec.ID == cust.ID {
+			t.Fatal("cakupan kosong membocorkan nasabah cabang lain")
+		}
+	}
+}

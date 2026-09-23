@@ -582,3 +582,54 @@ func TestWriteOffLoan_CKPNMatiTetapLepasAkunPPAP(t *testing.T) {
 		t.Fatalf("akun CKPN 10950 dipakai padahal CKPN mati: %+v", lines)
 	}
 }
+
+// N3: permintaan pengajuan yang melebihi batas pemulihan ditolak SAAT PENGAJUAN
+// (lewat penjaga yang dipanggil handler), sehingga tidak mengisi antrean maker-checker
+// (dulu 202 lalu 422 saat approve).
+func TestRecoverWrittenOffLoan_MenolakMelebihiBatasSaatPengajuan(t *testing.T) {
+	f, svc := writeOffFixture() // ambang 0: bila lolos, akan masuk antrean persetujuan
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	f.repo.loan.WrittenOffAmount = decimal.NewFromInt(1_000_000)
+	f.repo.recovered = decimal.NewFromInt(600_000)
+
+	err := svc.CheckRecoveryCapAtSubmission(context.Background(), domain.RecoverWrittenOffLoanInput{
+		LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(500_000),
+	}, writeOffActor())
+	if !errors.Is(err, domain.ErrRecoveryExceedsWriteOff) {
+		t.Fatalf("harus ditolak saat pengajuan, dapat: %v", err)
+	}
+	if approvals := svc.approvals.(*stubApprovals); len(approvals.created) != 0 {
+		t.Fatalf("penjaga pengajuan tidak boleh membuat permintaan persetujuan: %d", len(approvals.created))
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
+	}
+}
+
+// N3: batas tetap diperiksa ULANG saat persetujuan karena keadaan bisa berubah.
+func TestRecoverWrittenOffLoan_MenolakMelebihiBatasSaatPersetujuan(t *testing.T) {
+	f, svc := writeOffFixture()
+	f.repo.loan.Status = domain.LoanStatusWrittenOff
+	f.repo.loan.WrittenOffAmount = decimal.NewFromInt(1_000_000)
+	f.repo.recovered = decimal.NewFromInt(600_000)
+
+	maker := writeOffActor()
+	payload := map[string]any{
+		"loan_id":         f.loanID.String(),
+		"loan_number":     f.repo.loan.LoanNumber,
+		"recovery_amount": "500000",
+		"idempotency_key": "",
+		"maker_id":        maker.UserID.String(),
+		"maker_username":  maker.Username,
+		"maker_role":      string(maker.Role),
+		"maker_branch":    maker.BranchCode,
+	}
+	checker := domain.Actor{UserID: uuid.New(), Username: "kabag.uji", Role: domain.RoleSupervisor, BranchCode: "001"}
+	err := svc.ExecuteApproved(context.Background(), nil, ActionLoanRecovery, payload, checker)
+	if !errors.Is(err, domain.ErrRecoveryExceedsWriteOff) {
+		t.Fatalf("persetujuan harus memeriksa ulang batas, dapat: %v", err)
+	}
+	if len(f.posting.requests) != 0 {
+		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -52,6 +53,16 @@ func scanStaffUser(row interface{ Scan(...any) error }) (*domain.StaffUser, erro
 }
 
 func (r *StaffRepository) Create(ctx context.Context, u *domain.StaffUser) error {
+	// Nomor pegawai diisi dari sequence bila pemanggil belum menentukannya, sehingga
+	// jalur produksi tidak pernah memakai potongan waktu yang mudah bentrok. Sequence
+	// di-seed migrasi 000089.
+	if u.EmployeeID == "" {
+		employeeID, err := r.NextEmployeeID(ctx)
+		if err != nil {
+			return err
+		}
+		u.EmployeeID = employeeID
+	}
 	q := `INSERT INTO staff_users
 		(id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		 is_active, password_changed_at, created_by, created_at, updated_at)
@@ -61,6 +72,48 @@ func (r *StaffRepository) Create(ctx context.Context, u *domain.StaffUser) error
 		u.Role, u.BranchCode, nullableBook(u.Book), u.IsActive, u.PasswordChangedAt, u.CreatedBy, u.CreatedAt, u.UpdatedAt,
 	)
 	return err
+}
+
+// NextEmployeeID menghasilkan `EMP-<tahun>-<urut>` dari sequence database. Sequence
+// dipakai, bukan potongan waktu (time.Now().Nanosecond()%100000), karena potongan
+// waktu dapat bentrok dan menghasilkan 500 unique violation. nextval atomik sehingga
+// dua pembuatan bersamaan pun mendapat nomor berbeda.
+func (r *StaffRepository) NextEmployeeID(ctx context.Context) (string, error) {
+	var seq int64
+	if err := r.db.QueryRowContext(ctx, `SELECT nextval('staff_employee_id_seq')`).Scan(&seq); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("EMP-%s-%05d", time.Now().UTC().Format("2006"), seq), nil
+}
+
+// ListBranchScopeMismatches mengembalikan staf aktif yang branch_code-nya tidak cocok
+// dengan unit organisasi mana pun. Peran lintas cabang (mis. SUPERADMIN/AUDITOR
+// berkode 'HO') memang tidak terikat unit dan disaring lapisan service, bukan di sini,
+// agar logika peran tetap di satu tempat (domain.RequiresRegisteredBranch).
+func (r *StaffRepository) ListBranchScopeMismatches(ctx context.Context) ([]domain.StaffBranchMismatch, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT username, branch_code, role::text
+		FROM staff_users u
+		WHERE u.is_active
+		  AND u.branch_code <> ''
+		  AND NOT EXISTS (SELECT 1 FROM branches b WHERE b.code = u.branch_code)
+		ORDER BY u.username`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var list []domain.StaffBranchMismatch
+	for rows.Next() {
+		var m domain.StaffBranchMismatch
+		var role string
+		if err := rows.Scan(&m.Username, &m.BranchCode, &role); err != nil {
+			return nil, err
+		}
+		m.Role = domain.StaffRole(role)
+		list = append(list, m)
+	}
+	return list, rows.Err()
 }
 
 func (r *StaffRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.StaffUser, error) {

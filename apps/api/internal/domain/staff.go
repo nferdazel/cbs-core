@@ -10,17 +10,26 @@ import (
 
 // --- Errors ---
 var (
-	ErrInvalidCredentials  = errors.New("invalid username or password")
+	ErrInvalidCredentials  = NewLocalizedError("invalid_credentials", "invalid username or password")
 	ErrAccountLocked       = errors.New("account is temporarily locked due to too many failed login attempts")
 	ErrAccountInactiveUser = errors.New("user account is inactive")
-	ErrSessionExpired      = errors.New("session has expired")
+	ErrSessionExpired      = NewLocalizedError("session_expired", "session has expired")
 	ErrSessionRevoked      = errors.New("session has been revoked")
 	ErrInvalidToken        = errors.New("invalid or malformed token")
 	ErrForbidden           = errors.New("you do not have permission to perform this action")
-	ErrPasswordExpired     = errors.New("password kedaluwarsa, ganti password terlebih dahulu")
+	ErrPasswordExpired     = NewLocalizedError("password_expired", "password kedaluwarsa, ganti password terlebih dahulu")
 	// ErrStaffRoleNotManageable menolak perubahan atas akun staf yang perannya
 	// setingkat atau lebih tinggi dari pelaku.
-	ErrStaffRoleNotManageable = errors.New("peran Anda tidak berwenang mengubah akun ini")
+	ErrStaffRoleNotManageable = NewLocalizedError("staff_role_not_manageable", "peran Anda tidak berwenang mengubah akun ini")
+	// ErrStaffAlreadyExists menandai bentrok kolom unik staf (username, email, atau
+	// nomor pegawai). Dikembalikan sebagai aturan bisnis (409), bukan galat database
+	// yang bocor sebagai 500.
+	ErrStaffAlreadyExists = NewLocalizedError("staff_already_exists", "username, email, atau nomor pegawai staf sudah terpakai")
+	// ErrStaffBranchRequired dan ErrStaffBranchUnknown menolak penetapan staf pada
+	// cabang yang kosong/tidak terdaftar. Tanpa ini staf bercabang biasa mendapat
+	// cakupan kosong dan "tidak melihat apa pun" secara senyap.
+	ErrStaffBranchRequired = NewLocalizedError("staff_branch_required", "kode cabang wajib diisi untuk staf operasional")
+	ErrStaffBranchUnknown  = NewLocalizedError("staff_branch_unknown", "kode cabang staf tidak terdaftar; pilih unit organisasi yang ada")
 )
 
 // --- Staff Role & Permissions ---
@@ -484,6 +493,30 @@ type StaffRepository interface {
 	ResetFailedLogin(ctx context.Context, id uuid.UUID) error
 	UpdateLastLogin(ctx context.Context, id uuid.UUID) error
 	UpdatePassword(ctx context.Context, id uuid.UUID, hash string) error
+}
+
+// StaffBranchMismatch adalah staf aktif yang branch_code-nya tidak cocok dengan unit
+// organisasi mana pun. Untuk peran bercabang biasa, ketidakcocokan itu berarti cakupan
+// kosong (tidak melihat data apa pun); peringatan start membantu operator menemukan
+// data lama seperti itu dan memperbaikinya.
+type StaffBranchMismatch struct {
+	Username   string
+	BranchCode string
+	Role       StaffRole
+}
+
+// BranchScopeMismatchReader membaca staf yang kode cabangnya tidak terdaftar. Dipisah
+// dari StaffRepository agar peringatan start tidak memperluas kontrak repositori yang
+// dipakai staf; implementasi produksinya adalah repository postgres.
+type BranchScopeMismatchReader interface {
+	ListBranchScopeMismatches(ctx context.Context) ([]StaffBranchMismatch, error)
+}
+
+// BranchExistenceChecker adalah ketergantungan minimal staffService pada cabang:
+// hanya pemeriksaan keberadaan kode, bukan seluruh kontrak BranchRepository. Dipisah
+// agar dapat distub pada uji unit tanpa database.
+type BranchExistenceChecker interface {
+	GetByCode(ctx context.Context, code string) (*Branch, error)
 }
 
 type SessionRepository interface {

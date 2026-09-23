@@ -185,3 +185,32 @@ func TestEnvelopeResponsTetapDenganKatalog(t *testing.T) {
 		t.Fatalf("envelope galat berubah: %+v", galat)
 	}
 }
+
+// N2: galat domain berkode diterjemahkan lewat SATU jalur (kode dimiliki galatnya
+// sendiri), termasuk galat yang dibungkus %w; detail dinamis di belakang pesan dasar
+// tetap dipertahankan agar maknanya tidak hilang.
+func TestFailTerjemahkanGalatDomainBerkode(t *testing.T) {
+	t.Setenv("CBS_LANGUAGE", "en")
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/1/close", nil)
+
+	rec := httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusUnprocessableEntity, domain.ErrAccountCloseBalance)
+	if got, want := decodeError(t, rec), i18n.T(i18n.EN, i18n.MsgAccountCloseBalance); got != want {
+		t.Fatalf("pesan EN = %q, ingin %q", got, want)
+	}
+
+	// Sentinel yang dulu tidak diterjemahkan (temuan E2E) kini ikut EN.
+	rec = httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusUnprocessableEntity, domain.ErrOrgUnitCodeTooLong)
+	if got, want := decodeError(t, rec), i18n.T(i18n.EN, i18n.MsgOrgUnitCodeTooLong); got != want {
+		t.Fatalf("pesan kode terlalu panjang = %q, ingin %q", got, want)
+	}
+
+	rec = httptest.NewRecorder()
+	httpHandler.Fail(rec, r, http.StatusUnprocessableEntity,
+		fmt.Errorf("%w: saldo 1.000", domain.ErrAccountCloseBalance))
+	got := decodeError(t, rec)
+	if !strings.HasPrefix(got, i18n.T(i18n.EN, i18n.MsgAccountCloseBalance)) || !strings.Contains(got, "saldo 1.000") {
+		t.Fatalf("detail galat terbungkus hilang: %q", got)
+	}
+}

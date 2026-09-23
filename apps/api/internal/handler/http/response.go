@@ -76,29 +76,22 @@ func normalizeListData(data any) any {
 	return data
 }
 
-// domainErrorCodes memetakan sentinel galat domain yang tampil ke pengguna ke kode
-// katalog i18n. Pemetaan di lapisan handler menjaga tipe error domain tetap apa
-// adanya, sementara pesan tetap satu sumber dan tersedia ID + EN. Hanya kecocokan
-// PERSIS (errors.Is terhadap sentinel tak terbungkus) yang diterjemahkan; galat yang
-// sudah dibungkus tetap menampilkan detail tambahannya agar makna tidak hilang.
-var domainErrorCodes = []struct {
-	err  error
-	code i18n.Code
-}{
-	{domain.ErrInvalidCredentials, i18n.MsgInvalidCredentials},
-	{domain.ErrInsufficientFunds, i18n.MsgInsufficientFunds},
-	{domain.ErrSessionExpired, i18n.MsgSessionExpired},
-}
-
-// translatedDomainError mengembalikan pesan katalog untuk sentinel domain yang
-// dikenali, atau ok=false bila tidak ada.
+// translatedDomainError mengembalikan pesan katalog untuk galat domain berkode
+// (domain.LocalizedError), atau ok=false bila galat tidak menyatakan kode katalog.
+// Kode dimiliki galat domain itu sendiri, sehingga tidak ada daftar pemetaan kedua
+// di handler dan galat yang dibungkus %w ikut diterjemahkan. Detail dinamis yang
+// ditambahkan pemanggil di belakang pesan dasar tetap dipertahankan agar maknanya
+// tidak hilang.
 func translatedDomainError(err error) (string, bool) {
-	for _, m := range domainErrorCodes {
-		if err == m.err {
-			return i18n.Text(m.code), true
-		}
+	code, base, ok := domain.LocalizedMessage(err)
+	if !ok {
+		return "", false
 	}
-	return "", false
+	translated := i18n.Text(i18n.Code(code))
+	if full := err.Error(); full != base && strings.HasPrefix(full, base) {
+		translated += strings.TrimPrefix(full, base)
+	}
+	return translated, true
 }
 
 // Error mengirim pesan yang sudah aman ditampilkan ke pengguna. Jangan lewatkan

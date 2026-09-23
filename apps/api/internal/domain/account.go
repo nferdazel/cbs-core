@@ -3,7 +3,6 @@ package domain
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,24 +10,24 @@ import (
 )
 
 var (
-	ErrAccountNotFound = errors.New("rekening tidak ditemukan")
+	ErrAccountNotFound = NewLocalizedError("account_not_found", "rekening tidak ditemukan")
 	// ErrAccountDormant menandai rekening pasif yang tidak boleh didebit. Nasabah
 	// harus melakukan reaktivasi di cabang sebelum dana keluar.
-	ErrAccountDormant = errors.New("rekening dormant: nasabah harus melakukan reaktivasi di cabang")
+	ErrAccountDormant = NewLocalizedError("account_dormant", "rekening dormant: nasabah harus melakukan reaktivasi di cabang")
 	// ErrAccountNotDormant dipakai endpoint reaktivasi: rekening yang statusnya bukan
 	// DORMANT ditolak beserta status sebenarnya, bukan diam-diam dianggap sukses.
-	ErrAccountNotDormant = errors.New("rekening tidak berstatus dormant dan tidak dapat direaktivasi")
+	ErrAccountNotDormant = NewLocalizedError("account_not_dormant", "rekening tidak berstatus dormant dan tidak dapat direaktivasi")
 	// ErrAccountNotFrozen dipakai endpoint unfreeze: rekening yang statusnya bukan
 	// FROZEN ditolak beserta status sebenarnya, bukan diam-diam dianggap aktif.
 	// Melengkapi jalur masuk FROZEN (dibekukan) dengan jalur keluarnya.
-	ErrAccountNotFrozen = errors.New("rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya")
+	ErrAccountNotFrozen = NewLocalizedError("account_not_frozen", "rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya")
 	// ErrAccountCloseBalance menolak penutupan rekening yang masih menyimpan saldo,
 	// saldo tersedia, atau dana tertahan. Uang nasabah tidak boleh hilang karena
 	// rekening ditutup sebelum bersih.
-	ErrAccountCloseBalance = errors.New("rekening tidak dapat ditutup: masih ada saldo, saldo tersedia, atau dana tertahan")
+	ErrAccountCloseBalance = NewLocalizedError("account_close_balance", "rekening tidak dapat ditutup: masih ada saldo, saldo tersedia, atau dana tertahan")
 	// ErrAccountNotClosable menolak penutupan rekening yang statusnya bukan ACTIVE
 	// atau DORMANT (mis. sudah CLOSED/FROZEN), beserta status sebenarnya.
-	ErrAccountNotClosable = errors.New("rekening tidak dapat ditutup pada status saat ini")
+	ErrAccountNotClosable = NewLocalizedError("account_not_closable", "rekening tidak dapat ditutup pada status saat ini")
 )
 
 // DormantAfterMonthsFallback adalah ambang sementara agar proses tetap berjalan di

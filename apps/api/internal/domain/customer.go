@@ -20,10 +20,10 @@ const (
 )
 
 var (
-	ErrCustomerNotFound    = errors.New("nasabah tidak ditemukan")
-	ErrDuplicateIDCard     = errors.New("NIK sudah terdaftar")
-	ErrDuplicateEmail      = errors.New("email sudah terdaftar")
-	ErrCipherNotConfigured = errors.New("kunci enkripsi data nasabah belum dikonfigurasi")
+	ErrCustomerNotFound    = NewLocalizedError("customer_not_found", "nasabah tidak ditemukan")
+	ErrDuplicateIDCard     = NewLocalizedError("duplicate_id_card", "NIK sudah terdaftar")
+	ErrDuplicateEmail      = NewLocalizedError("duplicate_email", "email sudah terdaftar")
+	ErrCipherNotConfigured = NewLocalizedError("cipher_not_configured", "kunci enkripsi data nasabah belum dikonfigurasi")
 	// ErrInvalidEmail menandai email yang formatnya tidak wajar. Email opsional, jadi
 	// error ini hanya muncul bila field memang diisi.
 	ErrInvalidEmail = errors.New("format email tidak valid")

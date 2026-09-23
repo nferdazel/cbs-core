@@ -10,7 +10,7 @@ import (
 // ErrCrossBranchAccess menandai operasi tulis yang ditolak karena objeknya berada
 // di cabang lain dari cabang aktor. Handlernya memetakan error ini ke HTTP 403
 // dengan pesan yang jelas, tanpa membocorkan detail internal.
-var ErrCrossBranchAccess = errors.New("akses lintas cabang ditolak: data berada di cabang lain")
+var ErrCrossBranchAccess = NewLocalizedError("cross_branch_access", "akses lintas cabang ditolak: data berada di cabang lain")
 
 // ErrCrossBookAccess menandai operasi baca yang ditolak karena objeknya berada di
 // buku COA (konvensional/syariah) lain dari buku aktor. Ia sejajar dengan

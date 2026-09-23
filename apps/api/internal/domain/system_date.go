@@ -14,7 +14,7 @@ var (
 	ErrInvalidBusinessDate  = errors.New("business date cannot be set to a past date")
 	// ErrEODInProgress menandai tutup hari lain yang sedang berjalan. Berbeda dari
 	// ErrEODAlreadyRunForDate yang berarti tanggalnya memang sudah ditutup.
-	ErrEODInProgress = errors.New("tutup hari sedang berjalan; tunggu sampai selesai")
+	ErrEODInProgress = NewLocalizedError("eod_in_progress", "tutup hari sedang berjalan; tunggu sampai selesai")
 )
 
 type BusinessDateStatus string

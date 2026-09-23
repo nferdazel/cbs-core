@@ -95,6 +95,13 @@ func main() {
 	for _, warning := range service.InstallationValidationWarnings(context.Background(), configSvc) {
 		logger.Warn("peringatan konfigurasi instalasi", "pesan", warning)
 	}
+	// Staf bercabang biasa dengan branch_code yang tidak terdaftar mendapat cakupan
+	// kosong (tidak melihat data apa pun). Peringatan saat start membuat operator
+	// menemukan data lama seperti itu. Cakupan TIDAK diperluas diam-diam: memperluas
+	// cakupan ke unit yang tidak dimiliki adalah kebocoran, bukan perbaikan.
+	for _, warning := range service.BranchCoverageWarnings(context.Background(), staffRepo) {
+		logger.Warn("peringatan cakupan cabang staf", "pesan", warning)
+	}
 	postingSvc := service.NewPostingService(db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(productRepo, ledgerRepo, postingSvc)
 
@@ -130,7 +137,7 @@ func main() {
 	// Pembatalan transaksi lintas hari dieksekusi setelah disetujui pejabat kedua.
 	executors.Register(service.ActionReverse, ledgerSvc)
 	authSvc := service.NewAuthService(staffRepo, sessionRepo, configRepo, cfg.JWTSecret)
-	staffSvc := service.NewStaffService(staffRepo, auditRepo)
+	staffSvc := service.NewStaffService(staffRepo, branchRepo, auditRepo)
 	loanSvc := service.NewLoanService(db, loanRepo, productRepo, accountRepo, ledgerRepo, poster, postingSvc, referenceGen, configSvc, mcSvc, dateRepo, auditRepo)
 	// Hapus buku, recovery, dan koreksi nominal kredit dieksekusi setelah disetujui
 	// pejabat kedua.

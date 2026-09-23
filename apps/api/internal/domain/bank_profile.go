@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,21 +23,21 @@ var (
 	// ErrBankProfileNameRequired menolak profil tanpa nama bank. Nama adalah
 	// identitas minimum yang dipakai dokumen cetak dan endpoint /app-info, dan
 	// inilah inti W16: profil kosong harus ditolak dengan pesan yang jelas.
-	ErrBankProfileNameRequired = errors.New("nama bank wajib diisi")
+	ErrBankProfileNameRequired = NewLocalizedError("bank_profile_name_required", "nama bank wajib diisi")
 	// ErrBankProfileNameTooShort menolak nama yang terlalu pendek untuk menjadi
 	// identitas badan hukum.
-	ErrBankProfileNameTooShort = errors.New("nama bank terlalu pendek (minimal 3 karakter)")
+	ErrBankProfileNameTooShort = NewLocalizedError("bank_profile_name_too_short", "nama bank terlalu pendek (minimal 3 karakter)")
 	// ErrBankProfileEmpty menolak permintaan ubah tanpa satu bidang pun, agar
 	// pemanggil tidak menganggap aksi kosong sebagai perubahan tersimpan.
-	ErrBankProfileEmpty = errors.New("tidak ada bidang profil bank yang dikirim")
+	ErrBankProfileEmpty = NewLocalizedError("bank_profile_empty", "tidak ada bidang profil bank yang dikirim")
 	// ErrBankProfileFieldTooLong menolak bidang yang melampaui batas kolomnya.
 	// Pesannya menyebut bidang dan batasnya agar operator dapat memperbaiki.
-	ErrBankProfileFieldTooLong = errors.New("nilai identitas bank terlalu panjang")
+	ErrBankProfileFieldTooLong = NewLocalizedError("bank_profile_field_too_long", "nilai identitas bank terlalu panjang")
 	// ErrBankProfileNPWPInvalid dan ErrBankProfilePhoneInvalid menolak karakter
 	// yang tidak mungkin ada pada identitas bank. Format nama/alamat bebas karena
 	// bank memakai ejaan sendiri.
-	ErrBankProfileNPWPInvalid  = errors.New("NPWP hanya boleh berisi angka, titik, dan tanda hubung")
-	ErrBankProfilePhoneInvalid = errors.New("nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .") //nolint:staticcheck // pesan operator berbahasa Indonesia; tanda baca bagian dari daftar karakter yang sah
+	ErrBankProfileNPWPInvalid  = NewLocalizedError("bank_profile_npwp_invalid", "NPWP hanya boleh berisi angka, titik, dan tanda hubung")
+	ErrBankProfilePhoneInvalid = NewLocalizedError("bank_profile_phone_invalid", "nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .") //nolint:staticcheck // pesan operator berbahasa Indonesia; tanda baca bagian dari daftar karakter yang sah
 )
 
 // BankProfile adalah identitas bank yang dipakai dokumen cetak dan endpoint

@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -39,6 +40,12 @@ func (h *StaffHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.staffSvc.CreateStaff(r.Context(), input, actor)
 	if err != nil {
+		// Bentrok kolom unik (username/email/nomor pegawai) adalah konflik sumber
+		// daya, bukan kegagalan validasi: balas 409 dengan pesan katalog yang jelas.
+		if errors.Is(err, domain.ErrStaffAlreadyExists) {
+			Fail(w, r, http.StatusConflict, err)
+			return
+		}
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 		return
 	}

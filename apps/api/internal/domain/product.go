@@ -9,49 +9,49 @@ import (
 )
 
 var (
-	ErrProductNotFound = errors.New("produk tidak ditemukan")
+	ErrProductNotFound = NewLocalizedError("product_not_found", "produk tidak ditemukan")
 	// ErrBagiHasilNisbahMissing menolak pembentukan jadwal bagi hasil tanpa nisbah.
 	// Bagi hasil tidak bisa dihitung tanpa porsi yang disepakati, dan menebak nisbah
 	// berarti menagih angka yang tidak pernah disepakati nasabah.
-	ErrBagiHasilNisbahMissing = errors.New("nisbah bagi hasil produk (profit_sharing_ratio) belum diisi; bank harus mengisi nisbah bagi hasil produk terlebih dahulu")
+	ErrBagiHasilNisbahMissing = NewLocalizedError("bagi_hasil_nisbah_missing", "nisbah bagi hasil produk (profit_sharing_ratio) belum diisi; bank harus mengisi nisbah bagi hasil produk terlebih dahulu")
 	// ErrBagiHasilProjectionMissing menolak pembentukan jadwal bagi hasil tanpa
 	// proyeksi pendapatan usaha. Nilai nol bukan "bagi hasil nol yang sah", melainkan
 	// parameter yang belum diisi; membiarkannya menghasilkan jadwal ber-profit nol
 	// yang menyesatkan.
-	ErrBagiHasilProjectionMissing = errors.New("proyeksi pendapatan usaha produk (projected_revenue_rate_annual) belum diisi; bank harus mengisi proyeksi pendapatan tahunan pembiayaan bagi hasil terlebih dahulu")
+	ErrBagiHasilProjectionMissing = NewLocalizedError("bagi_hasil_projection_missing", "proyeksi pendapatan usaha produk (projected_revenue_rate_annual) belum diisi; bank harus mengisi proyeksi pendapatan tahunan pembiayaan bagi hasil terlebih dahulu")
 	// ErrBagiHasilNisbahOutOfRange menolak nisbah yang lolos dari rentang (0,1].
 	// Nilai seperti 40 hampir pasti salah satuan (maksudnya 40%, yaitu 0,4) dan
 	// akan melipatgandakan proyeksi imbal hasil seratus kali.
-	ErrBagiHasilNisbahOutOfRange = errors.New("nisbah bagi hasil produk (profit_sharing_ratio) harus lebih dari 0 dan maksimal 1; nisbah dinyatakan sebagai pecahan, mis. 0,4 untuk 40%")
+	ErrBagiHasilNisbahOutOfRange = NewLocalizedError("bagi_hasil_nisbah_out_of_range", "nisbah bagi hasil produk (profit_sharing_ratio) harus lebih dari 0 dan maksimal 1; nisbah dinyatakan sebagai pecahan, mis. 0,4 untuk 40%")
 	// ErrBagiHasilProjectionOutOfRange menolak proyeksi pendapatan tahunan di atas
 	// batas wajar. Nilai seperti 1200 (maksudnya 12%) adalah salah satuan dan
 	// menghasilkan proyeksi imbal hasil yang tidak masuk akal.
-	ErrBagiHasilProjectionOutOfRange = errors.New("proyeksi pendapatan usaha produk (projected_revenue_rate_annual) harus lebih dari 0 dan maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%")
+	ErrBagiHasilProjectionOutOfRange = NewLocalizedError("bagi_hasil_projection_out_of_range", "proyeksi pendapatan usaha produk (projected_revenue_rate_annual) harus lebih dari 0 dan maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%")
 
 	// ErrProductParamsEmpty menolak permintaan ubah parameter produk yang tidak
 	// menyertakan satu bidang parameter pun. Payload kosong bukan perubahan yang sah.
-	ErrProductParamsEmpty = errors.New("tidak ada parameter produk yang diubah; sertakan minimal satu parameter")
+	ErrProductParamsEmpty = NewLocalizedError("product_params_empty", "tidak ada parameter produk yang diubah; sertakan minimal satu parameter")
 	// ErrProductRateNegative menolak suku bunga/margin negatif. Tarif adalah persen
 	// per tahun; nilai negatif tidak punya makna pada kontrak kredit maupun simpanan.
-	ErrProductRateNegative = errors.New("suku bunga/margin tahunan (rate_annual) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
+	ErrProductRateNegative = NewLocalizedError("product_rate_negative", "suku bunga/margin tahunan (rate_annual) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
 	// ErrProductAdminFeeNegative menolak biaya administrasi negatif (rupiah).
-	ErrProductAdminFeeNegative = errors.New("biaya administrasi (admin_fee) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	ErrProductAdminFeeNegative = NewLocalizedError("product_admin_fee_negative", "biaya administrasi (admin_fee) tidak boleh negatif; nilai dinyatakan dalam rupiah")
 	// ErrProductTaxRateNegative menolak tarif pajak negatif (persen).
-	ErrProductTaxRateNegative = errors.New("tarif pajak (tax_rate) tidak boleh negatif; nilai dinyatakan dalam persen")
+	ErrProductTaxRateNegative = NewLocalizedError("product_tax_rate_negative", "tarif pajak (tax_rate) tidak boleh negatif; nilai dinyatakan dalam persen")
 	// ErrProductPenaltyRateNegative menolak penalti penarikan dini negatif (persen).
-	ErrProductPenaltyRateNegative = errors.New("tarif penalti penarikan dini (early_withdrawal_penalty_rate) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
+	ErrProductPenaltyRateNegative = NewLocalizedError("product_penalty_rate_negative", "tarif penalti penarikan dini (early_withdrawal_penalty_rate) tidak boleh negatif; nilai dinyatakan dalam persen per tahun")
 	// ErrProductMinAmountNegative dan ErrProductMaxAmountNegative menolak batas
 	// plafon negatif (rupiah).
-	ErrProductMinAmountNegative = errors.New("batas plafon minimum (min_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
-	ErrProductMaxAmountNegative = errors.New("batas plafon maksimum (max_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	ErrProductMinAmountNegative = NewLocalizedError("product_min_amount_negative", "batas plafon minimum (min_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
+	ErrProductMaxAmountNegative = NewLocalizedError("product_max_amount_negative", "batas plafon maksimum (max_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah")
 	// ErrProductAmountRange menjaga hubungan min/max: 0 pada max_amount berarti tanpa
 	// batas; selain itu maksimum harus >= minimum. Ini cermin constraint database
 	// chk_min_max_amount, ditegakkan lebih dulu agar pesannya jelas dan bukan galat SQL.
-	ErrProductAmountRange = errors.New("batas plafon maksimum (max_amount) harus 0 (tanpa batas) atau lebih besar/sama dengan minimum (min_amount); nilai dalam rupiah")
+	ErrProductAmountRange = NewLocalizedError("product_amount_range", "batas plafon maksimum (max_amount) harus 0 (tanpa batas) atau lebih besar/sama dengan minimum (min_amount); nilai dalam rupiah")
 	// ErrProductTermNegative menolak tenor negatif (bulan).
-	ErrProductTermNegative = errors.New("tenor minimum/maksimum (min_term_months/max_term_months) tidak boleh negatif; nilai dinyatakan dalam bulan")
+	ErrProductTermNegative = NewLocalizedError("product_term_negative", "tenor minimum/maksimum (min_term_months/max_term_months) tidak boleh negatif; nilai dinyatakan dalam bulan")
 	// ErrProductTermRange menolak tenor minimum yang melebihi maksimumnya.
-	ErrProductTermRange = errors.New("tenor minimum (min_term_months) tidak boleh melebihi tenor maksimum (max_term_months); nilai dinyatakan dalam bulan")
+	ErrProductTermRange = NewLocalizedError("product_term_range", "tenor minimum (min_term_months) tidak boleh melebihi tenor maksimum (max_term_months); nilai dinyatakan dalam bulan")
 
 	// ErrProductRateOutOfRange/ErrProductTaxRateOutOfRange/ErrProductPenaltyRateOutOfRange
 	// menolak tarif berbasis persen di atas batas wajar. Nilai seperti 1e9 (maksudnya

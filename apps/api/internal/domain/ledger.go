@@ -11,7 +11,7 @@ import (
 
 var (
 	ErrLedgerUnbalanced        = errors.New("double-entry violation: sum of debits must equal sum of credits")
-	ErrInsufficientFunds       = errors.New("insufficient available balance")
+	ErrInsufficientFunds       = NewLocalizedError("insufficient_funds", "insufficient available balance")
 	ErrAccountInactive         = errors.New("account is not active")
 	ErrInvalidAmount           = errors.New("transaction amount must be strictly positive")
 	ErrDuplicateIdempotencyKey = errors.New("transaction already processed or in progress with this idempotency key")

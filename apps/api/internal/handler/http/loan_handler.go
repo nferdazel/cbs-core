@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -320,7 +321,21 @@ func (h *LoanHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		input.IdempotencyKey = idem
 	}
 
-	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	// Batas pemulihan diperiksa lebih awal di sini, saat pengajuan, agar permintaan
+	// yang pasti ditolak tidak mengisi antrean maker-checker. Pemeriksaan tetap ada
+	// lagi saat persetujuan karena keadaan bisa berubah. Bila layanan tidak
+	// menyediakan penjaga ini (mis. stub uji), alur lama tetap berjalan.
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+	if guard, ok := h.loanSvc.(interface {
+		CheckRecoveryCapAtSubmission(context.Context, domain.RecoverWrittenOffLoanInput, domain.Actor) error
+	}); ok {
+		if err := guard.CheckRecoveryCapAtSubmission(r.Context(), input, actor); err != nil {
+			writeTransactionError(w, r, err)
+			return
+		}
+	}
+
+	loan, err := h.loanSvc.RecoverWrittenOffLoan(r.Context(), input, actor)
 	if err != nil {
 		writeTransactionError(w, r, err)
 		return

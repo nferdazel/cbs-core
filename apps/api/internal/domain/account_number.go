@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	ErrInvalidBranchCode  = errors.New("kode cabang harus 3 digit angka")
+	ErrInvalidBranchCode  = NewLocalizedError("invalid_branch_code", "kode cabang harus 3 digit angka")
 	ErrInvalidProductCode = errors.New("kode produk harus 3 digit angka")
 	ErrInvalidAccountNum  = errors.New("nomor rekening tidak valid")
 )

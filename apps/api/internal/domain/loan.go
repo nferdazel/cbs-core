@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ErrLoanNotFound         = errors.New("pengajuan kredit tidak ditemukan")
-	ErrLoanAlreadyApproved  = errors.New("kredit sudah disetujui atau ditolak")
+	ErrLoanNotFound         = NewLocalizedError("loan_not_found", "pengajuan kredit tidak ditemukan")
+	ErrLoanAlreadyApproved  = NewLocalizedError("loan_already_approved", "kredit sudah disetujui atau ditolak")
 	ErrLoanNotApproved      = errors.New("kredit harus berstatus APPROVED sebelum dicairkan")
 	ErrLoanAlreadyDisbursed = errors.New("kredit sudah dicairkan")
 	// ErrLoanNotCancellable dipakai saat pembatalan pencairan diminta tetapi kredit tidak
@@ -46,20 +46,20 @@ var (
 	// boleh sebagian, dan wajib didahului upaya penagihan yang terdokumentasi.
 	// Tiap syarat punya sentinel sendiri supaya penolakan menyebut syarat mana yang
 	// belum terpenuhi, bukan galat umum yang tidak bisa ditindaklanjuti.
-	ErrWriteOffNotMacet                  = errors.New("hapus buku hanya dapat dilakukan atas kredit berkualitas Macet (kolektibilitas 5)")
-	ErrWriteOffReserveIncomplete         = errors.New("hapus buku memerlukan cadangan/penyisihan 100% atas kredit")
-	ErrWriteOffPartial                   = errors.New("hapus buku sebagian dilarang; hapus buku harus atas seluruh eksposur kredit")
-	ErrWriteOffReasonRequired            = errors.New("dasar pertimbangan hapus buku wajib diisi")
-	ErrWriteOffCollectionEffortsRequired = errors.New("upaya penagihan terdokumentasi wajib diisi sebelum hapus buku")
+	ErrWriteOffNotMacet                  = NewLocalizedError("write_off_not_macet", "hapus buku hanya dapat dilakukan atas kredit berkualitas Macet (kolektibilitas 5)")
+	ErrWriteOffReserveIncomplete         = NewLocalizedError("write_off_reserve_incomplete", "hapus buku memerlukan cadangan/penyisihan 100% atas kredit")
+	ErrWriteOffPartial                   = NewLocalizedError("write_off_partial", "hapus buku sebagian dilarang; hapus buku harus atas seluruh eksposur kredit")
+	ErrWriteOffReasonRequired            = NewLocalizedError("write_off_reason_required", "dasar pertimbangan hapus buku wajib diisi")
+	ErrWriteOffCollectionEffortsRequired = NewLocalizedError("write_off_collection_efforts_required", "upaya penagihan terdokumentasi wajib diisi sebelum hapus buku")
 	// Nilai hapus buku disimpan di baris kredit (written_off_amount) supaya pemulihan
 	// setelahnya dapat dibatasi pada nominal yang benar-benar pernah dihapus. Tanpa
 	// simpanan ini, akumulasi pemulihan hanya berbatas kejujuran operator dan dapat
 	// melebihi nilai yang pernah dilepas (lubang nyata: recovery 10x lipat diterima).
-	ErrRecoveryExceedsWriteOff = errors.New("akumulasi pemulihan melebihi nilai hapus buku kredit")
+	ErrRecoveryExceedsWriteOff = NewLocalizedError("recovery_exceeds_write_off", "akumulasi pemulihan melebihi nilai hapus buku kredit")
 	// ErrWriteOffAmountUnavailable menolak pemulihan atas kredit hapus buku yang nilai
 	// hapus bukunya belum tersimpan dan tidak dapat dibackfill. Menolak lebih aman
 	// daripada membiarkan pemulihan tanpa batas atas data yang tidak pasti.
-	ErrWriteOffAmountUnavailable = errors.New("nilai hapus buku kredit belum tersimpan, pemulihan tidak dapat dibatasi")
+	ErrWriteOffAmountUnavailable = NewLocalizedError("write_off_amount_unavailable", "nilai hapus buku kredit belum tersimpan, pemulihan tidak dapat dibatasi")
 )
 
 type LoanStatus string

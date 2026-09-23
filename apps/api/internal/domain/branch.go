@@ -9,23 +9,23 @@ import (
 )
 
 var (
-	ErrBranchNotFound = errors.New("cabang tidak ditemukan")
+	ErrBranchNotFound = NewLocalizedError("branch_not_found", "cabang tidak ditemukan")
 	// ErrBranchCodeExists menolak pembuatan cabang dengan kode yang sudah dipakai.
-	ErrBranchCodeExists = errors.New("kode cabang sudah terpakai")
+	ErrBranchCodeExists = NewLocalizedError("branch_code_exists", "kode cabang sudah terpakai")
 	// ErrBranchNameRequired menolak cabang tanpa nama.
-	ErrBranchNameRequired = errors.New("nama cabang wajib diisi")
+	ErrBranchNameRequired = NewLocalizedError("branch_name_required", "nama cabang wajib diisi")
 	// ErrBranchHeadOfficeNotAllowed menolak pembuatan kantor pusat lewat API.
 	// Kantor pusat adalah data fondasi (hanya satu, menentukan atribusi pelaku
 	// lintas cabang), sehingga dibuat lewat migrasi/seed, bukan oleh operator.
 	// Cabang biasa yang dibuat lewat API cukup dengan is_head_office=false.
-	ErrBranchHeadOfficeNotAllowed = errors.New("kantor pusat tidak dapat dibuat lewat API; is_head_office harus false")
+	ErrBranchHeadOfficeNotAllowed = NewLocalizedError("branch_head_office_not_allowed", "kantor pusat tidak dapat dibuat lewat API; is_head_office harus false")
 	// ErrOrgUnitLevelInvalid menolak jenjang unit di luar CABANG/AREA/WILAYAH.
 	ErrOrgUnitLevelInvalid = errors.New("jenjang unit organisasi tidak dikenal")
 	// ErrOrgUnitCodeTooLong menolak kode area/wilayah yang melebihi lebar kolom
 	// branches.code (VARCHAR(32) sejak migrasi 000088; sebelumnya VARCHAR(8)).
 	// Tanpa pemeriksaan ini, kode panjang lolos ke database dan gagal sebagai 500
 	// alih-alih pesan validasi. Batas harus sama dengan lebar kolom skema.
-	ErrOrgUnitCodeTooLong = errors.New("kode unit organisasi terlalu panjang: maksimal 32 karakter")
+	ErrOrgUnitCodeTooLong = NewLocalizedError("org_unit_code_too_long", "kode unit organisasi terlalu panjang: maksimal 32 karakter")
 	// ErrOrgUnitParentInvalid menolak atasan yang jenjangnya tidak lebih tinggi
 	// dari unit anak. Hierarki wajib menurun: wilayah -> area -> cabang.
 	ErrOrgUnitParentInvalid = errors.New("atasan harus berjenjang lebih tinggi dari unit anak")

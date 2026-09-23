@@ -16,18 +16,72 @@ import (
 type staffService struct {
 	staffRepo domain.StaffRepository
 	auditRepo domain.AuditRepository
+	// branches memeriksa keberadaan kode cabang saat staf ditetapkan. Boleh nil
+	// (uji unit tanpa database): saat nil, validasi dilewati agar perilaku lama
+	// tetap berjalan.
+	branches domain.BranchExistenceChecker
 }
 
 // errStaffRoleNotManageable menolak perubahan atas akun yang perannya setingkat atau
 // lebih tinggi dari pelaku.
 var errStaffRoleNotManageable = domain.ErrStaffRoleNotManageable
 
-func NewStaffService(staffRepo domain.StaffRepository, auditSinks ...domain.AuditRepository) domain.StaffService {
+func NewStaffService(staffRepo domain.StaffRepository, branches domain.BranchExistenceChecker, auditSinks ...domain.AuditRepository) domain.StaffService {
 	var auditRepo domain.AuditRepository
 	if len(auditSinks) > 0 {
 		auditRepo = auditSinks[0]
 	}
-	return &staffService{staffRepo: staffRepo, auditRepo: auditRepo}
+	return &staffService{staffRepo: staffRepo, branches: branches, auditRepo: auditRepo}
+}
+
+// validateStaffBranch memastikan kode cabang staf terdaftar sebagai unit organisasi.
+// Peran bercabang biasa tanpa cabang sah akan mendapat cakupan kosong (tidak melihat
+// data apa pun) secara senyap; lebih baik ditolak saat penetapan agar operator
+// memperbaiki kodenya. Peran lintas cabang dikecualikan karena kode 'HO' milik kantor
+// pusat bukan baris branches.
+func (s *staffService) validateStaffBranch(ctx context.Context, role domain.StaffRole, branchCode string) error {
+	if !(domain.Actor{Role: role}).RequiresRegisteredBranch() {
+		return nil
+	}
+	code := strings.ToUpper(strings.TrimSpace(branchCode))
+	if code == "" {
+		return domain.ErrStaffBranchRequired
+	}
+	if s.branches == nil {
+		return nil
+	}
+	if _, err := s.branches.GetByCode(ctx, code); err != nil {
+		if errors.Is(err, domain.ErrBranchNotFound) {
+			return fmt.Errorf("%w: %s", domain.ErrStaffBranchUnknown, code)
+		}
+		return err
+	}
+	return nil
+}
+
+// BranchCoverageWarnings mengembalikan peringatan untuk staf aktif bercabang biasa
+// yang branch_code-nya tidak cocok dengan unit organisasi mana pun: cakupannya kosong
+// sehingga ia tidak melihat data apa pun. Peringatan dicatat saat start agar operator
+// memperbaiki data lama, tanpa memperluas cakupan secara diam-diam (yang akan membuka
+// kebocoran). Kegagalan membaca data menjadi peringatan tersendiri, bukan diam.
+func BranchCoverageWarnings(ctx context.Context, reader domain.BranchScopeMismatchReader) []string {
+	if reader == nil {
+		return nil
+	}
+	mismatches, err := reader.ListBranchScopeMismatches(ctx)
+	if err != nil {
+		return []string{fmt.Sprintf("gagal memeriksa kecocokan cabang staf: %v", err)}
+	}
+	var warnings []string
+	for _, m := range mismatches {
+		if !(domain.Actor{Role: m.Role}).RequiresRegisteredBranch() {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"staf %q bercabang %q yang tidak terdaftar; cakupannya kosong sehingga tidak melihat data apa pun — perbaiki branch_code-nya",
+			m.Username, m.BranchCode))
+	}
+	return warnings
 }
 
 func validatePassword(password string) error {
@@ -61,11 +115,6 @@ func hashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-func generateEmployeeID() string {
-	// EMP-YYYY-XXXXX (collision handled by DB unique constraint)
-	return fmt.Sprintf("EMP-%s-%05d", time.Now().Format("2006"), time.Now().Nanosecond()%100000)
-}
-
 func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaffInput, actor domain.Actor) (*domain.StaffUser, error) {
 	if !actor.CanManageStaff(input.Role) {
 		return nil, errStaffRoleNotManageable
@@ -79,22 +128,32 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 		return nil, errors.New("cannot create SUPERADMIN or SYSTEM through this endpoint")
 	}
 
+	// Peran lintas cabang tidak dibuat lewat endpoint ini, tetapi bila kelak
+	// diizinkan ia memakai 'HO' bawaan kantor pusat. Peran operasional wajib memakai
+	// unit organisasi yang benar-benar terdaftar.
+	branch := strings.ToUpper(strings.TrimSpace(input.BranchCode))
+	if branch == "" && (domain.Actor{Role: input.Role}).IsCrossBranch() {
+		branch = "HO"
+	}
+	if err := s.validateStaffBranch(ctx, input.Role, branch); err != nil {
+		return nil, err
+	}
+
 	hash, err := hashPassword(input.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	branch := strings.ToUpper(input.BranchCode)
-	if branch == "" {
-		branch = "HO"
-	}
-
-	// Akun baru mengikuti buku pembuatnya bila pembuat terikat satu buku; bila
-	// pembuat lintas buku/belum ditentukan, dipakai konvensional sebagai aman
-	// bawaan (bank mayoritas konvensional). Instalasi satu buku memaksa buku aktif
-	// instalasi agar staf baru tidak lahir di lini usaha yang tidak dilayani. Tanpa
-	// ini kolom book akan NULL dan akun baru justru melihat kedua buku — kebocoran
-	// yang justru ingin ditutup.
+	// EmployeeID sengaja dibiarkan kosong: repository mengisinya dari sequence
+	// database (bukan potongan waktu) di dalam Create, sehingga nomor pegawai dijamin
+	// unik. Bila bentrok tetap terjadi, galat unik dipetakan ke ErrStaffAlreadyExists.
+	//
+	// Akun baru mengikuti buku pembuatnya bila pembuat terikat satu buku; bila pembuat
+	// lintas buku/belum ditentukan, dipakai konvensional sebagai aman bawaan (bank
+	// mayoritas konvensional). Instalasi satu buku memaksa buku aktif instalasi agar
+	// staf baru tidak lahir di lini usaha yang tidak dilayani. Tanpa ini kolom book
+	// akan NULL dan akun baru justru melihat kedua buku — kebocoran yang justru ingin
+	// ditutup.
 	book := actor.Book
 	if single := actor.BookScope.SingleBook(); single != "" {
 		book = single
@@ -105,7 +164,6 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 	now := time.Now().UTC()
 	user := &domain.StaffUser{
 		ID:                uuid.New(),
-		EmployeeID:        generateEmployeeID(),
 		Username:          strings.ToLower(input.Username),
 		FullName:          input.FullName,
 		Email:             strings.ToLower(input.Email),
@@ -121,6 +179,12 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 	}
 
 	if err := s.staffRepo.Create(ctx, user); err != nil {
+		// Bentrok kolom unik (username/email/nomor pegawai) adalah aturan bisnis,
+		// bukan kegagalan server: kembalikan sentinel yang jelas (handler -> 409),
+		// bukan galat database yang bocor sebagai 500.
+		if isUniqueViolation(err) {
+			return nil, domain.ErrStaffAlreadyExists
+		}
 		return nil, fmt.Errorf("failed to create staff user: %w", err)
 	}
 	// Kata sandi tidak pernah masuk audit log; yang dicatat adalah identitas akun baru.
@@ -180,7 +244,13 @@ func (s *staffService) UpdateStaff(ctx context.Context, id uuid.UUID, input doma
 		user.Role = *input.Role
 	}
 	if input.BranchCode != nil {
-		user.BranchCode = strings.ToUpper(*input.BranchCode)
+		nextBranch := strings.ToUpper(strings.TrimSpace(*input.BranchCode))
+		// Divalidasi SEBELUM diubah agar penolakan tidak meninggalkan perubahan
+		// setengah jalan pada objek yang dibaca.
+		if err := s.validateStaffBranch(ctx, user.Role, nextBranch); err != nil {
+			return nil, err
+		}
+		user.BranchCode = nextBranch
 	}
 	if input.IsActive != nil {
 		user.IsActive = *input.IsActive

@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,10 +9,10 @@ import (
 )
 
 var (
-	ErrMakerCheckerNotFound   = errors.New("permintaan maker-checker tidak ditemukan")
-	ErrMakerCheckerNotPending = errors.New("permintaan maker-checker sudah diproses")
-	ErrCannotSelfApprove      = errors.New("pembuat permintaan tidak boleh menyetujui permintaannya sendiri")
-	ErrNoExecutorForAction    = errors.New("tidak ada eksekutor untuk jenis aksi maker-checker ini")
+	ErrMakerCheckerNotFound   = NewLocalizedError("maker_checker_not_found", "permintaan maker-checker tidak ditemukan")
+	ErrMakerCheckerNotPending = NewLocalizedError("maker_checker_not_pending", "permintaan maker-checker sudah diproses")
+	ErrCannotSelfApprove      = NewLocalizedError("cannot_self_approve", "pembuat permintaan tidak boleh menyetujui permintaannya sendiri")
+	ErrNoExecutorForAction    = NewLocalizedError("no_executor_for_action", "tidak ada eksekutor untuk jenis aksi maker-checker ini")
 )
 
 // PendingApprovalError dikembalikan ketika sebuah transaksi tidak diposting langsung

@@ -25,7 +25,7 @@ var (
 	// ErrCKPNStalePPAP menandai perbandingan CKPN yang tidak boleh memakai PPKA dari
 	// run PPAP tanggal bisnis lain. Bila dibiarkan, laporan membandingkan CKPN
 	// tanggal berjalan dengan required_ppap kemarin dan tetap terlihat sah.
-	ErrCKPNStalePPAP = errors.New("perbandingan CKPN menolak PPKA dari tanggal bisnis yang tidak sama")
+	ErrCKPNStalePPAP = NewLocalizedError("ckpn_stale_ppap", "perbandingan CKPN menolak PPKA dari tanggal bisnis yang tidak sama")
 )
 
 // CKPNAsetBaikMaxDPDDefault adalah batas tunggakan hari agar aset keuangan memenuhi

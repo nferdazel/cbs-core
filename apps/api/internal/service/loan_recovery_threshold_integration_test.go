@@ -38,8 +38,10 @@ func TestIntegrasiAmbangRecoveryDiAtasAmbangMasukMakerChecker(t *testing.T) {
 	woffWriteOff(t, e, loan, actor, 12_000_000)
 	woffSetThreshold(t, e, "loan_recovery", "10000000")
 
+	// Nominal di ATAS ambang (10jt) tetapi TIDAK melebihi nilai hapus buku (12jt),
+	// sehingga yang diuji murni perilaku ambang, bukan batas pemulihan.
 	_, err := e.loanSvc.RecoverWrittenOffLoan(e.ctx, domain.RecoverWrittenOffLoanInput{
-		LoanID: loan.ID, RecoveryAmount: decimal.NewFromInt(15_000_000), IdempotencyKey: "atas-ambang",
+		LoanID: loan.ID, RecoveryAmount: decimal.NewFromInt(11_000_000), IdempotencyKey: "atas-ambang",
 	}, actor)
 	var pending *domain.PendingApprovalError
 	if !errors.As(err, &pending) {

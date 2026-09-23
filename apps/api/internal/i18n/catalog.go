@@ -158,6 +158,71 @@ const (
 	MsgInvalidCredentials Code = "invalid_credentials"
 	MsgInsufficientFunds  Code = "insufficient_funds"
 	MsgSessionExpired     Code = "session_expired"
+
+	// Kode pesan galat domain (domain.LocalizedError). Setiap sentinel yang tampil ke
+	// pengguna menyatakan kode ini di dekat definisinya; handler menerjemahkan lewat
+	// satu jalur, sehingga tidak ada daftar pemetaan kedua yang rapuh.
+	MsgAccountNotFound                 Code = "account_not_found"
+	MsgAccountDormant                  Code = "account_dormant"
+	MsgAccountNotDormant               Code = "account_not_dormant"
+	MsgAccountNotFrozen                Code = "account_not_frozen"
+	MsgAccountCloseBalance             Code = "account_close_balance"
+	MsgAccountNotClosable              Code = "account_not_closable"
+	MsgInvalidBranchCode               Code = "invalid_branch_code"
+	MsgCrossBranchAccess               Code = "cross_branch_access"
+	MsgBankProfileNameRequired         Code = "bank_profile_name_required"
+	MsgBankProfileNameTooShort         Code = "bank_profile_name_too_short"
+	MsgBankProfileEmpty                Code = "bank_profile_empty"
+	MsgBankProfileFieldTooLong         Code = "bank_profile_field_too_long"
+	MsgBankProfileNPWPInvalid          Code = "bank_profile_npwp_invalid"
+	MsgBankProfilePhoneInvalid         Code = "bank_profile_phone_invalid"
+	MsgBranchNotFound                  Code = "branch_not_found"
+	MsgBranchCodeExists                Code = "branch_code_exists"
+	MsgBranchNameRequired              Code = "branch_name_required"
+	MsgBranchHeadOfficeNotAllowed      Code = "branch_head_office_not_allowed"
+	MsgOrgUnitCodeTooLong              Code = "org_unit_code_too_long"
+	MsgCustomerNotFound                Code = "customer_not_found"
+	MsgDuplicateIDCard                 Code = "duplicate_id_card"
+	MsgDuplicateEmail                  Code = "duplicate_email"
+	MsgCipherNotConfigured             Code = "cipher_not_configured"
+	MsgLoanNotFound                    Code = "loan_not_found"
+	MsgLoanAlreadyApprovedDomain       Code = "loan_already_approved"
+	MsgWriteOffNotMacet                Code = "write_off_not_macet"
+	MsgWriteOffReserveIncomplete       Code = "write_off_reserve_incomplete"
+	MsgWriteOffPartial                 Code = "write_off_partial"
+	MsgWriteOffReasonRequired          Code = "write_off_reason_required"
+	MsgWriteOffCollectionEffortsNeeded Code = "write_off_collection_efforts_required"
+	MsgRecoveryExceedsWriteOff         Code = "recovery_exceeds_write_off"
+	MsgWriteOffAmountUnavailable       Code = "write_off_amount_unavailable"
+	MsgMakerCheckerNotFound            Code = "maker_checker_not_found"
+	MsgMakerCheckerNotPending          Code = "maker_checker_not_pending"
+	MsgCannotSelfApprove               Code = "cannot_self_approve"
+	MsgNoExecutorForAction             Code = "no_executor_for_action"
+	MsgProductNotFound                 Code = "product_not_found"
+	MsgBagiHasilNisbahMissing          Code = "bagi_hasil_nisbah_missing"
+	MsgBagiHasilProjectionMissing      Code = "bagi_hasil_projection_missing"
+	MsgBagiHasilNisbahOutOfRange       Code = "bagi_hasil_nisbah_out_of_range"
+	MsgBagiHasilProjectionOutOfRange   Code = "bagi_hasil_projection_out_of_range"
+	MsgProductParamsEmpty              Code = "product_params_empty"
+	MsgProductRateNegative             Code = "product_rate_negative"
+	MsgProductAdminFeeNegative         Code = "product_admin_fee_negative"
+	MsgProductTaxRateNegative          Code = "product_tax_rate_negative"
+	MsgProductPenaltyRateNegative      Code = "product_penalty_rate_negative"
+	MsgProductMinAmountNegative        Code = "product_min_amount_negative"
+	MsgProductMaxAmountNegative        Code = "product_max_amount_negative"
+	MsgProductAmountRange              Code = "product_amount_range"
+	MsgProductTermNegative             Code = "product_term_negative"
+	MsgProductTermRange                Code = "product_term_range"
+	MsgPasswordExpired                 Code = "password_expired"
+	MsgStaffRoleNotManageable          Code = "staff_role_not_manageable"
+	MsgStaffAlreadyExists              Code = "staff_already_exists"
+	MsgStaffBranchRequired             Code = "staff_branch_required"
+	MsgStaffBranchUnknown              Code = "staff_branch_unknown"
+	MsgLimitPerTransaction             Code = "limit_per_transaction"
+	MsgLimitDaily                      Code = "limit_daily"
+	MsgRequiresApproval                Code = "requires_approval"
+	MsgCKPNStalePPAP                   Code = "ckpn_stale_ppap"
+	MsgEODInProgress                   Code = "eod_in_progress"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -313,6 +378,67 @@ var codeList = []Code{
 	MsgInvalidCredentials,
 	MsgInsufficientFunds,
 	MsgSessionExpired,
+	MsgAccountNotFound,
+	MsgAccountDormant,
+	MsgAccountNotDormant,
+	MsgAccountNotFrozen,
+	MsgAccountCloseBalance,
+	MsgAccountNotClosable,
+	MsgInvalidBranchCode,
+	MsgCrossBranchAccess,
+	MsgBankProfileNameRequired,
+	MsgBankProfileNameTooShort,
+	MsgBankProfileEmpty,
+	MsgBankProfileFieldTooLong,
+	MsgBankProfileNPWPInvalid,
+	MsgBankProfilePhoneInvalid,
+	MsgBranchNotFound,
+	MsgBranchCodeExists,
+	MsgBranchNameRequired,
+	MsgBranchHeadOfficeNotAllowed,
+	MsgOrgUnitCodeTooLong,
+	MsgCustomerNotFound,
+	MsgDuplicateIDCard,
+	MsgDuplicateEmail,
+	MsgCipherNotConfigured,
+	MsgLoanNotFound,
+	MsgLoanAlreadyApprovedDomain,
+	MsgWriteOffNotMacet,
+	MsgWriteOffReserveIncomplete,
+	MsgWriteOffPartial,
+	MsgWriteOffReasonRequired,
+	MsgWriteOffCollectionEffortsNeeded,
+	MsgRecoveryExceedsWriteOff,
+	MsgWriteOffAmountUnavailable,
+	MsgMakerCheckerNotFound,
+	MsgMakerCheckerNotPending,
+	MsgCannotSelfApprove,
+	MsgNoExecutorForAction,
+	MsgProductNotFound,
+	MsgBagiHasilNisbahMissing,
+	MsgBagiHasilProjectionMissing,
+	MsgBagiHasilNisbahOutOfRange,
+	MsgBagiHasilProjectionOutOfRange,
+	MsgProductParamsEmpty,
+	MsgProductRateNegative,
+	MsgProductAdminFeeNegative,
+	MsgProductTaxRateNegative,
+	MsgProductPenaltyRateNegative,
+	MsgProductMinAmountNegative,
+	MsgProductMaxAmountNegative,
+	MsgProductAmountRange,
+	MsgProductTermNegative,
+	MsgProductTermRange,
+	MsgPasswordExpired,
+	MsgStaffRoleNotManageable,
+	MsgStaffAlreadyExists,
+	MsgStaffBranchRequired,
+	MsgStaffBranchUnknown,
+	MsgLimitPerTransaction,
+	MsgLimitDaily,
+	MsgRequiresApproval,
+	MsgCKPNStalePPAP,
+	MsgEODInProgress,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -916,5 +1042,249 @@ var catalog = map[Code]map[Lang]string{
 	MsgSessionExpired: {
 		ID: "sesi telah berakhir",
 		EN: "session has expired",
+	},
+	MsgAccountNotFound: {
+		ID: "rekening tidak ditemukan",
+		EN: "account not found",
+	},
+	MsgAccountDormant: {
+		ID: "rekening dormant: nasabah harus melakukan reaktivasi di cabang",
+		EN: "account is dormant: the customer must reactivate it at the branch",
+	},
+	MsgAccountNotDormant: {
+		ID: "rekening tidak berstatus dormant dan tidak dapat direaktivasi",
+		EN: "account is not dormant and cannot be reactivated",
+	},
+	MsgAccountNotFrozen: {
+		ID: "rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya",
+		EN: "account is not frozen and cannot be unfrozen",
+	},
+	MsgAccountCloseBalance: {
+		ID: "rekening tidak dapat ditutup: masih ada saldo, saldo tersedia, atau dana tertahan",
+		EN: "account cannot be closed: balance, available balance, or held funds remain",
+	},
+	MsgAccountNotClosable: {
+		ID: "rekening tidak dapat ditutup pada status saat ini",
+		EN: "account cannot be closed in its current status",
+	},
+	MsgInvalidBranchCode: {
+		ID: "kode cabang harus 3 digit angka",
+		EN: "branch code must be 3 digits",
+	},
+	MsgCrossBranchAccess: {
+		ID: "akses lintas cabang ditolak: data berada di cabang lain",
+		EN: "cross-branch access denied: the data belongs to another branch",
+	},
+	MsgBankProfileNameRequired: {
+		ID: "nama bank wajib diisi",
+		EN: "bank name is required",
+	},
+	MsgBankProfileNameTooShort: {
+		ID: "nama bank terlalu pendek (minimal 3 karakter)",
+		EN: "bank name is too short (minimum 3 characters)",
+	},
+	MsgBankProfileEmpty: {
+		ID: "tidak ada bidang profil bank yang dikirim",
+		EN: "no bank profile field was submitted",
+	},
+	MsgBankProfileFieldTooLong: {
+		ID: "nilai identitas bank terlalu panjang",
+		EN: "bank identity value is too long",
+	},
+	MsgBankProfileNPWPInvalid: {
+		ID: "NPWP hanya boleh berisi angka, titik, dan tanda hubung",
+		EN: "NPWP may only contain digits, dots, and hyphens",
+	},
+	MsgBankProfilePhoneInvalid: {
+		ID: "nomor telepon hanya boleh berisi angka, spasi, dan tanda + - ( ) .",
+		EN: "phone number may only contain digits, spaces, and the + - ( ) . characters",
+	},
+	MsgBranchNotFound: {
+		ID: "cabang tidak ditemukan",
+		EN: "branch not found",
+	},
+	MsgBranchCodeExists: {
+		ID: "kode cabang sudah terpakai",
+		EN: "branch code is already used",
+	},
+	MsgBranchNameRequired: {
+		ID: "nama cabang wajib diisi",
+		EN: "branch name is required",
+	},
+	MsgBranchHeadOfficeNotAllowed: {
+		ID: "kantor pusat tidak dapat dibuat lewat API; is_head_office harus false",
+		EN: "head office cannot be created through the API; is_head_office must be false",
+	},
+	MsgOrgUnitCodeTooLong: {
+		ID: "kode unit organisasi terlalu panjang: maksimal 32 karakter",
+		EN: "organization unit code is too long: at most 32 characters",
+	},
+	MsgCustomerNotFound: {
+		ID: "nasabah tidak ditemukan",
+		EN: "customer not found",
+	},
+	MsgDuplicateIDCard: {
+		ID: "NIK sudah terdaftar",
+		EN: "ID card number is already registered",
+	},
+	MsgDuplicateEmail: {
+		ID: "email sudah terdaftar",
+		EN: "email is already registered",
+	},
+	MsgCipherNotConfigured: {
+		ID: "kunci enkripsi data nasabah belum dikonfigurasi",
+		EN: "customer data encryption key is not configured",
+	},
+	MsgLoanNotFound: {
+		ID: "pengajuan kredit tidak ditemukan",
+		EN: "loan application not found",
+	},
+	MsgLoanAlreadyApprovedDomain: {
+		ID: "kredit sudah disetujui atau ditolak",
+		EN: "loan has already been approved or rejected",
+	},
+	MsgWriteOffNotMacet: {
+		ID: "hapus buku hanya dapat dilakukan atas kredit berkualitas Macet (kolektibilitas 5)",
+		EN: "write-off may only be applied to loans classified as Loss (collectibility 5)",
+	},
+	MsgWriteOffReserveIncomplete: {
+		ID: "hapus buku memerlukan cadangan/penyisihan 100% atas kredit",
+		EN: "write-off requires a 100% reserve/provision for the loan",
+	},
+	MsgWriteOffPartial: {
+		ID: "hapus buku sebagian dilarang; hapus buku harus atas seluruh eksposur kredit",
+		EN: "partial write-off is prohibited; write-off must cover the entire loan exposure",
+	},
+	MsgWriteOffReasonRequired: {
+		ID: "dasar pertimbangan hapus buku wajib diisi",
+		EN: "the rationale for the write-off is required",
+	},
+	MsgWriteOffCollectionEffortsNeeded: {
+		ID: "upaya penagihan terdokumentasi wajib diisi sebelum hapus buku",
+		EN: "documented collection efforts are required before write-off",
+	},
+	MsgRecoveryExceedsWriteOff: {
+		ID: "akumulasi pemulihan melebihi nilai hapus buku kredit",
+		EN: "accumulated recovery exceeds the written-off amount of the loan",
+	},
+	MsgWriteOffAmountUnavailable: {
+		ID: "nilai hapus buku kredit belum tersimpan, pemulihan tidak dapat dibatasi",
+		EN: "the loan's written-off amount is not stored; recovery cannot be limited",
+	},
+	MsgMakerCheckerNotFound: {
+		ID: "permintaan maker-checker tidak ditemukan",
+		EN: "maker-checker request not found",
+	},
+	MsgMakerCheckerNotPending: {
+		ID: "permintaan maker-checker sudah diproses",
+		EN: "maker-checker request has already been processed",
+	},
+	MsgCannotSelfApprove: {
+		ID: "pembuat permintaan tidak boleh menyetujui permintaannya sendiri",
+		EN: "the requester may not approve their own request",
+	},
+	MsgNoExecutorForAction: {
+		ID: "tidak ada eksekutor untuk jenis aksi maker-checker ini",
+		EN: "no executor exists for this maker-checker action type",
+	},
+	MsgProductNotFound: {
+		ID: "produk tidak ditemukan",
+		EN: "product not found",
+	},
+	MsgBagiHasilNisbahMissing: {
+		ID: "nisbah bagi hasil produk (profit_sharing_ratio) belum diisi; bank harus mengisi nisbah bagi hasil produk terlebih dahulu",
+		EN: "the product's profit-sharing ratio (profit_sharing_ratio) has not been set; the bank must set it first",
+	},
+	MsgBagiHasilProjectionMissing: {
+		ID: "proyeksi pendapatan usaha produk (projected_revenue_rate_annual) belum diisi; bank harus mengisi proyeksi pendapatan tahunan pembiayaan bagi hasil terlebih dahulu",
+		EN: "the product's projected business revenue (projected_revenue_rate_annual) has not been set; the bank must set the annual projected revenue for profit-sharing financing first",
+	},
+	MsgBagiHasilNisbahOutOfRange: {
+		ID: "nisbah bagi hasil produk (profit_sharing_ratio) harus lebih dari 0 dan maksimal 1; nisbah dinyatakan sebagai pecahan, mis. 0,4 untuk 40%",
+		EN: "the product's profit-sharing ratio (profit_sharing_ratio) must be greater than 0 and at most 1; express it as a fraction, e.g. 0.4 for 40%",
+	},
+	MsgBagiHasilProjectionOutOfRange: {
+		ID: "proyeksi pendapatan usaha produk (projected_revenue_rate_annual) harus lebih dari 0 dan maksimal 100; nilai dinyatakan dalam persen per tahun, mis. 12 untuk 12%",
+		EN: "the product's projected business revenue (projected_revenue_rate_annual) must be greater than 0 and at most 100; the value is a percentage per year, e.g. 12 for 12%",
+	},
+	MsgProductParamsEmpty: {
+		ID: "tidak ada parameter produk yang diubah; sertakan minimal satu parameter",
+		EN: "no product parameter was changed; provide at least one parameter",
+	},
+	MsgProductRateNegative: {
+		ID: "suku bunga/margin tahunan (rate_annual) tidak boleh negatif; nilai dinyatakan dalam persen per tahun",
+		EN: "the annual interest rate/margin (rate_annual) must not be negative; the value is a percentage per year",
+	},
+	MsgProductAdminFeeNegative: {
+		ID: "biaya administrasi (admin_fee) tidak boleh negatif; nilai dinyatakan dalam rupiah",
+		EN: "the administration fee (admin_fee) must not be negative; the value is in rupiah",
+	},
+	MsgProductTaxRateNegative: {
+		ID: "tarif pajak (tax_rate) tidak boleh negatif; nilai dinyatakan dalam persen",
+		EN: "the tax rate (tax_rate) must not be negative; the value is a percentage",
+	},
+	MsgProductPenaltyRateNegative: {
+		ID: "tarif penalti penarikan dini (early_withdrawal_penalty_rate) tidak boleh negatif; nilai dinyatakan dalam persen per tahun",
+		EN: "the early withdrawal penalty rate must not be negative; the value is a percentage per year",
+	},
+	MsgProductMinAmountNegative: {
+		ID: "batas plafon minimum (min_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah",
+		EN: "the minimum ceiling (min_amount) must not be negative; the value is in rupiah",
+	},
+	MsgProductMaxAmountNegative: {
+		ID: "batas plafon maksimum (max_amount) tidak boleh negatif; nilai dinyatakan dalam rupiah",
+		EN: "the maximum ceiling (max_amount) must not be negative; the value is in rupiah",
+	},
+	MsgProductAmountRange: {
+		ID: "batas plafon maksimum (max_amount) harus 0 (tanpa batas) atau lebih besar/sama dengan minimum (min_amount); nilai dalam rupiah",
+		EN: "the maximum ceiling (max_amount) must be 0 (no limit) or greater than/equal to the minimum (min_amount); the value is in rupiah",
+	},
+	MsgProductTermNegative: {
+		ID: "tenor minimum/maksimum (min_term_months/max_term_months) tidak boleh negatif; nilai dinyatakan dalam bulan",
+		EN: "the minimum/maximum tenor (min_term_months/max_term_months) must not be negative; the value is in months",
+	},
+	MsgProductTermRange: {
+		ID: "tenor minimum (min_term_months) tidak boleh melebihi tenor maksimum (max_term_months); nilai dinyatakan dalam bulan",
+		EN: "the minimum tenor (min_term_months) must not exceed the maximum tenor (max_term_months); the value is in months",
+	},
+	MsgPasswordExpired: {
+		ID: "password kedaluwarsa, ganti password terlebih dahulu",
+		EN: "password has expired; change it first",
+	},
+	MsgStaffRoleNotManageable: {
+		ID: "peran Anda tidak berwenang mengubah akun ini",
+		EN: "your role is not authorized to modify this account",
+	},
+	MsgStaffAlreadyExists: {
+		ID: "username, email, atau nomor pegawai staf sudah terpakai",
+		EN: "the staff username, email, or employee number is already used",
+	},
+	MsgStaffBranchRequired: {
+		ID: "kode cabang wajib diisi untuk staf operasional",
+		EN: "a branch code is required for operational staff",
+	},
+	MsgStaffBranchUnknown: {
+		ID: "kode cabang staf tidak terdaftar; pilih unit organisasi yang ada",
+		EN: "the staff branch code is not registered; choose an existing organization unit",
+	},
+	MsgLimitPerTransaction: {
+		ID: "nominal melebihi batas per transaksi",
+		EN: "amount exceeds the per-transaction limit",
+	},
+	MsgLimitDaily: {
+		ID: "akumulasi transaksi harian melebihi batas",
+		EN: "accumulated daily transactions exceed the limit",
+	},
+	MsgRequiresApproval: {
+		ID: "nominal melebihi ambang yang memerlukan persetujuan",
+		EN: "amount exceeds the threshold requiring approval",
+	},
+	MsgCKPNStalePPAP: {
+		ID: "perbandingan CKPN menolak PPKA dari tanggal bisnis yang tidak sama",
+		EN: "CKPN comparison rejects PPKA from a different business date",
+	},
+	MsgEODInProgress: {
+		ID: "tutup hari sedang berjalan; tunggu sampai selesai",
+		EN: "end of day is in progress; wait until it finishes",
 	},
 }

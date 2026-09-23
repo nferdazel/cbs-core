@@ -63,7 +63,7 @@ func staffFixture(t *testing.T) (domain.StaffService, *stubStaffRepo, *stubAudit
 		passwords: map[uuid.UUID]string{},
 	}
 	audit := &stubAuditRepo{}
-	return NewStaffService(repo, audit), repo, audit, adminID, superID
+	return NewStaffService(repo, nil, audit), repo, audit, adminID, superID
 }
 
 func adminActor(id uuid.UUID) domain.Actor {
