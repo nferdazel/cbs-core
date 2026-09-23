@@ -13,9 +13,11 @@ import (
 // Bila cakupan unit aktor sudah diresolusi middleware (Actor.BranchScope.Loaded),
 // filter memakai himpunan kode cabang yang boleh diakses (cabang/area/wilayah),
 // bukan satu kode: area melihat semua cabang di areanya, wilayah seluruh
-// wilayahnya. Bank tanpa area/wilayah tetap menghasilkan himpunan satu kode,
-// sehingga perilakunya sama dengan sebelumnya. Jalur lama (cakupan belum
-// diresolusi, mis. aktor yang dibangun di uji unit) dipertahankan apa adanya.
+// wilayahnya. Karena kolom yang difilter bertipe uuid sedangkan cakupan berisi
+// kode, kode dipetakan lebih dulu ke id cabang lewat subquery. Bank tanpa
+// area/wilayah tetap menghasilkan himpunan satu kode, sehingga perilakunya sama
+// dengan sebelumnya. Jalur lama (cakupan belum diresolusi, mis. aktor yang
+// dibangun di uji unit) dipertahankan apa adanya.
 //
 // Baris dengan branch_id NULL sengaja TETAP disertakan. Migrasi 000020 hanya
 // mengisi branch_id bila ada dasar cabang yang sah, sehingga NULL berarti data
@@ -26,7 +28,11 @@ func branchReadClause(column string, actor domain.Actor) (string, []any) {
 		return "", nil
 	}
 	if actor.HasResolvedBranchScope() {
-		clause := fmt.Sprintf("(%s IS NULL OR %s = ANY($1))", column, column)
+		// Kolom branch_id bertipe uuid, sedangkan cakupan berisi kode unit. Kode
+		// dipetakan ke id lewat subquery, bukan dibandingkan langsung: `branch_id =
+		// ANY(kode)` membuat PostgreSQL menolak input kode sebagai uuid (SQLSTATE
+		// 22P02) sehingga setiap endpoint daftar gagal 500 untuk staf bercabang.
+		clause := fmt.Sprintf("(%s IS NULL OR %s IN (SELECT id FROM branches WHERE code = ANY($1)))", column, column)
 		return clause, []any{actor.BranchScope.Codes()}
 	}
 	// Nilai lama: pemetaan kode cabang aktor ke id memakai subquery, bukan query

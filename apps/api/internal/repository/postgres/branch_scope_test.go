@@ -53,8 +53,11 @@ func TestBranchReadClause(t *testing.T) {
 		if !strings.Contains(clause, "loans.branch_id IS NULL") {
 			t.Fatalf("klausa harus menyertakan baris branch_id NULL: %q", clause)
 		}
-		if !strings.Contains(clause, "= ANY($1)") {
-			t.Fatalf("klausa cakupan hierarki harus memakai himpunan kode: %q", clause)
+		// branch_id bertipe uuid, jadi kode TIDAK boleh dibandingkan langsung dengan
+		// kolom itu; kode wajib dipetakan ke id lewat subquery. Klausa `= ANY($1)`
+		// langsung ke branch_id menyebabkan SQLSTATE 22P02 dan endpoint 500.
+		if !strings.Contains(clause, "IN (SELECT id FROM branches WHERE code = ANY($1))") {
+			t.Fatalf("klausa cakupan hierarki harus memetakan kode ke id cabang: %q", clause)
 		}
 		if len(args) != 1 {
 			t.Fatalf("argumen %v, ingin satu parameter himpunan", args)
