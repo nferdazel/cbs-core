@@ -18,6 +18,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select } from "@/components/ui/Select";
 import { ErrorState } from "@/components/ui/States";
+import { AccountFreeze } from "@/components/account/AccountFreeze";
 import { AccountReactivation } from "@/components/account/AccountReactivation";
 import { AccountOpening } from "@/components/account/AccountOpening";
 
@@ -131,6 +132,15 @@ export default function RekeningPage() {
     setReloadKey((key) => key + 1);
   };
 
+  const handleAccountChanged = (updated: AccountRecord, message: string) => {
+    // Perbarui baris di tempat, lalu muat ulang halaman agar sinkron dengan server.
+    setAccounts((prev) =>
+      prev.map((account) => (account.id === updated.id ? updated : account)),
+    );
+    setSuccessMessage(message);
+    load(page, query);
+  };
+
   const resetSearch = () => setSearch("");
 
   const columns: Column<AccountRecord>[] = [
@@ -170,7 +180,13 @@ export default function RekeningPage() {
       header: t.common.actions,
       align: "right",
       cell: (row) => (
-        <AccountReactivation account={row} onReactivated={handleReactivated} />
+        <div className="flex justify-end gap-2">
+          <AccountFreeze account={row} onChanged={handleAccountChanged} />
+          <AccountReactivation
+            account={row}
+            onReactivated={handleReactivated}
+          />
+        </div>
       ),
     });
   }

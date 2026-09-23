@@ -6,6 +6,7 @@ import {
   BalanceSheet,
   CashFlow,
   IncomeStatement,
+  KPMMReport,
   ReportKind,
   ReportRow,
   TrialBalanceRow,
@@ -20,6 +21,7 @@ import { Select } from "@/components/ui/Select";
 import { DateInput } from "@/components/ui/DateInput";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
+import { KpmmReport } from "@/components/report/KpmmReport";
 
 function isoDate(date: Date): string {
   const year = date.getFullYear();
@@ -42,6 +44,7 @@ export default function LaporanPage() {
   const [income, setIncome] = useState<IncomeStatement | null>(null);
   const [balance, setBalance] = useState<BalanceSheet | null>(null);
   const [cash, setCash] = useState<CashFlow | null>(null);
+  const [kpmm, setKpmm] = useState<KPMMReport | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +58,7 @@ export default function LaporanPage() {
       { value: "balance-sheet", label: t.reports.kindBalanceSheet },
       { value: "income-statement", label: t.reports.kindIncomeStatement },
       { value: "cash-flow", label: t.reports.kindCashFlow },
+      { value: "kpmm", label: t.reports.kindKpmm },
     ],
     [t],
   );
@@ -66,6 +70,7 @@ export default function LaporanPage() {
     setIncome(null);
     setBalance(null);
     setCash(null);
+    setKpmm(null);
     try {
       if (kind === "trial-balance") {
         const res = await request<TrialBalanceRow[]>(
@@ -82,11 +87,16 @@ export default function LaporanPage() {
           `/reports/income-statement?from=${from}&to=${to}`,
         );
         setIncome(res.data ?? null);
-      } else {
+      } else if (kind === "cash-flow") {
         const res = await request<CashFlow>(
           `/reports/cash-flow?from=${from}&to=${to}`,
         );
         setCash(res.data ?? null);
+      } else {
+        // KPMM menerima periode YYYY-MM atau YYYY-MM-DD; tanggal "Per Tanggal"
+        // dipakai apa adanya sehingga tidak ada pemilih periode kedua.
+        const res = await request<KPMMReport>(`/reports/kpmm?period=${asOf}`);
+        setKpmm(res.data ?? null);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t.reports.loadError);
@@ -131,7 +141,7 @@ export default function LaporanPage() {
     },
   ];
 
-  const usesRange = kind !== "balance-sheet";
+  const usesRange = kind !== "balance-sheet" && kind !== "kpmm";
 
   return (
     <>
@@ -315,11 +325,14 @@ export default function LaporanPage() {
               </>
             )}
 
+            {kind === "kpmm" && kpmm && <KpmmReport report={kpmm} />}
+
             {kind !== "trial-balance" &&
               !loading &&
               !income &&
               !balance &&
-              !cash && (
+              !cash &&
+              !kpmm && (
                 <div className="px-4 py-8 text-center text-body text-ink-600">
                   {t.reports.emptyReport}
                 </div>

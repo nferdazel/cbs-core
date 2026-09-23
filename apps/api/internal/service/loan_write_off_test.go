@@ -545,6 +545,9 @@ func TestWriteOffLoan_CKPNMenyalaMelepasAkunCKPN(t *testing.T) {
 	f, svc := writeOffFixture()
 	svc.approvals = nil
 	svc.config = &ckpnConfigStub{values: map[string]string{cfgCKPNEnabled: "true"}}
+	// Cadangan CKPN kredit penuh menutup pokok, sehingga seluruh pokok dilepas dari
+	// akun CKPN dan tidak ada selisih yang harus diakui sebagai beban.
+	f.repo.loan.RequiredCKPN = decimal.NewFromInt(2_500_000)
 
 	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
 		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi",
@@ -560,6 +563,72 @@ func TestWriteOffLoan_CKPNMenyalaMelepasAkunCKPN(t *testing.T) {
 	}
 	if hasWriteOffLine(lines, "10900", domain.DirectionDebit) {
 		t.Fatalf("akun PPAP 10900 masih dilepas saat CKPN aktif: %+v", lines)
+	}
+}
+
+// Saat CKPN aktif dan cadangan kredit LEBIH KECIL dari pokok, yang dilepas dari akun
+// CKPN harus tepat sebesar cadangan itu (bukan pokok penuh), dan selisih pokok yang
+// belum dicadangkan diakui sebagai beban kerugian penurunan nilai. Tanpa pemisahan ini
+// pelepasan sebesar pokok membuat saldo CKPN negatif. Test gagal bila kaki CKPN masih
+// sebesar pokok (2.500.000) atau kaki beban tidak ada.
+func TestWriteOffLoan_CKPNAktifMelepasCadanganKreditDanBebanSisa(t *testing.T) {
+	f, svc := writeOffFixture()
+	svc.approvals = nil
+	svc.config = &ckpnConfigStub{values: map[string]string{cfgCKPNEnabled: "true"}}
+	f.repo.loan.RequiredCKPN = decimal.NewFromInt(1_500_000) // < pokok 2.500.000
+
+	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("hapus buku dengan CKPN aktif: %v", err)
+	}
+	lines := f.posting.requests[0].Lines
+	amountOf := func(account string, dir domain.EntryDirection) decimal.Decimal {
+		for _, l := range lines {
+			if l.AccountNumber == account && l.Direction == dir {
+				return l.Amount
+			}
+		}
+		return decimal.Zero
+	}
+	if got := amountOf("10950", domain.DirectionDebit); !got.Equal(decimal.NewFromInt(1_500_000)) {
+		t.Fatalf("cadangan CKPN dilepas %s, ingin tepat 1500000 (required_ckpn)", got)
+	}
+	if got := amountOf("50301", domain.DirectionDebit); !got.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("beban selisih %s, ingin 1000000 (pokok - required_ckpn)", got)
+	}
+	if got := amountOf("10301", domain.DirectionCredit); !got.Equal(decimal.NewFromInt(2_500_000)) {
+		t.Fatalf("pokok dilepas %s, ingin tetap 2500000", got)
+	}
+	if debit, credit := sumDirection(lines, domain.DirectionDebit), sumDirection(lines, domain.DirectionCredit); !debit.Equal(credit) {
+		t.Fatalf("jurnal tidak seimbang: debit %s != kredit %s", debit, credit)
+	}
+}
+
+// Saat CKPN aktif tetapi cadangan kredit NOL (CKPN belum pernah dijalankan untuk
+// kredit ini), tidak ada yang dilepas dari akun CKPN; seluruh pokok diakui sebagai
+// beban. Kaki cadangan yang bernilai nol dilewati poster, jadi override akun juga
+// tidak boleh dipasang (kalau dipasang, poster menolak karena override tak terpakai).
+func TestWriteOffLoan_CKPNAktifTanpaCadanganSeluruhnyaBeban(t *testing.T) {
+	f, svc := writeOffFixture()
+	svc.approvals = nil
+	svc.config = &ckpnConfigStub{values: map[string]string{cfgCKPNEnabled: "true"}}
+	f.repo.loan.RequiredCKPN = decimal.Zero
+
+	if _, err := svc.WriteOffLoan(context.Background(), domain.WriteOffLoanInput{
+		LoanID: f.loanID, Reason: "debitor pailit", CollectionEfforts: "somasi",
+	}, writeOffActor()); err != nil {
+		t.Fatalf("hapus buku dengan CKPN aktif tanpa cadangan: %v", err)
+	}
+	lines := f.posting.requests[0].Lines
+	if hasWriteOffLine(lines, "10950", domain.DirectionDebit) || hasWriteOffLine(lines, "10900", domain.DirectionDebit) {
+		t.Fatalf("tidak boleh ada pelepasan cadangan saat saldo CKPN nol: %+v", lines)
+	}
+	if !hasWriteOffLine(lines, "50301", domain.DirectionDebit) {
+		t.Fatalf("seluruh pokok harus diakui sebagai beban saat CKPN nol: %+v", lines)
+	}
+	if debit, credit := sumDirection(lines, domain.DirectionDebit), sumDirection(lines, domain.DirectionCredit); !debit.Equal(credit) {
+		t.Fatalf("jurnal tidak seimbang: debit %s != kredit %s", debit, credit)
 	}
 }
 
@@ -580,6 +649,16 @@ func TestWriteOffLoan_CKPNMatiTetapLepasAkunPPAP(t *testing.T) {
 	}
 	if hasWriteOffLine(lines, "10950", domain.DirectionDebit) {
 		t.Fatalf("akun CKPN 10950 dipakai padahal CKPN mati: %+v", lines)
+	}
+	// Jalur CKPN mati TIDAK boleh memakai pemisahan beban: kaki debit PPAP tetap
+	// sebesar pokok penuh dan tidak ada beban selisih.
+	for _, l := range lines {
+		if l.Direction == domain.DirectionDebit && l.AccountNumber == "10900" && !l.Amount.Equal(decimal.NewFromInt(2_500_000)) {
+			t.Fatalf("CKPN mati: pelepasan PPAP %s, ingin tetap 2500000", l.Amount)
+		}
+		if l.AccountNumber == "50301" {
+			t.Fatalf("CKPN mati tidak boleh memakai akun beban CKPN 50301: %+v", lines)
+		}
 	}
 }
 
@@ -631,5 +710,41 @@ func TestRecoverWrittenOffLoan_MenolakMelebihiBatasSaatPersetujuan(t *testing.T)
 	}
 	if len(f.posting.requests) != 0 {
 		t.Fatalf("jurnal %d, ingin 0", len(f.posting.requests))
+	}
+}
+
+// Keputusan panel: pada ambang 0 (bawaan setelah migrasi 000092), pemulihan berapa pun
+// nominalnya menuntut persetujuan pejabat kedua — tidak ada yang lolos langsung.
+// Kecil dan besar diuji sama supaya "setiap" benar-benar berarti setiap, bukan hanya
+// nominal di atas batas tertentu. Uji gagal bila ambang 0 malah menjurnal langsung.
+func TestRecoverWrittenOffLoan_AmbangNolKecilDanBesarButuhPersetujuan(t *testing.T) {
+	for _, tc := range []struct {
+		nama   string
+		amount int64
+	}{
+		{"kecil", 100_000},
+		{"besar", 2_000_000}, // masih <= written_off_amount fixture (2.610.000)
+	} {
+		t.Run(tc.nama, func(t *testing.T) {
+			f, svc := writeOffFixture() // stubApprovals: ambang recovery 0
+			f.repo.loan.Status = domain.LoanStatusWrittenOff
+
+			loan, err := svc.RecoverWrittenOffLoan(context.Background(), domain.RecoverWrittenOffLoanInput{
+				LoanID: f.loanID, RecoveryAmount: decimal.NewFromInt(tc.amount),
+			}, writeOffActor())
+			var pending *domain.PendingApprovalError
+			if loan != nil || !errors.As(err, &pending) {
+				t.Fatalf("pemulihan %d pada ambang 0 harus menunggu persetujuan, dapat: %v", tc.amount, err)
+			}
+			if pending.ActionType != ActionLoanRecovery {
+				t.Fatalf("jenis aksi %s, ingin %s", pending.ActionType, ActionLoanRecovery)
+			}
+			if len(f.posting.requests) != 0 {
+				t.Fatalf("jurnal %d, ingin 0 sebelum disetujui", len(f.posting.requests))
+			}
+			if approvals := svc.approvals.(*stubApprovals); len(approvals.created) != 1 {
+				t.Fatalf("permintaan persetujuan %d, ingin 1", len(approvals.created))
+			}
+		})
 	}
 }

@@ -62,3 +62,25 @@ func TestAmbangRecoveryAwalAdalahKunciKonfigurasi(t *testing.T) {
 		t.Fatalf("%s tidak memuat nilai awal 10000000 untuk ambang recovery", migrasi)
 	}
 }
+
+// Keputusan panel: ambang recovery disetel 0 lewat migrasi 000092 (setiap pemulihan
+// menuntut pejabat kedua). Migrasi itu HARUS tetap menjaga kebijakan bank: hanya
+// mengubah baris yang masih memuat nilai bawaan 000085 ('10000000'). Uji ini mengunci
+// nilai tujuan dan klausa penjaganya; bila penjaga dihapus, uji gagal.
+func TestAmbangRecoveryDefaultNolLewatMigrasi000092(t *testing.T) {
+	const migrasi = "000092_recovery_threshold_zero.up.sql"
+	data, err := os.ReadFile(filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations", migrasi))
+	if err != nil {
+		t.Fatalf("membaca %s: %v", migrasi, err)
+	}
+	sql := string(data)
+	if !strings.Contains(sql, "maker_checker.loan_recovery.threshold") {
+		t.Fatalf("%s tidak menyetel kunci maker_checker.loan_recovery.threshold", migrasi)
+	}
+	if !strings.Contains(sql, "SET value = '0'") {
+		t.Fatalf("%s tidak menyetel ambang recovery menjadi 0", migrasi)
+	}
+	if !strings.Contains(sql, "value = '10000000'") {
+		t.Fatalf("%s tidak menjaga nilai bank: tidak ada klausa WHERE value = '10000000'", migrasi)
+	}
+}

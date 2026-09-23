@@ -38,6 +38,10 @@ type Amounts struct {
 	Tax       decimal.Decimal
 	Penalty   decimal.Decimal
 	Total     decimal.Decimal
+	// Reserve dan Loss hanya diisi jalur hapus buku saat CKPN aktif (lihat
+	// domain.AmountReserve / domain.AmountLoss). Keduanya nol pada jalur lain.
+	Reserve decimal.Decimal
+	Loss    decimal.Decimal
 }
 
 func (a Amounts) pick(source domain.AmountSource) decimal.Decimal {
@@ -54,6 +58,10 @@ func (a Amounts) pick(source domain.AmountSource) decimal.Decimal {
 		return a.Penalty
 	case domain.AmountTotal:
 		return a.Total
+	case domain.AmountReserve:
+		return a.Reserve
+	case domain.AmountLoss:
+		return a.Loss
 	default:
 		return decimal.Zero
 	}
@@ -74,6 +82,22 @@ func (p *ProductPoster) PostEventTx(
 	if err != nil {
 		return nil, fmt.Errorf("membaca pemetaan jurnal produk %s: %w", product.Code, err)
 	}
+	return p.postEventWithRulesTx(ctx, tx, product, event, rules, amounts, meta)
+}
+
+// postEventWithRulesTx adalah inti PostEventTx, dengan pemetaan yang sudah dibaca
+// pemanggil. Dipakai jalur yang perlu MENGUBAH nominal atau menambah satu kaki tanpa
+// menulis ulang seluruh pemetaan produk (mis. pemisahan pelepasan cadangan CKPN vs
+// beban kerugian pada hapus buku). Pemeriksaan kelengkapan pemetaan tetap sama.
+func (p *ProductPoster) postEventWithRulesTx(
+	ctx context.Context,
+	tx any,
+	product *domain.BankingProduct,
+	event domain.PostingEvent,
+	rules []domain.JournalMappingRule,
+	amounts Amounts,
+	meta PostingMeta,
+) (*domain.JournalEntry, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("produk %s belum punya pemetaan jurnal untuk peristiwa %s", product.Code, event)
 	}
@@ -98,10 +122,11 @@ func (p *ProductPoster) PostEventTx(
 		if hasOverride && override != "" {
 			accountNumber = override
 		} else {
-			accountNumber, err = p.resolver.ResolveGLAccount(ctx, tx, rule.COACode)
+			resolved, err := p.resolver.ResolveGLAccount(ctx, tx, rule.COACode)
 			if err != nil {
 				return nil, err
 			}
+			accountNumber = resolved
 		}
 		lines = append(lines, domain.PostingLine{
 			AccountNumber: accountNumber,

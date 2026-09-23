@@ -215,6 +215,15 @@ const (
 	AmountTax       AmountSource = "TAX"
 	AmountPenalty   AmountSource = "PENALTY"
 	AmountTotal     AmountSource = "TOTAL"
+
+	// AmountReserve dan AmountLoss hanya dipakai jalur hapus buku saat CKPN aktif dan
+	// TIDAK pernah disimpan di product_journal_mapping: pemetaan produk tetap memakai
+	// PRINCIPAL, lalu loan_service mengganti kaki debit cadangan menjadi RESERVE
+	// (sebesar loans.required_ckpn) dan menambah kaki beban LOSS untuk selisih pokok
+	// yang belum dicadangkan. Keduanya ada agar pelepasan tidak melebihi cadangan
+	// (yang membuat saldo CKPN negatif) dan tidak menyisakan cadangan.
+	AmountReserve AmountSource = "RESERVE"
+	AmountLoss    AmountSource = "LOSS"
 )
 
 type BankingProduct struct {

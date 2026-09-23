@@ -1420,6 +1420,36 @@ func (s *loanService) writeOffReserveOverride(ctx context.Context, tx any, produ
 	return map[string]string{reserveCOA: acc}, nil
 }
 
+// redirectWriteOffReserve menyalin pemetaan hapus buku dan mengubah SATU kaki debit
+// pokok (cadangan) menjadi sumber nominal AmountReserve, sehingga yang dilepas dari
+// akun cadangan adalah required_ckpn kredit — bukan pokok penuh. Kaki kredit pokok
+// tetap memakai AmountPrincipal agar seluruh pokok tetap keluar dari neraca.
+func redirectWriteOffReserve(rules []domain.JournalMappingRule) []domain.JournalMappingRule {
+	out := make([]domain.JournalMappingRule, len(rules))
+	copy(out, rules)
+	for i := range out {
+		if out[i].Direction == domain.DirectionDebit && out[i].AmountSource == domain.AmountPrincipal {
+			out[i].AmountSource = domain.AmountReserve
+			break
+		}
+	}
+	return out
+}
+
+// writeOffLossCOA memilih akun beban kerugian penurunan nilai per buku untuk selisih
+// pokok yang belum dicadangkan saat hapus buku CKPN. Akunnya sengaja memakai kunci
+// kebijakan ckpn.coa.expense yang sudah ada (bank dapat mengarahkannya ke akun
+// tersendiri), bukan akun baru yang ditanam di kode.
+func (s *loanService) writeOffLossCOA(ctx context.Context, product *domain.BankingProduct) string {
+	book := domain.BookConventional
+	if product != nil && product.Book == domain.BookSyariah {
+		book = domain.BookSyariah
+	}
+	return resolveCKPNCOA(ctx, s.config, book,
+		cfgCKPNExpenseCOASyariah, cfgCKPNExpenseCOA,
+		fallbackCKPNExpenseSyariah, fallbackCKPNExpenseConventional)
+}
+
 // writeOffTx menjalankan hapus buku di dalam transaksi pemanggil: jurnal, status, sisa
 // pokok, dan jejak auditnya commit bersama. Selain pokok, piutang bunga dan denda yang
 // masih tercatat ikut dilepas supaya tidak ada aset tanpa penopang yang tertinggal.
@@ -1436,20 +1466,60 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	if err := requireWriteOffLegs(rules, terms); err != nil {
 		return err
 	}
-	// Saat CKPN aktif, kaki debit cadangan diarahkan ke akun CKPN per buku (bukan
-	// akun PPAP pada pemetaan produk). Bila CKPN mati, overrides nil dan pemetaan
-	// produk dipakai apa adanya — perilaku lama tidak berubah.
-	overrides, err := s.writeOffReserveOverride(ctx, tx, product, rules)
-	if err != nil {
-		return err
-	}
-
-	if _, err := s.poster.PostEventTx(ctx, tx, product, domain.EventLoanWriteOff, Amounts{
+	postRules := rules
+	amounts := Amounts{
 		Principal: terms.Principal,
 		Profit:    terms.AccruedProfit,
 		Penalty:   terms.Penalty,
 		Total:     terms.Total(),
-	}, PostingMeta{
+	}
+	// Jalur CKPN aktif: yang dibukukan sebagai cadangan kredit bukan PPAP, melainkan
+	// CKPN. Nilai yang boleh dilepas dari akun CKPN karena itu HANYA sebesar cadangan
+	// yang benar-benar terkait kredit ini (loans.required_ckpn), bukan sebesar pokok.
+	// Melepas sebesar pokok (benar pada jalur PPAP karena cadangan 100% pokok memang
+	// diwajibkan) akan MENYISAKAN cadangan bila required_ckpn > pokok, atau membuat
+	// saldo CKPN NEGATIF bila required_ckpn < pokok. Selisih pokok yang belum
+	// dicadangkan diakui sebagai beban kerugian penurunan nilai (ckpn.coa.expense buku
+	// kredit) supaya jurnal tetap seimbang dan pokok tetap dilepas penuh.
+	ckpnActive := s.config != nil && s.config.GetBool(ctx, cfgCKPNEnabled, false)
+	ckpnReleased, writeOffLoss := decimal.Zero, decimal.Zero
+	if ckpnActive {
+		ckpnReleased = loan.RequiredCKPN
+		if ckpnReleased.IsNegative() {
+			ckpnReleased = decimal.Zero
+		}
+		if ckpnReleased.GreaterThan(terms.Principal) {
+			// Cadangan tidak pernah lebih besar dari pokok (EAD = pokok - kerugian
+			// restrukturisasi), jadi ini hanya penjaga defensif: jangan melepas lebih
+			// dari yang dilepas neraca.
+			ckpnReleased = terms.Principal
+		}
+		writeOffLoss = terms.Principal.Sub(ckpnReleased)
+		amounts.Reserve = ckpnReleased
+		postRules = redirectWriteOffReserve(rules)
+		if writeOffLoss.IsPositive() {
+			amounts.Loss = writeOffLoss
+			postRules = append(append([]domain.JournalMappingRule{}, postRules...), domain.JournalMappingRule{
+				Direction:    domain.DirectionDebit,
+				COACode:      s.writeOffLossCOA(ctx, product),
+				AmountSource: domain.AmountLoss,
+			})
+		}
+	}
+	// Saat CKPN aktif DAN ada cadangan yang dilepas, kaki debit cadangan diarahkan ke
+	// akun CKPN per buku (bukan akun PPAP pada pemetaan produk). Bila tidak ada
+	// cadangan (mis. CKPN belum pernah dijalankan untuk kredit ini), tidak ada kaki
+	// cadangan yang tersisa sehingga overrides juga kosong. Bila CKPN mati, overrides
+	// nil dan pemetaan produk dipakai apa adanya — perilaku lama tidak berubah.
+	var overrides map[string]string
+	if ckpnReleased.IsPositive() {
+		overrides, err = s.writeOffReserveOverride(ctx, tx, product, rules)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := s.poster.postEventWithRulesTx(ctx, tx, product, domain.EventLoanWriteOff, postRules, amounts, PostingMeta{
 		TransactionType:  domain.TxTypeAdjustment,
 		Description:      fmt.Sprintf("Hapus buku kredit %s: %s", loan.LoanNumber, reason),
 		IdempotencyKey:   "WOFF-" + loan.LoanNumber,
@@ -1471,7 +1541,7 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 	if err := s.loanRepo.SetWrittenOffAmountTx(ctx, tx, loan.ID, terms.Total()); err != nil {
 		return err
 	}
-	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), map[string]any{
+	changes := map[string]any{
 		"loan_number":           loan.LoanNumber,
 		"reason":                reason,
 		"collection_efforts":    collectionEfforts,
@@ -1486,7 +1556,16 @@ func (s *loanService) writeOffTx(ctx context.Context, tx any, loan *domain.Loan,
 		"collectibility": string(loan.Collectibility),
 		"dpd":            loan.DPD,
 		"required_ppap":  loan.RequiredPPAP.StringFixed(2),
-	})
+	}
+	// Jalur CKPN aktif menyimpan dasar pelepasan: cadangan yang benar-benar dilepas
+	// dan selisih pokok yang diakui sebagai beban. Bidang ini TIDAK ditambahkan saat
+	// CKPN mati agar jejak audit jalur lama persis tidak berubah.
+	if ckpnActive {
+		changes["required_ckpn"] = loan.RequiredCKPN.StringFixed(2)
+		changes["ckpn_released"] = ckpnReleased.StringFixed(2)
+		changes["write_off_loss"] = writeOffLoss.StringFixed(2)
+	}
+	return writeAudit(ctx, s.auditRepo, tx, actor, "WRITE_OFF_LOAN", "loan", loan.ID.String(), changes)
 }
 
 // recoveryKey membangun kunci idempotensi recovery yang DETERMINISTIK. Kunci dari

@@ -235,6 +235,66 @@ func woffSetCKPNEnabled(t *testing.T, e *bookWriteEnv, enabled bool) {
 	e.configSvc.Invalidate("ckpn.enabled")
 }
 
+// woffSetRequiredCKPN menyetel target CKPN kredit (loans.required_ckpn) langsung di
+// database uji — meniru hasil jalur pembentukan CKPN tanpa harus menjalankannya.
+func woffSetRequiredCKPN(t *testing.T, e *bookWriteEnv, loanID uuid.UUID, amount int64) {
+	t.Helper()
+	if _, err := e.db.ExecContext(e.ctx,
+		`UPDATE loans SET required_ckpn = $2 WHERE id = $1`, loanID, amount); err != nil {
+		t.Fatalf("menyetel required_ckpn: %v", err)
+	}
+}
+
+// woffGLAccountID mencari id akun GL internal satu kode COA, memakai pola yang sama
+// dengan LedgerRepository.ResolveGLAccount (akun INTERNAL_GL pertama menurut nomor).
+func woffGLAccountID(t *testing.T, e *bookWriteEnv, coaCode string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := e.db.QueryRowContext(e.ctx, `
+		SELECT a.id FROM accounts a
+		JOIN chart_of_accounts coa ON coa.id = a.coa_id
+		WHERE coa.code = $1 AND a.account_type = 'INTERNAL_GL'
+		ORDER BY a.account_number LIMIT 1`, coaCode).Scan(&id); err != nil {
+		t.Fatalf("mencari akun GL COA %s: %v", coaCode, err)
+	}
+	return id
+}
+
+func woffSetGLBalance(t *testing.T, e *bookWriteEnv, accountID uuid.UUID, amount decimal.Decimal) {
+	t.Helper()
+	if _, err := e.db.ExecContext(e.ctx,
+		`UPDATE accounts SET balance = $2, available_balance = $2 WHERE id = $1`, accountID, amount); err != nil {
+		t.Fatalf("menyetel saldo akun GL: %v", err)
+	}
+}
+
+func woffGLBalance(t *testing.T, e *bookWriteEnv, accountID uuid.UUID) decimal.Decimal {
+	t.Helper()
+	var balance decimal.Decimal
+	if err := e.db.QueryRowContext(e.ctx, `SELECT balance FROM accounts WHERE id = $1`, accountID).Scan(&balance); err != nil {
+		t.Fatalf("membaca saldo akun GL: %v", err)
+	}
+	return balance
+}
+
+// woffJournalAmount membaca jumlah satu baris jurnal hapus buku (kunci WOFF-<nomor>)
+// pada kode COA dan arah tertentu. Nol berarti baris itu tidak ada.
+func woffJournalAmount(t *testing.T, e *bookWriteEnv, loanNumber, coaCode, direction string) decimal.Decimal {
+	t.Helper()
+	var amount decimal.Decimal
+	if err := e.db.QueryRowContext(e.ctx, `
+		SELECT COALESCE(SUM(jl.amount), 0)
+		FROM journal_entries je
+		JOIN journal_lines jl ON jl.journal_entry_id = je.id
+		JOIN accounts a ON a.id = jl.account_id
+		JOIN chart_of_accounts coa ON coa.id = a.coa_id
+		WHERE je.idempotency_key = 'WOFF-' || $1 AND coa.code = $2 AND jl.direction = $3`,
+		loanNumber, coaCode, direction).Scan(&amount); err != nil {
+		t.Fatalf("membaca nominal jurnal %s/%s: %v", coaCode, direction, err)
+	}
+	return amount
+}
+
 // woffDebitAccounts mengembalikan himpunan kode COA yang didebit jurnal hapus buku
 // (kunci WOFF-) untuk satu nomor kredit.
 func woffDebitAccounts(t *testing.T, e *bookWriteEnv, loanNumber string) map[string]bool {
@@ -287,12 +347,22 @@ func TestIntegrasiHapusBukuMelepasCadanganSesuaiSaklarCKPN(t *testing.T) {
 	if off["10950"] {
 		t.Fatalf("CKPN mati tidak boleh menyentuh akun CKPN 10950: %v", off)
 	}
+	// Perilaku CKPN mati harus PERSIS seperti sebelumnya: PPAP dilepas sebesar pokok
+	// penuh dan akun beban CKPN tidak muncul.
+	if got := woffJournalAmount(t, e, loanOff.LoanNumber, "10900", "DEBIT"); !got.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("CKPN mati melepas PPAP %s, ingin tetap 1000000", got)
+	}
+	if got := woffJournalAmount(t, e, loanOff.LoanNumber, "50301", "DEBIT"); !got.IsZero() {
+		t.Fatalf("CKPN mati tidak boleh memakai beban CKPN 50301, dapat %s", got)
+	}
 
 	// CKPN aktif: kaki debit cadangan diarahkan ke CKPN 10950, bukan PPAP 10900.
 	woffSetCKPNEnabled(t, e, true)
 	t.Cleanup(func() { woffSetCKPNEnabled(t, e, false) })
 	loanOn, actorOn := writeOffIntegrationLoan(t, e, "WK")
 	woffSetState(t, e, loanOn.ID, string(domain.CollectibilityKol5), 1_000_000)
+	// Cadangan CKPN kredit diisi penuh menutup pokok, sehingga seluruhnya dilepas.
+	woffSetRequiredCKPN(t, e, loanOn.ID, 1_000_000)
 	woffBypassApproval(t, e, "loan_write_off")
 	if _, err := e.loanSvc.WriteOffLoan(e.ctx, domain.WriteOffLoanInput{
 		LoanID: loanOn.ID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x",
@@ -305,5 +375,57 @@ func TestIntegrasiHapusBukuMelepasCadanganSesuaiSaklarCKPN(t *testing.T) {
 	}
 	if on["10900"] {
 		t.Fatalf("CKPN aktif tidak boleh melepas PPAP 10900: %v", on)
+	}
+}
+
+// Saat CKPN aktif, JUMLAH yang dilepas dari akun CKPN harus sebesar cadangan yang
+// terkait kredit itu (loans.required_ckpn), bukan pokok penuh. Selisih pokok yang belum
+// dicadangkan diakui sebagai beban kerugian penurunan nilai, dan pokok tetap dilepas
+// penuh. Diuji pada database sungguhan dengan angka jurnal nyata, sekaligus
+// membuktikan saldo akun CKPN tidak menjadi negatif maupun menyisakan saldo.
+func TestIntegrasiHapusBukuCKPNMelepasSejumlahCadangan(t *testing.T) {
+	e := newBookWriteEnv(t)
+	woffSetCKPNEnabled(t, e, true)
+	t.Cleanup(func() { woffSetCKPNEnabled(t, e, false) })
+
+	loan, actor := writeOffIntegrationLoan(t, e, "WQ")
+	// Pokok 1.000.000; cadangan CKPN kredit hanya 600.000 (PD x LGD < 100%), sedangkan
+	// syarat PPAP 100% tetap dipenuhi lewat required_ppap.
+	woffSetState(t, e, loan.ID, string(domain.CollectibilityKol5), 1_000_000)
+	woffSetRequiredCKPN(t, e, loan.ID, 600_000)
+
+	// Danai akun CKPN tepat sebesar cadangan yang akan dilepas. Pelepasan sebesar
+	// pokok (1.000.000) akan membuat saldo -400.000, sehingga cacat lama terdeteksi.
+	ckpnAcc := woffGLAccountID(t, e, "10950")
+	woffSetGLBalance(t, e, ckpnAcc, decimal.NewFromInt(600_000))
+
+	woffBypassApproval(t, e, "loan_write_off")
+	if _, err := e.loanSvc.WriteOffLoan(e.ctx, domain.WriteOffLoanInput{
+		LoanID: loan.ID, Reason: "debitor pailit", CollectionEfforts: "somasi 3x",
+	}, actor); err != nil {
+		t.Fatalf("hapus buku CKPN aktif: %v", err)
+	}
+
+	// Angka jurnal nyata dan hitungan manual: 600.000 (CKPN) + 400.000 (beban)
+	// = 1.000.000 (pokok). Bila jumlah pelepasan masih memakai pokok, uji ini gagal.
+	ckpnReleased := woffJournalAmount(t, e, loan.LoanNumber, "10950", "DEBIT")
+	loss := woffJournalAmount(t, e, loan.LoanNumber, "50301", "DEBIT")
+	principal := woffJournalAmount(t, e, loan.LoanNumber, "10301", "CREDIT")
+	if !ckpnReleased.Equal(decimal.NewFromInt(600_000)) {
+		t.Fatalf("pelepasan CKPN %s, ingin 600000 (= required_ckpn)", ckpnReleased)
+	}
+	if !loss.Equal(decimal.NewFromInt(400_000)) {
+		t.Fatalf("beban selisih %s, ingin 400000 (pokok - required_ckpn)", loss)
+	}
+	if !principal.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("pokok dilepas %s, ingin tetap 1000000", principal)
+	}
+	if !ckpnReleased.Add(loss).Equal(principal) {
+		t.Fatalf("hitungan manual tidak seimbang: %s + %s != %s", ckpnReleased, loss, principal)
+	}
+	// Saldo akun CKPN pasca hapus buku harus NOL: tidak negatif (pelepasan berlebih)
+	// dan tidak menyisakan cadangan.
+	if got := woffGLBalance(t, e, ckpnAcc); got.IsNegative() || !got.IsZero() {
+		t.Fatalf("saldo akun CKPN %s, ingin tepat 0 (tidak negatif, tidak menyisakan)", got)
 	}
 }

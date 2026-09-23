@@ -381,9 +381,7 @@ export default function TutupHariPage() {
               className="mb-4"
               title={t.dayClose.warningsTitle}
             >
-              <p>
-                {eod.warnings.length} {t.dayClose.warningsDesc}
-              </p>
+              <p>{t.dayClose.warningsDesc}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 {eod.warnings.map((warning, index) => (
                   <li key={index}>{warning}</li>
@@ -443,6 +441,19 @@ export default function TutupHariPage() {
                     label: t.dayClose.totalWithdrawals,
                     value: (
                       <MoneyText value={eod.total_withdrawal_amount_today} />
+                    ),
+                  },
+                  {
+                    label: t.dayClose.socialFund,
+                    value: (
+                      <>
+                        <MoneyText value={eod.social_fund_balance} />
+                        {eod.social_fund_note && (
+                          <span className="mt-1 block text-meta text-ink-600">
+                            {eod.social_fund_note}
+                          </span>
+                        )}
+                      </>
                     ),
                   },
                 ]}

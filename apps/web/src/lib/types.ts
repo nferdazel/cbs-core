@@ -158,7 +158,67 @@ export interface CashFlow {
 }
 
 export type ReportKind =
-  "trial-balance" | "balance-sheet" | "income-statement" | "cash-flow";
+  "trial-balance" | "balance-sheet" | "income-statement" | "cash-flow" | "kpmm";
+
+/**
+ * domain.KPMMKomponen (kpmm.go). `tersedia` false berarti komponen belum dapat
+ * dihitung dari data yang ada; `alasan` menyebut data/kunci yang kurang. Nol dan
+ * tidak tersedia adalah dua hal berbeda, jadi UI tidak boleh menampilkan nol.
+ * Nilai desimal dikirim sebagai string agar presisi tidak hilang di JSON.
+ */
+export interface KPMMKomponen {
+  nilai: string;
+  tersedia: boolean;
+  alasan?: string;
+}
+
+/** domain.KPMMATMRBaris (kpmm.go): dasar dan bobot tiap kategori ATMR. */
+export interface KPMMATMRBaris {
+  kategori: string;
+  dasar: string;
+  bobot: string;
+  nilai: string;
+}
+
+/** domain.KPMMModalKelasBaris (kpmm.go). */
+export interface KPMMModalKelasBaris {
+  kelas: string;
+  nilai: string;
+}
+
+/** domain.KPMMReport (kpmm.go). */
+export interface KPMMReport {
+  as_of: string;
+  book: string;
+  atmr: KPMMKomponen;
+  atmr_baris: KPMMATMRBaris[];
+  atmr_tidak_terkategori?: string[];
+  modal_inti_utama: KPMMKomponen;
+  pengurang_modal_inti: KPMMKomponen;
+  modal_inti: KPMMKomponen;
+  modal_pelengkap: KPMMKomponen;
+  modal_pelengkap_instrumen: KPMMKomponen;
+  surplus_revaluasi: KPMMKomponen;
+  ppka_umum: KPMMKomponen;
+  total_modal: KPMMKomponen;
+  /** Rasio dalam PERSEN, bukan fraksi. */
+  rasio_kpmm: KPMMKomponen;
+  rasio_modal_inti: KPMMKomponen;
+  kpmm_min_frac: string;
+  modal_inti_min_frac: string;
+  modal_inti_min_amount: string;
+  modal_pelengkap_max_frac: string;
+  modal_pelengkap_instrumen_max_frac: string;
+  ppka_umum_rwa_max_frac: string;
+  modal_kelas_coa?: KPMMModalKelasBaris[];
+  deduction_basis: string;
+  ppap_business_date?: string;
+  /** False berarti angka masih sementara (komponen modal belum lengkap). */
+  lengkap: boolean;
+  alasan_tidak_lengkap?: string[];
+  parameter_gaps?: string[];
+  catatan?: string[];
+}
 
 /**
  * Peninjauan pemetaan COA ke pos laporan OJK
@@ -242,6 +302,13 @@ export interface EODSummaryResult {
   ckpn_shadow_higher: string;
   ckpn_shadow_assumptions?: string[];
   ckpn_shadow_note?: string;
+  /**
+   * Saldo akun 12500 "Dana Kebajikan" saat tutup hari: akumulasi denda ta'zir yang
+   * BUKAN pendapatan bank dan menunggu keputusan penyaluran DPS. EOD hanya melaporkan.
+   */
+  social_fund_balance: string;
+  /** Catatan singkat status dana kebajikan dari server. */
+  social_fund_note?: string;
   /** Pekerjaan harian best-effort yang gagal/tidak lengkap; teks dari server. */
   warnings?: string[];
   executed_by: string;
