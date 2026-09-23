@@ -177,6 +177,11 @@ type PermissionRepository interface {
 	// CountUsersLosingPermission menghitung pengguna aktif yang izin efektifnya
 	// akan kehilangan p bila p dicabut dari grup groupCode.
 	CountUsersLosingPermission(ctx context.Context, groupCode string, p Permission) (int, error)
+	// CountAccessLossOnMemberRemoval menghitung pengguna yang kehilangan izin
+	// efektif bila userID dikeluarkan dari grup groupCode. Hasilnya 0 atau 1:
+	// penghapusan hanya menyentuh satu pengguna. Dipakai agar penghapusan anggota
+	// yang mencabut akses dituntut konfirmasi, sama seperti pencabutan izin.
+	CountAccessLossOnMemberRemoval(ctx context.Context, groupCode string, userID uuid.UUID) (int, error)
 	// UserExists melaporkan apakah pengguna staf ada. Mencegah pengajuan keanggotaan
 	// untuk pengguna yang tidak dikenal.
 	UserExists(ctx context.Context, userID uuid.UUID) (bool, error)

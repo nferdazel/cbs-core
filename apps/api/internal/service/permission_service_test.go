@@ -20,8 +20,10 @@ type fakePermissionRepo struct {
 	members    map[string]map[uuid.UUID]bool
 	userExists map[uuid.UUID]bool
 	affected   int
-	granted    []string
-	revoked    []string
+	// memberAffected mensimulasikan CountAccessLossOnMemberRemoval.
+	memberAffected int
+	granted        []string
+	revoked        []string
 }
 
 func newFakePermissionRepo() *fakePermissionRepo {
@@ -58,6 +60,10 @@ func (f *fakePermissionRepo) RevokePermissionTx(_ context.Context, _ any, code s
 }
 func (f *fakePermissionRepo) CountUsersLosingPermission(context.Context, string, domain.Permission) (int, error) {
 	return f.affected, nil
+}
+
+func (f *fakePermissionRepo) CountAccessLossOnMemberRemoval(context.Context, string, uuid.UUID) (int, error) {
+	return f.memberAffected, nil
 }
 
 func (f *fakePermissionRepo) UserExists(_ context.Context, userID uuid.UUID) (bool, error) {
@@ -213,5 +219,82 @@ func TestExecuteApprovedRevokeGuardRechecked(t *testing.T) {
 	}
 	if len(repo.revoked) != 0 {
 		t.Fatalf("revoke tetap dijalankan padahal seharusnya ditolak: %v", repo.revoked)
+	}
+}
+
+// Penghapusan anggota yang mencabut izin efektif dituntut konfirmasi, sama seperti
+// pencabutan izin; tanpa konfirmasi pengajuan ditolak, dengan konfirmasi payload
+// membawa buktinya.
+func TestRequestChangeRemoveMemberNeedsConfirmation(t *testing.T) {
+	repo := newFakePermissionRepo()
+	repo.exists["ROLE_TELLER"] = true
+	repo.memberAffected = 1
+	userID := uuid.New()
+	repo.userExists[userID] = true
+	mc := &fakeMakerChecker{}
+	svc := newPermissionSvc(repo, &fakeAuditRepo{}, mc)
+
+	_, err := svc.RequestChange(context.Background(), domain.PermissionChangeInput{
+		GroupCode: "ROLE_TELLER",
+		Operation: domain.PermissionChangeRemoveMember,
+		UserID:    userID.String(),
+	}, actorAdmin())
+	var loss *domain.AccessLossError
+	if !errors.As(err, &loss) {
+		t.Fatalf("err = %v, mau AccessLossError", err)
+	}
+	if loss.AffectedUsers != 1 {
+		t.Fatalf("affected = %d, mau 1", loss.AffectedUsers)
+	}
+
+	if _, err := svc.RequestChange(context.Background(), domain.PermissionChangeInput{
+		GroupCode:         "ROLE_TELLER",
+		Operation:         domain.PermissionChangeRemoveMember,
+		UserID:            userID.String(),
+		ConfirmAccessLoss: true,
+	}, actorAdmin()); err != nil {
+		t.Fatalf("dengan konfirmasi seharusnya diterima: %v", err)
+	}
+	if mc.created == nil || mc.created.Payload["confirm_access_loss"] != true {
+		t.Fatalf("payload pengajuan tidak memuat konfirmasi: %+v", mc.created)
+	}
+}
+
+// Saat persetujuan, penjaga kehilangan akses penghapusan anggota diperiksa ulang
+// memakai keadaan terkini: pengajuan tanpa konfirmasi tidak boleh diam-diam
+// mengeluarkan anggota yang akan kehilangan akses.
+func TestExecuteApprovedRemoveMemberGuardRechecked(t *testing.T) {
+	repo := newFakePermissionRepo()
+	repo.exists["ROLE_TELLER"] = true
+	userID := uuid.New()
+	repo.members["ROLE_TELLER"] = map[uuid.UUID]bool{userID: true}
+	repo.memberAffected = 1 // keadaan berubah setelah pengajuan: kini berdampak
+	svc := newPermissionSvc(repo, &fakeAuditRepo{}, &fakeMakerChecker{})
+
+	err := svc.ExecuteApproved(context.Background(), nil, service.ActionPermissionChange, map[string]any{
+		"group_code":          "ROLE_TELLER",
+		"operation":           string(domain.PermissionChangeRemoveMember),
+		"user_id":             userID.String(),
+		"confirm_access_loss": false,
+	}, actorAdmin())
+	var loss *domain.AccessLossError
+	if !errors.As(err, &loss) {
+		t.Fatalf("err = %v, mau AccessLossError (penjaga diperiksa ulang)", err)
+	}
+	if !repo.members["ROLE_TELLER"][userID] {
+		t.Fatal("anggota tetap dikeluarkan padahal seharusnya ditolak")
+	}
+
+	// Dengan konfirmasi, penghapusan dijalankan.
+	if err := svc.ExecuteApproved(context.Background(), nil, service.ActionPermissionChange, map[string]any{
+		"group_code":          "ROLE_TELLER",
+		"operation":           string(domain.PermissionChangeRemoveMember),
+		"user_id":             userID.String(),
+		"confirm_access_loss": true,
+	}, actorAdmin()); err != nil {
+		t.Fatalf("dengan konfirmasi harus dijalankan: %v", err)
+	}
+	if repo.members["ROLE_TELLER"][userID] {
+		t.Fatal("anggota belum dikeluarkan setelah konfirmasi")
 	}
 }

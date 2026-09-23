@@ -149,6 +149,9 @@ var businessErrors = []error{
 	domain.ErrAccountInactive,
 	domain.ErrAccountDormant,
 	domain.ErrAccountNotDormant,
+	// Unfreeze adalah aturan bisnis: pesannya menyebut status saat ini agar operator
+	// tahu rekening tidak sedang dibekukan.
+	domain.ErrAccountNotFrozen,
 	// Penutupan rekening adalah aturan bisnis: pesannya menyebut syarat yang belum
 	// terpenuhi (saldo/status) agar operator dapat menindaklanjuti.
 	domain.ErrAccountCloseBalance,

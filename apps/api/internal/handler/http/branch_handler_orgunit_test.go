@@ -28,7 +28,7 @@ func (s orgUnitStubBranchService) CreateOrgUnit(context.Context, domain.CreateOr
 func TestCreateOrgUnitKodeTerlaluPanjang422(t *testing.T) {
 	h := httpHandler.NewBranchHandler(orgUnitStubBranchService{err: domain.ErrOrgUnitCodeTooLong})
 
-	body := strings.NewReader(`{"code":"AREA-JABAR","level":"AREA","name":"Area Jabar"}`)
+	body := strings.NewReader(`{"code":"AREA-JABAR-BARAT-01-PANJANG-SEKALI","level":"AREA","name":"Area Jabar"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/branches/org-units", body)
 	claims := &domain.JWTClaims{UserID: [16]byte{2}, Username: "uji-area", Role: domain.RoleSuperAdmin}
 	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims, claims))
@@ -45,7 +45,7 @@ func TestCreateOrgUnitKodeTerlaluPanjang422(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("respons bukan JSON: %v", err)
 	}
-	if !strings.Contains(resp.Error, "8 karakter") {
+	if !strings.Contains(resp.Error, "32 karakter") {
 		t.Fatalf("pesan tidak menyebut batas panjang: %q", resp.Error)
 	}
 }

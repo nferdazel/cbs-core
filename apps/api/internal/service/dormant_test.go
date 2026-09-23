@@ -226,3 +226,17 @@ func TestReactivateRejectsCrossBranch(t *testing.T) {
 		t.Fatalf("reaktivasi lintas cabang harus ErrCrossBranchAccess, dapat %v", err)
 	}
 }
+
+// Gerbang unfreeze: rekening yang bukan FROZEN ditolak, tidak boleh diaktifkan
+// diam-diam (termasuk ACTIVE/DORMANT/CLOSED). Jalur sukses butuh database.
+func TestUnfreezeRejectsNonFrozen(t *testing.T) {
+	for _, status := range []domain.AccountStatus{
+		domain.AccountStatusActive, domain.AccountStatusDormant, domain.AccountStatusClosed,
+	} {
+		svc := &accountService{accountRepo: &stubLedgerAccountRepo{acc: statusAccount("A", status)}}
+		_, err := svc.UnfreezeAccount(context.Background(), "A", "", testActor())
+		if !errors.Is(err, domain.ErrAccountNotFrozen) {
+			t.Fatalf("status %s harus ErrAccountNotFrozen, dapat %v", status, err)
+		}
+	}
+}

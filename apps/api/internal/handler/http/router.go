@@ -249,6 +249,13 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// memulihkan; tidak perlu permission baru untuk reaktivasi.
 				r.With(middleware.RequirePermission(domain.PermAccountsFreeze)).
 					Post("/{accountNumber}/reactivate", p.AccountHandler.Reactivate)
+				// Unfreeze adalah kebalikan operasi pembekuan (FROZEN -> ACTIVE).
+				// Izin yang sama (accounts:freeze) sudah cocok: dengan begitu peran
+				// yang boleh membekukan tetap boleh membatalkannya, tidak ada yang
+				// kehilangan akses. Bila bank ingin memisahkan kewenangannya,
+				// matriks izin final menunggu keputusan bank.
+				r.With(middleware.RequirePermission(domain.PermAccountsFreeze)).
+					Post("/{accountNumber}/unfreeze", p.AccountHandler.Unfreeze)
 				// Penutupan rekening adalah wewenang tersendiri (accounts:close). Izin
 				// sudah ada di matriks peran; rute ini menutup izin mati tersebut.
 				r.With(middleware.RequirePermission(domain.PermAccountsClose)).

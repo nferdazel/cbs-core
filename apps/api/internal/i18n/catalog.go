@@ -9,6 +9,7 @@ const (
 	MsgAccountOpened                  Code = "account_opened"
 	MsgAccountRetrieved               Code = "account_retrieved"
 	MsgAccountReactivated             Code = "account_reactivated"
+	MsgAccountUnfrozen                Code = "account_unfrozen"
 	MsgAccountClosed                  Code = "account_closed"
 	MsgAccountsListed                 Code = "accounts_listed"
 	MsgLoginSuccessful                Code = "login_successful"
@@ -165,6 +166,7 @@ var codeList = []Code{
 	MsgAccountOpened,
 	MsgAccountRetrieved,
 	MsgAccountReactivated,
+	MsgAccountUnfrozen,
 	MsgAccountClosed,
 	MsgAccountsListed,
 	MsgLoginSuccessful,
@@ -326,6 +328,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgAccountReactivated: {
 		ID: "rekening berhasil diaktifkan kembali",
 		EN: "account reactivated successfully",
+	},
+	MsgAccountUnfrozen: {
+		ID: "pembekuan rekening berhasil dibatalkan",
+		EN: "account unfrozen successfully",
 	},
 	MsgAccountClosed: {
 		ID: "rekening berhasil ditutup",

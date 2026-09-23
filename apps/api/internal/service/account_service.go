@@ -431,6 +431,60 @@ func (s *accountService) ReactivateAccount(ctx context.Context, accountNumber, n
 	return account, nil
 }
 
+// UnfreezeAccount membatalkan pembekuan rekening FROZEN dan mengembalikannya ke
+// ACTIVE. Ini jalur keluar dari FROZEN: tanpa itu rekening yang sudah dibekukan
+// tidak dapat dipulihkan. Rekening berstatus selain FROZEN (termasuk DORMANT/CLOSED)
+// ditolak dengan status sebenarnya, bukan diam-diam diubah. Cabang dan buku dijaga
+// seperti operasi rekening lain.
+func (s *accountService) UnfreezeAccount(ctx context.Context, accountNumber, notes string, actor domain.Actor) (*domain.Account, error) {
+	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBranch(account.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	if !actor.CanAccessBook(account.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
+	if account.Status != domain.AccountStatusFrozen {
+		return nil, fmt.Errorf("%w: status rekening saat ini %s", domain.ErrAccountNotFrozen, account.Status)
+	}
+
+	now := time.Now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	changed, err := s.accountRepo.Unfreeze(ctx, tx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		// Status berubah antara pembacaan dan penulisan; operator perlu memuat ulang.
+		return nil, fmt.Errorf("%w: status rekening berubah, silakan muat ulang", domain.ErrAccountNotFrozen)
+	}
+
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "UNFREEZE_ACCOUNT", "account", account.ID.String(), map[string]any{
+		"account_number": account.AccountNumber,
+		"status_before":  string(domain.AccountStatusFrozen),
+		"status_after":   string(domain.AccountStatusActive),
+		"notes":          notes,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	account.Status = domain.AccountStatusActive
+	account.UpdatedAt = now
+	return account, nil
+}
+
 // CloseAccount menutup rekening ACTIVE/DORMANT yang sudah bersih. Rekening harus
 // nol saldo/saldo tersedia/dana tertahan: menutup rekening bersaldo akan membuat
 // uang nasabah tidak dapat diakses. Rekening FROZEN tidak ditutup (harus dipulihkan

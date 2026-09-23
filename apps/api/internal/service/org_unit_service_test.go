@@ -68,12 +68,23 @@ func TestCreateOrgUnit_KodeAreaAman(t *testing.T) {
 			t.Fatalf("kode %q: err = %v, ingin ErrInvalidBranchCode", code, err)
 		}
 	}
-	// Kode yang melebihi lebar kolom branches.code (VARCHAR(8)) ditolak dengan pesan
-	// batas panjang (4xx), bukan lolos ke database dan gagal sebagai 500.
+	// Kode deskriptif yang melebihi lebar lama (8) tetapi masih dalam lebar kolom
+	// baru (32, migrasi 000088) kini DITERIMA, bukan lagi ditolak.
+	long, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
+		Code: "AREA-JABAR-BARAT-01", Name: "Area Uji", Level: domain.UnitLevelArea,
+	}, actor)
+	if err != nil {
+		t.Fatalf("kode panjang dalam batas harus diterima: %v", err)
+	}
+	if long.Code != "AREA-JABAR-BARAT-01" {
+		t.Fatalf("kode tersimpan %q, ingin utuh", long.Code)
+	}
+	// Kode yang benar-benar melampaui lebar kolom baru (33+) tetap ditolak dengan
+	// pesan batas panjang (4xx), bukan lolos ke database dan gagal sebagai 500.
 	if _, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
-		Code: "AREA-JABAR", Name: "Area Uji", Level: domain.UnitLevelArea,
+		Code: "AREA-JABAR-BARAT-01-PANJANG-SEKALI", Name: "Area Uji", Level: domain.UnitLevelArea,
 	}, actor); !errors.Is(err, domain.ErrOrgUnitCodeTooLong) {
-		t.Fatalf("kode panjang: err = %v, ingin ErrOrgUnitCodeTooLong", err)
+		t.Fatalf("kode terlalu panjang: err = %v, ingin ErrOrgUnitCodeTooLong", err)
 	}
 }
 

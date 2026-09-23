@@ -240,6 +240,32 @@ func (r *AccountRepository) Reactivate(ctx context.Context, tx any, accountID uu
 	return rowsAffected > 0, nil
 }
 
+// Unfreeze memulihkan rekening FROZEN ke ACTIVE. Penjaga status = 'FROZEN' membuat
+// hasil false bila status sudah berubah (mis. balapan dengan aksi lain). Tidak
+// mengubah last_activity_at: unfreeze adalah tindakan administratif, bukan aktivitas
+// transaksi nasabah, sehingga tidak menunda penandaan dormant.
+func (r *AccountRepository) Unfreeze(ctx context.Context, tx any, accountID uuid.UUID) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("invalid transaction context")
+	}
+
+	query := `
+		UPDATE accounts
+		SET status = 'ACTIVE', updated_at = NOW(), version = version + 1
+		WHERE id = $1 AND status = 'FROZEN'
+	`
+	res, err := sqlTx.ExecContext(ctx, query, accountID)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 // Close menutup rekening yang masih ACTIVE atau DORMANT. Penjaga saldo nol
 // ditegakkan di sini juga (bukan hanya di service) supaya balapan dengan transaksi
 // yang belum tercatat tidak menutup rekening bersaldo. Hasil false berarti rekening

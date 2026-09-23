@@ -115,6 +115,41 @@ func (h *AccountHandler) Reactivate(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusOK, i18n.MsgAccountReactivated, acc)
 }
 
+// Unfreeze membatalkan pembekuan rekening FROZEN dan mengembalikannya ke ACTIVE.
+// Body opsional hanya membawa catatan operator; rekening berstatus selain FROZEN
+// ditolak 422 agar tidak tampak sebagai tindakan baru.
+func (h *AccountHandler) Unfreeze(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+
+	accNum := chi.URLParam(r, "accountNumber")
+	if accNum == "" {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAccountNumberRequired)
+		return
+	}
+
+	var body struct {
+		Notes string `json:"notes"`
+	}
+	// Body kosong bukan alasan menolak: unfreeze tanpa catatan tetap sah.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+
+	acc, err := h.service.UnfreezeAccount(r.Context(), accNum, body.Notes, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		// Fail memetakan lintas cabang ke 403 dan sentinel bisnis lain ke 422.
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgAccountUnfrozen, acc)
+}
+
 // Close menutup rekening yang sudah bersih. Body opsional hanya membawa catatan
 // operator; identitas pelaku selalu dari JWT. Rekening bersaldo ditolak 422.
 func (h *AccountHandler) Close(w http.ResponseWriter, r *http.Request) {

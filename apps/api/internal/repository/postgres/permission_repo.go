@@ -328,3 +328,35 @@ func (r *PermissionRepository) CountUsersLosingPermission(ctx context.Context, g
 	}
 	return count, nil
 }
+
+// CountAccessLossOnMemberRemoval menghitung (0 atau 1) apakah mengeluarkan userID
+// dari grup groupCode membuat pengguna itu kehilangan setidaknya satu izin efektif.
+// Izin efektif = grup ROLE_<peran> (selalu berlaku) digabung seluruh keanggotaan.
+// Penghapusan hanya berdampak bila ada izin grup tujuan yang tidak diberikan peran
+// maupun keanggotaan lain; bila tidak ada, hasilnya 0 dan penghapusan tidak perlu
+// konfirmasi. Semantik ini sejalan dengan CountUsersLosingPermission untuk pencabutan.
+func (r *PermissionRepository) CountAccessLossOnMemberRemoval(ctx context.Context, groupCode string, userID uuid.UUID) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT CASE WHEN EXISTS (
+		    SELECT 1
+		    FROM staff_users u
+		    JOIN user_group_members m ON m.user_id = u.id
+		    JOIN user_groups g ON g.id = m.group_id AND g.code = $1
+		    JOIN group_permissions gp ON gp.group_id = g.id
+		    WHERE u.id = $2 AND u.is_active
+		      AND NOT EXISTS (
+		          SELECT 1 FROM group_permissions rp
+		          JOIN user_groups rg ON rg.id = rp.group_id
+		          WHERE rg.code = 'ROLE_' || u.role::text AND rp.permission = gp.permission)
+		      AND NOT EXISTS (
+		          SELECT 1 FROM user_group_members om
+		          JOIN group_permissions op ON op.group_id = om.group_id
+		          WHERE om.user_id = u.id AND op.permission = gp.permission
+		            AND om.group_id <> g.id)
+		) THEN 1 ELSE 0 END`, groupCode, userID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

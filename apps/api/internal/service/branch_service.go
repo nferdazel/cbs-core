@@ -108,10 +108,12 @@ func (s *branchService) ListOrgUnits(ctx context.Context) ([]domain.Branch, erro
 	return s.repo.List(ctx)
 }
 
-// orgUnitCodeMaxLength adalah lebar kolom branches.code (VARCHAR(8), migrasi
-// 000005). Kode area/wilayah yang lebih panjang tidak dapat disimpan, jadi ditolak
-// di sini dengan pesan yang menyebut batasnya (422), bukan dibiarkan menjadi 500.
-const orgUnitCodeMaxLength = 8
+// orgUnitCodeMaxLength adalah lebar kolom branches.code (VARCHAR(32), migrasi
+// 000088 memperlebar dari VARCHAR(8)). Kode area/wilayah yang lebih panjang tidak
+// dapat disimpan, jadi ditolak di sini dengan pesan yang menyebut batasnya (422),
+// bukan dibiarkan menjadi 500. Batas ini harus sama dengan lebar kolom skema;
+// dua angka yang berbeda akan membuat validasi dan database tidak sepakat.
+const orgUnitCodeMaxLength = 32
 
 // validOrgUnitCode menegakkan kode unit yang aman untuk disimpan dan digabung ke
 // cakupan aktor: tanpa pemisah cakupan (koma) dan tanpa spasi, panjang sesuai lebar

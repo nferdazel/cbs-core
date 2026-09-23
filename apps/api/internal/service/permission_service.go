@@ -96,6 +96,19 @@ func (s *permissionService) requestMemberChange(ctx context.Context, groupCode s
 	if !userExists {
 		return nil, domain.ErrUserNotFound
 	}
+	// Penghapusan anggota dapat membuat pengguna kehilangan izin efektifnya, jadi
+	// tuntut konfirmasi yang sama seperti pencabutan izin. Pemeriksaan diulang saat
+	// persetujuan memakai keadaan terkini; yang disimpan di sini hanya bukti bahwa
+	// pembuat sudah mengonfirmasi.
+	if input.Operation == domain.PermissionChangeRemoveMember {
+		affected, err := s.repo.CountAccessLossOnMemberRemoval(ctx, groupCode, userID)
+		if err != nil {
+			return nil, err
+		}
+		if affected > 0 && !input.ConfirmAccessLoss {
+			return nil, &domain.AccessLossError{AffectedUsers: affected}
+		}
+	}
 	return s.mc.CreateRequest(ctx, domain.CreateMakerCheckerInput{
 		ActionType: ActionPermissionChange,
 		Amount:     decimal.Zero,
@@ -103,6 +116,9 @@ func (s *permissionService) requestMemberChange(ctx context.Context, groupCode s
 			"group_code": groupCode,
 			"operation":  string(input.Operation),
 			"user_id":    userID.String(),
+			// Disimpan sebagai bukti apa yang dikonfirmasi pembuat; eksekusi tetap
+			// memeriksa keadaan terkini agar tidak buta terhadap perubahan antara.
+			"confirm_access_loss": input.ConfirmAccessLoss,
 		},
 		Notes: input.Notes,
 	}, actor)
@@ -209,6 +225,15 @@ func (s *permissionService) executeMemberChange(ctx context.Context, tx any, gro
 		}
 	case domain.PermissionChangeRemoveMember:
 		if before {
+			// Diperiksa ULANG dengan keadaan terkini: keanggotaan lain yang semula
+			// menutup kehilangan dapat sudah hilang antara pengajuan dan persetujuan.
+			affected, err := s.repo.CountAccessLossOnMemberRemoval(ctx, groupCode, userID)
+			if err != nil {
+				return err
+			}
+			if affected > 0 && !payloadBool(payload, "confirm_access_loss") {
+				return &domain.AccessLossError{AffectedUsers: affected}
+			}
 			if err := s.repo.RemoveMemberTx(ctx, tx, groupCode, userID); err != nil {
 				return err
 			}

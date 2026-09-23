@@ -18,6 +18,10 @@ var (
 	// ErrAccountNotDormant dipakai endpoint reaktivasi: rekening yang statusnya bukan
 	// DORMANT ditolak beserta status sebenarnya, bukan diam-diam dianggap sukses.
 	ErrAccountNotDormant = errors.New("rekening tidak berstatus dormant dan tidak dapat direaktivasi")
+	// ErrAccountNotFrozen dipakai endpoint unfreeze: rekening yang statusnya bukan
+	// FROZEN ditolak beserta status sebenarnya, bukan diam-diam dianggap aktif.
+	// Melengkapi jalur masuk FROZEN (dibekukan) dengan jalur keluarnya.
+	ErrAccountNotFrozen = errors.New("rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya")
 	// ErrAccountCloseBalance menolak penutupan rekening yang masih menyimpan saldo,
 	// saldo tersedia, atau dana tertahan. Uang nasabah tidak boleh hilang karena
 	// rekening ditutup sebelum bersih.
@@ -190,6 +194,9 @@ type AccountRepository interface {
 	// Reactivate memulihkan rekening DORMANT ke ACTIVE. Hasil false berarti rekening
 	// tidak lagi DORMANT (mis. balapan dengan aksi lain).
 	Reactivate(ctx context.Context, tx any, accountID uuid.UUID, reactivatedAt time.Time) (bool, error)
+	// Unfreeze memulihkan rekening FROZEN ke ACTIVE. Hasil false berarti rekening
+	// tidak lagi FROZEN (mis. balapan dengan aksi lain).
+	Unfreeze(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)
 	// Close menutup rekening ACTIVE/DORMANT yang sudah bersih (saldo nol). Hasil
 	// false berarti status tidak lagi dapat ditutup (mis. sudah CLOSED).
 	Close(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)
@@ -204,6 +211,10 @@ type AccountService interface {
 	// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Rekening yang bukan
 	// DORMANT ditolak ErrAccountNotDormant; cabang lain ditolak ErrCrossBranchAccess.
 	ReactivateAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
+	// UnfreezeAccount memulihkan rekening FROZEN ke ACTIVE, jalur keluar dari
+	// pembekuan. Rekening yang bukan FROZEN ditolak ErrAccountNotFrozen; cabang lain
+	// ditolak ErrCrossBranchAccess.
+	UnfreezeAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
 	// CloseAccount menutup rekening ACTIVE/DORMANT yang bersih (saldo nol). Rekening
 	// dengan saldo/dana tertahan ditolak ErrAccountCloseBalance, status yang tidak
 	// dapat ditutup ditolak ErrAccountNotClosable, dan cabang lain ditolak
