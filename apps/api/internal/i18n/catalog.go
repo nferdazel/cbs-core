@@ -9,6 +9,7 @@ const (
 	MsgAccountOpened                  Code = "account_opened"
 	MsgAccountRetrieved               Code = "account_retrieved"
 	MsgAccountReactivated             Code = "account_reactivated"
+	MsgAccountClosed                  Code = "account_closed"
 	MsgAccountsListed                 Code = "accounts_listed"
 	MsgLoginSuccessful                Code = "login_successful"
 	MsgTokenRefreshed                 Code = "token_refreshed"
@@ -88,6 +89,7 @@ const (
 	MsgRequestRejected                Code = "request_rejected"
 	MsgCollectionProcessed            Code = "collection_processed"
 	MsgCustomerRegistered             Code = "customer_registered"
+	MsgCustomerUpdated                Code = "customer_updated"
 	MsgCustomerRetrieved              Code = "customer_retrieved"
 	MsgCustomersListed                Code = "customers_listed"
 	MsgStaffCreated                   Code = "staff_created"
@@ -150,6 +152,11 @@ const (
 	MsgProductParamsPayloadInvalid    Code = "product_params_payload_invalid"
 	MsgBankProfilePayloadInvalid      Code = "bank_profile_payload_invalid"
 	MsgForbiddenRolePermission        Code = "forbidden_role_permission"
+	// Pesan galat domain yang sebelumnya masih berbahasa Inggris. Maknanya tetap
+	// sama, hanya dipindahkan ke katalog agar kedua bahasa tersedia.
+	MsgInvalidCredentials Code = "invalid_credentials"
+	MsgInsufficientFunds  Code = "insufficient_funds"
+	MsgSessionExpired     Code = "session_expired"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -158,6 +165,7 @@ var codeList = []Code{
 	MsgAccountOpened,
 	MsgAccountRetrieved,
 	MsgAccountReactivated,
+	MsgAccountClosed,
 	MsgAccountsListed,
 	MsgLoginSuccessful,
 	MsgTokenRefreshed,
@@ -237,6 +245,7 @@ var codeList = []Code{
 	MsgRequestRejected,
 	MsgCollectionProcessed,
 	MsgCustomerRegistered,
+	MsgCustomerUpdated,
 	MsgCustomerRetrieved,
 	MsgCustomersListed,
 	MsgStaffCreated,
@@ -299,6 +308,9 @@ var codeList = []Code{
 	MsgProductParamsPayloadInvalid,
 	MsgBankProfilePayloadInvalid,
 	MsgForbiddenRolePermission,
+	MsgInvalidCredentials,
+	MsgInsufficientFunds,
+	MsgSessionExpired,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -314,6 +326,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgAccountReactivated: {
 		ID: "rekening berhasil diaktifkan kembali",
 		EN: "account reactivated successfully",
+	},
+	MsgAccountClosed: {
+		ID: "rekening berhasil ditutup",
+		EN: "account closed successfully",
 	},
 	MsgAccountsListed: {
 		ID: "daftar rekening",
@@ -631,6 +647,10 @@ var catalog = map[Code]map[Lang]string{
 		ID: "nasabah berhasil didaftarkan",
 		EN: "customer registered successfully",
 	},
+	MsgCustomerUpdated: {
+		ID: "data nasabah berhasil diperbarui",
+		EN: "customer data updated successfully",
+	},
 	MsgCustomerRetrieved: {
 		ID: "detail nasabah",
 		EN: "customer retrieved",
@@ -878,5 +898,17 @@ var catalog = map[Code]map[Lang]string{
 	MsgForbiddenRolePermission: {
 		ID: "akses ditolak: peran Anda (%s) tidak memiliki izin '%s'",
 		EN: "forbidden: your role (%s) does not have '%s' permission",
+	},
+	MsgInvalidCredentials: {
+		ID: "nama pengguna atau kata sandi salah",
+		EN: "invalid username or password",
+	},
+	MsgInsufficientFunds: {
+		ID: "saldo tersedia tidak mencukupi",
+		EN: "insufficient available balance",
+	},
+	MsgSessionExpired: {
+		ID: "sesi telah berakhir",
+		EN: "session has expired",
 	},
 }

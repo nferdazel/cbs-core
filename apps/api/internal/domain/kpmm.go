@@ -97,6 +97,10 @@ type KPMMReport struct {
 	ModalKelasCOA []KPMMModalKelasBaris `json:"modal_kelas_coa,omitempty"`
 	// DeductionBasis mencatat pilihan per_kredit/agregat yang dipakai.
 	DeductionBasis string `json:"deduction_basis"`
+	// PPAPBusinessDate adalah tanggal bisnis run PPAP yang dipakai sebagai dasar
+	// perbandingan PPKA-CKPN bila berbeda dari as_of (mis. EOD PPAP tidak jatuh pada
+	// akhir periode). Kosong berarti sama dengan as_of.
+	PPAPBusinessDate string `json:"ppap_business_date,omitempty"`
 	// ParameterGaps menyebut kunci konfigurasi yang belum diisi.
 	ParameterGaps []string `json:"parameter_gaps,omitempty"`
 	// Catatan menjelaskan batas perhitungan yang harus diketahui pembaca.

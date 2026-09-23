@@ -21,6 +21,12 @@ var (
 	ErrBranchHeadOfficeNotAllowed = errors.New("kantor pusat tidak dapat dibuat lewat API; is_head_office harus false")
 	// ErrOrgUnitLevelInvalid menolak jenjang unit di luar CABANG/AREA/WILAYAH.
 	ErrOrgUnitLevelInvalid = errors.New("jenjang unit organisasi tidak dikenal")
+	// ErrOrgUnitCodeTooLong menolak kode area/wilayah yang melebihi lebar kolom
+	// branches.code (VARCHAR(8)). Tanpa pemeriksaan ini, kode panjang lolos ke
+	// database dan gagal sebagai 500 alih-alih pesan validasi. Lebar 8 karakter
+	// mungkin terlalu sempit untuk kode area/wilayah deskriptif; melaporkan batas
+	// secara eksplisit lebih benar daripada memperlebar kolom tanpa keputusan.
+	ErrOrgUnitCodeTooLong = errors.New("kode unit organisasi terlalu panjang: maksimal 8 karakter")
 	// ErrOrgUnitParentInvalid menolak atasan yang jenjangnya tidak lebih tinggi
 	// dari unit anak. Hierarki wajib menurun: wilayah -> area -> cabang.
 	ErrOrgUnitParentInvalid = errors.New("atasan harus berjenjang lebih tinggi dari unit anak")

@@ -15,17 +15,21 @@ import (
 // disetujui, dan jejak audit sebelum->sesudah. Tanpa database.
 
 type fakePermissionRepo struct {
-	exists   map[string]bool
-	perms    map[string]map[domain.Permission]bool
-	affected int
-	granted  []string
-	revoked  []string
+	exists     map[string]bool
+	perms      map[string]map[domain.Permission]bool
+	members    map[string]map[uuid.UUID]bool
+	userExists map[uuid.UUID]bool
+	affected   int
+	granted    []string
+	revoked    []string
 }
 
 func newFakePermissionRepo() *fakePermissionRepo {
 	return &fakePermissionRepo{
-		exists: map[string]bool{},
-		perms:  map[string]map[domain.Permission]bool{},
+		exists:     map[string]bool{},
+		perms:      map[string]map[domain.Permission]bool{},
+		members:    map[string]map[uuid.UUID]bool{},
+		userExists: map[uuid.UUID]bool{},
 	}
 }
 
@@ -54,6 +58,27 @@ func (f *fakePermissionRepo) RevokePermissionTx(_ context.Context, _ any, code s
 }
 func (f *fakePermissionRepo) CountUsersLosingPermission(context.Context, string, domain.Permission) (int, error) {
 	return f.affected, nil
+}
+
+func (f *fakePermissionRepo) UserExists(_ context.Context, userID uuid.UUID) (bool, error) {
+	return f.userExists[userID], nil
+}
+
+func (f *fakePermissionRepo) UserInGroup(_ context.Context, groupCode string, userID uuid.UUID) (bool, error) {
+	return f.members[groupCode][userID], nil
+}
+
+func (f *fakePermissionRepo) AddMemberTx(_ context.Context, _ any, groupCode string, userID uuid.UUID) error {
+	if f.members[groupCode] == nil {
+		f.members[groupCode] = map[uuid.UUID]bool{}
+	}
+	f.members[groupCode][userID] = true
+	return nil
+}
+
+func (f *fakePermissionRepo) RemoveMemberTx(_ context.Context, _ any, groupCode string, userID uuid.UUID) error {
+	delete(f.members[groupCode], userID)
+	return nil
 }
 
 type fakeMakerChecker struct {

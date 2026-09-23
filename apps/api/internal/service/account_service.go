@@ -158,19 +158,23 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 		return nil, err
 	}
 
-	coaID, err := s.resolveCOAID(ctx, tx, coaCode)
+	coaID, normalBalance, coaBook, err := s.resolveCOAID(ctx, tx, coaCode)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now().UTC()
 	account := &domain.Account{
-		ID:               uuid.New(),
-		AccountNumber:    accountNumber,
-		CustomerID:       &customer.ID,
-		ProductID:        &product.ID,
-		BranchID:         &branch.ID,
-		COAID:            coaID,
+		ID:            uuid.New(),
+		AccountNumber: accountNumber,
+		CustomerID:    &customer.ID,
+		ProductID:     &product.ID,
+		BranchID:      &branch.ID,
+		COAID:         coaID,
+		// Normal balance dan buku diisi dari bagan akun supaya respons buka
+		// rekening sama bentuknya dengan GET /accounts (sebelumnya kosong).
+		NormalBalance:    normalBalance,
+		COABook:          coaBook,
 		AccountType:      accountTypeForFamily(product.Family),
 		Currency:         input.Currency,
 		Balance:          decimal.Zero,
@@ -205,18 +209,23 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 	return account, nil
 }
 
-// resolveCOAID mencari id akun COA berdasarkan kode. Dilakukan di dalam transaksi
-// pembukaan rekening agar konsisten dengan insert.
-func (s *accountService) resolveCOAID(ctx context.Context, tx *sql.Tx, code string) (uuid.UUID, error) {
+// resolveCOAID mencari id, normal balance, dan buku akun COA berdasarkan kode.
+// Dilakukan di dalam transaksi pembukaan rekening agar konsisten dengan insert;
+// normal balance/buku dibaca sekaligus supaya respons tidak perlu query kedua.
+func (s *accountService) resolveCOAID(ctx context.Context, tx *sql.Tx, code string) (uuid.UUID, domain.BalanceType, domain.COABook, error) {
 	var id uuid.UUID
-	err := tx.QueryRowContext(ctx, `SELECT id FROM chart_of_accounts WHERE code = $1`, code).Scan(&id)
+	var normalBalance domain.BalanceType
+	var book domain.COABook
+	err := tx.QueryRowContext(ctx,
+		`SELECT id, normal_balance, book::text FROM chart_of_accounts WHERE code = $1`, code).
+		Scan(&id, &normalBalance, &book)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, fmt.Errorf("akun COA %s tidak ditemukan", code)
+			return uuid.Nil, "", "", fmt.Errorf("akun COA %s tidak ditemukan", code)
 		}
-		return uuid.Nil, err
+		return uuid.Nil, "", "", err
 	}
-	return id, nil
+	return id, normalBalance, book, nil
 }
 
 // isUniqueViolation mendeteksi pelanggaran unique constraint. Driver pgx
@@ -418,6 +427,68 @@ func (s *accountService) ReactivateAccount(ctx context.Context, accountNumber, n
 	account.Status = domain.AccountStatusActive
 	account.DormantAt = nil
 	account.LastActivityAt = &now
+	account.UpdatedAt = now
+	return account, nil
+}
+
+// CloseAccount menutup rekening ACTIVE/DORMANT yang sudah bersih. Rekening harus
+// nol saldo/saldo tersedia/dana tertahan: menutup rekening bersaldo akan membuat
+// uang nasabah tidak dapat diakses. Rekening FROZEN tidak ditutup (harus dipulihkan
+// lebih dulu) dan rekening CLOSED ditolak agar tidak tampak sebagai tindakan baru.
+// Cabang dan buku dijaga seperti operasi rekening lain.
+func (s *accountService) CloseAccount(ctx context.Context, accountNumber, notes string, actor domain.Actor) (*domain.Account, error) {
+	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBranch(account.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	if !actor.CanAccessBook(account.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
+	switch account.Status {
+	case domain.AccountStatusActive, domain.AccountStatusDormant:
+		// dapat ditutup
+	default:
+		return nil, fmt.Errorf("%w: status rekening saat ini %s", domain.ErrAccountNotClosable, account.Status)
+	}
+	if !account.Balance.IsZero() || !account.AvailableBalance.IsZero() || !account.HoldBalance.IsZero() {
+		return nil, fmt.Errorf("%w (saldo %s, tersedia %s, tertahan %s)",
+			domain.ErrAccountCloseBalance, account.Balance, account.AvailableBalance, account.HoldBalance)
+	}
+
+	now := time.Now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	changed, err := s.accountRepo.Close(ctx, tx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		// Status atau saldo berubah antara pembacaan dan penulisan; operator perlu
+		// memuat ulang. Bukan sukses diam-diam.
+		return nil, fmt.Errorf("%w: status/saldo rekening berubah, silakan muat ulang", domain.ErrAccountCloseBalance)
+	}
+
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "CLOSE_ACCOUNT", "account", account.ID.String(), map[string]any{
+		"account_number": account.AccountNumber,
+		"status_before":  string(account.Status),
+		"status_after":   string(domain.AccountStatusClosed),
+		"notes":          notes,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	account.Status = domain.AccountStatusClosed
 	account.UpdatedAt = now
 	return account, nil
 }

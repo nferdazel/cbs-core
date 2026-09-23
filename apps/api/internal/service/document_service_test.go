@@ -64,6 +64,10 @@ func (s *stubCustomerRepo) UpdateStatus(ctx context.Context, id uuid.UUID, statu
 	return nil
 }
 
+func (s *stubCustomerRepo) UpdateTx(ctx context.Context, tx *sql.Tx, record *domain.CustomerRecord) error {
+	return nil
+}
+
 var _ domain.CustomerRepository = (*stubCustomerRepo)(nil)
 
 // stubLedgerRepo melayani pencarian jurnal dari peta referensi; test tidak

@@ -58,6 +58,51 @@ func (h *CustomerHandler) Register(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusCreated, i18n.MsgCustomerRegistered, cust)
 }
 
+// Update mengubah data nasabah yang sudah ada. NIK dan nama tetap wajib diisi
+// karena keduanya identitas pencarian; email opsional tetap divalidasi bila diisi.
+func (h *CustomerHandler) Update(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgInvalidCustomerID)
+		return
+	}
+
+	var input domain.UpdateCustomerInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if input.FullName == "" || input.IDCardNumber == "" {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgFullNameIDCardRequired)
+		return
+	}
+	if err := domain.ValidateEmail(input.Email); err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	cust, err := h.service.UpdateCustomer(r.Context(), id, input, claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, domain.ErrCustomerNotFound) {
+			status = http.StatusNotFound
+		} else if errors.Is(err, domain.ErrDuplicateIDCard) || errors.Is(err, domain.ErrDuplicateEmail) {
+			status = http.StatusConflict
+		}
+		Fail(w, r, status, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgCustomerUpdated, cust)
+}
+
 func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	claims, ok := domain.ClaimsFromContext(r.Context())
 	if !ok {

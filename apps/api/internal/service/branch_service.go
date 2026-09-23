@@ -108,27 +108,32 @@ func (s *branchService) ListOrgUnits(ctx context.Context) ([]domain.Branch, erro
 	return s.repo.List(ctx)
 }
 
+// orgUnitCodeMaxLength adalah lebar kolom branches.code (VARCHAR(8), migrasi
+// 000005). Kode area/wilayah yang lebih panjang tidak dapat disimpan, jadi ditolak
+// di sini dengan pesan yang menyebut batasnya (422), bukan dibiarkan menjadi 500.
+const orgUnitCodeMaxLength = 8
+
 // validOrgUnitCode menegakkan kode unit yang aman untuk disimpan dan digabung ke
-// cakupan aktor: tanpa pemisah cakupan (koma) dan tanpa spasi, panjang wajar.
-// Cabang tetap wajib 3 digit karena dipakai mengawali nomor rekening.
-func validOrgUnitCode(code string, level domain.OrgUnitLevel) bool {
+// cakupan aktor: tanpa pemisah cakupan (koma) dan tanpa spasi, panjang sesuai lebar
+// kolom. Cabang tetap wajib 3 digit karena dipakai mengawali nomor rekening.
+func validOrgUnitCode(code string, level domain.OrgUnitLevel) error {
 	if level == domain.UnitLevelBranch {
-		return domain.ValidateBranchCode(code) == nil
+		return domain.ValidateBranchCode(code)
 	}
 	if err := domain.ValidateOrgUnitCode(code); err != nil {
-		return false
+		return err
 	}
-	if len(code) > 16 {
-		return false
+	if len(code) > orgUnitCodeMaxLength {
+		return domain.ErrOrgUnitCodeTooLong
 	}
 	for _, r := range code {
 		switch {
 		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
 		default:
-			return false
+			return domain.ErrInvalidBranchCode
 		}
 	}
-	return true
+	return nil
 }
 
 // CreateOrgUnit membuat unit organisasi (cabang/area/wilayah) beserta atasannya.
@@ -143,8 +148,8 @@ func (s *branchService) CreateOrgUnit(ctx context.Context, input domain.CreateOr
 		return nil, domain.ErrOrgUnitLevelInvalid
 	}
 	code := strings.ToUpper(strings.TrimSpace(input.Code))
-	if !validOrgUnitCode(code, level) {
-		return nil, domain.ErrInvalidBranchCode
+	if err := validOrgUnitCode(code, level); err != nil {
+		return nil, err
 	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {

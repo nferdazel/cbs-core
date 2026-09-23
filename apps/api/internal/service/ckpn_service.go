@@ -362,6 +362,17 @@ func ckpnPolicyGaps(policy domain.CKPNPolicy) []string {
 	return gaps
 }
 
+// LastPPAPBusinessDate mengembalikan tanggal bisnis run PPAP terakhir yang berhasil.
+// Dipakai modul KPMM agar perbandingan CKPN memakai periode PPAP yang benar, bukan
+// akhir periode kalender yang bisa berbeda (EOD PPAP dapat jatuh di hari lain).
+// ok=false berarti belum ada run PPAP. Boleh nil marker (lingkungan uji).
+func (s *ckpnService) LastPPAPBusinessDate(ctx context.Context) (time.Time, bool, error) {
+	if s.runMarker == nil {
+		return time.Time{}, false, nil
+	}
+	return s.runMarker.LastRunBusinessDate(ctx)
+}
+
 // requireFreshPPAP menolak perbandingan CKPN bila tidak ada run PPAP yang berhasil
 // pada tanggal bisnis asOf. Tanpa gerbang ini, perbandingan tetap "berhasil" memakai
 // required_ppap run sebelumnya dan laporan tampak sah padahal dasarnya kemarin.

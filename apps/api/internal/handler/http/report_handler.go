@@ -32,7 +32,7 @@ func (h *ReportHandler) GetTrialBalance(w http.ResponseWriter, r *http.Request) 
 
 // GetBalanceSheet handles GET /api/v1/reports/balance-sheet
 func (h *ReportHandler) GetBalanceSheet(w http.ResponseWriter, r *http.Request) {
-	asOf := time.Now().UTC()
+	asOf, _ := reportToday()
 	report, err := h.reportSvc.GenerateBalanceSheet(r.Context(), asOf)
 	if err != nil {
 		InternalError(w, r, err)
@@ -43,7 +43,7 @@ func (h *ReportHandler) GetBalanceSheet(w http.ResponseWriter, r *http.Request) 
 
 // GetIncomeStatement handles GET /api/v1/reports/income-statement
 func (h *ReportHandler) GetIncomeStatement(w http.ResponseWriter, r *http.Request) {
-	endDate := time.Now().UTC()
+	endDate, _ := reportToday()
 	startDate := time.Date(endDate.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 
 	report, err := h.reportSvc.GenerateIncomeStatement(r.Context(), startDate, endDate)
@@ -54,11 +54,23 @@ func (h *ReportHandler) GetIncomeStatement(w http.ResponseWriter, r *http.Reques
 	Success(w, http.StatusOK, i18n.MsgReportIncomeStatementGenerated, report)
 }
 
-// reportToday mengembalikan awal hari UTC dan awal bulan berjalan UTC.
+// reportToday mengembalikan awal hari dan awal bulan berjalan menurut TANGGAL
+// BISNIS bank (WIB), bukan tanggal UTC. Tanggal bisnis sistem memakai
+// domain.BankZone (lihat batch_process_service.go dan domain.Cron), sehingga antara
+// 00:00–07:00 WIB laporan tidak lagi tampak kosong karena masih menyebut hari UTC
+// kemarin. Nilai yang dikembalikan bertipe UTC pada tengah malam agar bentuknya sama
+// dengan hasil parse parameter tanggal eksplisit (?from/?to), sementara komponen
+// tanggalnya mengikuti kalender WIB.
 func reportToday() (today, firstOfMonth time.Time) {
-	now := time.Now().UTC()
-	today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	firstOfMonth = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return businessDay(time.Now())
+}
+
+// businessDay memisahkan perhitungan tanggal dari jam sistem agar dapat diuji
+// deterministik pada jendela 00:00–07:00 WIB, saat tanggal WIB berbeda dari UTC.
+func businessDay(now time.Time) (today, firstOfMonth time.Time) {
+	wib := now.In(domain.BankZone)
+	today = time.Date(wib.Year(), wib.Month(), wib.Day(), 0, 0, 0, 0, time.UTC)
+	firstOfMonth = time.Date(wib.Year(), wib.Month(), 1, 0, 0, 0, 0, time.UTC)
 	return today, firstOfMonth
 }
 

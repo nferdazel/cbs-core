@@ -192,6 +192,59 @@ func (r *PermissionRepository) ResolveApprovalLimitRole(ctx context.Context, use
 	return best, nil
 }
 
+// UserExists melaporkan apakah pengguna staf ada (aktif maupun tidak). Keanggotaan
+// grup tidak mengubah status pengguna, jadi pengguna nonaktif tetap boleh ditata.
+func (r *PermissionRepository) UserExists(ctx context.Context, userID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM staff_users WHERE id = $1)`, userID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// UserInGroup melaporkan apakah pengguna sudah menjadi anggota grup groupCode.
+func (r *PermissionRepository) UserInGroup(ctx context.Context, groupCode string, userID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM user_group_members m
+			JOIN user_groups g ON g.id = m.group_id
+			WHERE g.code = $1 AND m.user_id = $2)`, groupCode, userID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+// AddMemberTx menambahkan pengguna ke grup. Grup tak dikenal menjadi 0 baris, yang
+// oleh service diperlakukan sebagai error; idempoten lewat ON CONFLICT.
+func (r *PermissionRepository) AddMemberTx(ctx context.Context, tx any, groupCode string, userID uuid.UUID) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("permission: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		INSERT INTO user_group_members (user_id, group_id)
+		SELECT $2, id FROM user_groups WHERE code = $1
+		ON CONFLICT (user_id, group_id) DO NOTHING`, groupCode, userID)
+	return err
+}
+
+// RemoveMemberTx mengeluarkan pengguna dari grup. Grup tak dikenal cukup 0 baris.
+func (r *PermissionRepository) RemoveMemberTx(ctx context.Context, tx any, groupCode string, userID uuid.UUID) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("permission: transaksi tidak valid")
+	}
+	_, err := sqlTx.ExecContext(ctx, `
+		DELETE FROM user_group_members m
+		USING user_groups g
+		WHERE m.group_id = g.id AND g.code = $1 AND m.user_id = $2`, groupCode, userID)
+	return err
+}
+
 func (r *PermissionRepository) GroupExists(ctx context.Context, groupCode string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(ctx,

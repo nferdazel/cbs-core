@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -39,7 +40,7 @@ func Success(w http.ResponseWriter, statusCode int, code i18n.Code, data any) {
 	JSON(w, statusCode, APIResponse{
 		Success: true,
 		Message: i18n.Text(code),
-		Data:    data,
+		Data:    normalizeListData(data),
 	})
 }
 
@@ -47,9 +48,57 @@ func SuccessWithMeta(w http.ResponseWriter, statusCode int, code i18n.Code, data
 	JSON(w, statusCode, APIResponse{
 		Success: true,
 		Message: i18n.Text(code),
-		Data:    data,
+		Data:    normalizeListData(data),
 		Meta:    meta,
 	})
+}
+
+// normalizeListData mengubah slice/peta nil menjadi bentuk kosong non-nil, sehingga
+// daftar kosong diserialkan sebagai [] / {} alih-alih null. Klien tidak perlu lagi
+// menangani dua bentuk (null dan array) untuk kontrak daftar yang sama. Nilai yang
+// bukan slice/peta, termasuk interface nil (data memang tidak ada), dibiarkan apa
+// adanya.
+func normalizeListData(data any) any {
+	if data == nil {
+		return nil
+	}
+	v := reflect.ValueOf(data)
+	switch v.Kind() {
+	case reflect.Slice:
+		if v.IsNil() {
+			return reflect.MakeSlice(v.Type(), 0, 0).Interface()
+		}
+	case reflect.Map:
+		if v.IsNil() {
+			return reflect.MakeMap(v.Type()).Interface()
+		}
+	}
+	return data
+}
+
+// domainErrorCodes memetakan sentinel galat domain yang tampil ke pengguna ke kode
+// katalog i18n. Pemetaan di lapisan handler menjaga tipe error domain tetap apa
+// adanya, sementara pesan tetap satu sumber dan tersedia ID + EN. Hanya kecocokan
+// PERSIS (errors.Is terhadap sentinel tak terbungkus) yang diterjemahkan; galat yang
+// sudah dibungkus tetap menampilkan detail tambahannya agar makna tidak hilang.
+var domainErrorCodes = []struct {
+	err  error
+	code i18n.Code
+}{
+	{domain.ErrInvalidCredentials, i18n.MsgInvalidCredentials},
+	{domain.ErrInsufficientFunds, i18n.MsgInsufficientFunds},
+	{domain.ErrSessionExpired, i18n.MsgSessionExpired},
+}
+
+// translatedDomainError mengembalikan pesan katalog untuk sentinel domain yang
+// dikenali, atau ok=false bila tidak ada.
+func translatedDomainError(err error) (string, bool) {
+	for _, m := range domainErrorCodes {
+		if err == m.err {
+			return i18n.Text(m.code), true
+		}
+	}
+	return "", false
 }
 
 // Error mengirim pesan yang sudah aman ditampilkan ke pengguna. Jangan lewatkan
@@ -100,6 +149,10 @@ var businessErrors = []error{
 	domain.ErrAccountInactive,
 	domain.ErrAccountDormant,
 	domain.ErrAccountNotDormant,
+	// Penutupan rekening adalah aturan bisnis: pesannya menyebut syarat yang belum
+	// terpenuhi (saldo/status) agar operator dapat menindaklanjuti.
+	domain.ErrAccountCloseBalance,
+	domain.ErrAccountNotClosable,
 	domain.ErrInsufficientFunds,
 	domain.ErrInvalidAmount,
 	domain.ErrDuplicateIdempotencyKey,
@@ -165,6 +218,9 @@ var businessErrors = []error{
 	// Penolakan lintas cabang adalah aturan otorisasi: pesannya harus terlihat
 	// pengguna agar mereka tahu mengapa operasi ditolak.
 	domain.ErrCrossBranchAccess,
+	// PPKA basi menandai perbandingan CKPN/PPAP yang memakai tanggal bisnis
+	// berbeda; ini kondisi operator, bukan kegagalan server.
+	domain.ErrCKPNStalePPAP,
 }
 
 // isBusinessError melaporkan apakah error termasuk yang aman ditampilkan ke pengguna.
@@ -204,6 +260,12 @@ func looksLikeInternalError(msg string) bool {
 func Fail(w http.ResponseWriter, r *http.Request, status int, err error) {
 	if err == nil {
 		InternalError(w, r, errors.New("Fail dipanggil tanpa error"))
+		return
+	}
+	// Sentinel galat domain yang tampil ke pengguna diterjemahkan dari katalog
+	// supaya pesannya konsisten dengan pesan API lain (ID + EN).
+	if msg, ok := translatedDomainError(err); ok {
+		Error(w, status, msg)
 		return
 	}
 	// Penolakan lintas cabang selalu 403, apa pun status default pemanggil.

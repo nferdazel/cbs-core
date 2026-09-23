@@ -18,6 +18,13 @@ var (
 	// ErrAccountNotDormant dipakai endpoint reaktivasi: rekening yang statusnya bukan
 	// DORMANT ditolak beserta status sebenarnya, bukan diam-diam dianggap sukses.
 	ErrAccountNotDormant = errors.New("rekening tidak berstatus dormant dan tidak dapat direaktivasi")
+	// ErrAccountCloseBalance menolak penutupan rekening yang masih menyimpan saldo,
+	// saldo tersedia, atau dana tertahan. Uang nasabah tidak boleh hilang karena
+	// rekening ditutup sebelum bersih.
+	ErrAccountCloseBalance = errors.New("rekening tidak dapat ditutup: masih ada saldo, saldo tersedia, atau dana tertahan")
+	// ErrAccountNotClosable menolak penutupan rekening yang statusnya bukan ACTIVE
+	// atau DORMANT (mis. sudah CLOSED/FROZEN), beserta status sebenarnya.
+	ErrAccountNotClosable = errors.New("rekening tidak dapat ditutup pada status saat ini")
 )
 
 // DormantAfterMonthsFallback adalah ambang sementara agar proses tetap berjalan di
@@ -183,6 +190,9 @@ type AccountRepository interface {
 	// Reactivate memulihkan rekening DORMANT ke ACTIVE. Hasil false berarti rekening
 	// tidak lagi DORMANT (mis. balapan dengan aksi lain).
 	Reactivate(ctx context.Context, tx any, accountID uuid.UUID, reactivatedAt time.Time) (bool, error)
+	// Close menutup rekening ACTIVE/DORMANT yang sudah bersih (saldo nol). Hasil
+	// false berarti status tidak lagi dapat ditutup (mis. sudah CLOSED).
+	Close(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)
 }
 
 type AccountService interface {
@@ -194,6 +204,11 @@ type AccountService interface {
 	// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Rekening yang bukan
 	// DORMANT ditolak ErrAccountNotDormant; cabang lain ditolak ErrCrossBranchAccess.
 	ReactivateAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
+	// CloseAccount menutup rekening ACTIVE/DORMANT yang bersih (saldo nol). Rekening
+	// dengan saldo/dana tertahan ditolak ErrAccountCloseBalance, status yang tidak
+	// dapat ditutup ditolak ErrAccountNotClosable, dan cabang lain ditolak
+	// ErrCrossBranchAccess.
+	CloseAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
 	// MarkDormant menandai rekening pasif bank-wide. Dipanggil batch EOD, bukan HTTP.
 	MarkDormant(ctx context.Context, asOf time.Time, actor Actor) (DormantRunSummary, error)
 }

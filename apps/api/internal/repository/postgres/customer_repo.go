@@ -112,6 +112,38 @@ func (r *CustomerRepository) ReplaceNameTokens(ctx context.Context, tx *sql.Tx, 
 	return insertNameTokens(ctx, tx, customerID, tokenIndexes, indexKeyVersion)
 }
 
+// UpdateTx memperbarui data terenkripsi nasabah dan blind index-nya, lalu mengganti
+// token nama, semuanya di dalam transaksi pemanggil. Blind index kosong disimpan
+// sebagai NULL mengikuti alasan yang sama seperti Create (indeks email parsial unik).
+func (r *CustomerRepository) UpdateTx(ctx context.Context, tx *sql.Tx, c *domain.CustomerRecord) error {
+	metaJSON, err := json.Marshal(c.Metadata)
+	if err != nil {
+		metaJSON = []byte("{}")
+	}
+
+	idCardIndex := sql.NullString{String: c.IDCardIndex, Valid: c.IDCardIndex != ""}
+	emailIndex := sql.NullString{String: c.EmailIndex, Valid: c.EmailIndex != ""}
+	indexKeyVersion := c.IndexKeyVersion
+	if indexKeyVersion == "" {
+		indexKeyVersion = "k1"
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE customers
+		SET full_name_enc = $2, id_card_number_enc = $3, email_enc = $4,
+		    phone_number_enc = $5, address_enc = $6, id_card_index = $7,
+		    email_index = $8, index_key_version = $9, metadata = $10, updated_at = $11
+		WHERE id = $1`,
+		c.ID, c.FullNameEnc, c.IDCardNumberEnc, c.EmailEnc,
+		c.PhoneNumberEnc, c.AddressEnc, idCardIndex, emailIndex, indexKeyVersion,
+		metaJSON, c.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update customer: %w", err)
+	}
+	return r.ReplaceNameTokens(ctx, tx, c.ID, c.NameTokenIndexes, indexKeyVersion)
+}
+
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.CustomerRecord, error) {
 	query := `SELECT ` + customerColumns + ` FROM customers WHERE id = $1`
 	return r.scanOne(ctx, query, id)

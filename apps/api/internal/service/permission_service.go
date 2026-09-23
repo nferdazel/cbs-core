@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -41,15 +42,22 @@ func (s *permissionService) RequestChange(ctx context.Context, input domain.Perm
 	if groupCode == "" {
 		return nil, domain.ErrGroupNotFound
 	}
-	if !domain.KnownPermission(input.Permission) {
-		return nil, fmt.Errorf("%w: %s", domain.ErrUnknownPermission, input.Permission)
-	}
 	exists, err := s.repo.GroupExists(ctx, groupCode)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
 		return nil, domain.ErrGroupNotFound
+	}
+
+	// Operasi keanggotaan mengubah siapa yang tergabung di grup; operasi izin
+	// mengubah pemetaan grup->izin. Keduanya lewat maker-checker yang sama.
+	if input.Operation.IsMemberOperation() {
+		return s.requestMemberChange(ctx, groupCode, input, actor)
+	}
+
+	if !domain.KnownPermission(input.Permission) {
+		return nil, fmt.Errorf("%w: %s", domain.ErrUnknownPermission, input.Permission)
 	}
 
 	if input.Operation == domain.PermissionChangeRevoke {
@@ -68,6 +76,33 @@ func (s *permissionService) RequestChange(ctx context.Context, input domain.Perm
 			// Disimpan sebagai bukti apa yang dikonfirmasi pembuat; eksekusi tetap
 			// memeriksa keadaan terkini agar tidak buta terhadap perubahan antara.
 			"confirm_access_loss": input.ConfirmAccessLoss,
+		},
+		Notes: input.Notes,
+	}, actor)
+}
+
+// requestMemberChange memvalidasi pengajuan keanggotaan grup. Pengguna harus ada;
+// grup sudah dipastikan ada pemanggil. Efeknya baru berlaku setelah disetujui
+// pemeriksa lain, sama seperti perubahan izin.
+func (s *permissionService) requestMemberChange(ctx context.Context, groupCode string, input domain.PermissionChangeInput, actor domain.Actor) (*domain.MakerCheckerRequest, error) {
+	userID, err := uuid.Parse(strings.TrimSpace(input.UserID))
+	if err != nil {
+		return nil, fmt.Errorf("user_id tidak valid: %w", err)
+	}
+	userExists, err := s.repo.UserExists(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !userExists {
+		return nil, domain.ErrUserNotFound
+	}
+	return s.mc.CreateRequest(ctx, domain.CreateMakerCheckerInput{
+		ActionType: ActionPermissionChange,
+		Amount:     decimal.Zero,
+		Payload: map[string]any{
+			"group_code": groupCode,
+			"operation":  string(input.Operation),
+			"user_id":    userID.String(),
 		},
 		Notes: input.Notes,
 	}, actor)
@@ -95,7 +130,6 @@ func (s *permissionService) ExecuteApproved(ctx context.Context, tx any, actionT
 	}
 
 	groupCode := strings.TrimSpace(payloadString(payload, "group_code"))
-	permission := domain.Permission(strings.TrimSpace(payloadString(payload, "permission")))
 	operation, err := domain.NormalizePermissionOperation(payloadString(payload, "operation"))
 	if err != nil {
 		return err
@@ -103,6 +137,12 @@ func (s *permissionService) ExecuteApproved(ctx context.Context, tx any, actionT
 	if groupCode == "" {
 		return domain.ErrGroupNotFound
 	}
+	// Keanggotaan grup dieksekusi terpisah: yang berubah adalah baris
+	// user_group_members, bukan pemetaan grup->izin.
+	if operation.IsMemberOperation() {
+		return s.executeMemberChange(ctx, tx, groupCode, operation, payload, actor)
+	}
+	permission := domain.Permission(strings.TrimSpace(payloadString(payload, "permission")))
 	if !domain.KnownPermission(permission) {
 		return fmt.Errorf("%w: %s", domain.ErrUnknownPermission, permission)
 	}
@@ -141,6 +181,43 @@ func (s *permissionService) ExecuteApproved(ctx context.Context, tx any, actionT
 	return writeAudit(ctx, s.auditRepo, tx, actor, "PERMISSION_MAPPING_CHANGE", "user_group", groupCode, map[string]any{
 		"group_code": groupCode,
 		"permission": string(permission),
+		"operation":  string(operation),
+		"before":     before,
+		"after":      after,
+	})
+}
+
+// executeMemberChange menambah/mengeluarkan anggota grup di dalam transaksi
+// maker-checker. Keadaan terkini diperiksa ulang saat eksekusi agar keputusan
+// idempoten walau keadaan berubah antara pengajuan dan persetujuan; jejak
+// sebelum->sesudah ditulis ke audit log.
+func (s *permissionService) executeMemberChange(ctx context.Context, tx any, groupCode string, operation domain.PermissionChangeOperation, payload map[string]any, actor domain.Actor) error {
+	userID, err := uuid.Parse(strings.TrimSpace(payloadString(payload, "user_id")))
+	if err != nil {
+		return fmt.Errorf("user_id tidak valid: %w", err)
+	}
+	before, err := s.repo.UserInGroup(ctx, groupCode, userID)
+	if err != nil {
+		return err
+	}
+	switch operation {
+	case domain.PermissionChangeAddMember:
+		if !before {
+			if err := s.repo.AddMemberTx(ctx, tx, groupCode, userID); err != nil {
+				return err
+			}
+		}
+	case domain.PermissionChangeRemoveMember:
+		if before {
+			if err := s.repo.RemoveMemberTx(ctx, tx, groupCode, userID); err != nil {
+				return err
+			}
+		}
+	}
+	after := operation == domain.PermissionChangeAddMember
+	return writeAudit(ctx, s.auditRepo, tx, actor, "GROUP_MEMBERSHIP_CHANGE", "user_group", groupCode, map[string]any{
+		"group_code": groupCode,
+		"user_id":    userID.String(),
 		"operation":  string(operation),
 		"before":     before,
 		"after":      after,

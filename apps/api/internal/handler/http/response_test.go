@@ -34,8 +34,40 @@ func TestFailShowsBusinessError(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, mau 422", rec.Code)
 	}
-	if got := decodeError(t, rec); !strings.Contains(got, domain.ErrInsufficientFunds.Error()) {
-		t.Fatalf("pesan bisnis harus ditampilkan, dapat %q", got)
+	// Sungguhan domain kini dipetakan ke katalog i18n, sehingga pesan yang tampil
+	// adalah terjemahan (default ID), bukan literal domain berbahasa Inggris.
+	if got := decodeError(t, rec); got != i18n.Text(i18n.MsgInsufficientFunds) {
+		t.Fatalf("pesan bisnis harus ditampilkan dari katalog, dapat %q", got)
+	}
+}
+
+// Daftar kosong harus dikirim sebagai [] dan peta kosong sebagai {}, bukan null,
+// supaya klien hanya menangani satu bentuk kontrak daftar. Dengan serialisasi lama,
+// data bernilai null dan uji ini gagal.
+func TestSuccessListKosongArray(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data any
+		want string
+	}{
+		{"slice nil", []string(nil), "[]"},
+		{"slice kosong", []string{}, "[]"},
+		{"map nil", map[string]string(nil), "{}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			httpHandler.Success(rec, http.StatusOK, i18n.MsgAccountsListed, tc.data)
+
+			var body struct {
+				Data json.RawMessage `json:"data"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("respons bukan JSON: %v", err)
+			}
+			if string(body.Data) != tc.want {
+				t.Fatalf("data = %s, ingin %s", body.Data, tc.want)
+			}
+		})
 	}
 }
 

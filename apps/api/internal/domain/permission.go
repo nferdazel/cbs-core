@@ -18,6 +18,8 @@ import (
 var (
 	// ErrGroupNotFound dikembalikan bila kode grup tidak ada di user_groups.
 	ErrGroupNotFound = errors.New("grup pengguna tidak ditemukan")
+	// ErrUserNotFound dikembalikan bila pengguna yang akan dijadikan anggota tidak ada.
+	ErrUserNotFound = errors.New("pengguna tidak ditemukan")
 	// ErrUnknownPermission menolak pengajuan izin yang bukan konstanta Perm* kode.
 	// Izin yang tidak ditegakkan kode tidak punya arti; menolaknya lebih jelas
 	// daripada menyimpan baris yang tak pernah berpengaruh.
@@ -84,18 +86,33 @@ type PermissionChangeOperation string
 const (
 	PermissionChangeGrant  PermissionChangeOperation = "GRANT"
 	PermissionChangeRevoke PermissionChangeOperation = "REVOKE"
+	// PermissionChangeAddMember dan PermissionChangeRemoveMember mengelola
+	// keanggotaan pengguna pada grup. Operasi ini tidak membawa Permission; yang
+	// berubah adalah siapa yang tergabung, sehingga izin efektifnya ikut berubah
+	// lewat jalur maker-checker yang sama dengan perubahan pemetaan izin.
+	PermissionChangeAddMember    PermissionChangeOperation = "ADD_MEMBER"
+	PermissionChangeRemoveMember PermissionChangeOperation = "REMOVE_MEMBER"
 )
 
-// PermissionChangeInput adalah isi pengajuan perubahan pemetaan izin.
+// PermissionChangeInput adalah isi pengajuan perubahan pemetaan izin atau keanggotaan
+// grup. UserID diisi untuk operasi anggota (ADD_MEMBER/REMOVE_MEMBER) dan diabaikan
+// untuk operasi izin.
 type PermissionChangeInput struct {
 	GroupCode  string
 	Permission Permission
 	Operation  PermissionChangeOperation
+	// UserID adalah pengguna yang ditambahkan/dikeluarkan dari grup (string UUID).
+	UserID string
 	// ConfirmAccessLoss wajib TRUE bila pencabutan akan membuat pengguna
 	// kehilangan akses. Semantik perubahan tetap aditif: tanpa konfirmasi,
 	// pencabutan yang berdampak ditolak, bukan dijalankan diam-diam.
 	ConfirmAccessLoss bool
 	Notes             string
+}
+
+// IsMemberOperation melaporkan apakah operasi mengelola keanggotaan grup.
+func (o PermissionChangeOperation) IsMemberOperation() bool {
+	return o == PermissionChangeAddMember || o == PermissionChangeRemoveMember
 }
 
 // KnownPermission melaporkan apakah p adalah izin yang ditegakkan kode. Himpunan
@@ -138,6 +155,10 @@ func NormalizePermissionOperation(raw string) (PermissionChangeOperation, error)
 		return PermissionChangeGrant, nil
 	case string(PermissionChangeRevoke):
 		return PermissionChangeRevoke, nil
+	case string(PermissionChangeAddMember):
+		return PermissionChangeAddMember, nil
+	case string(PermissionChangeRemoveMember):
+		return PermissionChangeRemoveMember, nil
 	default:
 		return "", fmt.Errorf("operasi perubahan izin tidak dikenal: %q", raw)
 	}
@@ -156,6 +177,15 @@ type PermissionRepository interface {
 	// CountUsersLosingPermission menghitung pengguna aktif yang izin efektifnya
 	// akan kehilangan p bila p dicabut dari grup groupCode.
 	CountUsersLosingPermission(ctx context.Context, groupCode string, p Permission) (int, error)
+	// UserExists melaporkan apakah pengguna staf ada. Mencegah pengajuan keanggotaan
+	// untuk pengguna yang tidak dikenal.
+	UserExists(ctx context.Context, userID uuid.UUID) (bool, error)
+	// UserInGroup melaporkan apakah pengguna sudah menjadi anggota grup.
+	UserInGroup(ctx context.Context, groupCode string, userID uuid.UUID) (bool, error)
+	// AddMemberTx dan RemoveMemberTx mengubah keanggotaan di dalam transaksi
+	// maker-checker yang sama, sehingga persetujuan dan efeknya commit bersama.
+	AddMemberTx(ctx context.Context, tx any, groupCode string, userID uuid.UUID) error
+	RemoveMemberTx(ctx context.Context, tx any, groupCode string, userID uuid.UUID) error
 }
 
 // PermissionService mengelola grup/izin dan mengajukan perubahannya lewat

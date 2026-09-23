@@ -114,6 +114,19 @@ type CreateCustomerInput struct {
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
+// UpdateCustomerInput adalah isi perubahan data nasabah. CIF, status, dan cabang
+// tidak diubah lewat endpoint ini: CIF adalah identitas tetap, sedangkan status dan
+// cabang punya jalurnya sendiri. branch_code sengaja tidak ada agar tidak disalahpahami
+// sebagai pemindahan cabang (perilaku create pun mengabaikannya).
+type UpdateCustomerInput struct {
+	FullName     string         `json:"full_name"`
+	IDCardNumber string         `json:"id_card_number"`
+	Email        string         `json:"email"`
+	PhoneNumber  string         `json:"phone_number"`
+	Address      string         `json:"address"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
 // IDCardDigits adalah panjang NIK yang sah.
 const IDCardDigits = 16
 
@@ -185,11 +198,18 @@ type CustomerRepository interface {
 	// perubahan nama serta tokennya commit bersama. indexKeyVersion mencatat versi
 	// kunci indeks yang dipakai token baru.
 	ReplaceNameTokens(ctx context.Context, tx *sql.Tx, customerID uuid.UUID, tokenIndexes []string, indexKeyVersion string) error
+	// UpdateTx memperbarui kolom terenkripsi nasabah beserta token namanya di dalam
+	// transaksi pemanggil, sehingga data, blind index, dan token commit bersama.
+	UpdateTx(ctx context.Context, tx *sql.Tx, record *CustomerRecord) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status CustomerStatus) error
 }
 
 type CustomerService interface {
 	RegisterCustomer(ctx context.Context, input CreateCustomerInput, actor Actor) (*Customer, error)
+	// UpdateCustomer mengubah data nasabah yang sudah ada. Nasabah di luar cakupan
+	// unit aktor ditolak ErrCrossBranchAccess; NIK/email yang sudah dipakai nasabah
+	// lain ditolak agar tidak menyatukan dua orang.
+	UpdateCustomer(ctx context.Context, id uuid.UUID, input UpdateCustomerInput, actor Actor) (*Customer, error)
 	GetCustomer(ctx context.Context, id uuid.UUID, actor Actor) (*Customer, error)
 	ListCustomers(ctx context.Context, page, pageSize int, search string, actor Actor) ([]Customer, int, error)
 	// NamesByIDs mengembalikan nama nasabah yang sudah didekripsi untuk pelengkapan tampilan.

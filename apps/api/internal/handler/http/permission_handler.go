@@ -111,9 +111,11 @@ func (h *PermissionHandler) RequestChange(w http.ResponseWriter, r *http.Request
 	}
 
 	var body struct {
-		GroupCode         string `json:"group_code"`
-		Permission        string `json:"permission"`
-		Operation         string `json:"operation"`
+		GroupCode  string `json:"group_code"`
+		Permission string `json:"permission"`
+		Operation  string `json:"operation"`
+		// UserID dipakai operasi keanggotaan (ADD_MEMBER/REMOVE_MEMBER).
+		UserID            string `json:"user_id"`
 		ConfirmAccessLoss bool   `json:"confirm_access_loss"`
 		Notes             string `json:"notes"`
 	}
@@ -132,6 +134,7 @@ func (h *PermissionHandler) RequestChange(w http.ResponseWriter, r *http.Request
 		GroupCode:         body.GroupCode,
 		Permission:        domain.Permission(body.Permission),
 		Operation:         operation,
+		UserID:            body.UserID,
 		ConfirmAccessLoss: body.ConfirmAccessLoss,
 		Notes:             body.Notes,
 	}, actor)
@@ -151,7 +154,7 @@ func writePermissionError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.As(err, &loss):
 		Error(w, http.StatusUnprocessableEntity, loss.Error())
-	case errors.Is(err, domain.ErrGroupNotFound):
+	case errors.Is(err, domain.ErrGroupNotFound), errors.Is(err, domain.ErrUserNotFound):
 		Error(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrUnknownPermission):
 		Error(w, http.StatusUnprocessableEntity, err.Error())

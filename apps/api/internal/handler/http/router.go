@@ -199,6 +199,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/", p.CustomerHandler.List)
 				r.With(middleware.RequirePermission(domain.PermCustomersRead)).
 					Get("/{id}", p.CustomerHandler.GetByID)
+				// Perubahan data nasabah memakai izin customers:update yang sudah ada
+				// di matriks peran; rute ini menutup izin yang sebelumnya tanpa jalur.
+				r.With(middleware.RequirePermission(domain.PermCustomersUpdate)).
+					Put("/{id}", p.CustomerHandler.Update)
 			})
 
 			// ── Master data: cabang & produk ──
@@ -245,6 +249,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// memulihkan; tidak perlu permission baru untuk reaktivasi.
 				r.With(middleware.RequirePermission(domain.PermAccountsFreeze)).
 					Post("/{accountNumber}/reactivate", p.AccountHandler.Reactivate)
+				// Penutupan rekening adalah wewenang tersendiri (accounts:close). Izin
+				// sudah ada di matriks peran; rute ini menutup izin mati tersebut.
+				r.With(middleware.RequirePermission(domain.PermAccountsClose)).
+					Post("/{accountNumber}/close", p.AccountHandler.Close)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/{accountNumber}/statements", p.LedgerHandler.GetStatement)
 			})

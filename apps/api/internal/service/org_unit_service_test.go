@@ -61,12 +61,19 @@ func TestCreateOrgUnit_JenjangTidakDikenal(t *testing.T) {
 func TestCreateOrgUnit_KodeAreaAman(t *testing.T) {
 	svc, _, _ := orgUnitFixture()
 	actor := domain.Actor{Role: domain.RoleSuperAdmin}
-	for _, code := range []string{"", " ", "AREA,1", "AREA 1", "AREA/1", "AREA-1-YANG-SANGAT-PANJANG"} {
+	for _, code := range []string{"", " ", "AREA,1", "AREA 1", "AREA/1"} {
 		if _, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
 			Code: code, Name: "Area Uji", Level: domain.UnitLevelArea,
 		}, actor); !errors.Is(err, domain.ErrInvalidBranchCode) {
 			t.Fatalf("kode %q: err = %v, ingin ErrInvalidBranchCode", code, err)
 		}
+	}
+	// Kode yang melebihi lebar kolom branches.code (VARCHAR(8)) ditolak dengan pesan
+	// batas panjang (4xx), bukan lolos ke database dan gagal sebagai 500.
+	if _, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
+		Code: "AREA-JABAR", Name: "Area Uji", Level: domain.UnitLevelArea,
+	}, actor); !errors.Is(err, domain.ErrOrgUnitCodeTooLong) {
+		t.Fatalf("kode panjang: err = %v, ingin ErrOrgUnitCodeTooLong", err)
 	}
 }
 
@@ -92,15 +99,15 @@ func TestCreateOrgUnit_AreaTanpaAtasanSukses(t *testing.T) {
 		t.Fatal("kode dengan koma harus ditolak")
 	}
 	unit, err := svc.CreateOrgUnit(context.Background(), domain.CreateOrgUnitInput{
-		Code: " wilayah-1 ", Name: "Wilayah Timur", Level: domain.UnitLevelRegion,
+		Code: " wilayah1 ", Name: "Wilayah Timur", Level: domain.UnitLevelRegion,
 	}, actor)
 	if err != nil {
 		t.Fatalf("CreateOrgUnit: %v", err)
 	}
-	if unit.Code != "WILAYAH-1" || unit.UnitLevel != domain.UnitLevelRegion || unit.ParentID != nil {
+	if unit.Code != "WILAYAH1" || unit.UnitLevel != domain.UnitLevelRegion || unit.ParentID != nil {
 		t.Fatalf("unit tersimpan %+v", unit)
 	}
-	if _, ok := repo.branches["WILAYAH-1"]; !ok {
+	if _, ok := repo.branches["WILAYAH1"]; !ok {
 		t.Fatal("unit tidak tersimpan di repository")
 	}
 	if len(audit.events) != 1 || audit.events[0].Action != "CREATE_ORG_UNIT" {

@@ -240,6 +240,34 @@ func (r *AccountRepository) Reactivate(ctx context.Context, tx any, accountID uu
 	return rowsAffected > 0, nil
 }
 
+// Close menutup rekening yang masih ACTIVE atau DORMANT. Penjaga saldo nol
+// ditegakkan di sini juga (bukan hanya di service) supaya balapan dengan transaksi
+// yang belum tercatat tidak menutup rekening bersaldo. Hasil false berarti rekening
+// sudah tidak dalam status yang dapat ditutup atau saldonya tidak nol.
+func (r *AccountRepository) Close(ctx context.Context, tx any, accountID uuid.UUID) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("invalid transaction context")
+	}
+
+	query := `
+		UPDATE accounts
+		SET status = 'CLOSED', updated_at = NOW(), version = version + 1
+		WHERE id = $1
+		  AND status IN ('ACTIVE', 'DORMANT')
+		  AND balance = 0 AND available_balance = 0 AND hold_balance = 0
+	`
+	res, err := sqlTx.ExecContext(ctx, query, accountID)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 func (r *AccountRepository) queryAccounts(ctx context.Context, query string, args ...any) ([]domain.Account, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

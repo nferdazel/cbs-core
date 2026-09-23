@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -33,6 +34,13 @@ func (h *CKPNHandler) Compare(w http.ResponseWriter, r *http.Request) {
 	summary, err := h.ckpnSvc.Compare(r.Context(), parseAsOf(r),
 		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
+		// PPKA yang basi (tanggal bisnis PPAP berbeda) adalah kondisi yang dapat
+		// diperbaiki operator, bukan kegagalan server: balas 409 dengan pesan yang
+		// menyebut tanggal bisnisnya, bukan 500 generik.
+		if errors.Is(err, domain.ErrCKPNStalePPAP) {
+			Fail(w, r, http.StatusConflict, err)
+			return
+		}
 		InternalError(w, r, err)
 		return
 	}
@@ -53,6 +61,10 @@ func (h *CKPNHandler) Run(w http.ResponseWriter, r *http.Request) {
 	summary, err := h.ckpnSvc.Run(r.Context(), parseAsOf(r),
 		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
 	if err != nil {
+		if errors.Is(err, domain.ErrCKPNStalePPAP) {
+			Fail(w, r, http.StatusConflict, err)
+			return
+		}
 		InternalError(w, r, err)
 		return
 	}

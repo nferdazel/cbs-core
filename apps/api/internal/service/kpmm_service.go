@@ -48,6 +48,20 @@ type kpmmService struct {
 	config  domain.SystemConfigService
 }
 
+// ppapRunDateProvider adalah kontrak opsional modul CKPN yang memberi tanggal bisnis
+// run PPAP terakhir. Bila implementasi tidak memenuhinya (mis. stub uji), laporan
+// memakai as_of apa adanya seperti sebelumnya sehingga tidak ada perilaku baru.
+type ppapRunDateProvider interface {
+	LastPPAPBusinessDate(ctx context.Context) (time.Time, bool, error)
+}
+
+// sameDateUTC membandingkan komponen tanggal (bukan jam/zona) dua waktu.
+func sameDateUTC(a, b time.Time) bool {
+	ay, am, ad := a.UTC().Date()
+	by, bm, bd := b.UTC().Date()
+	return ay == by && am == bm && ad == bd
+}
+
 // NewKPMMService menyusun penghitung KPMM baca-saja.
 func NewKPMMService(reports domain.ReportService, ckpn domain.CKPNService, config domain.SystemConfigService) domain.KPMMService {
 	return &kpmmService{reports: reports, ckpn: ckpn, config: config}
@@ -109,7 +123,23 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 	modalIntiUtama := bs.TotalEquity.Add(bs.NetIncome)
 	report.ModalIntiUtama = domain.KPMMKomponen{Nilai: modalIntiUtama, Tersedia: true}
 
-	report.PengurangModalInti, report.DeductionBasis = s.pengurangModalInti(ctx, asOf, actor, &gaps)
+	// Perbandingan PPKA-CKPN hanya sah pada tanggal bisnis run PPAP yang tersimpan.
+	// Bila run terakhir berada SEBELUM akhir periode (mis. EOD PPAP jatuh di hari
+	// sebelum tutup buku), memakai as_of akhir periode akan ditolak sebagai PPKA
+	// basi sehingga baris KPMM Form 00.08 kosong. Modul CKPN memberi tanggal run
+	// terakhir lewat kontrak opsional; bila tersedia dan tidak melewati as_of,
+	// periode itulah yang dipakai dan dicatat pada laporan.
+	asOfPPAP := asOf
+	if p, ok := s.ckpn.(ppapRunDateProvider); ok {
+		if last, ok2, err := p.LastPPAPBusinessDate(ctx); err == nil && ok2 && !last.After(asOf) {
+			asOfPPAP = last
+			if !sameDateUTC(last, asOf) {
+				report.PPAPBusinessDate = last.Format(layoutTanggalBisnis)
+			}
+		}
+	}
+
+	report.PengurangModalInti, report.DeductionBasis = s.pengurangModalInti(ctx, asOfPPAP, actor, &gaps)
 
 	if report.PengurangModalInti.Tersedia {
 		report.ModalInti = domain.KPMMKomponen{
@@ -336,6 +366,10 @@ func kpmmCatatan(r domain.KPMMReport) []string {
 		catatan = append(catatan, "Pengurang modal inti memakai selisih AGREGAT PPKA-CKPN, bukan per kredit.")
 	} else {
 		catatan = append(catatan, "Pengurang modal inti memakai jumlah selisih PER KREDIT max(PPKA-CKPN,0) (konservatif).")
+	}
+	if r.PPAPBusinessDate != "" {
+		catatan = append(catatan, "Perbandingan PPKA-CKPN memakai tanggal bisnis run PPAP terakhir "+r.PPAPBusinessDate+
+			", bukan akhir periode; PPKA yang tersimpan memang milik tanggal tersebut.")
 	}
 	return catatan
 }

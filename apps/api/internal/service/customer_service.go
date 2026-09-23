@@ -190,6 +190,100 @@ func (s *customerService) persistCustomer(ctx context.Context, record *domain.Cu
 	return tx.Commit()
 }
 
+// UpdateCustomer mengubah data nasabah yang sudah ada. NIK dinormalisasi ulang lalu
+// dideteksi duplikatnya lewat blind index lintas versi kunci, sehingga NIK yang
+// diubah tidak menabrak nasabah lain tanpa pesan yang jelas. CIF, status, dan cabang
+// dipertahankan; cabang nasabah di luar cakupan unit aktor ditolak.
+func (s *customerService) UpdateCustomer(ctx context.Context, id uuid.UUID, input domain.UpdateCustomerInput, actor domain.Actor) (*domain.Customer, error) {
+	if err := s.cipherOrError(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(input.FullName) == "" {
+		return nil, fmt.Errorf("nama lengkap wajib diisi")
+	}
+	normalizedIDCard, err := domain.NormalizeIDCardNumber(input.IDCardNumber)
+	if err != nil {
+		return nil, err
+	}
+	input.IDCardNumber = normalizedIDCard
+
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if s.db != nil {
+		allowed, err := s.canReadRecord(ctx, actor, existing)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, domain.ErrCrossBranchAccess
+		}
+	}
+
+	// Duplikat NIK dicek lewat blind index. Baris yang ditemukan adalah dirinya
+	// sendiri saat NIK tidak berubah, sehingga aman diperiksa selalu.
+	if found, err := s.repo.FindByIDCard(ctx, s.cipher.BlindIndexCandidates(input.IDCardNumber)); err == nil && found != nil && found.ID != id {
+		return nil, domain.ErrDuplicateIDCard
+	} else if err != nil && !errors.Is(err, domain.ErrCustomerNotFound) {
+		return nil, err
+	}
+
+	record, err := s.encryptInput(domain.CreateCustomerInput{
+		FullName:     input.FullName,
+		IDCardNumber: input.IDCardNumber,
+		Email:        input.Email,
+		PhoneNumber:  input.PhoneNumber,
+		Address:      input.Address,
+	})
+	if err != nil {
+		return nil, err
+	}
+	record.ID = id
+	record.CIFNumber = existing.CIFNumber
+	record.Status = existing.Status
+	record.BranchID = existing.BranchID
+	record.Metadata = input.Metadata
+	record.CreatedAt = existing.CreatedAt
+	record.UpdatedAt = time.Now().UTC()
+
+	if err := s.persistUpdate(ctx, record, actor); err != nil {
+		return nil, err
+	}
+	return s.decryptRecord(ctx, record)
+}
+
+// persistUpdate menyimpan perubahan nasabah dan audit log dalam satu transaksi.
+// Perubahan data, blind index, dan token nama harus commit bersama: tanpa itu,
+// pencarian nama/NIK bisa menunjuk data yang sudah berubah.
+func (s *customerService) persistUpdate(ctx context.Context, record *domain.CustomerRecord, actor domain.Actor) error {
+	if s.db == nil {
+		return errors.New("pembaruan nasabah memerlukan database")
+	}
+	changes := map[string]any{
+		"cif_number": record.CIFNumber,
+		"status":     record.Status,
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := s.repo.UpdateTx(ctx, tx, record); err != nil {
+		// Unique violation pada index NIK/email bermakna nasabah lain sudah memakai
+		// nilai itu; pesannya sama dengan jalur pendaftaran.
+		if isUniqueViolation(err) {
+			return domain.ErrDuplicateIDCard
+		}
+		return err
+	}
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "UPDATE_CUSTOMER", "customer", record.ID.String(), changes); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *customerService) GetCustomer(ctx context.Context, id uuid.UUID, actor domain.Actor) (*domain.Customer, error) {
 	record, err := s.repo.GetByID(ctx, id)
 	if err != nil {
