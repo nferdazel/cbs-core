@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,6 +66,11 @@ func LoanPenaltyCap(overduePrincipal, capPercent decimal.Decimal) decimal.Decima
 	return RoundToRupiah(overduePrincipal.Mul(capPercent).Div(decimal.NewFromInt(100)))
 }
 
+// ErrLoanPenaltyCapInvalid menandai plafon denda (loan.penalty.cap_pct) yang DIISI
+// melebihi batas kewajaran panel: maksimum 100% dari pokok tunggakan. Nilai di atas itu
+// ditolak, bukan dipakai, karena total ta'zir tidak boleh melebihi kewajiban pokoknya.
+var ErrLoanPenaltyCapInvalid = errors.New("plafon denda melebihi 100 persen dari pokok tunggakan")
+
 // LoanPenaltyCandidate adalah satu kredit menunggak yang perlu dihitung dendanya.
 type LoanPenaltyCandidate struct {
 	LoanID                uuid.UUID
@@ -72,6 +78,11 @@ type LoanPenaltyCandidate struct {
 	ProductID             *uuid.UUID
 	DisbursementAccountID uuid.UUID
 	Status                LoanStatus
+	// OutstandingPrincipal adalah sisa pokok kredit (loans.outstanding_principal),
+	// batas atas total ta'zir yang boleh terakru per pembiayaan (keputusan panel
+	// butir 2.1(2): total ta'zir tidak boleh melebihi sisa pokok). Nol berarti belum
+	// diketahui; penjaga tidak diterapkan pada data yang tidak tersedia.
+	OutstandingPrincipal decimal.Decimal
 	// OverduePrincipal adalah total pokok angsuran yang lewat jatuh tempo dan belum
 	// dibayar pada asOf.
 	OverduePrincipal decimal.Decimal

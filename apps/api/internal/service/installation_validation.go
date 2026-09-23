@@ -4,9 +4,36 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 )
+
+// CKPNProvisionalWarnings mengembalikan peringatan status parameter CKPN SEMENTARA
+// (butir 1.4 keputusan panel): label wajib muncul saat start, ringkasan EOD, respons
+// laporan KPMM/PPAP, dan endpoint status. Ia murni baca-saja — tidak menulis, tidak
+// menjurnal, dan tidak memblokir perhitungan bayangan; yang diblokir adalah ekspor OJK
+// (lihat domain.CKPNParametersStatusFromConfig.OJKExportBlocked).
+//
+// cfg nil berarti lingkungan tanpa konfigurasi; peringatan tetap dikembalikan dengan
+// status bawaan SEMENTARA (gagal-aman) supaya tidak ada ringkasan yang tampak final.
+func CKPNProvisionalWarnings(ctx context.Context, cfg domain.SystemConfigService) []string {
+	status := domain.CKPNParametersStatusFromConfig(ctx, cfg, time.Now())
+	if !status.Sementara {
+		return nil
+	}
+	return append([]string(nil), status.Warnings...)
+}
+
+// appendCKPNProvisionalWarnings menambahkan peringatan status parameter CKPN SEMENTARA
+// ke ringkasan tutup hari. Dipisah dari runEOD agar jalur ini dapat diuji tanpa
+// menjalankan tutup hari penuh.
+func appendCKPNProvisionalWarnings(ctx context.Context, cfg domain.SystemConfigService, summary *domain.EODSummaryResult) {
+	if summary == nil {
+		return
+	}
+	summary.Warnings = append(summary.Warnings, CKPNProvisionalWarnings(ctx, cfg)...)
+}
 
 // InstallationValidationWarnings mengembalikan peringatan konfigurasi yang mengikuti
 // cakupan buku tingkat instalasi. Tujuannya membuat ketidakcocokan terlihat, bukan

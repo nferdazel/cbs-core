@@ -111,6 +111,17 @@ type KPMMReport struct {
 	AlasanTidakLengkap []string `json:"alasan_tidak_lengkap,omitempty"`
 	// ParameterGaps menyebut kunci konfigurasi yang belum diisi.
 	ParameterGaps []string `json:"parameter_gaps,omitempty"`
+	// ParameterSementara true berarti parameter CKPN yang dipakai berstatus SEMENTARA
+	// (belum diratifikasi). Laporan KPMM adalah laporan OJK, sehingga angka sementara
+	// tidak boleh dibaca sebagai final (butir 1.4 keputusan panel). Angka TIDAK diubah;
+	// hanya ditandai.
+	ParameterSementara bool `json:"parameter_sementara"`
+	// BolehDikirimOJK false berarti laporan ini belum boleh dikirim ke OJK karena
+	// memuat/mengandalkan parameter CKPN SEMENTARA.
+	BolehDikirimOJK bool `json:"boleh_dikirim_ojk"`
+	// PeringatanParameter adalah label/peringatan status parameter yang sama dengan
+	// yang muncul saat start dan EOD.
+	PeringatanParameter []string `json:"peringatan_parameter,omitempty"`
 	// Catatan menjelaskan batas perhitungan yang harus diketahui pembaca.
 	Catatan []string `json:"catatan,omitempty"`
 }

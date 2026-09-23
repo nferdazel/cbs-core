@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/i18n"
@@ -13,10 +14,23 @@ import (
 
 type CKPNHandler struct {
 	ckpnSvc domain.CKPNService
+	// config dipakai endpoint status parameter SEMENTARA/FINAL agar dapat diperiksa
+	// tanpa menjalankan EOD. Boleh nil (uji lama): status diperlakukan SEMENTARA.
+	config domain.SystemConfigService
 }
 
-func NewCKPNHandler(ckpnSvc domain.CKPNService) *CKPNHandler {
-	return &CKPNHandler{ckpnSvc: ckpnSvc}
+func NewCKPNHandler(ckpnSvc domain.CKPNService, config domain.SystemConfigService) *CKPNHandler {
+	return &CKPNHandler{ckpnSvc: ckpnSvc, config: config}
+}
+
+// Status handles GET /api/v1/ckpn/status.
+// Menyajikan status parameter CKPN (SEMENTARA/FINAL), tanggal mulai, batas ratifikasi
+// 12 bulan, apakah lantai PPKA ditegakkan, apakah laporan OJK diblokir beserta
+// alasannya, dan peringatan yang sama dengan yang muncul saat start/EOD. Baca-saja;
+// tidak menjalankan EOD dan tidak mengubah konfigurasi.
+func (h *CKPNHandler) Status(w http.ResponseWriter, r *http.Request) {
+	status := domain.CKPNParametersStatusFromConfig(r.Context(), h.config, time.Now())
+	Success(w, http.StatusOK, i18n.MsgCKPNParametersStatus, status)
 }
 
 // Compare handles GET /api/v1/ckpn/comparison.
@@ -89,5 +103,9 @@ func (h *CKPNHandler) RegisterRoutes(r chi.Router) {
 			Post("/run", h.Run)
 		r.With(middleware.RequirePermission(domain.PermLoansRead)).
 			Get("/comparison", h.Compare)
+		// Status parameter dapat diperiksa tanpa menjalankan EOD: peringatan SEMENTARA,
+		// batas ratifikasi, dan status blokir ekspor OJK. Cukup izin baca kredit.
+		r.With(middleware.RequirePermission(domain.PermLoansRead)).
+			Get("/status", h.Status)
 	})
 }

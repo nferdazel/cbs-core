@@ -62,6 +62,25 @@ func (e *moneyEnv) disburseWithProduct(t *testing.T, productCode string, custome
 	return disbursed
 }
 
+// setPenaltyAkadDisclosed menyetel penanda klausul akad syariah (keputusan panel:
+// ta'zir tidak diakru selama false). Dipulihkan ke false setelah uji agar tidak
+// mempengaruhi uji lain pada database yang sama.
+func (e *moneyEnv) setPenaltyAkadDisclosed(t *testing.T, disclosed bool) {
+	t.Helper()
+	const key = "loan.penalty.syariah.akad_disclosed"
+	value := "false"
+	if disclosed {
+		value = "true"
+	}
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ($1, $2, 'penanda akad untuk uji integrasi denda')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
+		t.Fatalf("menyetel penanda akad: %v", err)
+	}
+	e.configSvc.Invalidate(key)
+}
+
 func findPenaltyItem(t *testing.T, summary domain.LoanPenaltySummary, loanNumber string) domain.LoanPenaltyItem {
 	t.Helper()
 	for _, it := range summary.Items {
@@ -204,6 +223,10 @@ func TestIntegrasiDendaSyariahDanaKebajikan(t *testing.T) {
 	e := newMoneyEnv(t)
 	asOf := time.Now().UTC()
 	e.setPenaltyRatePerMille(t, 10)
+	// Panel butir 2.1(3): tanpa penanda klausul akad, ta'zir TIDAK diakru. Uji ini
+	// menguji perlakuan dananya, jadi penandanya dinyalakan lebih dulu.
+	e.setPenaltyAkadDisclosed(t, true)
+	t.Cleanup(func() { e.setPenaltyAkadDisclosed(t, false) })
 
 	cust := e.newCustomer(t, "Denda Syariah", "")
 	acc := e.newSyariahAccount(t, cust.ID)

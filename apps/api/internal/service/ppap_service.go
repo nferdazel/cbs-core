@@ -171,6 +171,10 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 			}
 		}
 	}
+	// Label status parameter CKPN SEMENTARA menyertai respons PPAP (butir 1.4): PPKA
+	// yang dibandingkan CKPN dihitung dari portofolio yang sama, sehingga pembaca harus
+	// tahu bila angka CKPN pasangannya belum diratifikasi. Tidak mengubah angka PPAP.
+	summary.ParameterCKPNWarnings = CKPNProvisionalWarnings(ctx, s.config)
 	return summary, nil
 }
 

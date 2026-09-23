@@ -211,3 +211,57 @@ func TestIntegrasiKPMM(t *testing.T) {
 		t.Fatalf("rasio tanpa pengurang %s harus lebih besar dari %s", tanpa.RasioKPMM.Nilai, report.RasioKPMM.Nilai)
 	}
 }
+
+// Laporan KPMM wajib menandai parameter CKPN SEMENTARA, tanpa mengubah angka apa pun.
+// Larangan kirim OJK mengikuti aturan yang sama seperti ekspor bulanan: berlaku saat
+// angka sementara benar-benar mengalir ke laporan, yaitu saat CKPN resmi menyala.
+// Selama CKPN mati, kolom CKPN KPMM dihitung dari PPKA, sehingga yang menahan laporan
+// adalah kelengkapan komponen modal (Lengkap=false), bukan keraguan parameter PD/LGD.
+func TestIntegrasiKPMMMenandaiParameterCKPNSementara(t *testing.T) {
+	e := newMoneyEnv(t)
+	t.Cleanup(func() { finalTanpaLantai(t, e) })
+
+	reportSvc := service.NewReportService(postgres.NewReportRepository(e.db))
+	asOf := time.Now().UTC()
+	svc := service.NewKPMMService(reportSvc, kpmmIntegCKPNStub{}, e.configSvc)
+
+	// CKPN masih mati: ditandai SEMENTARA + berperingatan, tetapi kirim OJK belum ditutup.
+	setCKPNConfig(t, e, "ckpn.enabled", "false")
+	setCKPNConfig(t, e, domain.ConfigKeyCKPNParametersStatus, domain.CKPNParameterStatusSementara)
+	sementara, err := svc.Hitung(e.ctx, asOf, "", e.actor)
+	if err != nil {
+		t.Fatalf("Hitung SEMENTARA: %v", err)
+	}
+	if !sementara.ParameterSementara {
+		t.Fatalf("KPMM SEMENTARA harus ditandai: %+v", sementara)
+	}
+	if len(sementara.PeringatanParameter) == 0 {
+		t.Fatal("KPMM SEMENTARA harus membawa peringatan parameter")
+	}
+	if !sementara.Lengkap {
+		// Bukan syarat wajib uji ini, tetapi bila tidak lengkap alasannya harus ada.
+		if len(sementara.AlasanTidakLengkap) == 0 {
+			t.Fatalf("Lengkap=false wajib menyebut alasan: %+v", sementara)
+		}
+	}
+
+	// CKPN resmi menyala sebelum ratifikasi: angka sementara masuk laporan -> tutup ekspor.
+	setCKPNConfig(t, e, "ckpn.enabled", "true")
+	nyala, err := svc.Hitung(e.ctx, asOf, "", e.actor)
+	if err != nil {
+		t.Fatalf("Hitung SEMENTARA + CKPN nyala: %v", err)
+	}
+	if !nyala.ParameterSementara || nyala.BolehDikirimOJK {
+		t.Fatalf("KPMM SEMENTARA + CKPN nyala belum boleh dikirim OJK: %+v", nyala)
+	}
+
+	setCKPNConfig(t, e, "ckpn.enabled", "false")
+	setCKPNConfig(t, e, domain.ConfigKeyCKPNParametersStatus, domain.CKPNParameterStatusFinal)
+	final, err := svc.Hitung(e.ctx, asOf, "", e.actor)
+	if err != nil {
+		t.Fatalf("Hitung FINAL: %v", err)
+	}
+	if final.ParameterSementara || !final.BolehDikirimOJK || len(final.PeringatanParameter) != 0 {
+		t.Fatalf("KPMM FINAL tidak boleh ditandai/blokir: %+v", final)
+	}
+}

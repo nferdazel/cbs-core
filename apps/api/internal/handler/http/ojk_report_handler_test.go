@@ -10,7 +10,35 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/ojkreport"
+	"github.com/shopspring/decimal"
 )
+
+// ojkCKPNConfigStub menyajikan kunci status parameter CKPN dari peta; kunci lain jatuh
+// ke fallback. Dipakai membuktikan ekspor ditolak saat SEMENTARA dan boleh saat FINAL.
+type ojkCKPNConfigStub struct{ values map[string]string }
+
+func (s ojkCKPNConfigStub) GetString(_ context.Context, key, fallback string) string {
+	if v, ok := s.values[key]; ok {
+		return v
+	}
+	return fallback
+}
+func (ojkCKPNConfigStub) GetDecimal(context.Context, string, decimal.Decimal) decimal.Decimal {
+	return decimal.Zero
+}
+func (ojkCKPNConfigStub) GetInt(context.Context, string, int) int { return 0 }
+
+// GetBool membaca peta yang sama dengan GetString: blokir ekspor OJK bergantung pada
+// ckpn.enabled, jadi stub ini harus benar-benar membacanya agar uji bermakna.
+func (s ojkCKPNConfigStub) GetBool(_ context.Context, key string, fallback bool) bool {
+	if v, ok := s.values[key]; ok {
+		return v == "true" || v == "1"
+	}
+	return fallback
+}
+func (ojkCKPNConfigStub) Invalidate(string) {}
+
+var _ domain.SystemConfigService = ojkCKPNConfigStub{}
 
 type stubOJKSource struct{}
 
@@ -44,7 +72,30 @@ func TestParseOJKPeriod(t *testing.T) {
 }
 
 func newOJKHandler() *OJKReportHandler {
-	return &OJKReportHandler{builder: ojkreport.NewBuilder(stubOJKSource{})}
+	return &OJKReportHandler{
+		builder: ojkreport.NewBuilder(stubOJKSource{}),
+		config: ojkCKPNConfigStub{values: map[string]string{
+			domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusFinal,
+		}},
+	}
+}
+
+// newOJKHandlerSementara menyusun handler dengan parameter CKPN SEMENTARA: ekspor
+// laporan OJK wajib ditolak.
+func newOJKHandlerSementara() *OJKReportHandler {
+	return ojKHandlerWithConfig(map[string]string{
+		domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusSementara,
+		domain.ConfigKeyCKPNEnabled:          "true",
+	})
+}
+
+// ojKHandlerWithConfig memakai stub konfigurasi yang benar-benar membaca peta, supaya
+// saklar seperti ckpn.enabled ikut diuji (blokir ekspor OJK bergantung padanya).
+func ojKHandlerWithConfig(values map[string]string) *OJKReportHandler {
+	return &OJKReportHandler{
+		builder: ojkreport.NewBuilder(stubOJKSource{}),
+		config:  ojkCKPNConfigStub{values: values},
+	}
 }
 
 // stubMappingReviewRepo menyimpan keputusan di memori untuk uji handler; idempotensi
@@ -215,5 +266,52 @@ func TestExportMonthlyMengizinkanAktorLintasCabang(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "FORM|SANDI|NAMA POS|JUMLAH") {
 		t.Fatal("berkas teks tidak memuat header kolom")
+	}
+}
+
+// Selama parameter CKPN SEMENTARA, berkas laporan OJK TIDAK boleh dibangun: jumlahnya
+// berasal dari parameter yang belum diratifikasi dan dilarang menjadi dasar laporan
+// OJK/APOLO. Bentuknya MENOLAK KERAS (422) — bukan menandai berkas, karena berkas
+// bertanda masih dapat terkirim. Pesannya wajib menyebut sebab dan langkah perbaikan.
+func TestExportMonthlyMenolakSaatParameterCKPNSementara(t *testing.T) {
+	h := newOJKHandlerSementara()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/ojk/monthly?period=2026-03", nil)
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin}))
+	rec := httptest.NewRecorder()
+
+	h.ExportMonthly(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, ingin 422 (ekspor ditolak selama SEMENTARA); body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"SEMENTARA", "FINAL", "ratifikasi"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("pesan penolakan harus memuat %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "FORM|SANDI|NAMA POS") {
+		t.Fatal("berkas laporan tidak boleh terbentuk saat parameter SEMENTARA")
+	}
+}
+
+// Selama CKPN resmi MASIH MATI, laporan OJK memuat angka PPKA (bukan CKPN dari PD/LGD
+// sementara), sehingga menutup laporannya justru memblokir hal yang sehat. Blokir hanya
+// berlaku saat angka sementara benar-benar mengalir ke laporan.
+func TestExportMonthlyTetapJalanSaatParameterSementaraDanCKPNMati(t *testing.T) {
+	h := ojKHandlerWithConfig(map[string]string{
+		domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusSementara,
+		domain.ConfigKeyCKPNEnabled:          "false",
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/reports/ojk/monthly?period=2026-03", nil)
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin}))
+	rec := httptest.NewRecorder()
+
+	h.ExportMonthly(rec, req)
+
+	if rec.Code == http.StatusUnprocessableEntity {
+		t.Fatalf("CKPN mati tidak boleh menutup ekspor OJK; body=%s", rec.Body.String())
 	}
 }

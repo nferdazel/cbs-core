@@ -155,6 +155,14 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		Preview:    !post,
 	}
 
+	// Label status parameter wajib menyertai setiap ringkasan CKPN (butir 1.4.1):
+	// angka dari parameter SEMENTARA tidak boleh terbaca sebagai kebijakan final.
+	summary.ParameterSementara = policy.ParameterStatus.Sementara
+	summary.OJKExportBlocked = policy.ParameterStatus.OJKExportBlocked
+	if policy.ParameterStatus.Sementara {
+		summary.ParameterNote = "PARAMETER SEMENTARA — belum disetujui bank/akuntan; angka ini HANYA untuk internal dan DILARANG menjadi dasar kolom CKPN laporan OJK/APOLO."
+	}
+
 	// Kedua saklar mati berarti tidak ada query tambahan sama sekali: kredit tidak
 	// dibaca dan tidak ada state/jurnal yang disentuh. Ini pola yang sama dengan
 	// ppap.collateral.enabled.
@@ -296,12 +304,20 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	return summary, nil
 }
 
+// lantaiStatus menamai keadaan lantai wajib PPKA untuk teks asumsi mode bayangan.
+func lantaiStatus(enabled bool) string {
+	if enabled {
+		return "DITEGAKKAN"
+	}
+	return "DIMATIKAN (hanya sah setelah parameter FINAL; selama SEMENTARA selalu ditegakkan)"
+}
+
 // ckpnDuaBasisNote menjelaskan mengapa dua basis perbandingan bisa berbeda dan
 // menegaskan keduanya belum menjadi kebijakan bank. Bila basis setara PPKA tidak
 // dapat menghitung sebagian kredit (PD/LGD belum lengkap), itu disebutkan supaya
 // totalnya yang lebih kecil tidak disalahbaca sebagai CKPN yang sudah dihitung penuh.
 func ckpnDuaBasisNote(s domain.CKPNComparisonSummary) string {
-	note := "DUA BASIS CKPN: (1) sesuai kebijakan — aset baik dikecualikan sehingga CKPN-nya nol (butir 12.3.a.2.a); (2) setara PPKA — aset baik tetap dinilai EAD x PD x LGD supaya basisnya sebanding dengan PPKA yang dihitung atas SELURUH kredit. Kedua angka berbeda karena perlakuan aset baik, bukan karena rumus berbeda. Keduanya BUKAN kebijakan bank yang berlaku: tidak ada jurnal yang ditulis dan required_ckpn tidak tersimpan. Pengurang modal inti diterapkan di laporan KPMM memakai basis kebijakan kpmm.deduction_basis, bukan di modul CKPN."
+	note := "DUA BASIS CKPN: (1) sesuai kebijakan — aset baik dikecualikan sehingga CKPN-nya nol (butir 12.3.a.2.a) dan lantai wajib PPKA ditegakkan (target = max(EAD x PD x LGD, required_ppap), butir 1.3 keputusan panel); (2) setara PPKA — aset baik tetap dinilai EAD x PD x LGD TANPA lantai supaya selisih model terhadap PPKA terlihat apa adanya. Selama status parameter SEMENTARA lantai basis (1) wajib dan tidak dapat dimatikan bank. Kedua angka BUKAN kebijakan bank yang berlaku: tidak ada jurnal yang ditulis dan required_ckpn tidak tersimpan. Pengurang modal inti diterapkan di laporan KPMM memakai basis kebijakan kpmm.deduction_basis, bukan di modul CKPN."
 	if s.SetaraPPKAFailed > 0 {
 		note += fmt.Sprintf(" Basis setara PPKA belum dapat menghitung %d kredit (PD/LGD belum lengkap), sehingga totalnya hanya mencakup kredit yang dapat dihitung.", s.SetaraPPKAFailed)
 	}
@@ -332,6 +348,7 @@ func ckpnShadowAssumptions(policy domain.CKPNPolicy) []string {
 	out = append(out,
 		fmt.Sprintf("Aset baik: tunggakan <= %d hari dan belum pernah direstrukturisasi %s.", policy.AsetBaikMaxDPD, frasaAsetBaik),
 		"EAD = sisa pokok dikurangi saldo kerugian restrukturisasi yang belum diamortisasi; dasar ini sama dengan PPKA.",
+		fmt.Sprintf("Lantai wajib PPKA %s: target = max(EAD x PD x LGD, required_ppap) agar CKPN yang dibentuk tidak pernah di bawah PPKA (butir 1.3 keputusan panel). Selama status parameter SEMENTARA lantai tidak dapat dimatikan bank.", lantaiStatus(policy.PPKAFloorEnabled)),
 		"Perlakuan agunan: nilai realisasi agunan TIDAK dikurangkan langsung dari EAD di rumus ini; agunan diperhitungkan bank di dalam penetapan LGD (butir 12.7).",
 		"Pengurang modal inti PPKA-CKPN adalah PILIHAN KEBIJAKAN, bukan cacat: nilai awal memakai lantai PER KREDIT Σ max(PPKA_i - CKPN_i, 0) yang secara matematis selalu >= selisih AGREGAT total PPKA - total CKPN, sehingga konservatif. Regulasi (PA BPR butir 1.1.6 dan SEOJK 2/2025 Bagian IV angka 2) membaca selisih AGREGAT 'apabila PPKA lebih besar daripada CKPN'. Bank dapat pindah ke agregat lewat kunci kpmm.deduction_basis setelah laporan KPMM pertamanya disahkan OJK/akuntan; basis yang dipakai tercatat pada bidang deduction_basis laporan KPMM.",
 	)
@@ -602,8 +619,17 @@ func (s *ckpnService) policy(ctx context.Context) domain.CKPNPolicy {
 		AsetBaikMaxDPD: domain.CKPNAsetBaikMaxDPDDefault,
 	}
 	if s.config == nil {
+		// Tanpa konfigurasi: status tetap SEMENTARA (gagal-aman) dan lantai wajib
+		// ditegakkan, sama seperti produksi yang memakai status bawaan.
+		p.ParameterStatus = domain.CKPNParametersStatusFromConfig(ctx, nil, time.Now())
+		p.PPKAFloorEnabled = p.ParameterStatus.FloorPPKAEnforced
 		return p
 	}
+
+	// Status parameter dibaca LEBIH DULU, sebelum gerbang saklar: label SEMENTARA dan
+	// lantai wajib harus terlihat bahkan saat kedua saklar mati.
+	p.ParameterStatus = domain.CKPNParametersStatusFromConfig(ctx, s.config, time.Now())
+	p.PPKAFloorEnabled = p.ParameterStatus.FloorPPKAEnforced
 
 	p.Enabled = s.config.GetBool(ctx, cfgCKPNEnabled, false)
 	p.ShadowMode = s.config.GetBool(ctx, cfgCKPNShadowEnabled, false)

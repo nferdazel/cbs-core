@@ -102,6 +102,13 @@ func main() {
 	for _, warning := range service.CKPNReadinessWarnings(context.Background(), configSvc, dateRepo) {
 		logger.Warn("peringatan kesiapan CKPN", "pesan", warning)
 	}
+	// Status parameter CKPN SEMENTARA wajib terlihat saat start (butir 1.4.4): angka
+	// PD/LGD yang dipakai belum diratifikasi bank/akuntan, jadi HANYA untuk internal dan
+	// DILARANG menjadi dasar kolom CKPN laporan OJK/APOLO. Peringatan ini tidak
+	// menyalakan/mengubah apa pun.
+	for _, warning := range service.CKPNProvisionalWarnings(context.Background(), configSvc) {
+		logger.Warn("peringatan parameter CKPN sementara", "pesan", warning)
+	}
 	// Staf bercabang biasa dengan branch_code yang tidak terdaftar mendapat cakupan
 	// kosong (tidak melihat data apa pun). Peringatan saat start membuat operator
 	// menemukan data lama seperti itu. Cakupan TIDAK diperluas diam-diam: memperluas
@@ -247,7 +254,7 @@ func main() {
 		Config:     configRepo,
 		Placements: postgres.NewLPSPlacementRepository(db),
 		KPMM:       kpmmSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db))
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
@@ -257,7 +264,7 @@ func main() {
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
-	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
+	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc, configSvc)
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)

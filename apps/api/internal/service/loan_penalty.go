@@ -30,6 +30,22 @@ const cfgLoanPenaltySyariahSocialFundCOA = "loan.penalty.syariah.social_fund.coa
 
 const defaultLoanPenaltySyariahSocialFundCOA = "12500"
 
+// Kunci bukti klausul akad syariah. Panel (butir 2.1(3)) memutuskan sistem MENOLAK
+// mengakru ta'zir selama klausul ta'zir belum dinyatakan tercantum di akad. Bawaan
+// `false`; penetapan `true` adalah wewenang pejabat berizin (izin system:config),
+// dan harus disertai bukti nomor akad yang sudah tercatat per kredit
+// (loans.akad_number). Tanpa salah satunya, ta'zir tidak diakru dan alasannya dicatat.
+const cfgLoanPenaltySyariahAkadDisclosed = "loan.penalty.syariah.akad_disclosed"
+
+// loanPenaltySyariahAkadDisclosed membaca penanda klausul akad syariah. Bawaan false:
+// selama kunci belum diisi, ta'zir syariah tidak diakru (gagal-aman, bukan tebakan).
+func loanPenaltySyariahAkadDisclosed(ctx context.Context, config domain.SystemConfigService) bool {
+	if config == nil {
+		return false
+	}
+	return config.GetBool(ctx, cfgLoanPenaltySyariahAkadDisclosed, false)
+}
+
 // loanPenaltyDailyRate membaca tarif denda harian dari system_config. Default 0 di
 // sini HANYA fallback sementara untuk lingkungan yang belum di-provision: operator
 // WAJIB mengisi kuncinya. Selama 0, tidak ada denda yang diakru dan ringkasan
@@ -69,6 +85,15 @@ func (s *loanService) AccruePenalties(ctx context.Context, asOf time.Time, actor
 	day := time.Date(asOf.Year(), asOf.Month(), asOf.Day(), 0, 0, 0, 0, time.UTC)
 	rate := loanPenaltyDailyRate(ctx, s.config)
 	capPercent := loanPenaltyCapPercent(ctx, s.config)
+
+	// Plafon penjaga: panel menetapkan cap_pct MAKSIMUM 100 (total ta'zir tidak
+	// melebihi 100% pokok tunggakan). Nilai di atas itu DITOLAK, bukan dipakai
+	// dipotong diam-diam: konfigurasi yang salah harus berisik, bukan menghasilkan
+	// angka yang tampak wajar.
+	if capPercent.GreaterThan(decimal.NewFromInt(100)) {
+		return domain.LoanPenaltySummary{}, fmt.Errorf("%w: %s = %s",
+			domain.ErrLoanPenaltyCapInvalid, cfgLoanPenaltyCapPercent, capPercent)
+	}
 
 	candidates, err := s.loanRepo.ListPenaltyCandidates(ctx, day, actor)
 	if err != nil {
@@ -235,6 +260,25 @@ func (s *loanService) accruePenaltyForLoan(
 			item.Capped = true
 		}
 	}
+
+	// Batas atas sisa pokok: total denda/ta'zir terakru tidak boleh melebihi sisa
+	// pokok kredit (keputusan panel butir 2.1(2)). Plafon persen di atas berbasis
+	// pokok TUNGGAKAN; penjaga ini berbasis sisa pokok dan menutup kasus plafon yang
+	// masih menyisakan ruang padahal kewajiban pokoknya sudah hampir lunas. Data yang
+	// tidak tersedia (OutstandingPrincipal nol) dilewati, bukan ditebak.
+	if c.OutstandingPrincipal.IsPositive() {
+		room := c.OutstandingPrincipal.Sub(c.PenaltyAccrued)
+		if !room.IsPositive() {
+			item.Capped = true
+			return skipPenalty(item, fmt.Sprintf(
+				"total denda terakru %s sudah mencapai/melampaui sisa pokok %s; akrual dihentikan",
+				c.PenaltyAccrued, c.OutstandingPrincipal))
+		}
+		if penalty.GreaterThan(room) {
+			penalty = room
+			item.Capped = true
+		}
+	}
 	item.Penalty = penalty
 
 	if c.ProductID == nil {
@@ -250,6 +294,15 @@ func (s *loanService) accruePenaltyForLoan(
 	// kredit pemetaan menunjuk akun Dana Kebajikan, dan TOLAK (bukan diam-diam
 	// diakui) bila pemetaan produk mengarah ke akun lain.
 	if product.Book == domain.BookSyariah {
+		// Gerbang akad (panel butir 2.1(3)): ta'zir TIDAK diakru bila klausul ta'zir
+		// belum dinyatakan tercantum di akad, atau nomor akad kredit belum tercatat
+		// sebagai buktinya. Ditolak dengan alasan yang menyebut kunci mana yang harus
+		// diisi, bukan diam-diam menghasilkan ta'zir.
+		if !loanPenaltySyariahAkadDisclosed(ctx, s.config) {
+			return failPenalty(item, fmt.Sprintf(
+				"ta'zir tidak diakru: klausul ta'zir belum dinyatakan tercantum di akad (kunci %s masih false). Penetapan true hanya oleh pejabat berizin dengan bukti nomor/versi akad; tanpa itu ta'zir = 0.",
+				cfgLoanPenaltySyariahAkadDisclosed))
+		}
 		creditCOA, err := s.syariahPenaltyCreditCOA(ctx, product)
 		if err != nil {
 			return failPenalty(item, err.Error())

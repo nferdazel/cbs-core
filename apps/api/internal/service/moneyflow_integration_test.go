@@ -78,6 +78,22 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 		t.Fatalf("menyetel tanggal bisnis: %v", err)
 	}
 
+	// Pengaman parameter CKPN: uji integrasi lama menilai model apa adanya, jadi
+	// harness menetapkan parameter FINAL dan lantai PPKA mati. Uji yang menguji
+	// pengaman itu sendiri menyetel SEMENTARA/lantainya sendiri (migrasi 000093
+	// meng-seed SEMENTARA; lihat ckpn_parameters_guard_integration_test.go).
+	for _, kv := range [][2]string{
+		{domain.ConfigKeyCKPNParametersStatus, domain.CKPNParameterStatusFinal},
+		{domain.ConfigKeyCKPNFloorPPKA, "false"},
+	} {
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO system_config (key, value, description)
+			VALUES ($1, $2, 'harness uji integrasi')
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, kv[0], kv[1]); err != nil {
+			t.Fatalf("menyetel konfigurasi %s: %v", kv[0], err)
+		}
+	}
+
 	// audit_logs memuat FK ke staff_users, jadi aktor uji harus menunjuk baris staf
 	// yang benar-benar ada.
 	var staffID uuid.UUID

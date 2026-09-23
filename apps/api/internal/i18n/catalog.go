@@ -71,6 +71,7 @@ const (
 	MsgPPKAUmumCalculated             Code = "ppka_umum_calculated"
 	MsgCKPNPPKAComparison             Code = "c_k_p_n_p_p_k_a_comparison"
 	MsgCKPNCalculated                 Code = "c_k_p_n_calculated"
+	MsgCKPNParametersStatus           Code = "c_k_p_n_parameters_status"
 	MsgPPKAPlacementCalculated        Code = "p_p_k_a_placement_calculated"
 	MsgReportTrialBalanceGenerated    Code = "report_trial_balance_generated"
 	MsgReportBalanceSheetGenerated    Code = "report_balance_sheet_generated"
@@ -297,6 +298,7 @@ var codeList = []Code{
 	MsgPPKAUmumCalculated,
 	MsgCKPNPPKAComparison,
 	MsgCKPNCalculated,
+	MsgCKPNParametersStatus,
 	MsgPPKAPlacementCalculated,
 	MsgReportTrialBalanceGenerated,
 	MsgReportBalanceSheetGenerated,
@@ -710,6 +712,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgCKPNCalculated: {
 		ID: "perhitungan CKPN selesai",
 		EN: "CKPN calculation completed",
+	},
+	MsgCKPNParametersStatus: {
+		ID: "status parameter CKPN",
+		EN: "CKPN parameter status",
 	},
 	MsgPPKAPlacementCalculated: {
 		ID: "perhitungan PPKA penempatan pada bank lain (Pasal 23 POJK 1/2024)",

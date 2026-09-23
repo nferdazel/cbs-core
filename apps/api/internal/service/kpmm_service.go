@@ -234,6 +234,13 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 	report.Catatan = kpmmCatatan(report)
 	report.ParameterGaps = dedupSorted(gaps)
 	report.Lengkap, report.AlasanTidakLengkap = kpmmKelengkapan(report)
+	// Status parameter CKPN mewarnai laporan KPMM (butir 1.4: peringatan wajib pada
+	// laporan KPMM). Angka tidak diubah; angka sementara hanya ditandai DILARANG
+	// dibaca sebagai final/dikirim ke OJK sampai parameter diratifikasi.
+	ckpnStatus := domain.CKPNParametersStatusFromConfig(ctx, s.config, time.Now())
+	report.ParameterSementara = ckpnStatus.Sementara
+	report.BolehDikirimOJK = !ckpnStatus.OJKExportBlocked
+	report.PeringatanParameter = append([]string(nil), ckpnStatus.Warnings...)
 	return report, nil
 }
 

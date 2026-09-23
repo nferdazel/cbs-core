@@ -35,7 +35,16 @@ const (
 	// kebajikan mengendap: bila akun 12500 bersaldo tetapi tidak bergerak (tidak ada
 	// penyaluran) selama ini, EOD memberi peringatan. Peringatan saja — tidak pernah
 	// memblokir tutup hari dan tidak mengubah saldo/jurnal.
+	//
+	// Panel (butir 2.1(6)) menetapkan saldo yang tidak bergerak > 2 kuartal (6 bulan)
+	// memicu peringatan TINGKAT TINGGI. Peringatan satu kuartal dipertahankan sebagai
+	// jenjang lebih ringan: dana yang belum disalurkan setelah satu kuartal sudah layak
+	// terlihat (panel menuntut penyaluran minimal sekali per kuartal), sedangkan
+	// keterlambatan dua kuartal dinaikkan ke tingkat tinggi.
 	socialFundIdleMonths = 3
+	// socialFundHighIdleMonths adalah ambang peringatan TINGKAT TINGGI keputusan panel:
+	// 6 bulan tanpa pergerakan penyaluran.
+	socialFundHighIdleMonths = 6
 	// depositAmountLabel menandai keterbatasan data lama: jurnal penempatan deposito
 	// yang dibuat sebelum tipe DEPOSIT_PLACEMENT ada tetap bertipe DEPOSIT sehingga
 	// ikut terhitung sebagai setoran tunai.
@@ -302,6 +311,10 @@ func (s *batchProcessService) runEOD(ctx context.Context, executedBy uuid.UUID, 
 	if w := socialFundIdleWarning(activity.SocialFundLastMovement, activity.SocialFundBalance, curDate.CurrentDate); w != "" {
 		summary.Warnings = append(summary.Warnings, w)
 	}
+	// Status parameter CKPN SEMENTARA wajib tampil pada ringkasan tutup hari tiap hari
+	// (butir 1.4.4). Peringatan saja: ia TIDAK memblokir perhitungan/EOD dan tidak
+	// mengubah angka; yang diblokir adalah ekspor laporan OJK (butir 1.5).
+	appendCKPNProvisionalWarnings(ctx, s.configSvc, summary)
 	summary.ExecutedBy = executedBy
 	summary.CompletedAt = time.Now().UTC()
 	return summary, nil
@@ -361,8 +374,14 @@ func socialFundIdleWarning(lastMovement time.Time, balance decimal.Decimal, busi
 		if last.After(ref.AddDate(0, -socialFundIdleMonths, 0)) {
 			return ""
 		}
-		return fmt.Sprintf("Dana kebajikan (akun 12500) bersaldo %s dan tidak ada penyaluran/pergerakan sejak %s (lebih dari %d bulan): dana ta'zir mengendap menunggu keputusan penyaluran Dewan Pengawas Syariah. Peringatan ini tidak memblokir tutup hari.",
-			balance.String(), last.Format("2006-01-02"), socialFundIdleMonths)
+		// Dua jenjang: lewat satu kuartal (peringatan biasa) dan lewat dua kuartal /
+		// enam bulan (PERINGATAN TINGGI, keputusan panel butir 2.1(6)).
+		if last.After(ref.AddDate(0, -socialFundHighIdleMonths, 0)) {
+			return fmt.Sprintf("Dana kebajikan (akun 12500) bersaldo %s dan tidak ada penyaluran/pergerakan sejak %s (lebih dari %d bulan): dana ta'zir mengendap menunggu keputusan penyaluran Dewan Pengawas Syariah; penyaluran dituntut sekurang-kurangnya sekali per kuartal. Peringatan ini tidak memblokir tutup hari.",
+				balance.String(), last.Format("2006-01-02"), socialFundIdleMonths)
+		}
+		return fmt.Sprintf("PERINGATAN TINGGI — Dana kebajikan (akun 12500) bersaldo %s dan tidak ada penyaluran/pergerakan sejak %s (lebih dari %d bulan): dana ta'zir mengendap melampaui dua kuartal dan wajib dilaporkan ke Dewan Pengawas Syariah pada rapat terdekat. Peringatan ini tidak memblokir tutup hari.",
+			balance.String(), last.Format("2006-01-02"), socialFundHighIdleMonths)
 	}
 	return fmt.Sprintf("Dana kebajikan (akun 12500) bersaldo %s tanpa catatan penyaluran sama sekali: pastikan penyaluran denda ta'zir ditetapkan Dewan Pengawas Syariah. Peringatan ini tidak memblokir tutup hari.",
 		balance.String())

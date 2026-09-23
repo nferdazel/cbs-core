@@ -85,6 +85,15 @@ type CKPNPolicy struct {
 	// golongan lancar dan LGD yang berlaku. Diisi dari konfigurasi
 	// ckpn.aset_baik.bentuk_ckpn.
 	AsetBaikBentukCKPN bool
+	// PPKAFloorEnabled menegakkan lantai wajib butir 1.3 keputusan panel:
+	// target = max(EAD x PD x LGD, required_ppap). Selama parameter SEMENTARA lantai
+	// selalu ditegakkan (bank tidak boleh mematikannya); setelah FINAL menjadi pilihan
+	// bank lewat ckpn.floor.ppka_enabled (bawaan true). Aset baik yang SENGAJA
+	// dikecualikan (butir 12.3.a.2.a) dan kredit tidak aktif tidak dikenai lantai ini.
+	PPKAFloorEnabled bool
+	// ParameterStatus adalah status SEMENTARA/FINAL parameter yang membentuk policy.
+	// Dipakai untuk melaporkan label "PARAMETER SEMENTARA" dan memblokir ekspor OJK.
+	ParameterStatus CKPNParametersStatus
 }
 
 // CKPNIsAsetBaik menilai kriteria aset baik butir 12.3.a.1.c SEOJK 21/2024. Kredit
@@ -162,7 +171,7 @@ type CKPNCalculation struct {
 // bawaan false = aset baik dikecualikan (perilaku sekarang); true = aset baik tetap
 // dinilai EAD x PD x LGD (ECL tahap-1) sehingga memerlukan PD/LGD seperti kredit lain.
 func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
-	return calculateCKPN(snap, policy, !policy.AsetBaikBentukCKPN)
+	return calculateCKPN(snap, policy, !policy.AsetBaikBentukCKPN, policy.PPKAFloorEnabled)
 }
 
 // CalculateCKPNSetaraPPKA menghitung target CKPN dengan model dan EAD yang SAMA
@@ -176,13 +185,18 @@ func CalculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, e
 // (CalculateCKPN). Parameter yang belum diisi tetap menghasilkan
 // ErrCKPNParameterMissing, bukan nol.
 func CalculateCKPNSetaraPPKA(snap CKPNLoanSnapshot, policy CKPNPolicy) (CKPNCalculation, error) {
-	return calculateCKPN(snap, policy, false)
+	// Lantai PPKA SENGAJA tidak diterapkan pada basis pembanding ini: tujuannya
+	// memperlihatkan selisih model (EAD x PD x LGD) terhadap PPKA apa adanya, sehingga
+	// dampak lantai pada target resmi tetap terukur. Yang menyimpan/menjurnal adalah
+	// CalculateCKPN, dan itulah yang memakai lantai.
+	return calculateCKPN(snap, policy, false, false)
 }
 
 // calculateCKPN adalah inti kedua fungsi di atas. excludeAsetBaik=true berarti
 // perilaku resmi: aset baik butir 12.3.a.2.a dikecualikan (target nol). false berarti
-// aset baik tetap dinilai dengan EAD x PD x LGD.
-func calculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy, excludeAsetBaik bool) (CKPNCalculation, error) {
+// aset baik tetap dinilai dengan EAD x PD x LGD. applyFloor=true menegakkan lantai
+// wajib butir 1.3: target = max(EAD x PD x LGD, required_ppap).
+func calculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy, excludeAsetBaik, applyFloor bool) (CKPNCalculation, error) {
 	out := CKPNCalculation{
 		Outstanding:    snap.Outstanding,
 		Collectibility: snap.Collectibility,
@@ -232,6 +246,16 @@ func calculateCKPN(snap CKPNLoanSnapshot, policy CKPNPolicy, excludeAsetBaik boo
 	// (Pasal 32 POJK 1/2024 jo. PA BPR Bab 5.2).
 	ead := PPAPCarryingAmount(snap.Outstanding, snap.RestructureLoss)
 	out.Target = RoundToRupiah(ead.Mul(pd).Mul(policy.LGD))
+
+	// Lantai wajib butir 1.3: CKPN yang DIBENTUK tidak pernah di bawah PPKA. Satuan
+	// kedua sisi sama (rupiah): EAD x PD x LGD menghasilkan rupiah, required_ppap juga
+	// rupiah; PD/LGD dan ppap.rate_frac.* sama-sama FRAKSI 0..1 sehingga tidak ada
+	// perbedaan skala. Aset baik yang sengaja dikecualikan sudah keluar lebih dulu, dan
+	// kredit tidak aktif tidak pernah sampai ke sini — lantai tidak menghidupkan
+	// cadangan pada kredit yang sudah tidak punya eksposur.
+	if applyFloor && snap.RequiredPPAP.GreaterThan(out.Target) {
+		out.Target = RoundToRupiah(snap.RequiredPPAP)
+	}
 	out.Adjustment = RoundToRupiah(out.Target.Sub(out.Existing))
 	return out, nil
 }
@@ -342,6 +366,14 @@ type CKPNComparisonSummary struct {
 	// tidak sah; CKPN tidak dapat dihitung sepenuhnya sampai bank mengisinya. Daftarnya
 	// menyebutkan kunci yang harus diisi, bukan menebak nilainya.
 	ParameterGaps []string `json:"parameter_gaps,omitempty"`
+	// ParameterSementara true berarti parameter yang dipakai berstatus SEMENTARA
+	// (belum diratifikasi). Setiap ringkasan CKPN wajib membawa label ini supaya angka
+	// sementara tidak disalahbaca sebagai kebijakan final (butir 1.4.1).
+	ParameterSementara bool `json:"parameter_sementara"`
+	// ParameterNote adalah teks label yang menyertai ParameterSementara.
+	ParameterNote string `json:"parameter_note,omitempty"`
+	// OJKExportBlocked true berarti laporan OJK/APOLO menolak angka CKPN ini.
+	OJKExportBlocked bool `json:"ojk_export_blocked"`
 }
 
 // CKPNRepository adalah akses data proses CKPN. Seluruh penulisan jurnal tetap lewat

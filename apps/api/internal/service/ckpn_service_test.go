@@ -175,9 +175,11 @@ func ckpnLoan() domain.CKPNLoanSnapshot {
 func TestCKPN_ParameterKebijakanDibacaDariKonfigurasi(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 
 	// 10.000.000 x 10% x 50% = 500.000
@@ -272,9 +274,11 @@ func TestCKPN_SaklarMatiTidakAdaQueryDanTidakMengubahApaPun(t *testing.T) {
 func TestCKPN_PerbandinganDenganPPKA(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 	// Target CKPN = 10.000.000 x 10% x 50% = 500.000.
 	cases := []struct {
@@ -321,6 +325,8 @@ func TestCKPN_PengurangModalIntiPerKreditBukanAgregat(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true", // murni pelaporan; tak ada jurnal
+		"ckpn.parameters.status":   "FINAL",
+		"ckpn.floor.ppka_enabled":  "false",
 		"ckpn.pd_frac.gol_3":       "0.10",
 		"ckpn.lgd_frac":            "0.50",
 	}}
@@ -468,6 +474,8 @@ func TestCKPN_SaklarAsetBaikBentukCKPN(t *testing.T) {
 	// Saklar menyala: aset baik tetap dihitung. 10.000.000 x 2% x 50% = 100.000.
 	menyala := &ckpnConfigStub{values: map[string]string{
 		"ckpn.enabled":               "true",
+		"ckpn.parameters.status":     "FINAL",
+		"ckpn.floor.ppka_enabled":    "false",
 		"ckpn.aset_baik.bentuk_ckpn": "true",
 		"ckpn.pd_frac.gol_1":         "0.02",
 		"ckpn.lgd_frac":              "0.50",
@@ -515,9 +523,11 @@ func TestCKPN_RunMempostingSelisihDanMenyimpanTarget(t *testing.T) {
 	snap := ckpnLoan()
 	snap.RequiredCKPN = decimal.NewFromInt(100_000) // target 500.000 -> selisih 400.000
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
@@ -561,9 +571,11 @@ func TestCKPN_RunPemulihanMembalikArahJurnal(t *testing.T) {
 	snap := ckpnLoan()
 	snap.RequiredCKPN = decimal.NewFromInt(900_000) // target 500.000 -> selisih -400.000
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
@@ -592,9 +604,11 @@ func TestCKPN_SnapshotBasiTidakDipakaiSetelahKunci(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	snap := ckpnLoan() // DISBURSED, sisa pokok 10jt, tanpa CKPN tersimpan
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
 	svc, posting, locker := newTestCKPNService(repo, cfg)
@@ -627,9 +641,11 @@ func TestCKPN_TargetSamaTidakAdaPostingDanTidakAdaUpdate(t *testing.T) {
 	// Target = 10.000.000 x 10% x 50% = 500.000, sama dengan yang tersimpan.
 	snap.RequiredCKPN = decimal.NewFromInt(500_000)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}
 	svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -740,9 +756,11 @@ func TestCKPN_ParameterSalahDitolak(t *testing.T) {
 func TestCKPN_ParameterBatasNolSah(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0",
-		"ckpn.lgd_frac":      "0",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0",
+		"ckpn.lgd_frac":           "0",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 	svc, posting, _ := newTestCKPNService(repo, cfg)
@@ -799,9 +817,11 @@ var _ domain.PPAPRunMarker = ckpnRunMarkerStub{}
 func TestCKPN_MenolakPPAPBasi(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
-		"ckpn.enabled":       "true",
-		"ckpn.pd_frac.gol_3": "0.10",
-		"ckpn.lgd_frac":      "0.50",
+		"ckpn.enabled":            "true",
+		"ckpn.parameters.status":  "FINAL",
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
 	}}
 	repo := &ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{ckpnLoan()}}
 	svc, _, _ := newTestCKPNService(repo, cfg)
@@ -851,6 +871,8 @@ func TestCKPN_ModeBayanganMenghitungTanpaMenjurnal(t *testing.T) {
 	cfg := &ckpnConfigStub{values: map[string]string{
 		// ckpn.enabled sengaja TIDAK ada -> false; yang menyala hanya mode bayangan.
 		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.parameters.status":   "FINAL",
+		"ckpn.floor.ppka_enabled":  "false",
 		"ckpn.pd_frac.gol_1":       "0.005",
 		"ckpn.pd_frac.gol_2":       "0.05",
 		"ckpn.pd_frac.gol_3":       "0.10",
@@ -946,6 +968,8 @@ func TestCKPN_KeduaSaklarMenyalaModeResmiBerlaku(t *testing.T) {
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.enabled":             "true",
 		"ckpn.shadow_mode.enabled": "true",
+		"ckpn.parameters.status":   "FINAL",
+		"ckpn.floor.ppka_enabled":  "false",
 		"ckpn.pd_frac.gol_3":       "0.10",
 		"ckpn.lgd_frac":            "0.50",
 	}}
@@ -1070,6 +1094,8 @@ func TestCKPN_DuaBasisSetaraPPKAPortofolioCampuran(t *testing.T) {
 	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
 	cfg := &ckpnConfigStub{values: map[string]string{
 		"ckpn.shadow_mode.enabled": "true", // ckpn.enabled mati: murni pelaporan
+		"ckpn.parameters.status":   "FINAL",
+		"ckpn.floor.ppka_enabled":  "false",
 		"ckpn.pd_frac.gol_1":       "0.005",
 		"ckpn.pd_frac.gol_3":       "0.10",
 		"ckpn.lgd_frac":            "0.50",
@@ -1178,5 +1204,215 @@ func TestCKPN_DuaBasisSetaraPPKAParameterAsetBaikKosong(t *testing.T) {
 	}
 	if !strings.Contains(summary.BasisNote, "belum dapat menghitung") {
 		t.Fatalf("basis note harus menyebut kredit yang belum dapat dihitung, dapat %q", summary.BasisNote)
+	}
+}
+
+// --- Pengaman parameter SEMENTARA (keputusan panel butir 1) ---
+
+// Status parameter bawaan (tanpa kunci) harus SEMENTARA: angka produksi belum
+// diratifikasi dan lantai PPKA ditegakkan. Ini gagal-aman — salah membaca SEMENTARA
+// sebagai FINAL berarti angka sementara dikirim ke OJK.
+//
+// Blokir ekspor OJK bergantung pada ckpn.enabled: selama CKPN resmi masih mati, laporan
+// OJK memuat angka PPKA (bukan CKPN dari PD/LGD sementara), jadi memblokirnya hanya
+// menutup laporan yang sehat. Begitu CKPN menyala tanpa ratifikasi, ekspor wajib ditutup.
+func TestCKPNParametersStatusBawaanSementaraDanBlokirOJK(t *testing.T) {
+	now := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	// CKPN resmi masih mati: SEMENTARA tetap diperingatkan, tetapi ekspor belum ditutup.
+	mati := domain.CKPNParametersStatusFromConfig(context.Background(), &ckpnConfigStub{values: map[string]string{}}, now)
+	if mati.Status != domain.CKPNParameterStatusSementara || !mati.Sementara {
+		t.Fatalf("status bawaan %q sementara=%v, mau SEMENTARA/true", mati.Status, mati.Sementara)
+	}
+	if !mati.FloorPPKAEnforced {
+		t.Fatal("selama SEMENTARA lantai PPKA wajib ditegakkan")
+	}
+	if mati.OJKExportBlocked {
+		t.Fatal("CKPN resmi masih mati: laporan OJK memuat PPKA, tidak boleh diblokir")
+	}
+	if len(mati.Warnings) == 0 {
+		t.Fatal("peringatan SEMENTARA wajib ada walau ekspor belum diblokir")
+	}
+	joined := strings.Join(mati.Warnings, " ")
+	if !strings.Contains(joined, "SEMENTARA") || !strings.Contains(joined, "OJK") {
+		t.Fatalf("peringatan harus menyebut SEMENTARA dan larangan OJK: %v", mati.Warnings)
+	}
+
+	// CKPN resmi menyala tanpa ratifikasi: angka sementara mengalir ke laporan -> tutup.
+	nyala := domain.CKPNParametersStatusFromConfig(context.Background(), &ckpnConfigStub{values: map[string]string{
+		domain.ConfigKeyCKPNEnabled: "true",
+	}}, now)
+	if !nyala.Sementara || !nyala.OJKExportBlocked || nyala.OJKExportBlockReason == "" {
+		t.Fatalf("CKPN menyala + SEMENTARA harus memblokir ekspor beralasan: %+v", nyala)
+	}
+}
+
+// Setelah FINAL: tidak ada peringatan, ekspor boleh, dan lantai menjadi pilihan bank.
+func TestCKPNParametersStatusFinalTidakMemblokir(t *testing.T) {
+	now := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		domain.ConfigKeyCKPNParametersStatus: "FINAL",
+		domain.ConfigKeyCKPNFloorPPKA:        "false",
+	}}
+	st := domain.CKPNParametersStatusFromConfig(context.Background(), cfg, now)
+	if st.Sementara || st.Status != domain.CKPNParameterStatusFinal {
+		t.Fatalf("status %q sementara=%v, mau FINAL/false", st.Status, st.Sementara)
+	}
+	if st.OJKExportBlocked {
+		t.Fatal("parameter FINAL tidak boleh memblokir ekspor OJK")
+	}
+	if st.FloorPPKAEnforced {
+		t.Fatal("setelah FINAL lantai boleh dimatikan bank lewat kunci")
+	}
+	if len(st.Warnings) != 0 {
+		t.Fatalf("parameter FINAL tidak boleh memberi peringatan: %v", st.Warnings)
+	}
+}
+
+// Umur parameter melewati batas 12 bulan wajib memunculkan peringatan tingkat tinggi.
+func TestCKPNParametersStatusLewatBatasTingkatTinggi(t *testing.T) {
+	now := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	since := now.AddDate(0, -13, 0).Format("2006-01-02")
+	cfg := &ckpnConfigStub{values: map[string]string{
+		domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusSementara,
+		domain.ConfigKeyCKPNParametersSince:  since,
+		domain.ConfigKeyCKPNParametersMonths: "12",
+	}}
+	st := domain.CKPNParametersStatusFromConfig(context.Background(), cfg, now)
+	if !st.DeadlinePassed || st.Deadline == "" {
+		t.Fatalf("lewat 13 bulan harus DeadlinePassed; deadline=%q passed=%v", st.Deadline, st.DeadlinePassed)
+	}
+	joined := strings.Join(st.Warnings, " ")
+	if !strings.Contains(joined, "TINGKAT TINGGI") {
+		t.Fatalf("peringatan lewat batas harus tingkat tinggi: %v", st.Warnings)
+	}
+}
+
+// Nilai status asing (mis. RATIFIED alih-alih FINAL) TIDAK boleh dianggap final:
+// diperlakukan SEMENTARA dan dilaporkan, bukan ditebak sah. Blokir ekspor tetap
+// mengikuti aturan yang sama seperti SEMENTARA lain: berlaku saat CKPN resmi menyala,
+// karena di situlah angka sementara benar-benar masuk laporan OJK.
+func TestCKPNParametersStatusNilaiAsingGagalAman(t *testing.T) {
+	now := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	// Tanpa ckpn.enabled: SEMENTARA + dilaporkan, ekspor belum ditutup.
+	cfg := &ckpnConfigStub{values: map[string]string{domain.ConfigKeyCKPNParametersStatus: "RATIFIED"}}
+	st := domain.CKPNParametersStatusFromConfig(context.Background(), cfg, now)
+	if !st.Sementara {
+		t.Fatalf("status asing harus diperlakukan SEMENTARA: %+v", st)
+	}
+	if st.OJKExportBlocked {
+		t.Fatalf("CKPN mati: status asing belum menutup ekspor: %+v", st)
+	}
+	if !strings.Contains(strings.Join(st.Warnings, " "), "tidak dikenal") {
+		t.Fatalf("nilai asing harus dilaporkan: %v", st.Warnings)
+	}
+
+	// Dengan ckpn.enabled: status asing menutup ekspor (gagal-aman).
+	cfg = &ckpnConfigStub{values: map[string]string{
+		domain.ConfigKeyCKPNParametersStatus: "RATIFIED",
+		domain.ConfigKeyCKPNEnabled:          "true",
+	}}
+	st = domain.CKPNParametersStatusFromConfig(context.Background(), cfg, now)
+	if !st.Sementara || !st.OJKExportBlocked || st.OJKExportBlockReason == "" {
+		t.Fatalf("CKPN menyala + status asing harus SEMENTARA dan menutup ekspor: %+v", st)
+	}
+}
+
+// Lantai wajib butir 1.3: target = max(EAD x PD x LGD, required_ppap). Selama
+// SEMENTARA bank TIDAK boleh mematikannya — kunci floor=false diabaikan.
+func TestCKPN_LantaiPPKAWajibSelamaSementara(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	cfg := &ckpnConfigStub{values: map[string]string{
+		"ckpn.enabled": "true",
+		// Bank mencoba mematikan lantai, tetapi status masih SEMENTARA.
+		"ckpn.floor.ppka_enabled": "false",
+		"ckpn.parameters.status":  "SEMENTARA",
+		"ckpn.pd_frac.gol_3":      "0.10",
+		"ckpn.lgd_frac":           "0.50",
+	}}
+	// Model 10.000.000 x 10% x 50% = 500.000, PPKA 1.000.000 -> lantai menang.
+	snap := ckpnLoan()
+	svc, posting, _ := newTestCKPNService(&ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}, cfg)
+	summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if len(summary.Items) != 1 {
+		t.Fatalf("item %d, mau 1 (%+v)", len(summary.Items), summary.Failures)
+	}
+	item := summary.Items[0]
+	if !item.CKPN.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("target %s, mau 1000000 (lantai PPKA)", item.CKPN)
+	}
+	if item.Larger != domain.CKPNLargerSame || !summary.ModalIntiDeduction.IsZero() {
+		t.Fatalf("CKPN = PPKA -> tidak ada pengurang modal: larger=%s deduction=%s", item.Larger, summary.ModalIntiDeduction)
+	}
+	if !summary.ParameterSementara || !summary.OJKExportBlocked || summary.ParameterNote == "" {
+		t.Fatalf("ringkasan harus membawa label SEMENTARA dan blokir OJK: %+v", summary)
+	}
+	if len(posting.requests) != 0 {
+		t.Fatalf("Compare tidak boleh menjurnal, dapat %d", len(posting.requests))
+	}
+}
+
+// Setelah FINAL, lantai menjadi pilihan bank: mati -> model apa adanya; nyala -> max.
+func TestCKPN_LantaiPPKASetelahFinalMenjadiPilihan(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	base := map[string]string{
+		"ckpn.enabled":           "true",
+		"ckpn.parameters.status": "FINAL",
+		"ckpn.pd_frac.gol_3":     "0.10",
+		"ckpn.lgd_frac":          "0.50",
+	}
+	want := func(floorKey, wantTarget string) {
+		t.Helper()
+		values := map[string]string{}
+		for k, v := range base {
+			values[k] = v
+		}
+		values["ckpn.floor.ppka_enabled"] = floorKey
+		snap := ckpnLoan()
+		svc, _, _ := newTestCKPNService(&ckpnRepoStub{snapshots: []domain.CKPNLoanSnapshot{snap}}, &ckpnConfigStub{values: values})
+		summary, err := svc.Compare(context.Background(), asOf, domain.Actor{})
+		if err != nil {
+			t.Fatalf("Compare floor=%s: %v", floorKey, err)
+		}
+		if got := summary.Items[0].CKPN.String(); got != wantTarget {
+			t.Fatalf("floor=%s target %s, mau %s", floorKey, got, wantTarget)
+		}
+	}
+	want("false", "500000") // lantai mati: model apa adanya
+	want("true", "1000000") // lantai nyala: PPKA menang
+}
+
+// Peringatan status dipakai ulang oleh start/EOD sehingga harus kosong saat FINAL.
+func TestCKPNProvisionalWarningsHanyaSaatSementara(t *testing.T) {
+	sementara := &ckpnConfigStub{values: map[string]string{}}
+	if got := CKPNProvisionalWarnings(context.Background(), sementara); len(got) == 0 {
+		t.Fatal("status SEMENTARA harus menghasilkan peringatan")
+	}
+	sementara.values[domain.ConfigKeyCKPNParametersStatus] = "FINAL"
+	if got := CKPNProvisionalWarnings(context.Background(), sementara); len(got) != 0 {
+		t.Fatalf("status FINAL tidak boleh menghasilkan peringatan: %v", got)
+	}
+}
+
+// Ringkasan tutup hari (EOD) wajib membawa peringatan status parameter SEMENTARA
+// (butir 1.4.4). Dipisah dari runEOD agar dapat diuji tanpa menjalankan EOD penuh.
+func TestEODRingkasanMembawaPeringatanParameterSementara(t *testing.T) {
+	ctx := context.Background()
+	sementara := &ckpnConfigStub{values: map[string]string{}}
+	summary := &domain.EODSummaryResult{}
+	appendCKPNProvisionalWarnings(ctx, sementara, summary)
+	if len(summary.Warnings) == 0 {
+		t.Fatal("ringkasan EOD harus membawa peringatan SEMENTARA")
+	}
+
+	final := &ckpnConfigStub{values: map[string]string{domain.ConfigKeyCKPNParametersStatus: "FINAL"}}
+	summaryFinal := &domain.EODSummaryResult{}
+	appendCKPNProvisionalWarnings(ctx, final, summaryFinal)
+	if len(summaryFinal.Warnings) != 0 {
+		t.Fatalf("parameter FINAL tidak boleh menambah peringatan EOD: %v", summaryFinal.Warnings)
 	}
 }

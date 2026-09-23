@@ -87,8 +87,9 @@ func (s *penaltyAccountRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.A
 var _ domain.AccountRepository = (*penaltyAccountRepo)(nil)
 
 type penaltyConfig struct {
-	rate       decimal.Decimal
-	capPercent decimal.Decimal
+	rate          decimal.Decimal
+	capPercent    decimal.Decimal
+	akadDisclosed bool
 }
 
 func (c penaltyConfig) GetDecimal(_ context.Context, key string, fallback decimal.Decimal) decimal.Decimal {
@@ -104,10 +105,17 @@ func (c penaltyConfig) GetDecimal(_ context.Context, key string, fallback decima
 		return fallback
 	}
 }
-func (penaltyConfig) GetInt(_ context.Context, _ string, fallback int) int          { return fallback }
-func (penaltyConfig) GetString(_ context.Context, _ string, fallback string) string { return fallback }
-func (penaltyConfig) GetBool(_ context.Context, _ string, fallback bool) bool       { return fallback }
-func (penaltyConfig) Invalidate(string)                                             {}
+func (penaltyConfig) GetInt(_ context.Context, _ string, fallback int) int { return fallback }
+func (penaltyConfig) GetString(_ context.Context, _ string, fallback string) string {
+	return fallback
+}
+func (c penaltyConfig) GetBool(_ context.Context, _ string, fallback bool) bool {
+	if c.akadDisclosed {
+		return true
+	}
+	return fallback
+}
+func (penaltyConfig) Invalidate(string) {}
 
 var _ domain.SystemConfigService = penaltyConfig{}
 
@@ -116,7 +124,9 @@ func timePtr(t time.Time) *time.Time { return &t }
 // newPenaltyTestService merangkai loanService tanpa database: transaksi dijalankan
 // stubTxRunner, jurnal dicatat stubPosting.
 func newPenaltyTestService(repo *penaltyLoanRepo, products *penaltyProductRepo, accounts *penaltyAccountRepo, posting *stubPosting, rate decimal.Decimal) *loanService {
-	return newPenaltyTestServiceWithConfig(repo, products, accounts, posting, penaltyConfig{rate: rate})
+	// akadDisclosed=true: sebagian besar uji memakai jalur syariah dan menguji hal
+	// lain; gerbang akad diuji khusus di TestAccruePenalties_SyariahAkadGuard.
+	return newPenaltyTestServiceWithConfig(repo, products, accounts, posting, penaltyConfig{rate: rate, akadDisclosed: true})
 }
 
 func newPenaltyTestServiceWithConfig(repo *penaltyLoanRepo, products *penaltyProductRepo, accounts *penaltyAccountRepo, posting *stubPosting, cfg penaltyConfig) *loanService {
@@ -174,6 +184,7 @@ func penaltyFixtureFor(asOf time.Time) penaltyFixture {
 		ProductID:             &productID,
 		DisbursementAccountID: accountID,
 		Status:                domain.LoanStatusDisbursed,
+		OutstandingPrincipal:  decimal.NewFromInt(50_000_000),
 		OverduePrincipal:      decimal.NewFromInt(1_000_000),
 		OldestDueDate:         &due,
 	}
@@ -722,5 +733,94 @@ func TestAccruePenalties_SyariahRejectsIncomeMapping(t *testing.T) {
 	}
 	if len(summary.Failures) != 1 || !strings.Contains(summary.Failures[0].Error, "tidak boleh diakui sebagai pendapatan") {
 		t.Fatalf("kegagalan harus menjelaskan larangan pendapatan: %+v", summary.Failures)
+	}
+}
+
+// Gerbang akad (keputusan panel butir 2.1(3)): tanpa klausul akad yang dinyatakan
+// tercantum, ta'zir pembiayaan syariah TIDAK diakru dan alasannya terlihat.
+func TestAccruePenalties_SyariahAkadGuard(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	// Kasus A: kunci akad_disclosed masih false -> ditolak.
+	f := penaltyFixtureFor(asOf)
+	f.products.products[f.productID].Book = domain.BookSyariah
+	f.products.rules[domain.EventLoanPenalty] = []domain.JournalMappingRule{
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "11700", AmountSource: domain.AmountPenalty},
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionCredit, COACode: "12500", AmountSource: domain.AmountPenalty},
+	}
+	svc := newPenaltyTestServiceWithConfig(f.repo, f.products, f.accounts, f.posting,
+		penaltyConfig{rate: decimal.NewFromInt(1), akadDisclosed: false})
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Failed != 1 || summary.Accrued != 0 {
+		t.Fatalf("tanpa akad_disclosed: failed=%d accrued=%d, ingin 1/0", summary.Failed, summary.Accrued)
+	}
+	if len(f.posting.requests) != 0 || len(f.repo.added) != 0 {
+		t.Fatal("ta'zir tanpa klausul akad tidak boleh dijurnal atau menambah penalty_accrued")
+	}
+	if !strings.Contains(summary.Failures[0].Error, cfgLoanPenaltySyariahAkadDisclosed) {
+		t.Fatalf("galat harus menyebut kunci yang harus diisi: %q", summary.Failures[0].Error)
+	}
+
+	// Kasus B: kunci menyala -> ta'zir diakru ke dana kebajikan (bukan ditolak).
+	f2 := penaltyFixtureFor(asOf)
+	f2.products.products[f2.productID].Book = domain.BookSyariah
+	f2.products.rules[domain.EventLoanPenalty] = []domain.JournalMappingRule{
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionDebit, COACode: "11700", AmountSource: domain.AmountPenalty},
+		{Event: domain.EventLoanPenalty, Direction: domain.DirectionCredit, COACode: "12500", AmountSource: domain.AmountPenalty},
+	}
+	svc2 := newPenaltyTestServiceWithConfig(f2.repo, f2.products, f2.accounts, f2.posting,
+		penaltyConfig{rate: decimal.NewFromInt(1), akadDisclosed: true})
+	summary2, err := svc2.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary2.Failed != 0 || summary2.Accrued != 1 || summary2.SyariahSocialFund != 1 {
+		t.Fatalf("akad_disclosed true: failed=%d accrued=%d socialfund=%d, ingin 0/1/1",
+			summary2.Failed, summary2.Accrued, summary2.SyariahSocialFund)
+	}
+}
+
+// Total denda tidak boleh melebihi sisa pokok (keputusan panel butir 2.1(2)):
+// denda dipotong ke sisa pokok dan ditandai Capped, bukan melewatinya.
+func TestAccruePenalties_CapAtRemainingPrincipal(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	// Sisa pokok 5.000 < denda 10.000 (1jt x 1‰ x 10 hari).
+	f.candidate.OutstandingPrincipal = decimal.NewFromInt(5_000)
+	f.repo.candidates = []domain.LoanPenaltyCandidate{f.candidate}
+
+	svc := newPenaltyTestService(f.repo, f.products, f.accounts, f.posting, decimal.NewFromInt(1))
+	summary, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{})
+	if err != nil {
+		t.Fatalf("AccruePenalties: %v", err)
+	}
+	if summary.Accrued != 1 {
+		t.Fatalf("accrued=%d, ingin 1 dengan nominal dipotong ke sisa pokok", summary.Accrued)
+	}
+	item := summary.Items[0]
+	if !item.Penalty.Equal(decimal.NewFromInt(5_000)) {
+		t.Fatalf("denda %s, ingin dipotong ke sisa pokok 5.000", item.Penalty)
+	}
+	if !item.Capped {
+		t.Fatal("pemotongan oleh sisa pokok harus menandai Capped")
+	}
+}
+
+// Plafon di atas 100% ditolak keras: bukan dipakai, bukan dipotong diam-diam.
+func TestAccruePenalties_RejectsCapAbove100(t *testing.T) {
+	asOf := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	f := penaltyFixtureFor(asOf)
+	svc := newPenaltyTestServiceWithConfig(f.repo, f.products, f.accounts, f.posting,
+		penaltyConfig{rate: decimal.NewFromInt(1), capPercent: decimal.NewFromInt(101), akadDisclosed: true})
+	if _, err := svc.AccruePenalties(context.Background(), asOf, domain.Actor{}); err == nil {
+		t.Fatal("cap_pct 101 harus ditolak")
+	} else if !strings.Contains(err.Error(), "100") {
+		t.Fatalf("galat cap harus menyebut batas 100: %v", err)
+	}
+	if len(f.posting.requests) != 0 || len(f.repo.added) != 0 {
+		t.Fatal("konfigurasi plafon tidak sah tidak boleh menghasilkan jurnal")
 	}
 }

@@ -481,6 +481,11 @@ func (c *LoanCollateral) MissingLampiranIIFields(asOf time.Time, validityMonths 
 	}
 	if c.InsuranceExpiryDate == nil {
 		missing = append(missing, "insurance_expiry_date")
+	} else if c.InsuranceExpired(asOf) {
+		// Panel butir 3.1 C2: polis yang KEDALUWARSA sama tidak lengkapnya dengan
+		// polis yang belum diisi. Tanpa cek ini, agunan dengan polis busuk lolos
+		// sebagai "lengkap" dan dapat mengurangi eksposur secara tidak sah.
+		missing = append(missing, "insurance_expired")
 	}
 	if c.AppraisalValidUntil == nil {
 		missing = append(missing, "appraisal_valid_until")
@@ -489,6 +494,16 @@ func (c *LoanCollateral) MissingLampiranIIFields(asOf time.Time, validityMonths 
 		missing = append(missing, "appraisal_expired")
 	}
 	return missing
+}
+
+// InsuranceExpired menilai apakah polis asuransi agunan sudah kedaluwarsa pada asOf.
+// Tanggal berakhir dianggap hari terakhir yang sah. Tanggal kosong tidak dilaporkan
+// kedaluwarsa di sini (ditangani sebagai "belum diisi" oleh MissingLampiranIIFields).
+func (c *LoanCollateral) InsuranceExpired(asOf time.Time) bool {
+	if c == nil || c.InsuranceExpiryDate == nil || c.InsuranceExpiryDate.IsZero() {
+		return false
+	}
+	return tanggalSaja(asOf).After(tanggalSaja(*c.InsuranceExpiryDate))
 }
 
 // CollateralRiskWeightFrac mengembalikan bobot risiko yang aman untuk satu agunan:
@@ -504,6 +519,13 @@ func CollateralRiskWeightFrac(c *LoanCollateral, asOf time.Time, validityMonths 
 		return decimal.NewFromInt(1)
 	}
 	if len(c.MissingLampiranIIFields(asOf, validityMonths)) > 0 {
+		return decimal.NewFromInt(1)
+	}
+	// Panel butir 3.1 C4: agunan yang terbukti sengketa/kepemilikan ganda WAJIB 100%
+	// (SEOJK 2/2025 angka 8), apa pun kelengkapan data lainnya. Diperiksa terpisah dari
+	// MissingLampiranIIFields karena penanda sengketa bukan "data belum diisi", dan
+	// agunan sengketa tidak boleh mengurangi eksposur.
+	if c.Disputed {
 		return decimal.NewFromInt(1)
 	}
 	return official

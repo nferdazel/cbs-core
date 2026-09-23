@@ -651,7 +651,8 @@ const listPenaltyCandidatesQuery = `
 		MIN(s.due_date) AS oldest_due_date,
 		l.penalty_last_accrued_on,
 		(SELECT MAX(sf.due_date) FROM loan_schedules sf
-			WHERE sf.loan_id = l.id) AS final_due_date
+			WHERE sf.loan_id = l.id) AS final_due_date,
+		l.outstanding_principal
 	FROM loans l
 	JOIN loan_schedules s
 		ON s.loan_id = l.id
@@ -687,6 +688,7 @@ func (r *LoanRepository) ListPenaltyCandidates(ctx context.Context, asOf time.Ti
 		if err := rows.Scan(
 			&c.LoanID, &c.LoanNumber, &productID, &c.DisbursementAccountID, &status,
 			&c.OverduePrincipal, &c.PenaltyAccrued, &oldestDue, &lastAccrued, &finalDue,
+			&c.OutstandingPrincipal,
 		); err != nil {
 			return nil, err
 		}

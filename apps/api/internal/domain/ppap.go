@@ -478,6 +478,10 @@ type PPAPRunSummary struct {
 	ReserveBefore   decimal.Decimal  `json:"reserve_before"` // saldo GL cadangan sebelum proses (rekonsiliasi)
 	ReserveAfter    decimal.Decimal  `json:"reserve_after"`  // saldo GL cadangan setelah proses (rekonsiliasi)
 	Preview         bool             `json:"preview"`        // true bila hanya simulasi, tanpa posting
+	// ParameterCKPNWarnings membawa label status parameter CKPN SEMENTARA (bila ada) ke
+	// respons laporan PPAP, karena perbandingan PPKA-CKPN memakai parameter yang sama
+	// (butir 1.4 keputusan panel). Angka PPAP tidak diubah oleh bidang ini.
+	ParameterCKPNWarnings []string `json:"parameter_ckpn_warnings,omitempty"`
 }
 
 // PPAPRepository adalah akses data proses PPAP. Seluruh SQL jurnal tetap lewat

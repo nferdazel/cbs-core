@@ -33,16 +33,20 @@ type OJKReportHandler struct {
 	// coa dan reviews dipakai endpoint peninjauan pemetaan; boleh nil pada uji lama.
 	coa     OJKCOALister
 	reviews ojkreport.MappingReviewRepository
+	// config dipakai menolak ekspor selama parameter CKPN SEMENTARA (butir 1.5).
+	config domain.SystemConfigService
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
-// reviews boleh nil, tetapi endpoint peninjauan membutuhkannya.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository) *OJKReportHandler {
+// reviews boleh nil, tetapi endpoint peninjauan membutuhkannya. config boleh nil pada
+// uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService) *OJKReportHandler {
 	return &OJKReportHandler{
 		builder: ojkreport.NewBuilder(source),
 		source:  source,
 		coa:     coa,
 		reviews: reviews,
+		config:  config,
 	}
 }
 
@@ -70,9 +74,10 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 // bulanan, dan status pemetaan. Laporan yang belum dapat dibangun ikut didaftarkan.
 func (h *OJKReportHandler) Definitions(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusOK, i18n.MsgOJKReportDefinitions, map[string]any{
-		"reports":        ojkreport.OJKReportDefinitions,
-		"monthly_forms":  ojkreport.OJKBulananForms,
-		"mapping_status": ojkreport.MappingStatus,
+		"reports":         ojkreport.OJKReportDefinitions,
+		"monthly_forms":   ojkreport.OJKBulananForms,
+		"mapping_status":  ojkreport.MappingStatus,
+		"ckpn_parameters": domain.CKPNParametersStatusFromConfig(r.Context(), h.config, time.Now()),
 	})
 }
 
@@ -240,6 +245,17 @@ func (h *OJKReportHandler) ExportMonthly(w http.ResponseWriter, r *http.Request)
 	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
 	if err != nil {
 		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	// Selama parameter CKPN SEMENTARA, angka CKPN belum diratifikasi dan DILARANG
+	// menjadi dasar laporan OJK/APOLO (butir 1.5 keputusan panel). Berkas bulanan
+	// adalah kendaraan pengiriman, jadi bentuk yang dipilih adalah MENOLAK KERAS, bukan
+	// menandai sebagian: berkas bertanda masih dapat terkirim dan angka sementaranya
+	// ikut. Pesannya menyebut langkah perbaikan, bukan sekadar menolak.
+	status := domain.CKPNParametersStatusFromConfig(r.Context(), h.config, time.Now())
+	if status.OJKExportBlocked {
+		Fail(w, r, http.StatusUnprocessableEntity, errors.New(status.OJKExportBlockReason))
 		return
 	}
 
