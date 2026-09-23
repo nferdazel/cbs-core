@@ -73,7 +73,7 @@ func TestIntegrasiAgunanLampiranIIRoundTripDanDataLama(t *testing.T) {
 	if lama.Disputed || lama.InsuranceExpiryDate != nil || lama.AppraisalValidUntil != nil {
 		t.Fatalf("data lama berubah tanpa backfill: %+v", lama)
 	}
-	if len(lama.MissingLampiranIIFields()) == 0 {
+	if len(lama.MissingLampiranIIFields(time.Now().UTC(), domain.DefaultAppraisalValidityMonths)) == 0 {
 		t.Fatal("data lama tanpa informasi Lampiran II harus ditandai, bukan dipaksa")
 	}
 
@@ -107,8 +107,8 @@ func TestIntegrasiAgunanLampiranIIRoundTripDanDataLama(t *testing.T) {
 	if baru.AppraisalValidUntil == nil || !baru.AppraisalValidUntil.Equal(berlakuTaksasi) {
 		t.Fatalf("masa berlaku taksasi tersimpan %v, mau %v", baru.AppraisalValidUntil, berlakuTaksasi)
 	}
-	if len(baru.MissingLampiranIIFields()) != 0 {
-		t.Fatalf("data Lampiran II lengkap masih ditandai: %v", baru.MissingLampiranIIFields())
+	if got := baru.MissingLampiranIIFields(time.Now().UTC(), domain.DefaultAppraisalValidityMonths); len(got) != 0 {
+		t.Fatalf("data Lampiran II lengkap masih ditandai: %v", got)
 	}
 }
 

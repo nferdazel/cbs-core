@@ -9,6 +9,7 @@ const (
 	MsgAccountOpened                  Code = "account_opened"
 	MsgAccountRetrieved               Code = "account_retrieved"
 	MsgAccountReactivated             Code = "account_reactivated"
+	MsgAccountFrozen                  Code = "account_frozen"
 	MsgAccountUnfrozen                Code = "account_unfrozen"
 	MsgAccountClosed                  Code = "account_closed"
 	MsgAccountsListed                 Code = "accounts_listed"
@@ -67,6 +68,7 @@ const (
 	MsgCollateral                     Code = "collateral"
 	MsgPPAPCalculated                 Code = "p_p_a_p_calculated"
 	MsgPPAPPreview                    Code = "p_p_a_p_preview"
+	MsgPPKAUmumCalculated             Code = "ppka_umum_calculated"
 	MsgCKPNPPKAComparison             Code = "c_k_p_n_p_p_k_a_comparison"
 	MsgCKPNCalculated                 Code = "c_k_p_n_calculated"
 	MsgPPKAPlacementCalculated        Code = "p_p_k_a_placement_calculated"
@@ -165,7 +167,9 @@ const (
 	MsgAccountNotFound                 Code = "account_not_found"
 	MsgAccountDormant                  Code = "account_dormant"
 	MsgAccountNotDormant               Code = "account_not_dormant"
+	MsgAccountNotFreezable             Code = "account_not_freezable"
 	MsgAccountNotFrozen                Code = "account_not_frozen"
+	MsgAccountUnfreezeSameActor        Code = "account_unfreeze_same_actor"
 	MsgAccountCloseBalance             Code = "account_close_balance"
 	MsgAccountNotClosable              Code = "account_not_closable"
 	MsgInvalidBranchCode               Code = "invalid_branch_code"
@@ -231,6 +235,7 @@ var codeList = []Code{
 	MsgAccountOpened,
 	MsgAccountRetrieved,
 	MsgAccountReactivated,
+	MsgAccountFrozen,
 	MsgAccountUnfrozen,
 	MsgAccountClosed,
 	MsgAccountsListed,
@@ -289,6 +294,7 @@ var codeList = []Code{
 	MsgCollateral,
 	MsgPPAPCalculated,
 	MsgPPAPPreview,
+	MsgPPKAUmumCalculated,
 	MsgCKPNPPKAComparison,
 	MsgCKPNCalculated,
 	MsgPPKAPlacementCalculated,
@@ -381,7 +387,9 @@ var codeList = []Code{
 	MsgAccountNotFound,
 	MsgAccountDormant,
 	MsgAccountNotDormant,
+	MsgAccountNotFreezable,
 	MsgAccountNotFrozen,
+	MsgAccountUnfreezeSameActor,
 	MsgAccountCloseBalance,
 	MsgAccountNotClosable,
 	MsgInvalidBranchCode,
@@ -454,6 +462,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgAccountReactivated: {
 		ID: "rekening berhasil diaktifkan kembali",
 		EN: "account reactivated successfully",
+	},
+	MsgAccountFrozen: {
+		ID: "pembekuan rekening berhasil",
+		EN: "account frozen successfully",
 	},
 	MsgAccountUnfrozen: {
 		ID: "pembekuan rekening berhasil dibatalkan",
@@ -686,6 +698,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgPPAPPreview: {
 		ID: "pratinjau PPAP",
 		EN: "PPAP preview",
+	},
+	MsgPPKAUmumCalculated: {
+		ID: "perhitungan PPKA umum",
+		EN: "general PPKA calculation",
 	},
 	MsgCKPNPPKAComparison: {
 		ID: "perbandingan CKPN dan PPKA",
@@ -1058,6 +1074,14 @@ var catalog = map[Code]map[Lang]string{
 	MsgAccountNotFrozen: {
 		ID: "rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya",
 		EN: "account is not frozen and cannot be unfrozen",
+	},
+	MsgAccountNotFreezable: {
+		ID: "rekening tidak berstatus aktif dan tidak dapat dibekukan",
+		EN: "account is not active and cannot be frozen",
+	},
+	MsgAccountUnfreezeSameActor: {
+		ID: "pembekuan tidak dapat dibatalkan oleh pelaksana pembekuan yang sama",
+		EN: "the freeze cannot be reversed by the same actor who froze the account",
 	},
 	MsgAccountCloseBalance: {
 		ID: "rekening tidak dapat ditutup: masih ada saldo, saldo tersedia, atau dana tertahan",

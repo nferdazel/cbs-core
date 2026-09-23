@@ -33,6 +33,12 @@ type DailyActivitySummary struct {
 	// Syariah. Kode 12500 berasal dari bagan akun (migrasi 000024/000068), sama
 	// dengan bawaan kunci konfigurasi loan.penalty.syariah.social_fund.coa.
 	SocialFundBalance decimal.Decimal
+	// SocialFundLastMovement adalah tanggal jurnal TERAKHIR yang menyentuh akun 12500
+	// sampai dan termasuk tanggal bisnis. Kosong berarti belum ada pergerakan sama
+	// sekali. Dipakai penanda saldo mengendap: saldo > 0 tanpa pergerakan (termasuk
+	// penyaluran) lebih dari satu kuartal berarti denda ta'zir menumpuk tanpa
+	// penyaluran. Baca-saja; tidak mengubah saldo atau jurnal.
+	SocialFundLastMovement time.Time
 }
 
 // BatchActivityRepository membaca aktivitas harian untuk ringkasan EOD.

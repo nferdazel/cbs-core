@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -13,10 +14,19 @@ import (
 
 type PPAPHandler struct {
 	ppapSvc domain.PPAPService
+	// ppkaUmum menghitung PPKA umum (0,5% aset produktif lancar) dari kredit dan
+	// penempatan. Opsional: bila nil, rutenya tidak dipasang (perilaku lama).
+	ppkaUmum domain.PPKAUmumService
 }
 
-func NewPPAPHandler(ppapSvc domain.PPAPService) *PPAPHandler {
-	return &PPAPHandler{ppapSvc: ppapSvc}
+// NewPPAPHandler menyusun handler PPAP. ppkaUmumOpsional boleh kosong; tanpa itu
+// hanya rute run-daily/preview yang dipasang, tanpa mengubah perilaku lama.
+func NewPPAPHandler(ppapSvc domain.PPAPService, ppkaUmumOpsional ...domain.PPKAUmumService) *PPAPHandler {
+	var ppka domain.PPKAUmumService
+	if len(ppkaUmumOpsional) > 0 {
+		ppka = ppkaUmumOpsional[0]
+	}
+	return &PPAPHandler{ppapSvc: ppapSvc, ppkaUmum: ppka}
 }
 
 // RunDaily handles POST /api/v1/ppap/run-daily.
@@ -58,15 +68,43 @@ func (h *PPAPHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusOK, i18n.MsgPPAPPreview, summary)
 }
 
+// PPKAUmum handles GET /api/v1/ppap/ppka-umum.
+// Menghitung PPKA umum minimum 0,5% aset produktif lancar (POJK 1/2024 Pasal 19
+// ayat (2)) dari kredit lancar dan penempatan pada bank lain, tanpa memposting apa pun.
+func (h *PPAPHandler) PPKAUmum(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	if h.ppkaUmum == nil {
+		InternalError(w, r, errors.New("modul PPKA umum belum tersambung"))
+		return
+	}
+
+	summary, err := h.ppkaUmum.Hitung(r.Context(), parseAsOf(r),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		InternalError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgPPKAUmumCalculated, summary)
+}
+
 // RegisterRoutes memasang rute PPAP pada router yang sudah berada di dalam grup
 // terautentikasi (AuthMiddleware). Jalankan perhitungan butuh wewenang approve kredit;
-// pratinjau cukup wewenang baca.
+// pratinjau dan PPKA umum cukup wewenang baca.
 func (h *PPAPHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/ppap", func(r chi.Router) {
 		r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 			Post("/run-daily", h.RunDaily)
 		r.With(middleware.RequirePermission(domain.PermLoansRead)).
 			Get("/preview", h.Preview)
+		if h.ppkaUmum != nil {
+			r.With(middleware.RequirePermission(domain.PermLoansRead)).
+				Get("/ppka-umum", h.PPKAUmum)
+		}
 	})
 }
 

@@ -26,6 +26,7 @@ const accountColumns = `a.id, a.account_number, a.customer_id, NULL,
 	a.product_id, a.branch_id, a.coa_id, coa.code, coa.book::text, coa.normal_balance,
 	a.account_type, a.currency, a.balance, a.available_balance, a.hold_balance,
 	a.status, a.version, a.opened_at, a.last_activity_at, a.dormant_at,
+	a.frozen_by, a.frozen_at,
 	a.created_at, a.updated_at,
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = a.branch_id), '')`
 
@@ -214,6 +215,32 @@ func (r *AccountRepository) MarkDormant(ctx context.Context, tx any, accountID u
 	return rowsAffected > 0, nil
 }
 
+// Freeze membekukan rekening ACTIVE. Penjaga status = 'ACTIVE' menolak rekening
+// DORMANT/CLOSED/FROZEN sehingga status tidak tersamar, dan membuat operasi idempoten
+// (pemanggilan ulang tidak mengubah apa pun). Pelaksana disimpan pada frozen_by agar
+// pembatalan pembekuan oleh orang yang sama dapat ditolak.
+func (r *AccountRepository) Freeze(ctx context.Context, tx any, accountID, frozenBy uuid.UUID, frozenAt time.Time) (bool, error) {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return false, errors.New("invalid transaction context")
+	}
+
+	query := `
+		UPDATE accounts
+		SET status = 'FROZEN', frozen_by = $1, frozen_at = $2, updated_at = NOW(), version = version + 1
+		WHERE id = $3 AND status = 'ACTIVE'
+	`
+	res, err := sqlTx.ExecContext(ctx, query, frozenBy, frozenAt, accountID)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 // Reactivate memulihkan rekening dormant. Reaktivasi dihitung sebagai aktivitas
 // rekening, sehingga last_activity_at ikut diperbarui. Penjaga status = 'DORMANT'
 // membuat hasil false bila status sudah berubah (mis. balapan dengan aksi lain).
@@ -252,7 +279,7 @@ func (r *AccountRepository) Unfreeze(ctx context.Context, tx any, accountID uuid
 
 	query := `
 		UPDATE accounts
-		SET status = 'ACTIVE', updated_at = NOW(), version = version + 1
+		SET status = 'ACTIVE', frozen_by = NULL, frozen_at = NULL, updated_at = NOW(), version = version + 1
 		WHERE id = $1 AND status = 'FROZEN'
 	`
 	res, err := sqlTx.ExecContext(ctx, query, accountID)
@@ -320,6 +347,7 @@ func scanAccount(row rowScanner) (*domain.Account, error) {
 		&a.ProductID, &a.BranchID, &a.COAID, &a.COACode, &a.COABook, &a.NormalBalance,
 		&a.AccountType, &a.Currency, &a.Balance, &a.AvailableBalance, &a.HoldBalance,
 		&a.Status, &a.Version, &a.OpenedAt, &a.LastActivityAt, &a.DormantAt,
+		&a.FrozenBy, &a.FrozenAt,
 		&a.CreatedAt, &a.UpdatedAt,
 		&a.BranchCode,
 	)

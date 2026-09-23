@@ -95,6 +95,13 @@ func main() {
 	for _, warning := range service.InstallationValidationWarnings(context.Background(), configSvc) {
 		logger.Warn("peringatan konfigurasi instalasi", "pesan", warning)
 	}
+	// CKPN yang masih mati pada instalasi yang sudah beroperasi adalah pelanggaran
+	// kewajiban sejak 1 Januari 2025, bukan sekadar belum siap. Peringatan ini TIDAK
+	// menyalakan CKPN (itu keputusan bank lewat langkah onboarding di
+	// docs/CKPN-SIAP-RILIS.md), hanya membuat keadaan itu terlihat saat start.
+	for _, warning := range service.CKPNReadinessWarnings(context.Background(), configSvc, dateRepo) {
+		logger.Warn("peringatan kesiapan CKPN", "pesan", warning)
+	}
 	// Staf bercabang biasa dengan branch_code yang tidak terdaftar mendapat cakupan
 	// kosong (tidak melihat data apa pun). Peringatan saat start membuat operator
 	// menemukan data lama seperti itu. Cakupan TIDAK diperluas diam-diam: memperluas
@@ -165,6 +172,10 @@ func main() {
 	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
 	// bawaan false sehingga belum mengubah angka PPKA mana pun.
 	lpsPlacementSvc := service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(db), configSvc)
+	// PPKA umum (POJK 1/2024 Pasal 19 ayat (2): minimum 0,5% aset produktif lancar)
+	// dihitung dari kredit lancar (evaluasi PPAP) dan penempatan pada bank lain;
+	// satu sumber dipakai laporan PPAP dan KPMM. Baca-saja.
+	ppkaUmumSvc := service.NewPPKAUmumService(ppapSvc, lpsPlacementSvc, configSvc)
 	// Batch dibuat setelah layanan yang dijalankannya setiap tutup hari tersedia:
 	// ARO deposito, PPAP harian, akrual denda kredit, akrual bunga kredit, dan
 	// penandaan rekening dormant.
@@ -220,7 +231,7 @@ func main() {
 	// (baca-saja), dan parameter kpmm.* di system_config. Tidak menyentuh saklar
 	// ckpn.enabled. Dibuat sebelum handler OJK agar baris KPMM Form 00.08 memakai
 	// modul yang sama dengan endpoint GET /reports/kpmm.
-	kpmmSvc := service.NewKPMMService(reportSvc, ckpnSvc, configSvc)
+	kpmmSvc := service.NewKPMMService(reportSvc, ckpnSvc, configSvc, ppkaUmumSvc)
 
 	// Ekspor OJK memakai laporan journal-based yang sama; hanya pemetaan pos OJK
 	// yang ditambahkan, tanpa menghitung ulang rumus akuntansi. RepoSource menambah
@@ -245,7 +256,7 @@ func main() {
 	appInfoHandler := httpHandler.NewAppInfoHandler(appInfoSvc)
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
-	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc)
+	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc)
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)

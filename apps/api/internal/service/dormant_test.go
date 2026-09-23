@@ -240,3 +240,31 @@ func TestUnfreezeRejectsNonFrozen(t *testing.T) {
 		}
 	}
 }
+
+// Gerbang freeze: hanya rekening ACTIVE yang boleh dibekukan. DORMANT/CLOSED/FROZEN
+// ditolak agar status sebenarnya tidak tersamar.
+func TestFreezeRejectsNonActive(t *testing.T) {
+	for _, status := range []domain.AccountStatus{
+		domain.AccountStatusDormant, domain.AccountStatusFrozen, domain.AccountStatusClosed,
+	} {
+		svc := &accountService{accountRepo: &stubLedgerAccountRepo{acc: statusAccount("A", status)}}
+		_, err := svc.FreezeAccount(context.Background(), "A", "", testActor())
+		if !errors.Is(err, domain.ErrAccountNotFreezable) {
+			t.Fatalf("status %s harus ErrAccountNotFreezable, dapat %v", status, err)
+		}
+	}
+}
+
+// Pemisahan tugas: pelaksana pembekuan tidak boleh membatalkan pembekuannya sendiri.
+// Pemeriksaan dilakukan sebelum menyentuh database, jadi cukup repo stub.
+func TestUnfreezeRejectsSameActor(t *testing.T) {
+	actor := testActor()
+	acc := statusAccount("A", domain.AccountStatusFrozen)
+	acc.FrozenBy = &actor.UserID
+	svc := &accountService{accountRepo: &stubLedgerAccountRepo{acc: acc}}
+
+	_, err := svc.UnfreezeAccount(context.Background(), "A", "", actor)
+	if !errors.Is(err, domain.ErrAccountUnfreezeSameActor) {
+		t.Fatalf("pelaksana pembekuan membatalkan pembekuannya sendiri: err = %v, ingin ErrAccountUnfreezeSameActor", err)
+	}
+}

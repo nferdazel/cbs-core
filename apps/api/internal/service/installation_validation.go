@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -45,4 +46,38 @@ func InstallationValidationWarnings(ctx context.Context, cfg domain.SystemConfig
 		warnings = append(warnings, "instalasi melayani buku syariah (SYARIAH/DUAL): ckpn.coa.reserve.syariah masih kosong; jurnal cadangan CKPN pembiayaan syariah akan jatuh ke akun global ckpn.coa.reserve (konvensional 10950). Petakan akun cadangan CKPN syariah sebelum mengaktifkan CKPN.")
 	}
 	return warnings
+}
+
+// CKPNReadinessWarnings menghasilkan peringatan tegas saat start bila CKPN masih mati
+// padahal instalasi sudah beroperasi (sudah punya jurnal atau tanggal bisnis). CKPN
+// SAK EP wajib sejak 1 Januari 2025 (POJK No. 1 Tahun 2024 bagi BPR; POJK No. 24
+// Tahun 2024 bagi BPRS), sehingga bank yang sudah beroperasi dengan ckpn.enabled=false
+// sedang melanggar kewajiban itu — bukan sekadar belum siap.
+//
+// Mengapa bukan pembalikan otomatis: seluruh instalasi menjalankan migrasi yang sama,
+// sehingga meng-UPDATE ckpn.enabled di migrasi akan menyalakan CKPN juga pada instalasi
+// yang sedang berjalan — yang dilarang karena akan membentuk/menjurnal CKPN secara
+// mundur. Karena itu mekanismenya adalah peringatan yang tidak mengubah perilaku, dan
+// penyalakan dilakukan bank lewat langkah onboarding di docs/CKPN-SIAP-RILIS.md. Fungsi
+// ini tidak menulis, tidak menjurnal, dan tidak mengubah setelan apa pun.
+//
+// cfg atau activity nil berarti tidak ada peringatan (lingkungan uji tanpa database).
+func CKPNReadinessWarnings(ctx context.Context, cfg domain.SystemConfigService, activity domain.OperationalActivityReader) []string {
+	if cfg == nil || activity == nil {
+		return nil
+	}
+	// CKPN sudah menyala: tidak ada kewajiban yang tertunda.
+	if cfg.GetBool(ctx, cfgCKPNEnabled, false) {
+		return nil
+	}
+	operational, err := activity.HasOperationalActivity(ctx)
+	if err != nil {
+		// Kegagalan membaca tidak boleh disamarkan sebagai "belum beroperasi":
+		// sebutkan agar operator memeriksa, bukan menyimpulkan aman.
+		return []string{fmt.Sprintf("kesiapan CKPN tidak dapat dipastikan: status operasional instalasi gagal dibaca (%v)", err)}
+	}
+	if !operational {
+		return nil
+	}
+	return []string{"CKPN belum dinyalakan (ckpn.enabled=false) padahal instalasi sudah memiliki jurnal/tanggal bisnis: bank sudah beroperasi tanpa membentuk CKPN, padahal CKPN SAK EP wajib sejak 1 Januari 2025 (POJK No. 1 Tahun 2024 / POJK No. 24 Tahun 2024). Selesaikan daftar periksa docs/CKPN-SIAP-RILIS.md lalu setel ckpn.enabled=true. Peringatan ini TIDAK mengubah perilaku apa pun; mode bayangan (ckpn.shadow_mode.enabled) hanya menghitung dan melaporkan tanpa menjurnal."}
 }

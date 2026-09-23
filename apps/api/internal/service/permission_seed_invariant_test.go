@@ -29,9 +29,13 @@ var (
 	menuCatalogRowRe  = regexp.MustCompile(`\('([a-z_]+)',\s*'[^']*'\)`)
 	webMenuKeyRe      = regexp.MustCompile(`menuKey:\s*"([^"]+)"`)
 	migrationSeedFile = "000079_user_groups_permissions.up.sql"
-	domainStaffGoRel  = filepath.Join("apps", "api", "internal", "domain", "staff.go")
-	webNavTsRel       = filepath.Join("apps", "web", "src", "components", "layout", "nav.ts")
-	migrationsDirRel  = filepath.Join("packages", "db-migrations")
+	// migrationOverrideFile mengubah matriks izin setelah 000079. Invarian
+	// membandingkan kode dengan 000079 + overridenya, bukan hanya seed awal, supaya
+	// keputusan panel (000091) tetap terjaga.
+	migrationOverrideFile = "000091_recover_permission_and_account_freeze.up.sql"
+	domainStaffGoRel      = filepath.Join("apps", "api", "internal", "domain", "staff.go")
+	webNavTsRel           = filepath.Join("apps", "web", "src", "components", "layout", "nav.ts")
+	migrationsDirRel      = filepath.Join("packages", "db-migrations")
 )
 
 // declaredPermissionConstants membaca konstanta Perm* dari sumber produksi domain.
@@ -120,12 +124,46 @@ func readWebMenuKeys(t *testing.T, repoRoot string) map[string]bool {
 	return out
 }
 
+// applyPermissionOverrides membaca perubahan matriks izin dari migrasi setelah
+// 000079 dan menerapkannya pada seed 000079: blok DELETE FROM group_permissions
+// adalah pencabutan, blok INSERT INTO group_permissions adalah pemberian. Dengan
+// begitu invarian membandingkan kode dengan seluruh migrasi yang berlaku, bukan
+// hanya 000079, dan migrasi izin baru yang lupa disertakan tertangkap.
+func applyPermissionOverrides(t *testing.T, repoRoot string, seed map[string]map[string]bool) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot, migrationsDirRel, migrationOverrideFile))
+	if err != nil {
+		t.Fatalf("membaca migrasi %s: %v", migrationOverrideFile, err)
+	}
+	sql := string(data)
+	const revokeMarker = "DELETE FROM group_permissions"
+	const grantMarker = "INSERT INTO group_permissions"
+	revokeAt := strings.Index(sql, revokeMarker)
+	grantAt := strings.Index(sql, grantMarker)
+	if revokeAt < 0 || grantAt < 0 || grantAt < revokeAt {
+		t.Fatalf("%s harus memuat blok %q lalu %q agar perubahan izin dapat diperiksa",
+			migrationOverrideFile, revokeMarker, grantMarker)
+	}
+	for _, m := range groupPermSeedRe.FindAllStringSubmatch(sql[revokeAt:grantAt], -1) {
+		if seed[m[1]] != nil {
+			delete(seed[m[1]], m[2])
+		}
+	}
+	for _, m := range groupPermSeedRe.FindAllStringSubmatch(sql[grantAt:], -1) {
+		if seed[m[1]] == nil {
+			seed[m[1]] = map[string]bool{}
+		}
+		seed[m[1]][m[2]] = true
+	}
+}
+
 // TestPermissionSeedInvariant memastikan seed migrasi mereproduksi RolePermissions
 // tepat sama untuk setiap peran, dan tidak ada izin seed yang bukan konstanta kode.
 func TestPermissionSeedInvariant(t *testing.T) {
 	root := configSeedRepoRoot(t)
 	known := declaredPermissionConstants(t, root)
 	seededGroups, _ := readMigrationSeed(t, root)
+	applyPermissionOverrides(t, root, seededGroups)
 
 	if len(seededGroups) == 0 {
 		t.Fatalf("tidak ada seed group_permissions terbaca dari %s", migrationSeedFile)

@@ -46,6 +46,10 @@ type kpmmService struct {
 	reports domain.ReportService
 	ckpn    domain.CKPNService
 	config  domain.SystemConfigService
+	// ppkaUmum menghitung PPKA umum (0,5% aset produktif lancar) dari kredit dan
+	// penempatan. Opsional: bila nil, komponen PPKAUmum ditandai belum tersedia
+	// seperti perilaku lama, sehingga uji unit tanpa modul ini tidak berubah.
+	ppkaUmum domain.PPKAUmumService
 }
 
 // ppapRunDateProvider adalah kontrak opsional modul CKPN yang memberi tanggal bisnis
@@ -62,9 +66,14 @@ func sameDateUTC(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-// NewKPMMService menyusun penghitung KPMM baca-saja.
-func NewKPMMService(reports domain.ReportService, ckpn domain.CKPNService, config domain.SystemConfigService) domain.KPMMService {
-	return &kpmmService{reports: reports, ckpn: ckpn, config: config}
+// NewKPMMService menyusun penghitung KPMM baca-saja. ppkaUmumOpsional boleh kosong
+// (mis. uji unit lama): tanpa itu komponen PPKA umum tetap belum tersedia.
+func NewKPMMService(reports domain.ReportService, ckpn domain.CKPNService, config domain.SystemConfigService, ppkaUmumOpsional ...domain.PPKAUmumService) domain.KPMMService {
+	var ppkaUmum domain.PPKAUmumService
+	if len(ppkaUmumOpsional) > 0 {
+		ppkaUmum = ppkaUmumOpsional[0]
+	}
+	return &kpmmService{reports: reports, ckpn: ckpn, config: config, ppkaUmum: ppkaUmum}
 }
 
 // Hitung menyusun laporan KPMM untuk posisi asOf. Bila komponen kunci tidak dapat
@@ -162,10 +171,7 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 	report.SurplusRevaluasi = domain.KPMMKomponen{
 		Alasan: "surplus revaluasi aset tetap belum berakun tersendiri pada bagan akun sehingga tidak dapat dipisah",
 	}
-	report.PPKAUmum = domain.KPMMKomponen{
-		Alasan: "PPKA umum minimum 0,5% aset produktif lancar (POJK 1/2024 Pasal 19 ayat (2)) belum dapat dihitung: pemetaan bagan akun masih " +
-			ojkreport.MappingStatus + " dan kualitas aset produktif per pos belum tersimpan",
-	}
+	report.PPKAUmum = s.ppkaUmumKomponen(ctx, asOf, actor)
 	report.ModalPelengkap = domain.KPMMKomponen{
 		Alasan: "komponen modal pelengkap (instrumen dengan persetujuan OJK, surplus revaluasi aset tetap, " +
 			"dan PPKA umum) belum dipisah dari data yang tersimpan, sehingga tidak dihitung",
@@ -227,7 +233,46 @@ func (s *kpmmService) Hitung(ctx context.Context, asOf time.Time, book string, a
 
 	report.Catatan = kpmmCatatan(report)
 	report.ParameterGaps = dedupSorted(gaps)
+	report.Lengkap, report.AlasanTidakLengkap = kpmmKelengkapan(report)
 	return report, nil
+}
+
+// kpmmKelengkapan menandai apakah angka laporan boleh dibaca sebagai final. Ini
+// memisahkan "sementara" dari "lengkap" tanpa mengubah angka apa pun: komponen
+// modal yang belum tersedia (mis. modal pelengkap) atau ATMR yang belum
+// terkategori membuat rasio hanya batas bawah, jadi laporan ditandai belum
+// lengkap beserta alasannya.
+func kpmmKelengkapan(r domain.KPMMReport) (bool, []string) {
+	var alasan []string
+	if !r.ModalPelengkap.Tersedia {
+		alasan = append(alasan, "modal pelengkap belum tersedia")
+	}
+	if !r.PPKAUmum.Tersedia {
+		alasan = append(alasan, "PPKA umum belum tersedia")
+	}
+	if !r.ModalPelengkapInstrumen.Tersedia {
+		alasan = append(alasan, "komponen modal pelengkap ber-instrumen belum tersedia")
+	}
+	if !r.SurplusRevaluasi.Tersedia {
+		alasan = append(alasan, "surplus revaluasi aset tetap belum tersedia")
+	}
+	if !r.ModalInti.Tersedia {
+		alasan = append(alasan, "modal inti belum final: "+r.ModalInti.Alasan)
+	}
+	if len(r.ATMRTidakTerkategori) > 0 {
+		alasan = append(alasan, "ATMR belum lengkap: pos neraca belum terkategori: "+
+			strings.Join(r.ATMRTidakTerkategori, ", "))
+	}
+	if !r.ATMR.Tersedia {
+		alasan = append(alasan, "ATMR belum dapat dihitung")
+	}
+	if len(r.ParameterGaps) > 0 {
+		alasan = append(alasan, "parameter konfigurasi belum diisi: "+strings.Join(r.ParameterGaps, ", "))
+	}
+	if len(alasan) == 0 {
+		return true, nil
+	}
+	return false, dedupSorted(alasan)
 }
 
 // alasanRasio merangkum komponen yang membuat rasio belum dapat dihitung.
@@ -303,6 +348,30 @@ func (s *kpmmService) fracAtauGapFallback(ctx context.Context, key string, fallb
 		return s.config.GetDecimal(ctx, key, fallback), false
 	}
 	return s.config.GetDecimal(ctx, key, fallback), false
+}
+
+// ppkaUmumKomponen menghitung PPKA umum dari modul khusus bila tersambung. Tanpa
+// modul, komponen ditandai belum tersedia seperti perilaku lama. Sumber kredit
+// diwajibkan tersedia agar angka tidak tampak final padahal hanya sebagian.
+func (s *kpmmService) ppkaUmumKomponen(ctx context.Context, asOf time.Time, actor domain.Actor) domain.KPMMKomponen {
+	if s.ppkaUmum == nil {
+		return domain.KPMMKomponen{
+			Alasan: "modul PPKA umum tidak tersambung; PPKA umum minimum 0,5% aset produktif lancar " +
+				"(POJK 1/2024 Pasal 19 ayat (2)) belum dihitung",
+		}
+	}
+	summary, err := s.ppkaUmum.Hitung(ctx, asOf, actor)
+	if err != nil {
+		return domain.KPMMKomponen{Alasan: "PPKA umum gagal dihitung: " + err.Error()}
+	}
+	if !summary.SumberKredit {
+		return domain.KPMMKomponen{Alasan: "kredit lancar belum dapat dihitung sehingga PPKA umum belum tersedia"}
+	}
+	komponen := domain.KPMMKomponen{Nilai: summary.TotalPPKA, Tersedia: true}
+	if !summary.Lengkap {
+		komponen.Alasan = "batas bawah; " + strings.Join(summary.AlasanTidakLengkap, "; ")
+	}
+	return komponen
 }
 
 // pengurangModalInti menghitung selisih PPKA > CKPN sebagai pengurang modal inti

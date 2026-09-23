@@ -431,11 +431,76 @@ func (s *accountService) ReactivateAccount(ctx context.Context, accountNumber, n
 	return account, nil
 }
 
+// FreezeAccount membekukan rekening ACTIVE (keputusan panel: wewenang ADMIN +
+// SUPERVISOR lewat izin accounts:freeze). Hanya rekening ACTIVE yang boleh
+// dibekukan: rekening DORMANT/CLOSED/FROZEN ditolak beserta status sebenarnya,
+// bukan diam-diam diubah. Pelaksana dicatat pada frozen_by sehingga pembatalan
+// oleh orang yang sama dapat ditolak (lihat UnfreezeAccount). Cabang dan buku
+// dijaga seperti operasi rekening lain.
+func (s *accountService) FreezeAccount(ctx context.Context, accountNumber, notes string, actor domain.Actor) (*domain.Account, error) {
+	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanAccessBranch(account.BranchCode) {
+		return nil, domain.ErrCrossBranchAccess
+	}
+	if !actor.CanAccessBook(account.COABook) {
+		return nil, domain.ErrCrossBookAccess
+	}
+	if account.Status != domain.AccountStatusActive {
+		return nil, fmt.Errorf("%w: status rekening saat ini %s", domain.ErrAccountNotFreezable, account.Status)
+	}
+
+	now := time.Now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	changed, err := s.accountRepo.Freeze(ctx, tx, account.ID, actor.UserID, now)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		// Status berubah antara pembacaan dan penulisan; operator perlu memuat ulang.
+		return nil, fmt.Errorf("%w: status rekening berubah, silakan muat ulang", domain.ErrAccountNotFreezable)
+	}
+
+	if err := writeAudit(ctx, s.auditRepo, tx, actor, "FREEZE_ACCOUNT", "account", account.ID.String(), map[string]any{
+		"account_number": account.AccountNumber,
+		"status_before":  string(domain.AccountStatusActive),
+		"status_after":   string(domain.AccountStatusFrozen),
+		"notes":          notes,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	account.Status = domain.AccountStatusFrozen
+	account.FrozenBy = &actor.UserID
+	account.FrozenAt = &now
+	account.UpdatedAt = now
+	return account, nil
+}
+
 // UnfreezeAccount membatalkan pembekuan rekening FROZEN dan mengembalikannya ke
 // ACTIVE. Ini jalur keluar dari FROZEN: tanpa itu rekening yang sudah dibekukan
 // tidak dapat dipulihkan. Rekening berstatus selain FROZEN (termasuk DORMANT/CLOSED)
 // ditolak dengan status sebenarnya, bukan diam-diam diubah. Cabang dan buku dijaga
 // seperti operasi rekening lain.
+//
+// Pemisahan tugas (keputusan panel): pelaksana pembekuan TIDAK BOLEH membatalkan
+// pembekuannya sendiri. Pemeriksaan langsung dipakai — bukan maker-checker — karena
+// yang dibutuhkan adalah ORANG KEDUA sebagai pelaksana, bukan persetujuan atas
+// pengajuan orang lain; maker-checker justru akan membolehkan orang yang sama
+// mengajukan lalu orang lain menyetujui, yang bukan maksud aturan ini. Pembekuan
+// lama tanpa pelaksana tercatat (frozen_by NULL) tetap boleh dibatalkan agar data
+// pra-migrasi tidak terkunci permanen.
 func (s *accountService) UnfreezeAccount(ctx context.Context, accountNumber, notes string, actor domain.Actor) (*domain.Account, error) {
 	account, err := s.accountRepo.GetByNumber(ctx, accountNumber)
 	if err != nil {
@@ -449,6 +514,9 @@ func (s *accountService) UnfreezeAccount(ctx context.Context, accountNumber, not
 	}
 	if account.Status != domain.AccountStatusFrozen {
 		return nil, fmt.Errorf("%w: status rekening saat ini %s", domain.ErrAccountNotFrozen, account.Status)
+	}
+	if account.FrozenBy != nil && *account.FrozenBy == actor.UserID {
+		return nil, domain.ErrAccountUnfreezeSameActor
 	}
 
 	now := time.Now().UTC()
@@ -481,6 +549,8 @@ func (s *accountService) UnfreezeAccount(ctx context.Context, accountNumber, not
 	}
 
 	account.Status = domain.AccountStatusActive
+	account.FrozenBy = nil
+	account.FrozenAt = nil
 	account.UpdatedAt = now
 	return account, nil
 }

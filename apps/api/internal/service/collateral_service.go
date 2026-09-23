@@ -71,6 +71,17 @@ func (s *collateralService) haircutFor(ctx context.Context, input domain.Collate
 	return haircut, nil
 }
 
+// appraisalValidityMonths membaca kebijakan umur taksasi agunan bank. Nilai tidak
+// masuk akal (nol/negatif) atau config nil jatuh ke bawaan 12 bulan; taksasi yang
+// lebih tua dari umur ini dianggap kedaluwarsa/ data tidak lengkap.
+func (s *collateralService) appraisalValidityMonths(ctx context.Context) int {
+	if s.config == nil {
+		return domain.DefaultAppraisalValidityMonths
+	}
+	return domain.NormalizeAppraisalValidityMonths(
+		s.config.GetInt(ctx, domain.AppraisalValidityMonthsConfigKey, domain.DefaultAppraisalValidityMonths))
+}
+
 // Create mencatat satu agunan pada kredit. Cabang diambil dari aktor, bukan dari
 // permintaan: agunan yang dicatat pegawai cabang tertentu harus melekat pada cabang itu,
 // dan permintaan yang datang dengan cabang lain tidak dipercaya.
@@ -147,9 +158,16 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		Notes:                 strings.TrimSpace(input.Notes),
 		CreatedBy:             actor.DisplayName(),
 	}
-	if err := collateral.Validate(time.Now().UTC()); err != nil {
+	asOf := time.Now().UTC()
+	if err := collateral.Validate(asOf); err != nil {
 		return nil, err
 	}
+	// Catat data Lampiran II mana yang belum lengkap pada saat pencatatan. Selama
+	// daftar ini tidak kosong, agunan itu memakai bobot risiko 100% (tidak mengurangi
+	// eksposur) sampai dilengkapi; taksasi kedaluwarsa termasuk tidak lengkap menurut
+	// kebijakan umur taksasi bank (collateral.appraisal.validity_months). Nilai ini
+	// HANYA dicatat untuk audit dan tidak mengubah angka apa pun.
+	missingLampiranII := collateral.MissingLampiranIIFields(asOf, s.appraisalValidityMonths(ctx))
 	// Agunan tanpa cabang tidak dapat diatribusikan ke laporan cabang mana pun.
 	// Cabang diselesaikan lewat satu sumber (resolveActorBranch): pelaku lintas
 	// cabang berkode 'HO' jatuh ke kantor pusat, bukan menghasilkan branch_id NULL.
@@ -183,6 +201,9 @@ func (s *collateralService) Create(ctx context.Context, input domain.CollateralI
 		// bobot risiko agunan; perubahan ikatan/sengketa harus dapat ditelusuri.
 		"binding_type": collateralBindingAudit(collateral.BindingType),
 		"disputed":     collateral.Disputed,
+		// Daftar data yang belum lengkap saat pencatatan; non-kosong berarti agunan
+		// memakai bobot risiko 100% sampai dilengkapi. Taksasi kedaluwarsa termasuk.
+		"lampiran_ii_missing": missingLampiranII,
 	}); err != nil {
 		return nil, err
 	}

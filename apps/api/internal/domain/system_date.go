@@ -226,6 +226,19 @@ type BusinessDateRepository interface {
 	TryEODLock(ctx context.Context) (func() error, error)
 }
 
+// OperationalActivityReader menunjukkan apakah instalasi sudah pernah beroperasi
+// (ada jurnal tersimpan dan/atau tanggal bisnis sudah disetel). Dipakai peringatan
+// kesiapan CKPN saat start: CKPN yang masih mati pada instalasi yang sudah berjalan
+// berarti bank sudah beroperasi tanpa membentuk CKPN. Sengaja interface sempit dan
+// terpisah dari BusinessDateRepository agar tidak memaksa setiap peniru repositori
+// tanggal bisnis menyediakan metode ini.
+type OperationalActivityReader interface {
+	// HasOperationalActivity mengembalikan true bila instalasi sudah punya jurnal
+	// dan/atau tanggal bisnis tersimpan. Kegagalan membaca dikembalikan apa adanya
+	// agar pemanggil tidak menyimpulkan "belum beroperasi" dari error.
+	HasOperationalActivity(ctx context.Context) (bool, error)
+}
+
 type BatchProcessService interface {
 	GetCurrentBusinessDate(ctx context.Context) (*SystemBusinessDate, error)
 	RunEOD(ctx context.Context, executedBy uuid.UUID) (*EODSummaryResult, error)

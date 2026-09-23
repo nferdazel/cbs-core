@@ -2,11 +2,58 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"cbs-core/apps/core-api/internal/domain"
 )
+
+// stubOperationalActivity meniru pembacaan status operasional instalasi tanpa database.
+type stubOperationalActivity struct {
+	operational bool
+	err         error
+}
+
+func (s stubOperationalActivity) HasOperationalActivity(context.Context) (bool, error) {
+	return s.operational, s.err
+}
+
+// Peringatan kesiapan CKPN: CKPN yang masih mati PADA INSTALASI YANG SUDAH BEROPERASI
+// berarti bank sudah beroperasi tanpa membentuk CKPN. Peringatan ini tidak menyalakan
+// apa pun; ia hanya membuat pelanggaran kewajiban sejak 1 Jan 2025 terlihat saat start.
+func TestCKPNReadinessWarnings(t *testing.T) {
+	cfgOn := &ckpnConfigStub{values: map[string]string{"ckpn.enabled": "true"}}
+	cfgOff := &ckpnConfigStub{values: map[string]string{"ckpn.enabled": "false"}}
+
+	cases := []struct {
+		name     string
+		cfg      domain.SystemConfigService
+		activity domain.OperationalActivityReader
+		want     int
+	}{
+		{"CKPN hidup: tanpa peringatan", cfgOn, stubOperationalActivity{operational: true}, 0},
+		{"CKPN mati, instalasi baru belum beroperasi: tanpa peringatan", cfgOff, stubOperationalActivity{operational: false}, 0},
+		{"CKPN mati, instalasi sudah beroperasi: satu peringatan", cfgOff, stubOperationalActivity{operational: true}, 1},
+		{"gagal membaca status: satu peringatan, bukan diam", cfgOff, stubOperationalActivity{err: errors.New("db mati")}, 1},
+		{"cfg nil: tanpa peringatan", nil, stubOperationalActivity{operational: true}, 0},
+		{"activity nil: tanpa peringatan", cfgOff, nil, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CKPNReadinessWarnings(context.Background(), tc.cfg, tc.activity)
+			if len(got) != tc.want {
+				t.Fatalf("peringatan %d, mau %d: %v", len(got), tc.want, got)
+			}
+			for _, w := range got {
+				if !strings.Contains(w, "CKPN") {
+					t.Fatalf("peringatan tidak menyebut CKPN: %q", w)
+				}
+			}
+		})
+	}
+}
 
 // Peringatan pemetaan akun CKPN syariah harus muncul pada SETIAP cakupan yang
 // benar-benar memproses pembiayaan syariah — SYARIAH maupun DUAL — bukan hanya

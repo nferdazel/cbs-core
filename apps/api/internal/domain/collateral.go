@@ -107,6 +107,30 @@ func DefaultHaircutPercent() decimal.Decimal {
 	return decimal.NewFromInt(100)
 }
 
+// AppraisalValidityMonthsConfigKey adalah kunci konfigurasi umur taksasi agunan dalam
+// bulan. Nilainya adalah KEPUTUSAN PANEL sebagai praktik industri, BUKAN aturan
+// tertulis: teks SEOJK No. 2/SEOJK.03/2025 Lampiran II tidak mengatur umur taksasi
+// sehingga bank yang memutuskan. Kunci ini dipakai untuk menilai data agunan lengkap
+// atau tidak (lihat MissingLampiranIIFields): taksasi yang lebih tua dari umur ini
+// dianggap kedaluwarsa, sehingga agunan memakai bobot risiko 100% (tidak mengurangi
+// eksposur) sampai taksasi diperbarui.
+const AppraisalValidityMonthsConfigKey = "collateral.appraisal.validity_months"
+
+// DefaultAppraisalValidityMonths adalah bawaan kunci di atas bila konfigurasi tidak
+// terbaca: 12 bulan. Nilai ini TIDAK disimpulkan dari pasal mana pun; ia hanya jaring
+// pengaman agar agunan yang taksasinya jelas tua tidak dianggap selamanya sah.
+const DefaultAppraisalValidityMonths = 12
+
+// NormalizeAppraisalValidityMonths memakai bawaan bila nilai konfigurasi tidak masuk
+// akal (nol atau negatif). Umur taksasi nol berarti "selalu kedaluwarsa" dan akan
+// menandai seluruh agunan tidak lengkap, jadi tidak pernah dipakai diam-diam.
+func NormalizeAppraisalValidityMonths(months int) int {
+	if months <= 0 {
+		return DefaultAppraisalValidityMonths
+	}
+	return months
+}
+
 // HaircutConfigKey memetakan jenis agunan ke kunci konfigurasi kebijakan haircut.
 func HaircutConfigKey(t CollateralType) string {
 	suffix := "lainnya"
@@ -417,11 +441,40 @@ func (c *LoanCollateral) Validate(now time.Time) error {
 	return nil
 }
 
-// MissingLampiranIIFields menandai data Lampiran II SEOJK No. 2/SEOJK.03/2025 yang
-// belum diisi operator. Ini SENGAJA hanya menandai, bukan menolak: bank mengisi data
-// bertahap, dan bobot risikonya belum dipakai perhitungan ATMR. Selama daftar ini
-// tidak kosong, agunan itu belum boleh dipetakan ke bobot Lampiran II selain 100%.
-func (c *LoanCollateral) MissingLampiranIIFields() []string {
+// AppraisalExpired menilai apakah taksasi agunan sudah kedaluwarsa pada asOf menurut
+// kebijakan umur taksasi bank (validityMonths, dari kunci
+// AppraisalValidityMonthsConfigKey). Bila operator mengisi batas tegas
+// AppraisalValidUntil, batas itulah yang menang; bila tidak, umur dihitung dari
+// AppraisalDate. Taksasi tanpa tanggal dianggap kedaluwarsa: keberlakuannya tidak dapat
+// dipertanggungjawabkan.
+//
+// Batas berlaku inklusif pada hari terakhir: taksasi tanggal 1 Januari dengan umur 12
+// bulan masih sah sampai dan termasuk 1 Januari tahun berikutnya.
+func (c *LoanCollateral) AppraisalExpired(asOf time.Time, validityMonths int) bool {
+	if c == nil {
+		return false
+	}
+	ref := tanggalSaja(asOf)
+	if c.AppraisalValidUntil != nil && !c.AppraisalValidUntil.IsZero() {
+		return ref.After(tanggalSaja(*c.AppraisalValidUntil))
+	}
+	if c.AppraisalDate.IsZero() {
+		return true
+	}
+	batas := tanggalSaja(c.AppraisalDate).AddDate(0, NormalizeAppraisalValidityMonths(validityMonths), 0)
+	return ref.After(batas)
+}
+
+// MissingLampiranIIFields menandai data yang membuat agunan belum boleh dipetakan ke
+// bobot risiko Lampiran II selain 100% (tidak ada pengurangan). Ini SENGAJA hanya
+// menandai, bukan menolak: bank mengisi data bertahap, dan bobotnya sendiri belum
+// dipakai perhitungan ATMR (lihat migrasi 000087: applied_weight_frac = 1.00000).
+//
+// Sejak kebijakan umur taksasi ditetapkan (collateral.appraisal.validity_months),
+// taksasi KEDALUWARSA juga termasuk alasan tidak lengkap: agunan dengan taksasi tua
+// harus memakai bobot 100% sampai dinilai ulang, sama seperti data yang belum diisi.
+// validityMonths <= 0 jatuh ke DefaultAppraisalValidityMonths.
+func (c *LoanCollateral) MissingLampiranIIFields(asOf time.Time, validityMonths int) []string {
 	var missing []string
 	if c.BindingType == nil {
 		missing = append(missing, "binding_type")
@@ -432,5 +485,26 @@ func (c *LoanCollateral) MissingLampiranIIFields() []string {
 	if c.AppraisalValidUntil == nil {
 		missing = append(missing, "appraisal_valid_until")
 	}
+	if c.AppraisalExpired(asOf, validityMonths) {
+		missing = append(missing, "appraisal_expired")
+	}
 	return missing
+}
+
+// CollateralRiskWeightFrac mengembalikan bobot risiko yang aman untuk satu agunan:
+// 100% (1) bila data agunan TIDAK LENGKAP menurut MissingLampiranIIFields — termasuk
+// taksasi kedaluwarsa — atau bobot resmi yang diberikan pemanggil bila lengkap.
+//
+// Fungsi ini adalah satu tempat yang menerjemahkan "data tidak lengkap → bobot 100%"
+// sehingga pemetaan Lampiran II kelak tidak dapat diam-diam memakai bobot lebih rendah
+// untuk agunan yang datanya belum sah. Bobot resmi per butir belum diaktifkan
+// (migrasi 000087), jadi pemanggil saat ini cukup memakai hasilnya sebagai penjaga.
+func CollateralRiskWeightFrac(c *LoanCollateral, asOf time.Time, validityMonths int, official decimal.Decimal) decimal.Decimal {
+	if c == nil {
+		return decimal.NewFromInt(1)
+	}
+	if len(c.MissingLampiranIIFields(asOf, validityMonths)) > 0 {
+		return decimal.NewFromInt(1)
+	}
+	return official
 }

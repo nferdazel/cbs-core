@@ -29,7 +29,17 @@
 --
 -- Aditif dan idempotent: ON CONFLICT DO NOTHING; aman dijalankan ulang.
 
+-- NILAI BAWAAN = 'true' (mode bayangan MENYALA) untuk instalasi baru.
+--   Panel memutuskan bayangan menyala karena ia alat verifikasi yang TIDAK menjurnal:
+--   bank dapat melihat angka CKPN vs PPKA dan daftar parameter yang belum diisi tanpa
+--   satu pun jurnal tercipta. Instalasi yang SUDAH menjalankan migrasi ini tidak
+--   berubah: ledger schema_migrations melewati berkas yang sudah tercatat, sehingga
+--   nilai yang sudah disesuaikan operator (produksi sekarang true) tetap utuh dan
+--   tidak pernah diturunkan menjadi false. Karena itu nilai TIDAK di-UPDATE berkas
+--   migrasi berikutnya — cukup seed di sini yang hanya dibaca pemasangan baru.
+--   `ckpn.enabled` sengaja tetap false: menyalakannya adalah langkah onboarding bank
+--   setelah daftar periksa docs/CKPN-SIAP-RILIS.md tuntas, bukan bawaan otomatis.
 INSERT INTO system_config (key, value, description) VALUES
-    ('ckpn.shadow_mode.enabled', 'false',
-     'Mode bayangan CKPN: bila ckpn.enabled masih false, EOD menghitung dan melaporkan CKPN beserta perbandingan PPKA TANPA menjurnal dan tanpa mengubah state. Angka ini BUKAN kewajiban akuntansi, belum disetujui bank, dan pengurangan modal inti belum dilakukan; asumsinya sementara. Bila ckpn.enabled true, mode resmi yang berlaku.')
+    ('ckpn.shadow_mode.enabled', 'true',
+     'Mode bayangan CKPN: bila ckpn.enabled masih false, EOD menghitung dan melaporkan CKPN beserta perbandingan PPKA TANPA menjurnal dan tanpa mengubah state. Bawaan TRUE untuk instalasi baru (alat verifikasi yang tidak menjurnal). Angka ini BUKAN kewajiban akuntansi, belum disetujui bank, dan pengurangan modal inti belum dilakukan; asumsinya sementara. Bila ckpn.enabled true, mode resmi yang berlaku.')
 ON CONFLICT (key) DO NOTHING;

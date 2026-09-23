@@ -9,14 +9,15 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 )
 
-// Matriks izin final (keputusan pemilik sistem):
+// Matriks izin final (keputusan pemilik sistem, ditegaskan panel):
 //   - loans:write_off — SUPERVISOR ke atas (hapus buku melepas aset dari neraca).
 //     SUPERADMIN/ADMIN tetap punya agar tidak ada yang terkunci.
-//   - loans:recover — TELLER/AO boleh (pencatatan uang masuk, bukan penghapusan);
-//     di atas ambang nominal wajib persetujuan atasan (diuji terpisah).
+//   - loans:recover — SUPERVISOR ke atas (keputusan panel: pemulihan hapus buku
+//     adalah tindakan pejabat, bukan pelaksana layanan). TELLER/AO dicabut lewat
+//     migrasi 000091; SUPERADMIN/ADMIN tetap punya agar tidak ada yang terkunci.
 //
 // Uji ini mengunci keputusan itu; uji invarian seed (TestPermissionSeedInvariant)
-// memastikan kode dan migrasi 000079 tetap sinkron.
+// memastikan kode dan migrasi (000079 + 000091) tetap sinkron.
 func TestMatriksIzinFinalHapusBukuDanRecovery(t *testing.T) {
 	writeOffBoleh := []domain.StaffRole{domain.RoleSuperAdmin, domain.RoleAdmin, domain.RoleSupervisor}
 	writeOffTidak := []domain.StaffRole{domain.RoleTeller, domain.RoleCS, domain.RoleAO, domain.RoleAuditor}
@@ -31,8 +32,8 @@ func TestMatriksIzinFinalHapusBukuDanRecovery(t *testing.T) {
 		}
 	}
 
-	recoverBoleh := []domain.StaffRole{domain.RoleSuperAdmin, domain.RoleAdmin, domain.RoleTeller, domain.RoleAO}
-	recoverTidak := []domain.StaffRole{domain.RoleCS, domain.RoleAuditor}
+	recoverBoleh := []domain.StaffRole{domain.RoleSuperAdmin, domain.RoleAdmin, domain.RoleSupervisor}
+	recoverTidak := []domain.StaffRole{domain.RoleTeller, domain.RoleCS, domain.RoleAO, domain.RoleAuditor}
 	for _, role := range recoverBoleh {
 		if !role.HasPermission(domain.PermLoansRecover) {
 			t.Errorf("%s harus punya %s", role, domain.PermLoansRecover)
@@ -40,7 +41,7 @@ func TestMatriksIzinFinalHapusBukuDanRecovery(t *testing.T) {
 	}
 	for _, role := range recoverTidak {
 		if role.HasPermission(domain.PermLoansRecover) {
-			t.Errorf("%s tidak boleh punya %s", role, domain.PermLoansRecover)
+			t.Errorf("%s tidak boleh punya %s (keputusan panel: pemulihan ke pejabat)", role, domain.PermLoansRecover)
 		}
 	}
 }

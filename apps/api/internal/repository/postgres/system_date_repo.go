@@ -155,7 +155,29 @@ func (r *BusinessDateRepository) TryEODLock(ctx context.Context) (func() error, 
 	}, nil
 }
 
+// HasOperationalActivity melaporkan apakah instalasi sudah pernah beroperasi: ada
+// jurnal tersimpan, atau tanggal bisnis sudah pernah disetel/dimajukan. Pemasangan
+// baru belum punya keduanya, sehingga peringatan kesiapan CKPN tidak menyala sebelum
+// bank benar-benar beroperasi.
+func (r *BusinessDateRepository) HasOperationalActivity(ctx context.Context) (bool, error) {
+	var hasJournal bool
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM journal_entries)`).Scan(&hasJournal); err != nil {
+		return false, fmt.Errorf("memeriksa jurnal tersimpan: %w", err)
+	}
+	if hasJournal {
+		return true, nil
+	}
+	var hasBusinessDate bool
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM system_config WHERE key = 'system.business_date')`).Scan(&hasBusinessDate); err != nil {
+		return false, fmt.Errorf("memeriksa tanggal bisnis tersimpan: %w", err)
+	}
+	return hasBusinessDate, nil
+}
+
 var _ domain.BusinessDateRepository = (*BusinessDateRepository)(nil)
+var _ domain.OperationalActivityReader = (*BusinessDateRepository)(nil)
 
 // CurrentBusinessDate mengembalikan tanggal bisnis berjalan sebagai time.Time untuk
 // pemakai yang tidak perlu status tanggal (mis. penjaga batas harian).

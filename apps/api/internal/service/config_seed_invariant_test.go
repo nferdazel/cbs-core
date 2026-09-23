@@ -109,6 +109,22 @@ func TestConfigSeedInvariant(t *testing.T) {
 	}
 }
 
+// TestSeedShadowModeDefaultMenyala menjaga keputusan panel: nilai BAWAAN mode
+// bayangan CKPN untuk instalasi baru adalah menyala (true), karena ia alat
+// verifikasi yang TIDAK menjurnal. Instalasi lama tidak berubah karena ledger
+// schema_migrations melewati migrasi 000066 yang sudah tercatat.
+func TestSeedShadowModeDefaultMenyala(t *testing.T) {
+	seeded := parseSystemConfigSeed(t, filepath.Join(configSeedRepoRoot(t), "packages", "db-migrations"))
+	if got := seeded["ckpn.shadow_mode.enabled"]; got != "true" {
+		t.Fatalf("bawaan seed ckpn.shadow_mode.enabled = %q, mau \"true\" (bayangan menyala untuk instalasi baru)", got)
+	}
+	// ckpn.enabled tetap false pada seed: menyalakannya adalah langkah onboarding bank,
+	// bukan bawaan otomatis (lihat docs/CKPN-SIAP-RILIS.md).
+	if got := seeded["ckpn.enabled"]; got != "false" {
+		t.Fatalf("bawaan seed ckpn.enabled = %q, mau \"false\" sampai onboarding bank", got)
+	}
+}
+
 // runtimeGeneratedConfigKeys mengembalikan kunci yang dibangun kode saat runtime
 // sehingga tidak terlihat sebagai literali utuh oleh pemindai statis. Enumerasinya
 // harus mengikuti kode produksi; bila keluarga kunci baru muncul, tambahkan di sini.

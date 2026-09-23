@@ -31,6 +31,11 @@ const (
 	// socialFundNote menjelaskan saldo dana kebajikan (12500). Denda ta'zir bukan
 	// pendapatan bank; penyalurannya menunggu keputusan Dewan Pengawas Syariah.
 	socialFundNote = "Saldo akun 12500 Dana Kebajikan: akumulasi denda keterlambatan pembiayaan syariah (ta'zir), bukan pendapatan bank; menunggu keputusan penyaluran oleh Dewan Pengawas Syariah."
+	// socialFundIdleMonths adalah ambang "satu kuartal" untuk penanda saldo dana
+	// kebajikan mengendap: bila akun 12500 bersaldo tetapi tidak bergerak (tidak ada
+	// penyaluran) selama ini, EOD memberi peringatan. Peringatan saja — tidak pernah
+	// memblokir tutup hari dan tidak mengubah saldo/jurnal.
+	socialFundIdleMonths = 3
 	// depositAmountLabel menandai keterbatasan data lama: jurnal penempatan deposito
 	// yang dibuat sebelum tipe DEPOSIT_PLACEMENT ada tetap bertipe DEPOSIT sehingga
 	// ikut terhitung sebagai setoran tunai.
@@ -291,6 +296,12 @@ func (s *batchProcessService) runEOD(ctx context.Context, executedBy uuid.UUID, 
 	// produksi): EOD hanya melaporkan, tidak menulis jurnal dan tidak mengubah akrual.
 	summary.SocialFundBalance = activity.SocialFundBalance
 	summary.SocialFundNote = socialFundNote
+	// Penanda saldo mengendap: dana kebajikan bersaldo tetapi tidak ada penyaluran
+	// melewati satu kuartal. Peringatan saja, mengikuti pola peringatan EOD lain; ia
+	// TIDAK memblokir tutup hari dan TIDAK mengubah saldo/jurnal.
+	if w := socialFundIdleWarning(activity.SocialFundLastMovement, activity.SocialFundBalance, curDate.CurrentDate); w != "" {
+		summary.Warnings = append(summary.Warnings, w)
+	}
 	summary.ExecutedBy = executedBy
 	summary.CompletedAt = time.Now().UTC()
 	return summary, nil
@@ -325,6 +336,36 @@ func eodStepSkipped(reason string, metrics ...map[string]any) eodStepOutcome {
 
 func eodStepFailed(reason string) eodStepOutcome {
 	return eodStepOutcome{Status: domain.EODStepFailed, Reason: reason}
+}
+
+// socialFundIdleWarning mengembalikan peringatan "saldo mengendap" untuk akun 12500
+// Dana Kebajikan, atau string kosong bila tidak perlu diperingatkan.
+//
+// Saldo nol tidak diperingatkan: tidak ada dana yang menunggu penyaluran. Pergerakan
+// terakhir dipakai sebagai penanda: bila masih dalam socialFundIdleMonths bulan
+// terakhir, saldo dianggap masih aktif (termasuk bila baru ada penyaluran) sehingga
+// tidak ada peringatan. Tanggal pergerakan di masa depan atau nol diperlakukan sebagai
+// belum tersedia informasi; saldo > 0 dengan tanggal nol tetap diperingatkan karena
+// tidak ada penyaluran yang dapat ditunjukkan.
+func socialFundIdleWarning(lastMovement time.Time, balance decimal.Decimal, businessDate time.Time) string {
+	if balance.LessThanOrEqual(decimal.Zero) {
+		return ""
+	}
+	ref := time.Date(businessDate.Year(), businessDate.Month(), businessDate.Day(), 0, 0, 0, 0, time.UTC)
+	if !lastMovement.IsZero() {
+		last := time.Date(lastMovement.Year(), lastMovement.Month(), lastMovement.Day(), 0, 0, 0, 0, time.UTC)
+		if last.After(ref) {
+			// Tanggal masa depan (mis. data uji): jangan mengarang peringatan.
+			return ""
+		}
+		if last.After(ref.AddDate(0, -socialFundIdleMonths, 0)) {
+			return ""
+		}
+		return fmt.Sprintf("Dana kebajikan (akun 12500) bersaldo %s dan tidak ada penyaluran/pergerakan sejak %s (lebih dari %d bulan): dana ta'zir mengendap menunggu keputusan penyaluran Dewan Pengawas Syariah. Peringatan ini tidak memblokir tutup hari.",
+			balance.String(), last.Format("2006-01-02"), socialFundIdleMonths)
+	}
+	return fmt.Sprintf("Dana kebajikan (akun 12500) bersaldo %s tanpa catatan penyaluran sama sekali: pastikan penyaluran denda ta'zir ditetapkan Dewan Pengawas Syariah. Peringatan ini tidak memblokir tutup hari.",
+		balance.String())
 }
 
 // eodPrerequisiteSkip memeriksa prasyarat sebuah langkah. Bila tidak terpenuhi, ia

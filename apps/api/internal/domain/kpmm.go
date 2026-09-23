@@ -101,6 +101,14 @@ type KPMMReport struct {
 	// perbandingan PPKA-CKPN bila berbeda dari as_of (mis. EOD PPAP tidak jatuh pada
 	// akhir periode). Kosong berarti sama dengan as_of.
 	PPAPBusinessDate string `json:"ppap_business_date,omitempty"`
+	// Lengkap menandai apakah angka rasio boleh dibaca sebagai FINAL. False berarti
+	// angka masih SEMENTARA karena komponen modal belum tersedia (mis. modal
+	// pelengkap) atau ada ATMR yang belum terkategori. Angka tidak diubah oleh
+	// penanda ini; ia hanya mencegah laporan sementara tampak final.
+	Lengkap bool `json:"lengkap"`
+	// AlasanTidakLengkap menyebut komponen yang membuat laporan belum lengkap.
+	// Kosong bila Lengkap=true.
+	AlasanTidakLengkap []string `json:"alasan_tidak_lengkap,omitempty"`
 	// ParameterGaps menyebut kunci konfigurasi yang belum diisi.
 	ParameterGaps []string `json:"parameter_gaps,omitempty"`
 	// Catatan menjelaskan batas perhitungan yang harus diketahui pembaca.

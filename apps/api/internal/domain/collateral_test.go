@@ -347,7 +347,7 @@ func TestCollateral_MissingLampiranIIFieldsMenandaiTanpaMenolak(t *testing.T) {
 		t.Fatalf("agunan tanpa data Lampiran II ditolak: %v", err)
 	}
 	want := []string{"binding_type", "insurance_expiry_date", "appraisal_valid_until"}
-	if got := c.MissingLampiranIIFields(); !reflect.DeepEqual(got, want) {
+	if got := c.MissingLampiranIIFields(now, domain.DefaultAppraisalValidityMonths); !reflect.DeepEqual(got, want) {
 		t.Fatalf("data Lampiran II yang ditandai %v, mau %v", got, want)
 	}
 
@@ -357,7 +357,72 @@ func TestCollateral_MissingLampiranIIFieldsMenandaiTanpaMenolak(t *testing.T) {
 	c.BindingType = &ikatan
 	c.InsuranceExpiryDate = &akhirAsuransi
 	c.AppraisalValidUntil = &berlakuTaksasi
-	if got := c.MissingLampiranIIFields(); len(got) != 0 {
+	if got := c.MissingLampiranIIFields(now, domain.DefaultAppraisalValidityMonths); len(got) != 0 {
 		t.Fatalf("setelah dilengkapi masih ada yang ditandai: %v", got)
+	}
+}
+
+// Kebijakan umur taksasi agunan: taksasi yang lebih tua dari
+// collateral.appraisal.validity_months dianggap kedaluwarsa sehingga data agunan
+// TIDAK lengkap dan bobotnya 100%. Batas tegas AppraisalValidUntil menang bila diisi.
+func TestCollateral_AppraisalExpiredDanBobotFallbackSeratusPersen(t *testing.T) {
+	asOf := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
+	c := agunanValid() // taksasi 2026-08-01
+
+	if c.AppraisalExpired(asOf, 12) {
+		t.Fatal("taksasi 1,5 bulan lalu tidak boleh dianggap kedaluwarsa pada umur 12 bulan")
+	}
+	if c.AppraisalExpired(asOf, 2) {
+		t.Fatal("taksasi 1,5 bulan lalu tidak boleh kedaluwarsa pada umur 2 bulan")
+	}
+	if !c.AppraisalExpired(asOf, 1) {
+		t.Fatal("taksasi 1,5 bulan lalu harus kedaluwarsa pada umur 1 bulan")
+	}
+
+	// Taksasi 13 bulan lalu: kedaluwarsa, masuk daftar tidak lengkap.
+	lama := agunanValid()
+	lama.AppraisalDate = asOf.AddDate(0, -13, 0)
+	if !lama.AppraisalExpired(asOf, 12) {
+		t.Fatal("taksasi 13 bulan lalu harus dianggap kedaluwarsa pada umur 12 bulan")
+	}
+	missing := lama.MissingLampiranIIFields(asOf, 12)
+	found := false
+	for _, m := range missing {
+		if m == "appraisal_expired" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("taksasi kedaluwarsa harus ditandai appraisal_expired, dapat %v", missing)
+	}
+	// Data tidak lengkap -> bobot 100%, bukan bobot resmi yang lebih rendah.
+	if got := domain.CollateralRiskWeightFrac(lama, asOf, 12, decimal.NewFromFloat(0.30)); !got.Equal(decimal.NewFromInt(1)) {
+		t.Fatalf("bobot agunan bertaksasi kedaluwarsa %s, mau 1 (100%%)", got)
+	}
+
+	// Batas tegas operator di masa lalu menang atas umur: tetap kedaluwarsa.
+	lewat := asOf.AddDate(0, 0, -1)
+	c.AppraisalValidUntil = &lewat
+	if !c.AppraisalExpired(asOf, 12) {
+		t.Fatal("AppraisalValidUntil yang sudah lewat harus dianggap kedaluwarsa")
+	}
+	// Batas tegas di masa depan tetap sah walaupun umur bawaan terlampaui.
+	akanDatang := asOf.AddDate(0, 3, 0)
+	c.AppraisalValidUntil = &akanDatang
+	if c.AppraisalExpired(asOf, 1) {
+		t.Fatal("AppraisalValidUntil yang masih berlaku harus menang atas umur bawaan")
+	}
+
+	// Agunan lengkap memakai bobot resmi yang diberikan.
+	lengkap := agunanValid()
+	lengkap.AppraisalDate = asOf.AddDate(0, 0, -5)
+	ikatan := domain.BindingFidusia
+	akhirAsuransi := asOf.AddDate(0, 6, 0)
+	berlaku := asOf.AddDate(0, 3, 0)
+	lengkap.BindingType = &ikatan
+	lengkap.InsuranceExpiryDate = &akhirAsuransi
+	lengkap.AppraisalValidUntil = &berlaku
+	if got := domain.CollateralRiskWeightFrac(lengkap, asOf, 12, decimal.NewFromFloat(0.30)); !got.Equal(decimal.NewFromFloat(0.30)) {
+		t.Fatalf("bobot agunan lengkap %s, mau 0.30", got)
 	}
 }

@@ -21,6 +21,14 @@ var (
 	// FROZEN ditolak beserta status sebenarnya, bukan diam-diam dianggap aktif.
 	// Melengkapi jalur masuk FROZEN (dibekukan) dengan jalur keluarnya.
 	ErrAccountNotFrozen = NewLocalizedError("account_not_frozen", "rekening tidak berstatus dibekukan dan tidak dapat dibatalkan pembekuannya")
+	// ErrAccountNotFreezable dipakai endpoint freeze: hanya rekening ACTIVE yang boleh
+	// dibekukan. Membekukan rekening DORMANT/CLOSED/FROZEN akan menyamarkan status
+	// sebenarnya, jadi ditolak beserta status saat ini.
+	ErrAccountNotFreezable = NewLocalizedError("account_not_freezable", "rekening tidak berstatus aktif dan tidak dapat dibekukan")
+	// ErrAccountUnfreezeSameActor menegakkan pemisahan tugas: pembekuan tidak boleh
+	// dibatalkan oleh orang yang membekukannya. Dipakai langsung (bukan maker-checker)
+	// karena yang dibutuhkan adalah orang KEDUA, bukan sekadar persetujuan.
+	ErrAccountUnfreezeSameActor = NewLocalizedError("account_unfreeze_same_actor", "pembekuan tidak dapat dibatalkan oleh pelaksana pembekuan yang sama")
 	// ErrAccountCloseBalance menolak penutupan rekening yang masih menyimpan saldo,
 	// saldo tersedia, atau dana tertahan. Uang nasabah tidak boleh hilang karena
 	// rekening ditutup sebelum bersih.
@@ -83,6 +91,12 @@ type Account struct {
 	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
 	// DormantAt adalah waktu rekening ditandai dormant; nil bila tidak sedang dormant.
 	DormantAt *time.Time `json:"dormant_at,omitempty"`
+	// FrozenBy adalah pelaksana pembekuan terakhir. Dipakai menegakkan pemisahan tugas:
+	// pembekuan tidak boleh dibatalkan oleh orang yang sama (lihat ErrAccountUnfreezeSameActor).
+	// Nil berarti pembekuan lama (pra-migrasi) atau rekening tidak dibekukan lewat API.
+	FrozenBy *uuid.UUID `json:"frozen_by,omitempty"`
+	// FrozenAt adalah waktu pembekuan terakhir; nil bila tidak sedang dibekukan.
+	FrozenAt  *time.Time `json:"frozen_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 }
@@ -193,6 +207,10 @@ type AccountRepository interface {
 	// Reactivate memulihkan rekening DORMANT ke ACTIVE. Hasil false berarti rekening
 	// tidak lagi DORMANT (mis. balapan dengan aksi lain).
 	Reactivate(ctx context.Context, tx any, accountID uuid.UUID, reactivatedAt time.Time) (bool, error)
+	// Freeze membekukan rekening ACTIVE. Penjaga status = 'ACTIVE' menolak rekening
+	// DORMANT/CLOSED/FROZEN, sehingga status tidak tersamar. frozenBy dicatat agar
+	// pembatalan pembekuan oleh orang yang sama dapat ditolak.
+	Freeze(ctx context.Context, tx any, accountID, frozenBy uuid.UUID, frozenAt time.Time) (bool, error)
 	// Unfreeze memulihkan rekening FROZEN ke ACTIVE. Hasil false berarti rekening
 	// tidak lagi FROZEN (mis. balapan dengan aksi lain).
 	Unfreeze(ctx context.Context, tx any, accountID uuid.UUID) (bool, error)
@@ -210,9 +228,14 @@ type AccountService interface {
 	// ReactivateAccount memulihkan rekening dormant ke ACTIVE. Rekening yang bukan
 	// DORMANT ditolak ErrAccountNotDormant; cabang lain ditolak ErrCrossBranchAccess.
 	ReactivateAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
+	// FreezeAccount membekukan rekening ACTIVE. Rekening yang bukan ACTIVE ditolak
+	// ErrAccountNotFreezable; cabang/buku lain ditolak sebelum status diperiksa.
+	// Pelaksana dicatat sebagai FrozenBy agar unfreeze oleh orang yang sama ditolak.
+	FreezeAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
 	// UnfreezeAccount memulihkan rekening FROZEN ke ACTIVE, jalur keluar dari
 	// pembekuan. Rekening yang bukan FROZEN ditolak ErrAccountNotFrozen; cabang lain
-	// ditolak ErrCrossBranchAccess.
+	// ditolak ErrCrossBranchAccess; pelaksana pembekuan yang sama ditolak
+	// ErrAccountUnfreezeSameActor.
 	UnfreezeAccount(ctx context.Context, accountNumber, notes string, actor Actor) (*Account, error)
 	// CloseAccount menutup rekening ACTIVE/DORMANT yang bersih (saldo nol). Rekening
 	// dengan saldo/dana tertahan ditolak ErrAccountCloseBalance, status yang tidak

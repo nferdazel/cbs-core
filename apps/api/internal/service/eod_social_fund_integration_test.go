@@ -121,6 +121,12 @@ func TestIntegrasiSaldoDanaKebajikanCocokDenganAkun(t *testing.T) {
 	if !got.SocialFundBalance.Equal(want) {
 		t.Fatalf("SocialFundBalance = %s, saldo akun 12500 di database = %s", got.SocialFundBalance, want)
 	}
+	// Penanda saldo mengendap memakai pergerakan terakhir akun 12500; baris uji yang
+	// baru disisipkan harus menjadi pergerakan terakhir sampai tanggal uji.
+	if got.SocialFundLastMovement.IsZero() || !tanggalSaja(got.SocialFundLastMovement).Equal(date) {
+		t.Fatalf("SocialFundLastMovement = %v, mau %s (pergerakan terakhir akun 12500)",
+			got.SocialFundLastMovement, date.Format("2006-01-02"))
+	}
 	t.Logf("SocialFundBalance per %s = %s (saldo akun 12500 di database)", date.Format("2006-01-02"), got.SocialFundBalance)
 
 	// Angka nyata per hari ini, juga dibandingkan langsung dengan database, agar

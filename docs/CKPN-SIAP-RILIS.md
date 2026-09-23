@@ -21,8 +21,8 @@ dokumen OJK (teks di `/tmp/ojk/`, tidak ikut dirilis).
 | `ckpn.aset_baik.bentuk_ckpn` | saklar aset baik: `false` = dikecualikan (nilai awal); `true` = CKPN tahap-1 tetap dibentuk | boolean | `false` | migrasi `000086`; dibaca `ckpn_service.go` (kebijakan) |
 | `ckpn.coa.expense` | COA beban CKPN (global) | kode COA | `50301` | `packages/db-migrations/000069_ckpn_coa_config.up.sql:33` |
 | `ckpn.coa.reserve` | COA cadangan CKPN (global) | kode COA | `10950` | `000069_ckpn_coa_config.up.sql:35` |
-| `ckpn.coa.expense.syariah` | COA beban CKPN unit syariah | kode COA | **kosong** | `packages/db-migrations/000071_ckpn_coa_syariah.up.sql:24` |
-| `ckpn.coa.reserve.syariah` | COA cadangan CKPN unit syariah | kode COA | **kosong** | `000071_ckpn_coa_syariah.up.sql:26` |
+| `ckpn.coa.expense.syariah` | COA beban CKPN unit syariah | kode COA | `15901` (diisi `000090` bila kosong) | `packages/db-migrations/000071_ckpn_coa_syariah.up.sql:24`; `000090_..._policy.up.sql` |
+| `ckpn.coa.reserve.syariah` | COA cadangan CKPN unit syariah | kode COA | `11950` (diisi `000090` bila kosong) | `000071_ckpn_coa_syariah.up.sql:26`; `000090_..._policy.up.sql` |
 
 Catatan satuan (kritis):
 
@@ -62,6 +62,9 @@ Urutan pemilihan akun per buku (`ckpn_service.go:664-672`):
 `ckpn.coa.reserve.syariah`. Selama kosong, jurnal CKPN pembiayaan syariah jatuh ke akun
 konvensional dan dana UUS tercampur buku konvensional. Peringatan ini muncul untuk
 cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putaran ini).
+Sejak migrasi `000090` kedua kunci **diisi bawaan `15901`/`11950` hanya bila masih
+kosong**; peringatan hilang setelah kedua akun terisi, dan pemetaan yang sudah
+disesuaikan bank tidak ditimpa.
 
 ## (c) Kebijakan yang harus diputuskan bank/DPS (jangan ditebak sistem)
 
@@ -145,6 +148,41 @@ cakupan **SYARIAH dan DUAL** (`installation_validation.go:36`, diperbaiki putara
      (idempotensi; kunci unik `packages/db-migrations/000001_init_cbs_schema.up.sql:81`
      dan `posting_service.go:71`).
    - Rekonsiliasi saldo GL COA CKPN dengan jumlah `required_ckpn`.
+
+## (e.1) Onboarding: instalasi BARU vs instalasi yang SUDAH BERJALAN
+
+Keputusan panel: instalasi **baru** diharapkan CKPN **menyala**; instalasi yang **sudah
+berjalan tetap mati** sampai daftar periksa ini tuntas. Karena semua instalasi
+menjalankan migrasi yang sama, `ckpn.enabled` **tidak pernah dibalik otomatis** oleh
+migrasi: menyalakannya pada bank yang sedang berjalan akan membentuk/menjurnal CKPN
+secara mundur. Sebagai gantinya sistem memberi mekanisme yang jujur dan aman:
+
+1. **Peringatan saat start.** Bila `ckpn.enabled = false` padahal instalasi sudah
+   memiliki jurnal dan/atau tanggal bisnis, server menulis peringatan tegas
+   (`CKPNReadinessWarnings`, dipasang di `apps/api/cmd/server/main.go`): bank sudah
+   beroperasi tanpa membentuk CKPN, padahal CKPN SAK EP wajib sejak 1 Januari 2025.
+   Peringatan ini **tidak memblokir** dan **tidak mengubah** setelan apa pun.
+2. **Langkah onboarding instalasi baru** (lakukan sebelum transaksi pertama, atau
+   setelah butir (a)–(d) tuntas bagi bank yang sudah berjalan):
+   1. Pastikan COA `50301/10950/15901/11950` ada (migrasi `000042`).
+   2. Isi parameter sebagai **fraksi**: `ckpn.pd_frac.gol_1..5`, `ckpn.lgd_frac`.
+      Instalasi SYARIAH/DUAL: kunci `ckpn.coa.expense.syariah`/`ckpn.coa.reserve.syariah`
+      sudah diisi bawaan `15901`/`11950` oleh migrasi `000090` bila masih kosong;
+      periksa dan sesuaikan bila bank memakai akun lain.
+   3. Jalankan mode bayangan dan periksa hasilnya (ParameterGaps kosong, Failed wajar).
+   4. Setel `ckpn.enabled = true`, lalu matikan mode bayangan
+      (`ckpn.shadow_mode.enabled = false`) agar tidak ada dua angka.
+   5. Verifikasi ulang lewat butir (e) di atas.
+3. **Mode bayangan default TRUE untuk instalasi baru** (migrasi `000066`): bayangan
+   menyala karena ia alat verifikasi yang **tidak menjurnal**. Instalasi yang sudah
+   menjalankan `000066` **tidak berubah** — nilai yang sudah disesuaikan bank (produksi
+   saat ini `true`) tetap utuh, karena ledger `schema_migrations` melewati berkas yang
+   sudah tercatat.
+4. **Akun CKPN syariah** (migrasi `000090`) diisi bawaan hanya bila masih kosong, dan
+   **umur taksasi agunan** kini setelan eksplisit `collateral.appraisal.validity_months
+   = 12` (keputusan panel sebagai praktik industri, bukan aturan tertulis). Taksasi yang
+   lebih tua dari umur itu dianggap **data agunan tidak lengkap** sehingga agunan memakai
+   bobot risiko 100% (tidak mengurangi eksposur) sampai dinilai ulang.
 
 ## (f) KPMM/ATMR — verifikasi bobot risiko & penyambungan ke Form 00.08
 

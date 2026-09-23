@@ -119,10 +119,10 @@ const (
 	// PermLoansWriteOff dan PermLoansRecover memisahkan wewenang hapus buku dan
 	// recovery dari izin yang selama ini ditumpangi (loans:approve dan
 	// collections:input). Hapus buku melepas aset dari neraca, sedangkan recovery
-	// adalah penerimaan kas atas aset yang sudah dihapus buku; keduanya perlu ditinjau
-	// bank secara tersendiri. Untuk sementara izin diberikan ke peran yang MEMANG
-	// sudah dapat melakukannya agar tidak ada yang terkunci; matriks final menunggu
-	// keputusan pemilik sistem.
+	// adalah penerimaan kas atas aset yang sudah dihapus buku. Keputusan panel:
+	// keduanya dipegang SUPERVISOR ke atas (SUPERADMIN/ADMIN tetap), sehingga
+	// pelaksana layanan (TELLER/AO) tidak dapat memulihkan sendiri. Perubahan izin
+	// berlaku lewat migrasi 000091; peta ini hanya seed awal.
 	PermLoansWriteOff Permission = "loans:write_off"
 	PermLoansRecover  Permission = "loans:recover"
 
@@ -213,6 +213,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsRead, PermAccountsFreeze,
 		PermTransactionsReverse,
 		PermLoansRead, PermLoansApprove, PermLoansWriteOff,
+		PermLoansRecover,
 		PermCollateralRead, PermCollateralManage,
 		PermMakerCheckerApprove, PermMakerCheckerReject,
 		PermLedgerRead,
@@ -224,7 +225,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermCustomersCreate, PermCustomersRead,
 		PermAccountsOpen, PermAccountsRead,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
-		PermCollectionsInput, PermLoansRecover,
+		PermCollectionsInput,
 		PermLedgerRead,
 	},
 	RoleCS: {
@@ -240,7 +241,7 @@ var RolePermissions = map[StaffRole][]Permission{
 		PermAccountsRead,
 		PermTransactionsDeposit, PermTransactionsWithdraw, PermTransactionsTransfer,
 		PermLoansApply, PermLoansRead,
-		PermCollectionsInput, PermLoansRecover,
+		PermCollectionsInput,
 		PermLedgerRead,
 	},
 	RoleAuditor: {

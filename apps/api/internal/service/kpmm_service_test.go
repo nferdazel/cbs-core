@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -306,5 +307,89 @@ func TestKPMMModalKelasCOA(t *testing.T) {
 	}
 	if report.ModalKelasCOA[0].Kelas != "INTI_UTAMA" || !report.ModalKelasCOA[0].Nilai.Equal(kpmmD("500000000")) {
 		t.Fatalf("kelas = %+v, mau INTI_UTAMA 500000000", report.ModalKelasCOA[0])
+	}
+}
+
+// kpmmPPKAUmumStub menyediakan ringkasan PPKA umum untuk menguji penyambungan.
+type kpmmPPKAUmumStub struct {
+	domain.PPKAUmumService
+	summary domain.PPKAUmumSummary
+}
+
+func (s kpmmPPKAUmumStub) Hitung(context.Context, time.Time, domain.Actor) (domain.PPKAUmumSummary, error) {
+	return s.summary, nil
+}
+
+// TestKPMMKelengkapanMenandaiKomponenHilang: tanpa modul PPKA umum, laporan ditandai
+// SEMENTARA (lengkap=false) beserta alasan yang menyebut komponen modal dan PPKA umum.
+func TestKPMMKelengkapanMenandaiKomponenHilang(t *testing.T) {
+	svc := NewKPMMService(
+		kpmmReportStub{bs: kpmmTestBalanceSheet()},
+		kpmmCKPNStub{summary: kpmmSummary(kpmmD("20000000"), kpmmD("15000000"))},
+		newKPMMConfig(),
+	)
+	report, err := svc.Hitung(context.Background(), time.Now(), "CONVENTIONAL", domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("Hitung: %v", err)
+	}
+	if report.Lengkap {
+		t.Fatal("laporan harus ditandai belum lengkap saat komponen modal belum tersedia")
+	}
+	gabung := strings.Join(report.AlasanTidakLengkap, " | ")
+	for _, kata := range []string{"modal pelengkap", "PPKA umum"} {
+		if !strings.Contains(gabung, kata) {
+			t.Fatalf("alasan %q tidak menyebut %q", gabung, kata)
+		}
+	}
+}
+
+// TestKPMMKelengkapanLengkap: bila seluruh komponen tersedia dan tidak ada ATMR
+// yang belum terkategori, penanda tidak muncul (lengkap=true, alasan kosong).
+func TestKPMMKelengkapanLengkap(t *testing.T) {
+	report := domain.KPMMReport{
+		ATMR:                    domain.KPMMKomponen{Tersedia: true},
+		ModalInti:               domain.KPMMKomponen{Tersedia: true},
+		ModalPelengkap:          domain.KPMMKomponen{Tersedia: true},
+		ModalPelengkapInstrumen: domain.KPMMKomponen{Tersedia: true},
+		SurplusRevaluasi:        domain.KPMMKomponen{Tersedia: true},
+		PPKAUmum:                domain.KPMMKomponen{Tersedia: true},
+	}
+	lengkap, alasan := kpmmKelengkapan(report)
+	if !lengkap || len(alasan) != 0 {
+		t.Fatalf("lengkap=%v alasan=%v, mau true dan kosong", lengkap, alasan)
+	}
+}
+
+// TestKPMMPPKAUmumDariModul: bila modul PPKA umum tersambung, komponennya terisi dan
+// ikut dibatasi sub-batas 1,25% ATMR, tetapi laporan tetap belum lengkap karena
+// instrumen/surplus revaluasi belum tersedia.
+func TestKPMMPPKAUmumDariModul(t *testing.T) {
+	svc := NewKPMMService(
+		kpmmReportStub{bs: kpmmTestBalanceSheet()},
+		kpmmCKPNStub{summary: kpmmSummary(kpmmD("20000000"), kpmmD("15000000"))},
+		newKPMMConfig(),
+		kpmmPPKAUmumStub{summary: domain.PPKAUmumSummary{
+			RateFrac:          kpmmD("0.005"),
+			KreditLancarDasar: kpmmD("400000000"),
+			KreditLancarPPKA:  kpmmD("2000000"),
+			TotalDasar:        kpmmD("400000000"),
+			TotalPPKA:         kpmmD("2000000"),
+			SumberKredit:      true,
+			Lengkap:           true,
+		}},
+	)
+	report, err := svc.Hitung(context.Background(), time.Now(), "CONVENTIONAL", domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("Hitung: %v", err)
+	}
+	if !report.PPKAUmum.Tersedia || !report.PPKAUmum.Nilai.Equal(kpmmD("2000000")) {
+		t.Fatalf("PPKA umum = %+v, mau tersedia 2000000", report.PPKAUmum)
+	}
+	// Sub-batas 1,25% ATMR = 14.450.000; nilai 2.000.000 di bawah batas.
+	if report.PPKAUmum.Nilai.GreaterThan(report.ATMR.Nilai.Mul(kpmmD("0.0125"))) {
+		t.Fatalf("PPKA umum %s melebihi sub-batas ATMR", report.PPKAUmum.Nilai)
+	}
+	if report.Lengkap {
+		t.Fatal("laporan tetap belum lengkap karena instrumen/surplus revaluasi belum tersedia")
 	}
 }

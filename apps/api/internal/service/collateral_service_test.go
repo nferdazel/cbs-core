@@ -332,7 +332,7 @@ func TestCollateralCreate_MenyimpanInfoLampiranIITanpaMemaksa(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agunan tanpa data Lampiran II ditolak: %v", err)
 	}
-	if len(kosong.MissingLampiranIIFields()) == 0 {
+	if len(kosong.MissingLampiranIIFields(time.Now().UTC(), domain.DefaultAppraisalValidityMonths)) == 0 {
 		t.Fatal("data Lampiran II yang kosong seharusnya ditandai, bukan dipaksa")
 	}
 
@@ -366,7 +366,7 @@ func TestCollateralCreate_MenyimpanInfoLampiranIITanpaMemaksa(t *testing.T) {
 	if c.AppraisalValidUntil == nil || !c.AppraisalValidUntil.Equal(berlakuTaksasi) {
 		t.Fatalf("masa berlaku taksasi tersimpan %v, mau %v", c.AppraisalValidUntil, berlakuTaksasi)
 	}
-	if len(c.MissingLampiranIIFields()) != 0 {
-		t.Fatalf("setelah dilengkapi masih ditandai: %v", c.MissingLampiranIIFields())
+	if got := c.MissingLampiranIIFields(time.Now().UTC(), domain.DefaultAppraisalValidityMonths); len(got) != 0 {
+		t.Fatalf("setelah dilengkapi masih ditandai: %v", got)
 	}
 }
