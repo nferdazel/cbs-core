@@ -210,6 +210,8 @@ type CKPNIndividualRepository interface {
 	// disentuh. RecordAssessmentTrail menulis jejak audit penilaian.
 	MarkEntry(ctx context.Context, loanID uuid.UUID, method CKPNIndividualMethod, significant, objectiveEvidence bool, updatedBy string) error
 	RecordAssessmentTrail(ctx context.Context, loanID uuid.UUID, asOf time.Time, method CKPNIndividualMethod, carrying, pv, nrv, target decimal.Decimal, basis, decidedBy string) error
+	// RecordEODTrail menulis jejak penilaian individual pada langkah CKPN EOD (T4).
+	RecordEODTrail(ctx context.Context, assessment CKPNIndividualAssessment, target decimal.Decimal, asOf time.Time, decidedBy string) error
 }
 
 // CKPNIndividualService adalah T1: menilai satu kredit dengan DCF memakai proyeksi
@@ -217,6 +219,10 @@ type CKPNIndividualRepository interface {
 type CKPNIndividualService interface {
 	// Evaluate menghitung penilaian DCF satu kredit. Baca-saja.
 	Evaluate(ctx context.Context, loanNumber string, asOf time.Time, actor Actor) (CKPNIndividualAssessment, error)
+	// EvaluateForLoan sama dengan Evaluate tetapi menerima baris kredit yang SUDAH
+	// dikunci pemanggil (T4: langkah CKPN EOD mengunci kredit sebelum menilai).
+	// Melanjutkan kredit yang basi pada jalur resmi akan menghasilkan angka salah.
+	EvaluateForLoan(ctx context.Context, loan *Loan, asOf time.Time) (CKPNIndividualAssessment, error)
 	// ReplaceProjections memvalidasi lalu menyimpan proyeksi arus kas kredit.
 	ReplaceProjections(ctx context.Context, loanNumber string, asOf time.Time, projs []CKPNCashflowProjection, actor Actor) error
 	// SetDisposalCost menyimpan estimasi biaya pelepasan satu agunan milik kredit
@@ -228,6 +234,10 @@ type CKPNIndividualService interface {
 	// penandaan). MarkLoanEntry mencatat keputusan pengelola pada satu kredit dan
 	// menulis jejak auditnya; required_ckpn tidak pernah disentuh.
 	ScanEntries(ctx context.Context, actor Actor) (CKPNIndividualScanResult, error)
+	// RecordEODTrail menulis jejak penilaian individual pada langkah CKPN EOD (T4)
+	// setelah target resmi ditetapkan. Gagal menulis jejak menggagalkan run: jejak
+	// audit bukan pelengkap yang boleh hilang.
+	RecordEODTrail(ctx context.Context, assessment CKPNIndividualAssessment, target decimal.Decimal, asOf time.Time, decidedBy string) error
 	MarkLoanEntry(ctx context.Context, loanNumber string, method CKPNIndividualMethod, significant, objectiveEvidence, excludedAsetBaik bool, actor Actor) (CKPNIndividualEntry, error)
 }
 

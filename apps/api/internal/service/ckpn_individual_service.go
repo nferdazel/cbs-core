@@ -38,6 +38,16 @@ func (s *ckpnIndividualService) Evaluate(ctx context.Context, loanNumber string,
 	if err != nil {
 		return domain.CKPNIndividualAssessment{}, err
 	}
+	return s.evaluateLoan(ctx, loan, asOf)
+}
+
+// EvaluateForLoan menilai kredit yang sudah dikunci pemanggil (T4). Kebijakan tetap
+// dibaca dari konfigurasi; baris kredit disediakan pemanggil karena ia memegang kunci.
+func (s *ckpnIndividualService) EvaluateForLoan(ctx context.Context, loan *domain.Loan, asOf time.Time) (domain.CKPNIndividualAssessment, error) {
+	return s.evaluateLoan(ctx, loan, asOf)
+}
+
+func (s *ckpnIndividualService) evaluateLoan(ctx context.Context, loan *domain.Loan, asOf time.Time) (domain.CKPNIndividualAssessment, error) {
 	policy := ckpnIndividualPolicy(ctx, s.config)
 	asOf = asOf.UTC()
 
@@ -72,7 +82,14 @@ func (s *ckpnIndividualService) Evaluate(ctx context.Context, loanNumber string,
 			missingCost++
 		}
 	}
-	collateralTarget, finalTarget := domain.CKPNIndividualCollateralTarget(carrying, target, totalNRV)
+	// Aturan MAX (12.4.g.1.c) hanya bila kredit benar-benar beragunan aktif: tanpa
+	// agunan, target agunan = carrying penuh (Σ NRV = 0) dan memalsukan "yang lebih
+	// konservatif". Kredit tanpa agunan memakai DCF apa adanya.
+	collateralTarget := decimal.Zero
+	finalTarget := target
+	if len(cols) > 0 {
+		collateralTarget, finalTarget = domain.CKPNIndividualCollateralTarget(carrying, target, totalNRV)
+	}
 
 	eirSource := "EIR_ORISINAL"
 	if !loan.OriginalEIRMonthly.IsPositive() {
@@ -263,4 +280,10 @@ func (s *ckpnIndividualService) MarkLoanEntry(ctx context.Context, loanNumber st
 		return domain.CKPNIndividualEntry{}, err
 	}
 	return entry, nil
+}
+
+// RecordEODTrail menulis jejak penilaian individual pada langkah CKPN EOD (T4).
+// Delegasi ke repo; ada di service agar pemanggil (mesin CKPN) tidak menyentuh repo.
+func (s *ckpnIndividualService) RecordEODTrail(ctx context.Context, assessment domain.CKPNIndividualAssessment, target decimal.Decimal, asOf time.Time, decidedBy string) error {
+	return s.repo.RecordEODTrail(ctx, assessment, target, asOf, decidedBy)
 }

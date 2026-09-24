@@ -441,7 +441,8 @@ func newCKPNSvcWithRepo(e *moneyEnv, repo domain.CKPNRepository) domain.CKPNServ
 	postingSvc := service.NewPostingService(e.db, ledgerRepo, accountRepo, ledgerRepo, referenceGen, dateRepo)
 	poster := service.NewProductPoster(e.productRepo, ledgerRepo, postingSvc)
 	return service.NewCKPNService(e.db, repo, e.productRepo, ledgerRepo, poster, postingSvc, e.configSvc, e.loanRepo,
-		service.NewPPAPRunMarker(postgres.NewSystemConfigRepository(e.db)))
+		service.NewPPAPRunMarker(postgres.NewSystemConfigRepository(e.db)),
+		service.NewCKPNIndividualService(e.loanRepo, postgres.NewCKPNIndividualRepository(e.db), e.configSvc))
 }
 
 func ckpnIdempotencyKey(loanNumber string, asOf time.Time, adjustment decimal.Decimal) string {

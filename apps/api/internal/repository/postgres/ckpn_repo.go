@@ -39,7 +39,9 @@ const listLoansForCKPNSelect = `
 		l.required_ppap,
 		l.required_ckpn,
 		l.restructure_loss_balance,
+		l.original_eir_monthly,
 		l.status::text,
+		l.ckpn_method,
 		COALESCE((SELECT b.code FROM branches b WHERE b.id = l.branch_id), '')
 	FROM loans l`
 
@@ -87,7 +89,8 @@ func (r *CKPNRepository) ListActiveLoans(ctx context.Context, actor domain.Actor
 		if err := rows.Scan(
 			&s.LoanID, &s.LoanNumber, &productID, &s.Outstanding,
 			&collectibility, &s.DPD, &s.IsRestructured,
-			&s.RequiredPPAP, &s.RequiredCKPN, &s.RestructureLoss, &status, &s.BranchCode,
+			&s.RequiredPPAP, &s.RequiredCKPN, &s.RestructureLoss, &s.OriginalEIRMonthly, &status,
+			&s.CKPNMethod, &s.BranchCode,
 		); err != nil {
 			return nil, err
 		}
@@ -122,6 +125,19 @@ func (r *CKPNRepository) ckpnExec(tx any) (execer, error) {
 // kolom ini selisih target-harapan tidak dapat dihitung idempoten antar run.
 func (r *CKPNRepository) UpdateRequiredCKPN(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error {
 	const q = `UPDATE loans SET required_ckpn=$1, updated_at=NOW() WHERE id=$2`
+	exec, err := r.ckpnExec(tx)
+	if err != nil {
+		return err
+	}
+	_, err = exec.ExecContext(ctx, q, target, loanID)
+	return err
+}
+
+// UpdateIndividualTarget menulis jejak target individual per kredit (T4) dalam
+// transaksi yang sama dengan required_ckpn. Angka resmi tetap required_ckpn; kolom
+// ini memisahkan jejak jalur individual untuk audit dan pelaporan Form 05/06.
+func (r *CKPNRepository) UpdateIndividualTarget(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error {
+	const q = `UPDATE loans SET ckpn_individual_target=$1, updated_at=NOW() WHERE id=$2`
 	exec, err := r.ckpnExec(tx)
 	if err != nil {
 		return err

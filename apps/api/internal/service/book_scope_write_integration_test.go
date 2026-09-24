@@ -76,7 +76,8 @@ func newBookWriteEnv(t *testing.T) *bookWriteEnv {
 	executors.Register(service.ActionPlaceDeposit, depositSvc)
 
 	runMarker := service.NewPPAPRunMarker(configRepo)
-	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, runMarker)
+	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, runMarker,
+		service.NewCKPNIndividualService(loanRepo, postgres.NewCKPNIndividualRepository(db), configSvc))
 	batchSvc := service.NewBatchProcessService(dateRepo, nil, nil, yearEndRepo, postingSvc, ledgerRepo, configSvc, db, nil, nil, nil, nil, nil, nil, postgres.NewEODStepRepository(db))
 	collateralSvc := service.NewCollateralService(me.collateralRepo, configSvc, branchRepo, auditRepo)
 

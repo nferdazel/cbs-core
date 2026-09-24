@@ -136,6 +136,14 @@ type CKPNLoanSnapshot struct {
 	RestructureLoss decimal.Decimal
 	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
 	RequiredCKPN decimal.Decimal
+	// OriginalEIRMonthly adalah EIR orisinal kredit (fraksi bulanan) untuk jalur
+	// individual (T4): tingkat diskonto DCF wajib EIR orisinal atau override kebijakan.
+	OriginalEIRMonthly decimal.Decimal
+	// CKPNMethod adalah segel metode per kredit (loans.ckpn_method, T3): "" atau
+	// COLLECTIVE berarti jalur kolektif; INDIVIDUAL_* memaksa jalur individual;
+	// EXCLUDED_ASET_BAIK mengeluarkan kredit dari pembentukan CKPN. Mesin tidak
+	// menilai ulang segel ini — penilaiannya milik keputusan pengelola yang diaudit.
+	CKPNMethod string
 }
 
 // CKPNCalculation adalah hasil perhitungan CKPN satu kredit.
@@ -317,6 +325,12 @@ type CKPNComparisonSummary struct {
 	// menjelaskan TotalCKPN nol.
 	AsetBaikCount       int             `json:"aset_baik_count"`
 	AsetBaikOutstanding decimal.Decimal `json:"aset_baik_outstanding"`
+	// IndividualCount/IndividualTotalCKPN melaporkan bagian jalur INDIVIDUAL dari run
+	// ini (T4): jumlah kredit tersegel individual dan jumlah target-nya. TotalCKPN di
+	// atas SUDAH mencakup keduanya; field ini menjelaskan pemecahannya sehingga
+	// rekonsiliasi GL = Σ required_ckpn tetap satu angka tanpa dobel hitung.
+	IndividualCount     int             `json:"individual_count"`
+	IndividualTotalCKPN decimal.Decimal `json:"individual_total_ckpn"`
 	// ModalIntiDeduction adalah jumlah selisih positif (PPKA > CKPN) seluruh kredit,
 	// yaitu pengurang modal inti menurut SEOJK No. 21/SEOJK.03/2024 butir 1.1.6.
 	ModalIntiDeduction decimal.Decimal `json:"modal_inti_deduction"`
@@ -386,6 +400,9 @@ type CKPNRepository interface {
 	ListActiveLoans(ctx context.Context, actor Actor) ([]CKPNLoanSnapshot, error)
 	// UpdateRequiredCKPN menyimpan target CKPN per kredit dalam transaksi pemanggil.
 	UpdateRequiredCKPN(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error
+	// UpdateIndividualTarget menulis jejak target individual per kredit (T4) dalam
+	// transaksi pemanggil; dipanggil hanya untuk kredit jalur individual.
+	UpdateIndividualTarget(ctx context.Context, tx any, loanID uuid.UUID, target decimal.Decimal) error
 }
 
 // CKPNService menghitung CKPN dan membandingkannya dengan PPKA. Compare bersifat

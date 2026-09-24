@@ -203,3 +203,25 @@ func (r *CKPNIndividualRepository) RecordAssessmentTrail(ctx context.Context, lo
 	}
 	return nil
 }
+
+// RecordEODTrail menulis jejak penilaian individual pada langkah CKPN EOD (T4) ke
+// loan_ckpn_individual_assessments: seluruh angka yang menetapkan target resmi.
+func (r *CKPNIndividualRepository) RecordEODTrail(ctx context.Context, assessment domain.CKPNIndividualAssessment, target decimal.Decimal, asOf time.Time, decidedBy string) error {
+	basis := fmt.Sprintf(
+		`{"tahap":"eod_t4","metode":%q,"eir_bulanan":"%s","sumber_eir":%q,"target_dcf":"%s","target_agunan":"%s","target_final":"%s","biaya_pelepasan_belum_isi":%d}`,
+		assessment.Method, assessment.EIRMonthly, assessment.EIRSource,
+		assessment.Target, assessment.CollateralTarget, assessment.FinalTarget,
+		assessment.MissingDisposalCostCount)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO loan_ckpn_individual_assessments
+			(loan_id, as_of, method, carrying_amount, present_value, collateral_nrv,
+			 target, basis, decided_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))`,
+		assessment.LoanID, asOf.UTC(), string(assessment.Method),
+		assessment.CarryingAmount, assessment.PresentValue, assessment.TotalNRV,
+		target, basis, decidedBy)
+	if err != nil {
+		return fmt.Errorf("menulis jejak CKPN individual EOD: %w", err)
+	}
+	return nil
+}

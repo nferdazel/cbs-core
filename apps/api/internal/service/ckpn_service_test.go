@@ -47,6 +47,12 @@ func (s *ckpnRepoStub) UpdateRequiredCKPN(_ context.Context, _ any, loanID uuid.
 	return nil
 }
 
+func (s *ckpnRepoStub) UpdateIndividualTarget(_ context.Context, _ any, loanID uuid.UUID, target decimal.Decimal) error {
+	// Stub unit: jejak individual tidak dibedakan di sini; uji perilakunya ada pada
+	// uji integrasi T4 dengan basis data nyata.
+	return nil
+}
+
 var _ domain.CKPNRepository = (*ckpnRepoStub)(nil)
 
 // ckpnConfigStub membaca parameter dari peta; method yang tidak diisi memakai fallback.

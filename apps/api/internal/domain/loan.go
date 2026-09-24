@@ -189,7 +189,10 @@ type Loan struct {
 	Collectibility OJKCollectibility `json:"collectibility"`
 	DPD            int               `json:"dpd"`
 	AccrualStatus  AccrualStatus     `json:"accrual_status"`
-	RequiredPPAP   decimal.Decimal   `json:"required_ppap"`
+	// CKPNMethod adalah segel metode CKPN per kredit (T3/T4): "" bawaan lama berarti
+	// COLLECTIVE; INDIVIDUAL_* memaksa jalur individual pada langkah CKPN EOD.
+	CKPNMethod   string          `json:"ckpn_method"`
+	RequiredPPAP decimal.Decimal `json:"required_ppap"`
 	// RequiredCKPN adalah target CKPN terakhir yang diakui untuk kredit ini. Dibaca
 	// jalur CKPN sebagai nilai otoritatif dari baris yang sudah dikunci.
 	RequiredCKPN decimal.Decimal `json:"required_ckpn"`

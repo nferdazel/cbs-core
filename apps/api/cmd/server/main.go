@@ -179,11 +179,13 @@ func main() {
 	// CKPN (SAK EP, SEOJK 21/2024) adalah konsep terpisah dari PPKA. Modul ini membaca
 	// target PPKA yang sudah disimpan (loans.required_ppap) untuk membandingkannya,
 	// bukan menghitung ulang PPKA. Kredit dikunci lewat LoanRepository saat menulis.
-	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, ppapRunMarker)
 	// CKPN individual TAHAP T1 (keputusan panel butir 4): DCF dengan EIR orisinal dan
 	// proyeksi arus kas manual, MODE BAYANGAN BACA-SAJA. Ia tidak menulis required_ckpn
 	// dan tidak menyentuh saklar ckpn.enabled; hanya menyimpan data operasional bank.
 	ckpnIndividualSvc := service.NewCKPNIndividualService(loanRepo, postgres.NewCKPNIndividualRepository(db), configSvc)
+	// T4: mesin CKPN menerima layanan individual agar kredit tersegel individual
+	// (loans.ckpn_method) dihitung jalur individual di dalam langkah CKPN yang sama.
+	ckpnSvc := service.NewCKPNService(db, postgres.NewCKPNRepository(db), productRepo, ledgerRepo, poster, postingSvc, configSvc, loanRepo, ppapRunMarker, ckpnIndividualSvc)
 	// Pasal 23 POJK No. 1 Tahun 2024: pengurang PPKA umum dan khusus untuk bagian
 	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
 	// bawaan false sehingga belum mengubah angka PPKA mana pun.

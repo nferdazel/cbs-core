@@ -91,6 +91,10 @@ type ckpnService struct {
 	// runMarker menyimpan/membaca tanggal bisnis run PPAP terakhir. Boleh nil pada
 	// lingkungan uji tanpa database; bila nil gerbang tanggal bisnis dilewati.
 	runMarker domain.PPAPRunMarker
+	// individual menghitung penilaian CKPN individual (T1/T2) dan menulis jejaknya
+	// (T4). Boleh nil: bila nil, segel individual dianggap data belum siap dan kredit
+	// tersegel demikian GAGAL, bukan diam-diam dihitung kolektif.
+	individual domain.CKPNIndividualService
 }
 
 func NewCKPNService(
@@ -103,6 +107,7 @@ func NewCKPNService(
 	config domain.SystemConfigService,
 	locker ckpnLoanLocker,
 	runMarker domain.PPAPRunMarker,
+	individual domain.CKPNIndividualService,
 ) domain.CKPNService {
 	return &ckpnService{
 		txRunner:    sqlCKPNTxRunner{db: db},
@@ -114,6 +119,7 @@ func NewCKPNService(
 		config:      config,
 		locker:      locker,
 		runMarker:   runMarker,
+		individual:  individual,
 	}
 }
 
@@ -190,6 +196,7 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	for _, snap := range snapshots {
 		var itemSnap domain.CKPNLoanSnapshot
 		var calc domain.CKPNCalculation
+		var individualAssessment *domain.CKPNIndividualAssessment
 
 		if post {
 			// Jalur tulis: kunci kredit lalu hitung ulang dari data segar di dalam
@@ -205,18 +212,50 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 				continue
 			}
 			itemSnap, calc = applied.snapshot, applied.calc
+			individualAssessment = applied.individual
 		} else {
 			// Jalur baca-saja: perbandingan memakai snapshot apa adanya. Tidak ada
-			// kunci dan tidak ada penulisan.
-			c, err := domain.CalculateCKPN(snap, policy)
-			if err != nil {
+			// kunci dan tidak ada penulisan. Segel tetap dihormati (T4): kredit
+			// individual tidak boleh dilaporkan memakai angka kolektif.
+			individual, excluded, sealErr := domain.CKPNIndividualSealed(snap.CKPNMethod)
+			if sealErr != nil {
 				summary.Failed++
 				summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
 					LoanID:     snap.LoanID,
 					LoanNumber: snap.LoanNumber,
-					Error:      err.Error(),
+					Error:      sealErr.Error(),
 				})
 				continue
+			}
+			var c domain.CKPNCalculation
+			switch {
+			case individual:
+				a, target, err := s.ckpnIndividualSnapshotCalc(ctx, snap, asOf, actor)
+				if err != nil {
+					summary.Failed++
+					summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
+						LoanID:     snap.LoanID,
+						LoanNumber: snap.LoanNumber,
+						Error:      err.Error(),
+					})
+					continue
+				}
+				c = ckpnCalcFromIndividual(snap, target)
+				individualAssessment = &a
+			case excluded:
+				c = ckpnCalcExcluded(snap)
+			default:
+				var err error
+				c, err = domain.CalculateCKPN(snap, policy)
+				if err != nil {
+					summary.Failed++
+					summary.Failures = append(summary.Failures, domain.CKPNRunFailure{
+						LoanID:     snap.LoanID,
+						LoanNumber: snap.LoanNumber,
+						Error:      err.Error(),
+					})
+					continue
+				}
 			}
 			itemSnap, calc = snap, c
 		}
@@ -228,6 +267,17 @@ func (s *ckpnService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 		item := ckpnCompare(itemSnap, calc)
 		summary.Processed++
 		summary.Items = append(summary.Items, item)
+		// T4: kredit individual terlaporkan terpisah agar pemisahan jalur terlihat dan
+		// dapat direkonsiliasi (total CKPN = kolektif + individual).
+		if individualAssessment != nil {
+			summary.IndividualCount++
+			summary.IndividualTotalCKPN = summary.IndividualTotalCKPN.Add(calc.Target)
+			if post {
+				if err := s.individual.RecordEODTrail(ctx, *individualAssessment, calc.Target, asOf, actor.Username); err != nil {
+					return summary, fmt.Errorf("menulis jejak CKPN individual %s: %w", snap.LoanNumber, err)
+				}
+			}
+		}
 		// Aset baik (butir 12.3.a.2.a) menghasilkan target nol TANPA memakai PD/LGD.
 		// Dihitung terpisah supaya laporan dapat menjelaskan TotalCKPN nol: nol karena
 		// pengecualian yang sah, bukan karena model belum dijalankan.
@@ -443,6 +493,79 @@ func ckpnCompare(snap domain.CKPNLoanSnapshot, calc domain.CKPNCalculation) doma
 type ckpnApplied struct {
 	snapshot domain.CKPNLoanSnapshot
 	calc     domain.CKPNCalculation
+	// individual terisi bila kredit dihitung jalur individual (T4); dipakai jejak EOD.
+	individual *domain.CKPNIndividualAssessment
+}
+
+// loanFresh membungkus snapshot segar hasil kunci menjadi *domain.Loan untuk
+// penilaian individual. Kolom yang dibutuhkan penilaian (pokok, kerugian
+// restrukturisasi, EIR, segel metode, required_ckpn lantai) semuanya berasal dari
+// baris yang sama dan sama segarnya.
+func loanFresh(s domain.CKPNLoanSnapshot) *domain.Loan {
+	return &domain.Loan{
+		ID:                     s.LoanID,
+		LoanNumber:             s.LoanNumber,
+		Status:                 s.Status,
+		OutstandingPrincipal:   s.Outstanding,
+		Collectibility:         s.Collectibility.OJKCode(),
+		DPD:                    s.DPD,
+		IsRestructured:         s.IsRestructured,
+		RequiredPPAP:           s.RequiredPPAP,
+		RequiredCKPN:           s.RequiredCKPN,
+		RestructureLossBalance: s.RestructureLoss,
+		CKPNMethod:             s.CKPNMethod,
+		OriginalEIRMonthly:     s.OriginalEIRMonthly,
+	}
+}
+
+// ckpnCalcFromIndividual membungkus target individual menjadi CKPNCalculation agar
+// idempotensi (target − existing), jurnal, dan penulisan required_ckpn memakai
+// mekanisme kolektif yang sama (satu sumber kebenaran, rancangan §5.4). IsAsetBaik
+// tidak pernah true di jalur ini: kredit individual bukan pengecualian aset baik.
+func ckpnCalcFromIndividual(snap domain.CKPNLoanSnapshot, target decimal.Decimal) domain.CKPNCalculation {
+	return domain.CKPNCalculation{
+		Outstanding:    snap.Outstanding,
+		Collectibility: snap.Collectibility,
+		IsAsetBaik:     false,
+		Target:         target,
+		Existing:       snap.RequiredCKPN,
+		Adjustment:     target.Sub(snap.RequiredCKPN),
+	}
+}
+
+// ckpnCalcExcluded adalah perlakuan kredit tersegel EXCLUDED_ASET_BAIK: target nol
+// dan selisih negatif melepas cadangan lama lewat mekanisme pemulihan yang ada.
+func ckpnCalcExcluded(snap domain.CKPNLoanSnapshot) domain.CKPNCalculation {
+	return domain.CKPNCalculation{
+		Outstanding:    snap.Outstanding,
+		Collectibility: snap.Collectibility,
+		IsAsetBaik:     true,
+		Target:         decimal.Zero,
+		Existing:       snap.RequiredCKPN,
+		Adjustment:     snap.RequiredCKPN.Neg(),
+	}
+}
+
+// ckpnIndividualSnapshotCalc menilai kredit individual pada jalur BACA-SAJA
+// (perbandingan). Kredit tidak dikunci; data proyeksi/agunan dibaca apa adanya dengan
+// segala risiko basi yang sama seperti snapshot kolektif di jalur ini.
+func (s *ckpnService) ckpnIndividualSnapshotCalc(ctx context.Context, snap domain.CKPNLoanSnapshot, asOf time.Time, actor domain.Actor) (domain.CKPNIndividualAssessment, decimal.Decimal, error) {
+	if s.individual == nil {
+		return domain.CKPNIndividualAssessment{}, decimal.Zero,
+			fmt.Errorf("kredit %s tersegel CKPN individual tetapi layanan individual tidak tersedia", snap.LoanNumber)
+	}
+	assessment, err := s.individual.EvaluateForLoan(ctx, loanFresh(snap), asOf)
+	if err != nil {
+		return domain.CKPNIndividualAssessment{}, decimal.Zero, err
+	}
+	target, err := domain.CKPNIndividualTargetForEOD(domain.CKPNIndividualEODInput{
+		Assessment:               assessment,
+		PreviousIndividualTarget: snap.RequiredCKPN,
+	}, domain.CKPNIndividualMethod(strings.TrimSpace(snap.CKPNMethod)))
+	if err != nil {
+		return assessment, decimal.Zero, err
+	}
+	return assessment, target, nil
 }
 
 // apply mengunci kredit, menghitung ulang dari data segar di dalam transaksi,
@@ -463,22 +586,58 @@ func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, p
 			fresh = ckpnSnapshotFromLoan(loan)
 		}
 
-		calc, err := domain.CalculateCKPN(fresh, policy)
-		if err != nil {
-			return err
+		// T4 anti-double-count: segel metode per kredit menentukan jalur. Kredit
+		// tersegel individual dihitung jalur individual (bukan EAD×PD×LGD); kredit
+		// tersegel EXCLUDED_ASET_BAIK dikecualikan seperti aset baik; segel tak
+		// dikenal gagal. Tanpa cabang ini cadangan kredit individual terhitung dua
+		// kali (kolektif + individual) dan required_ckpn menjadi salah saji.
+		individual, excluded, sealErr := domain.CKPNIndividualSealed(fresh.CKPNMethod)
+		if sealErr != nil {
+			return fmt.Errorf("kredit %s: %w", fresh.LoanNumber, sealErr)
 		}
-		out = ckpnApplied{snapshot: fresh, calc: calc}
+		var calc domain.CKPNCalculation
+		if individual {
+			assessment, target, err := s.ckpnIndividualCalc(ctx, loanFresh(fresh), asOf)
+			if err != nil {
+				return err
+			}
+			calc = ckpnCalcFromIndividual(fresh, target)
+			out = ckpnApplied{snapshot: fresh, calc: calc, individual: &assessment}
+		} else if excluded {
+			// Segel pengecualian bank: target nol tanpa PD/LGD, mekanisme pelepasan
+			// sama dengan aset baik (selisih negatif dijurnal sebagai pemulihan).
+			calc = ckpnCalcExcluded(fresh)
+			out = ckpnApplied{snapshot: fresh, calc: calc}
+		} else {
+			var err error
+			calc, err = domain.CalculateCKPN(fresh, policy)
+			if err != nil {
+				return err
+			}
+			out = ckpnApplied{snapshot: fresh, calc: calc}
+		}
 
 		// Target sama dengan yang tersimpan berarti tidak ada yang perlu diubah.
 		// Tidak ada posting dan tidak ada penulisan, termasuk ketika status segar
 		// berubah menjadi tidak aktif tanpa cadangan tersisa.
 		if calc.Adjustment.IsZero() {
+			// Jejak individual tetap ditulis pada target sama (run ulang tanggal sama)
+			// agar keputusan EOD hari itu terdokumentasi walau tidak ada jurnal.
+			if individual {
+				return s.repo.UpdateIndividualTarget(ctx, tx, fresh.LoanID, calc.Target)
+			}
 			return nil
 		}
 		if err := s.postAdjustment(ctx, tx, fresh, calc, asOf, actor); err != nil {
 			return err
 		}
-		return s.repo.UpdateRequiredCKPN(ctx, tx, fresh.LoanID, calc.Target)
+		if err := s.repo.UpdateRequiredCKPN(ctx, tx, fresh.LoanID, calc.Target); err != nil {
+			return err
+		}
+		if individual {
+			return s.repo.UpdateIndividualTarget(ctx, tx, fresh.LoanID, calc.Target)
+		}
+		return nil
 	})
 	if err != nil {
 		return ckpnApplied{}, fmt.Errorf("kredit %s: %w", snap.LoanNumber, err)
@@ -491,18 +650,20 @@ func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, p
 // benar-benar tersimpan, bukan dari nilai yang dibaca di luar transaksi.
 func ckpnSnapshotFromLoan(l *domain.Loan) domain.CKPNLoanSnapshot {
 	return domain.CKPNLoanSnapshot{
-		LoanID:          l.ID,
-		LoanNumber:      l.LoanNumber,
-		ProductID:       l.ProductID,
-		BranchCode:      l.BranchCode,
-		Status:          l.Status,
-		Outstanding:     l.OutstandingPrincipal,
-		Collectibility:  domain.CollectibilityFromOJK(l.Collectibility),
-		DPD:             l.DPD,
-		IsRestructured:  l.IsRestructured,
-		RequiredPPAP:    l.RequiredPPAP,
-		RestructureLoss: l.RestructureLossBalance,
-		RequiredCKPN:    l.RequiredCKPN,
+		LoanID:             l.ID,
+		LoanNumber:         l.LoanNumber,
+		ProductID:          l.ProductID,
+		BranchCode:         l.BranchCode,
+		Status:             l.Status,
+		Outstanding:        l.OutstandingPrincipal,
+		Collectibility:     domain.CollectibilityFromOJK(l.Collectibility),
+		DPD:                l.DPD,
+		IsRestructured:     l.IsRestructured,
+		RequiredPPAP:       l.RequiredPPAP,
+		RestructureLoss:    l.RestructureLossBalance,
+		RequiredCKPN:       l.RequiredCKPN,
+		CKPNMethod:         l.CKPNMethod,
+		OriginalEIRMonthly: l.OriginalEIRMonthly,
 	}
 }
 
@@ -734,3 +895,34 @@ func (s *ckpnService) reserveCOA(ctx context.Context, book domain.COABook) strin
 }
 
 var _ domain.CKPNService = (*ckpnService)(nil)
+
+// ckpnIndividualCalc menilai satu kredit TERSEGEL individual (T4): menyusun penilaian
+// T1/T2 dari data kredit, menerapkan metode segel, lalu lantai 12.4.g.1.c terhadap
+// CKPN individual yang sudah dibentuk sebelumnya. actor dipakai hanya untuk cakupan
+// baca; perhitungan memakai data kredit yang DIKUNCI (bukan snapshot basi).
+//
+// Lantai memakai required_ckpn snapshot hanya bila kredit memang sebelumnya
+// individual — dijamin pemanggil (yang membaca segel lama dan baru). required_ckpn
+// hasil kolektif tidak boleh menjadi lantai individual (dua basis berbeda).
+func (s *ckpnService) ckpnIndividualCalc(ctx context.Context, loan *domain.Loan, asOf time.Time) (domain.CKPNIndividualAssessment, decimal.Decimal, error) {
+	if s.individual == nil {
+		return domain.CKPNIndividualAssessment{}, decimal.Zero,
+			fmt.Errorf("kredit %s tersegel CKPN individual tetapi layanan individual tidak tersedia", loan.LoanNumber)
+	}
+	// Penilaian memakai data kredit yang sudah dikunci: salin ke struktur yang dibaca
+	// Evaluate (per kontrak repo, Evaluate membaca kredit lagi — data proyeksi/agunan
+	// TIDAK boleh dari snapshot basi, sedangkan carrying & EIR kredit segar).
+	assessment, err := s.individual.EvaluateForLoan(ctx, loan, asOf)
+	if err != nil {
+		return domain.CKPNIndividualAssessment{}, decimal.Zero, err
+	}
+	method := domain.CKPNIndividualMethod(strings.TrimSpace(loan.CKPNMethod))
+	target, err := domain.CKPNIndividualTargetForEOD(domain.CKPNIndividualEODInput{
+		Assessment:               assessment,
+		PreviousIndividualTarget: loan.RequiredCKPN,
+	}, method)
+	if err != nil {
+		return assessment, decimal.Zero, err
+	}
+	return assessment, target, nil
+}
