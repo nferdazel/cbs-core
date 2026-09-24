@@ -18,9 +18,11 @@ import (
 //	CBS_TEST_DB_DSN='postgres://qouver:...@127.0.0.1:55432/cbs?sslmode=disable' \
 //	  go test ./internal/service/ -run IntegrasiLPS -v
 
-// setLPSConfig menyetel satu kunci konfigurasi LPS sambil membuang cache-nya.
+// setLPSConfig menyetel satu kunci konfigurasi LPS sambil membuang cache-nya. Nilai
+// lama dipulihkan lewat t.Cleanup saat pertama kunci disentuh.
 func setLPSConfig(t *testing.T, e *moneyEnv, key, value string) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji integrasi Pasal 23 LPS')

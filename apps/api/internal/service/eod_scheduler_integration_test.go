@@ -25,6 +25,7 @@ const eodAdvisoryLockKey = 4217001
 
 func setEODSchedulerConfig(t *testing.T, e *moneyEnv, key, value string) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji integrasi penjadwal EOD')
@@ -80,10 +81,7 @@ func eodSchedulerTestBusinessDate() time.Time {
 // next_run_at maju ke kemunculan cron berikutnya; tick kedua tidak mengulang.
 func TestIntegrasiEODPenjadwalMenjalankanSekaliDanMemajukanJadwal(t *testing.T) {
 	e := newMoneyEnv(t)
-	t.Cleanup(func() {
-		_, _ = e.db.ExecContext(e.ctx, `UPDATE system_config SET value='OPEN' WHERE key='system.business_date_status'`)
-		setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "false")
-	})
+	simpanPulihkanConfig(t, e, "system.business_date_status")
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
@@ -139,9 +137,6 @@ func TestIntegrasiEODPenjadwalMenjalankanSekaliDanMemajukanJadwal(t *testing.T) 
 // Pemicu yang belum jatuh tempo tidak dijalankan dan jadwalnya tidak disentuh.
 func TestIntegrasiEODPenjadwalTidakMenjalankanPemicuBelumJatuhTempo(t *testing.T) {
 	e := newMoneyEnv(t)
-	t.Cleanup(func() {
-		setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "false")
-	})
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "true")
@@ -175,9 +170,6 @@ func TestIntegrasiEODPenjadwalTidakMenjalankanPemicuBelumJatuhTempo(t *testing.T
 // tidak ditandai.
 func TestIntegrasiEODPenjadwalMenolakCronTidakValid(t *testing.T) {
 	e := newMoneyEnv(t)
-	t.Cleanup(func() {
-		setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "false")
-	})
 	setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "true")
 	setEODSchedulerConfig(t, e, "eod.scheduler.executed_by", e.actor.UserID.String())
 
@@ -206,19 +198,19 @@ func TestIntegrasiEODPenjadwalMenolakCronTidakValid(t *testing.T) {
 // dicoba ulang setiap tick.
 func TestIntegrasiEODPenjadwalTidakMenggandakanSaatTanggalSudahDitutup(t *testing.T) {
 	e := newMoneyEnv(t)
-	t.Cleanup(func() {
-		_, _ = e.db.ExecContext(e.ctx, `UPDATE system_config SET value='OPEN' WHERE key='system.business_date_status'`)
-		setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "false")
-	})
+	simpanPulihkanConfig(t, e, "system.business_date_status")
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "true")
 	setEODSchedulerConfig(t, e, "eod.scheduler.executed_by", e.actor.UserID.String())
 
 	// Tanggal bisnis ditandai CLOSED: meniru pemicu manual yang sudah menjalankan EOD
-	// untuk tanggal ini.
-	if _, err := e.db.ExecContext(e.ctx,
-		`UPDATE system_config SET value='CLOSED' WHERE key='system.business_date_status'`); err != nil {
+	// untuk tanggal ini. Upsert, bukan UPDATE: barisnya mungkin belum ada pada database
+	// yang baru dimigrasi dan UPDATE tanpa baris tidak akan berpengaruh.
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ('system.business_date_status', 'CLOSED', 'status tanggal bisnis untuk uji')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`); err != nil {
 		t.Fatalf("menyetel status CLOSED: %v", err)
 	}
 
@@ -250,9 +242,6 @@ func TestIntegrasiEODPenjadwalTidakMenggandakanSaatTanggalSudahDitutup(t *testin
 // berjalan) membuat jalur terjadwal MENOLAK, bukan menjalankan EOD kedua.
 func TestIntegrasiEODPenjadwalMenghormatiKunciTutupHari(t *testing.T) {
 	e := newMoneyEnv(t)
-	t.Cleanup(func() {
-		setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "false")
-	})
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setEODSchedulerConfig(t, e, "eod.scheduler.enabled", "true")

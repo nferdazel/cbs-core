@@ -105,18 +105,18 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PrincipalAmount.GreaterThan(product.MaxAmount) {
-		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountAboveMax, product.Code, product.MaxAmount.String())
 	}
 	if input.TermMonths < product.MinTermMonths || (product.MaxTermMonths > 0 && input.TermMonths > product.MaxTermMonths) {
-		return nil, fmt.Errorf("jangka waktu di luar rentang produk %s (%d-%d bulan)", product.Code, product.MinTermMonths, product.MaxTermMonths)
+		return nil, fmt.Errorf("%w %s (%d-%d bulan)", domain.ErrProductTermOutOfRange, product.Code, product.MinTermMonths, product.MaxTermMonths)
 	}
 
 	acc, err := s.accountRepo.GetByID(ctx, input.DisbursementAccountID)
 	if err != nil {
-		return nil, errors.New("rekening pencairan tidak ditemukan")
+		return nil, domain.ErrDisbursementAccountNotFound
 	}
 	if acc.CustomerID == nil || *acc.CustomerID != input.CustomerID {
-		return nil, errors.New("rekening pencairan bukan milik nasabah yang mengajukan")
+		return nil, domain.ErrDisbursementAccountNotOwned
 	}
 	// Penegakan kepemilikan cabang: pencairan ke rekening cabang lain ditolak.
 	// Rekening tanpa cabang (data pra-migrasi) dibiarkan lewat.
@@ -207,7 +207,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 // akan cocok dengan pemetaan produk dan jurnal akan jatuh ke buku yang salah.
 func customerAccountOverrides(product *domain.BankingProduct, acc *domain.Account) (map[string]string, error) {
 	if acc == nil || acc.COACode == "" {
-		return nil, errors.New("rekening nasabah tidak punya kode COA; jurnal tidak dapat dipetakan")
+		return nil, domain.ErrLoanAccountCOAMissing
 	}
 	if product != nil && product.Book != "" && acc.COABook != "" && product.Book != acc.COABook {
 		return nil, fmt.Errorf(
@@ -369,7 +369,7 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 
 	acc, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 	if err != nil {
-		return nil, errors.New("rekening pencairan tidak ditemukan")
+		return nil, domain.ErrDisbursementAccountNotFound
 	}
 	overrides, err := customerAccountOverrides(product, acc)
 	if err != nil {
@@ -545,7 +545,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		return nil, domain.ErrCrossBookAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
-		return nil, errors.New("kredit tidak dalam status aktif")
+		return nil, domain.ErrLoanNotActive
 	}
 	if loan.ProductID == nil {
 		return nil, errors.New("kredit tidak terhubung ke produk")
@@ -583,7 +583,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 			return err
 		}
 		if locked.Status != domain.LoanStatusDisbursed {
-			return errors.New("kredit tidak dalam status aktif")
+			return domain.ErrLoanNotActive
 		}
 		loan = locked
 
@@ -598,10 +598,10 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 			}
 		}
 		if target == nil {
-			return errors.New("jadwal angsuran tidak ditemukan")
+			return domain.ErrInstallmentNotFound
 		}
 		if target.Status == domain.InstallmentStatusPaid {
-			return errors.New("angsuran ini sudah dibayar penuh")
+			return domain.ErrInstallmentAlreadyPaid
 		}
 
 		outstandingPrincipal := target.PrincipalAmount.Sub(target.PaidPrincipal)
@@ -1016,10 +1016,10 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 		return nil, domain.ErrCrossBookAccess
 	}
 	if loan.Status != domain.LoanStatusDisbursed {
-		return nil, errors.New("hanya kredit aktif yang dapat direstrukturisasi")
+		return nil, domain.ErrRestructureOnlyActiveLoan
 	}
 	if input.NewTermMonths <= 0 {
-		return nil, errors.New("jangka waktu baru harus positif")
+		return nil, domain.ErrRestructureNewTermPositive
 	}
 	if loan.ProductID == nil {
 		return nil, errors.New("kredit tidak terhubung ke produk")
@@ -1214,7 +1214,7 @@ func (s *loanService) ExecuteApproved(ctx context.Context, tx any, actionType st
 			return err
 		}
 		if !amount.IsPositive() {
-			return errors.New("nominal recovery harus positif")
+			return domain.ErrRecoveryAmountPositive
 		}
 		product, overrides, err := s.recoveryTarget(ctx, loan)
 		if err != nil {
@@ -1726,7 +1726,7 @@ func (s *loanService) RecoverWrittenOffLoan(ctx context.Context, input domain.Re
 		return nil, domain.ErrCrossBookAccess
 	}
 	if input.RecoveryAmount.LessThanOrEqual(decimal.Zero) {
-		return nil, errors.New("nominal recovery harus positif")
+		return nil, domain.ErrRecoveryAmountPositive
 	}
 	product, overrides, err := s.recoveryTarget(ctx, loan)
 	if err != nil {
@@ -1778,7 +1778,7 @@ func (s *loanService) CancelDisbursementLoan(ctx context.Context, input domain.C
 		return nil, domain.ErrLoanNotCancellable
 	}
 	if input.Reason == "" {
-		return nil, errors.New("alasan pembatalan pencairan wajib diisi")
+		return nil, domain.ErrDisbursementCancelReasonRequired
 	}
 
 	if err := s.txRunner.Run(ctx, func(tx any) error {
@@ -1881,7 +1881,7 @@ func (s *loanService) CorrectLoanAmount(ctx context.Context, input domain.Correc
 		return nil, domain.ErrLoanAmountUnchanged
 	}
 	if input.Reason == "" {
-		return nil, errors.New("alasan koreksi nominal wajib diisi")
+		return nil, domain.ErrLoanCorrectionReasonRequired
 	}
 
 	// Koreksi tidak boleh dijalankan langsung tanpa layanan persetujuan: tidak ada

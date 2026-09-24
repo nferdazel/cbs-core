@@ -38,10 +38,18 @@ func TestIntegrasiPembatalanTransaksi(t *testing.T) {
 	if err != nil {
 		t.Fatalf("membuka database: %v", err)
 	}
-	defer func() { _ = db.Close() }()
+	// db ditutup lewat t.Cleanup (bukan defer) agar pemulihan system_config di bawah
+	// masih punya koneksi: cleanup berjalan LIFO, jadi pendaftaran penutupan lebih dulu
+	// membuatnya berjalan paling akhir.
+	t.Cleanup(func() { _ = db.Close() })
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("database tidak dapat dihubungi: %v", err)
 	}
+
+	// Tanggal bisnis diubah uji ini (dinaikkan satu hari di tengah). Nilai lama
+	// dicatat dan dipulihkan lewat t.Cleanup agar tidak bocor ke uji lain.
+	awalBusinessDate := snapshotConfig(t, db, ctx, "system.business_date")
+	t.Cleanup(func() { restoreConfig(t, db, ctx, awalBusinessDate) })
 
 	// Tanggal bisnis disamakan dengan hari ini agar jalur "same-day" yang diuji pasti
 	// jalur langsung, bukan jalur persetujuan.

@@ -25,12 +25,6 @@ const ckpnPanelMigration = "000090_ckpn_syariah_coa_and_collateral_appraisal_pol
 func TestIntegrasiMigrasiCKPNSyariahDefaultMengisiHanyaBilaKosong(t *testing.T) {
 	e := newMoneyEnv(t)
 
-	// Kembalikan ke nilai seed 000090 agar uji lain pada DB yang sama tidak terkejut.
-	t.Cleanup(func() {
-		setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "15901")
-		setConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah", "11950")
-	})
-
 	// Tiru keadaan pra-000090: kedua kunci ada tetapi masih kosong (seed 000071).
 	setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "")
 	setConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah", "")
@@ -81,11 +75,6 @@ func TestIntegrasiMigrasiCKPNSyariahDefaultMengisiHanyaBilaKosong(t *testing.T) 
 func TestIntegrasiMigrasiPanelSeedUmurTaksasiDanTidakMengubahModeBayangan(t *testing.T) {
 	e := newMoneyEnv(t)
 
-	// Kembalikan mode bayangan ke bawaan baru (true) agar tidak mengganggu uji lain.
-	t.Cleanup(func() {
-		setConfigCKPNCOA(t, e, "ckpn.shadow_mode.enabled", "true")
-	})
-
 	// Kunci kebijakan umur taksasi ter-seed 12 bulan.
 	if got := bacaConfigCKPNCOA(t, e, "collateral.appraisal.validity_months"); got != "12" {
 		t.Fatalf("collateral.appraisal.validity_months = %q, mau 12", got)
@@ -117,9 +106,6 @@ func TestIntegrasiMigrasiPanelSeedUmurTaksasiDanTidakMengubahModeBayangan(t *tes
 // apa pun — ia hanya membuat pelanggaran kewajiban sejak 1 Jan 2025 terlihat.
 func TestIntegrasiKesiapanCKPNPeringatanInstalasiBeroperasi(t *testing.T) {
 	e := newMoneyEnv(t)
-
-	// Kembalikan ke bawaan mati agar uji lain pada DB yang sama tidak terpengaruh.
-	t.Cleanup(func() { setConfigCKPNCOA(t, e, "ckpn.enabled", "false") })
 
 	dateRepo := postgres.NewBusinessDateRepository(e.db)
 

@@ -41,8 +41,10 @@ func jalankanMigrasiCkpnCOABerkas(t *testing.T, e *moneyEnv, nama string) {
 }
 
 // setConfigCKPNCOA memaksa nilai kunci; Insert agar baris selalu ada pada DB uji.
+// Nilai lama dipulihkan lewat t.Cleanup saat pertama kunci disentuh.
 func setConfigCKPNCOA(t *testing.T, e *moneyEnv, key, value string) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji migrasi COA CKPN')
@@ -64,12 +66,6 @@ func bacaConfigCKPNCOA(t *testing.T, e *moneyEnv, key string) string {
 
 func TestIntegrasiMigrasiCOACKPNIdempotent(t *testing.T) {
 	e := newMoneyEnv(t)
-
-	// Kembalikan ke nilai seed agar tidak mengganggu uji lain pada DB yang sama.
-	t.Cleanup(func() {
-		setConfigCKPNCOA(t, e, "ckpn.coa.expense", "50301")
-		setConfigCKPNCOA(t, e, "ckpn.coa.reserve", "10950")
-	})
 
 	// Tiru keadaan pra-000069: kedua kunci ada tetapi masih kosong.
 	setConfigCKPNCOA(t, e, "ckpn.coa.expense", "")
@@ -143,12 +139,6 @@ func TestIntegrasiMigrasiCOACKPNIdempotent(t *testing.T) {
 // harus mendapat perilaku yang sama seperti sebelum kunci ini ada.
 func TestIntegrasiMigrasiCOACKPNSyariahIdempotent(t *testing.T) {
 	e := newMoneyEnv(t)
-
-	// Kembalikan ke nilai seed (kosong) agar tidak mengganggu uji lain.
-	t.Cleanup(func() {
-		setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "")
-		setConfigCKPNCOA(t, e, "ckpn.coa.reserve.syariah", "")
-	})
 
 	// Tiru keadaan sesudah migrasi: kedua kunci ada dan kosong.
 	setConfigCKPNCOA(t, e, "ckpn.coa.expense.syariah", "")

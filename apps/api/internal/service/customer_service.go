@@ -104,7 +104,7 @@ func (s *customerService) RegisterCustomer(ctx context.Context, input domain.Cre
 		return nil, err
 	}
 	if strings.TrimSpace(input.FullName) == "" {
-		return nil, fmt.Errorf("nama lengkap wajib diisi")
+		return nil, domain.ErrCustomerNameRequired
 	}
 	// NIK dinormalisasi SEBELUM dienkripsi dan diindeks, agar blind index-nya
 	// konsisten dengan yang dipakai saat pencarian.
@@ -199,7 +199,7 @@ func (s *customerService) UpdateCustomer(ctx context.Context, id uuid.UUID, inpu
 		return nil, err
 	}
 	if strings.TrimSpace(input.FullName) == "" {
-		return nil, fmt.Errorf("nama lengkap wajib diisi")
+		return nil, domain.ErrCustomerNameRequired
 	}
 	normalizedIDCard, err := domain.NormalizeIDCardNumber(input.IDCardNumber)
 	if err != nil {

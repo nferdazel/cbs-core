@@ -142,6 +142,7 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 			city='Bandung', phone='022-000', npwp='01.234.567.8-901.000' WHERE id=1`); err != nil {
 		t.Fatalf("menyetel profil bank: %v", err)
 	}
+	e.simpanPulihkanConfigKunci(t, "ojk.bank.email")
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description) VALUES ('ojk.bank.email','ojk@uji.local','uji')
 		ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`); err != nil {

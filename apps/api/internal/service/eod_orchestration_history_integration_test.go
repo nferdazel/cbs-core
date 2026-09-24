@@ -13,17 +13,10 @@ import (
 // CLOSED menolak tutup hari dan TIDAK menambah baris riwayat.
 func TestIntegrasiEODRiwayatPerLangkahDanIdempotensi(t *testing.T) {
 	e := newMoneyEnv(t)
+	simpanPulihkanConfig(t, e, "system.business_date_status")
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
-	t.Cleanup(func() {
-		setCKPNConfig(t, e, "ckpn.enabled", "false")
-		setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
-		// Uji ini meninggalkan status CLOSED; kembalikan OPEN agar uji integrasi
-		// berikutnya tidak ikut ditolak.
-		_, _ = e.db.ExecContext(e.ctx,
-			`UPDATE system_config SET value='OPEN' WHERE key='system.business_date_status'`)
-	})
 
 	businessDate := time.Date(time.Now().UTC().Year(), time.Now().UTC().Month(), time.Now().UTC().Day(), 0, 0, 0, 0, time.UTC)
 	batchSvc := e.newBatchSvcForTest(t, newCKPNSvcForTest(e))
@@ -63,9 +56,12 @@ func TestIntegrasiEODRiwayatPerLangkahDanIdempotensi(t *testing.T) {
 	}
 
 	// Tanggal sudah CLOSED: tutup hari berikutnya di tanggal yang sama harus ditolak
-	// dan tidak boleh menambah riwayat.
-	if _, err := e.db.ExecContext(e.ctx,
-		`UPDATE system_config SET value='CLOSED' WHERE key='system.business_date_status'`); err != nil {
+	// dan tidak boleh menambah riwayat. Upsert agar berlaku juga bila baris status belum
+	// ada pada database yang baru dimigrasi.
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO system_config (key, value, description)
+		VALUES ('system.business_date_status', 'CLOSED', 'status tanggal bisnis untuk uji')
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`); err != nil {
 		t.Fatalf("menyetel status CLOSED: %v", err)
 	}
 	before := afterCount

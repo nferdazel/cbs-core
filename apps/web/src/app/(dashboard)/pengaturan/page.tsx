@@ -53,6 +53,11 @@ export default function PengaturanPage() {
     hasPermission(user, "system:config:read") ||
     hasPermission(user, "permissions:manage");
 
+  // Identitas OJK dan gerbang bobot agunan dibaca dengan system:config:read dan
+  // diubah dengan system:config. Tautan hanya tampil bila izin baca ada; API tetap
+  // penjaga sebenarnya.
+  const canViewSystemConfig = hasPermission(user, "system:config:read");
+
   return (
     <>
       <PageHeader
@@ -153,6 +158,44 @@ export default function PengaturanPage() {
 
       <TransactionLimits />
       <BankProfileCard />
+
+      {canViewSystemConfig && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>{t.settingsPage.ojkTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-start justify-between gap-4">
+            <p className="text-body text-ink-600">
+              {t.settingsPage.ojkDescription}
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/pengaturan/ojk")}
+            >
+              {t.settingsPage.ojkAction}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {canViewSystemConfig && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>{t.settingsPage.collateralWeightTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-start justify-between gap-4">
+            <p className="text-body text-ink-600">
+              {t.settingsPage.collateralWeightDescription}
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/pengaturan/bobot-agunan")}
+            >
+              {t.settingsPage.collateralWeightAction}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }

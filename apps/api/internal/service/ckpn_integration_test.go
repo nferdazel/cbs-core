@@ -297,6 +297,7 @@ func ckpnTestAsOf() time.Time {
 // langsung untuk tanggal bisnis yang sedang diuji.
 func (e *moneyEnv) recordPPAPRun(t *testing.T, asOf time.Time) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, "ppap.last_run_business_date")
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ('ppap.last_run_business_date', $1, 'penanda run PPAP uji CKPN')
@@ -312,14 +313,13 @@ func (e *moneyEnv) recordPPAPRun(t *testing.T, asOf time.Time) {
 // urutan (mis. uji pelepasan hanya lulus bila berjalan setelah uji perbandingan).
 func simpanPulihkanConfigCKPN(t *testing.T, e *moneyEnv) {
 	t.Helper()
-	snaps := snapshotConfig(t, e.db, e.ctx,
+	simpanPulihkanConfig(t, e,
 		"ckpn.enabled",
 		"ckpn.shadow_mode.enabled",
 		"ckpn.pd_frac.gol_3",
 		"ckpn.lgd_frac",
 		"ppap.last_run_business_date",
 	)
-	t.Cleanup(func() { restoreConfig(t, e.db, e.ctx, snaps) })
 }
 
 // siapkanParameterCKPNTulis menyalakan jalur tulis CKPN (ckpn.enabled) beserta PD/LGD
@@ -332,9 +332,12 @@ func siapkanParameterCKPNTulis(t *testing.T, e *moneyEnv) {
 	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 }
 
-// setCKPNConfig menyetel satu kunci CKPN sambil membuang cache konfigurasinya.
+// setCKPNConfig menyetel satu kunci CKPN sambil membuang cache konfigurasinya. Nilai
+// lama (termasuk kunci yang belum ada) dipulihkan lewat t.Cleanup saat pertama kali
+// kunci itu disentuh, sehingga uji tidak lagi menebak nilai semula.
 func setCKPNConfig(t *testing.T, e *moneyEnv, key, value string) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji integrasi CKPN')

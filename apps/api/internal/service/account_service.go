@@ -189,7 +189,7 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 
 	if err := s.accountRepo.CreateTx(ctx, tx, account); err != nil {
 		if isUniqueViolation(err) {
-			return nil, fmt.Errorf("nomor rekening sudah terpakai, silakan coba lagi")
+			return nil, domain.ErrAccountNumberTaken
 		}
 		return nil, err
 	}

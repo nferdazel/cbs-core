@@ -382,7 +382,7 @@ func (s *ledgerService) TransferInternal(ctx context.Context, req domain.Transfe
 		return nil, err
 	}
 	if req.SourceAccountNumber == req.DestinationAccountNumber {
-		return nil, fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
+		return nil, domain.ErrSameAccountTransfer
 	}
 
 	src, err := s.loadDebitAccount(ctx, req.SourceAccountNumber)
@@ -509,7 +509,7 @@ func (s *ledgerService) postWithdrawTx(ctx context.Context, tx any, accountNumbe
 
 func (s *ledgerService) postTransferTx(ctx context.Context, tx any, source, destination string, amount decimal.Decimal, currency, description, idempotencyKey, createdBy string, actor domain.Actor) error {
 	if source == destination {
-		return fmt.Errorf("rekening asal dan tujuan tidak boleh sama")
+		return domain.ErrSameAccountTransfer
 	}
 	src, err := s.accountRepo.GetByNumber(ctx, source)
 	if err != nil {

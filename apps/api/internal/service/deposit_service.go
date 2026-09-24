@@ -192,10 +192,10 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PlacementAmount.GreaterThan(product.MaxAmount) {
-		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountAboveMax, product.Code, product.MaxAmount.String())
 	}
 	if input.TermMonths < product.MinTermMonths || (product.MaxTermMonths > 0 && input.TermMonths > product.MaxTermMonths) {
-		return nil, fmt.Errorf("jangka waktu di luar rentang produk %s (%d-%d bulan)", product.Code, product.MinTermMonths, product.MaxTermMonths)
+		return nil, fmt.Errorf("%w %s (%d-%d bulan)", domain.ErrProductTermOutOfRange, product.Code, product.MinTermMonths, product.MaxTermMonths)
 	}
 
 	customer, err := s.customerRepo.GetByID(ctx, input.CustomerID)
@@ -498,10 +498,10 @@ func (s *depositService) Preview(ctx context.Context, input domain.PlaceDepositI
 		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
 	}
 	if product.MaxAmount.IsPositive() && input.PlacementAmount.GreaterThan(product.MaxAmount) {
-		return nil, fmt.Errorf("nominal di atas maksimum produk %s (%s)", product.Code, product.MaxAmount.String())
+		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountAboveMax, product.Code, product.MaxAmount.String())
 	}
 	if input.TermMonths < product.MinTermMonths || (product.MaxTermMonths > 0 && input.TermMonths > product.MaxTermMonths) {
-		return nil, fmt.Errorf("jangka waktu di luar rentang produk %s (%d-%d bulan)", product.Code, product.MinTermMonths, product.MaxTermMonths)
+		return nil, fmt.Errorf("%w %s (%d-%d bulan)", domain.ErrProductTermOutOfRange, product.Code, product.MinTermMonths, product.MaxTermMonths)
 	}
 
 	customer, err := s.customerRepo.GetByID(ctx, input.CustomerID)

@@ -62,10 +62,6 @@ func syariahCKPNEnv(t *testing.T, productCode string) (*moneyEnv, domain.CKPNSer
 	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.50")
 	setCKPNConfig(t, e, "ckpn.coa.expense", syariahGlobalExpense)
 	setCKPNConfig(t, e, "ckpn.coa.reserve", syariahGlobalReserve)
-	t.Cleanup(func() {
-		setCKPNConfig(t, e, "ckpn.coa.expense.syariah", "")
-		setCKPNConfig(t, e, "ckpn.coa.reserve.syariah", "")
-	})
 
 	return e, newCKPNSvcForTest(e), loan, actor
 }

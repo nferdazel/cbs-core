@@ -48,6 +48,9 @@ type moneyEnv struct {
 	productRepo    *postgres.ProductRepository
 	loanRepo       *postgres.LoanRepository
 	configSvc      domain.SystemConfigService
+	// snapshotKunci mencatat kunci konfigurasi yang sudah di-snapshot uji ini agar
+	// setter yang dipanggil berulang tidak menimpa nilai lama dengan nilai antara.
+	snapshotKunci map[string]configSnapshot
 }
 
 // configSnapshot menyimpan nilai satu kunci system_config sebelum diubah harness,
@@ -100,6 +103,34 @@ func restoreConfig(t *testing.T, db *sql.DB, ctx context.Context, snaps []config
 	}
 }
 
+// simpanPulihkanConfigKunci mencatat nilai LAMA satu kunci konfigurasi (termasuk
+// ketiadaan barisnya) dan mendaftarkan pemulihannya lewat t.Cleanup, memakai
+// snapshotConfig/restoreConfig yang sama dengan harness jalur uang. Idempoten per kunci
+// per uji: panggilan berulang untuk kunci yang sama tidak menimpa snapshot pertama,
+// sehingga setter yang dipanggil berkali-kali tetap memulihkan nilai sebelum uji,
+// bukan nilai antara yang disetel uji sendiri.
+func (e *moneyEnv) simpanPulihkanConfigKunci(t *testing.T, key string) {
+	t.Helper()
+	if e.snapshotKunci == nil {
+		e.snapshotKunci = make(map[string]configSnapshot)
+	}
+	if _, sudah := e.snapshotKunci[key]; sudah {
+		return
+	}
+	snap := snapshotConfig(t, e.db, e.ctx, key)[0]
+	e.snapshotKunci[key] = snap
+	t.Cleanup(func() { restoreConfig(t, e.db, e.ctx, []configSnapshot{snap}) })
+}
+
+// simpanPulihkanConfig mencatat nilai lama sejumlah kunci lalu mendaftarkan
+// pemulihannya. Dipakai uji yang mengubah konfigurasi langsung, bukan lewat setter.
+func simpanPulihkanConfig(t *testing.T, e *moneyEnv, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		e.simpanPulihkanConfigKunci(t, key)
+	}
+}
+
 func newMoneyEnv(t *testing.T) *moneyEnv {
 	t.Helper()
 	dsn := os.Getenv("CBS_TEST_DB_DSN")
@@ -123,6 +154,8 @@ func newMoneyEnv(t *testing.T) *moneyEnv {
 	// Cleanup didaftarkan setelah Close sehingga berjalan lebih dulu (LIFO).
 	awal := snapshotConfig(t, db, ctx,
 		"system.business_date",
+		"system.business_date_status",
+		"ppap.last_run_business_date",
 		domain.ConfigKeyCKPNParametersStatus,
 		domain.ConfigKeyCKPNFloorPPKA,
 		// Bukti ratifikasi (migrasi 000095): trigger menolak status FINAL tanpa bukti,
@@ -520,6 +553,7 @@ func (e *moneyEnv) loanNullableTime(t *testing.T, loanID uuid.UUID, column strin
 func (e *moneyEnv) setPenaltyRatePerMille(t *testing.T, rate int) {
 	t.Helper()
 	const key = "loan.penalty.rate.daily.per_mille"
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'tarif denda untuk uji integrasi')

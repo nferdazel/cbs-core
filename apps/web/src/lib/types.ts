@@ -82,6 +82,61 @@ export interface BankProfile {
   updated_at: string;
 }
 
+/**
+ * domain.OJKProfile (apps/api/internal/domain/ojk_profile.go). Identitas Form 00.00
+ * yang disimpan sebagai kunci system_config ojk.*. Seluruh nilai kosong berarti
+ * BELUM TERSEDIA, bukan nol atau nilai karangan.
+ */
+export interface OJKProfile {
+  bank_email: string;
+  bank_website: string;
+  bank_city_code: string;
+  bank_ojk_region_code: string;
+  pic_name: string;
+  pic_division: string;
+  pic_phone: string;
+  pic_email: string;
+  dividends_paid: string;
+  annual_bonus_tantiem: string;
+  audit_info: string;
+  share_nominal_value: string;
+  public_offering_status: string;
+  pva_status: string;
+  ebanking_status: string;
+  it_provider: string;
+  laku_pandai_provider: string;
+  laku_pandai_agent_count: string;
+  rups_ownership_change: string;
+  ultimate_shareholders: string;
+}
+
+/**
+ * Respons baca-saja gerbang bobot agunan
+ * (GET /collateral/weights/{category_code}, domain.CollateralWeightActivationResult).
+ * `failures` memuat kode syarat yang gagal (mis. "C1: ..."); kosong berarti lolos.
+ * `coverage_frac`/`coverage_min_frac` adalah FRAKSI 0..1, bukan persen.
+ */
+export interface CollateralWeightAssessment {
+  category_code: string;
+  enabled: boolean;
+  allowed: boolean;
+  failures: string[];
+  coverage_frac: string;
+  coverage_min_frac: string;
+  eligible_value: string;
+  total_value: string;
+  shadow_started_at?: string;
+  shadow_months_elapsed: number;
+  shadow_months_required: number;
+}
+
+/** Balasan PENGAJUAN aktivasi (202) sebelum disetujui pemeriksa lain. */
+export interface CollateralWeightActivationPending {
+  request_id: string;
+  status: string;
+  category_code: string;
+}
+
 /** domain.SystemBusinessDate (system_date.go) */
 export interface SystemBusinessDate {
   current_date: string;

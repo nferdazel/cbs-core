@@ -11,9 +11,11 @@ import (
 )
 
 // setLimitConfig menyetel satu kunci limit.* di database sungguhan dan membuang cache
-// konfigurasi agar perubahan langsung berlaku.
+// konfigurasi agar perubahan langsung berlaku. Nilai lama dipulihkan lewat t.Cleanup
+// saat pertama kunci disentuh.
 func setLimitConfig(t *testing.T, e *moneyEnv, key, value string) {
 	t.Helper()
+	e.simpanPulihkanConfigKunci(t, key)
 	if _, err := e.db.ExecContext(e.ctx, `
 		INSERT INTO system_config (key, value, description)
 		VALUES ($1, $2, 'uji integrasi batas transaksi')

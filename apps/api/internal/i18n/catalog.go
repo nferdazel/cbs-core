@@ -243,6 +243,22 @@ const (
 	MsgCollateralWeightAssessment         Code = "collateral_weight_assessment"
 	MsgCollateralWeightActivated          Code = "collateral_weight_activated"
 	MsgEODInProgress                      Code = "eod_in_progress"
+	MsgProductAmountAboveMax              Code = "product_amount_above_max"
+	MsgProductTermOutOfRange              Code = "product_term_out_of_range"
+	MsgDisbursementAccountNotFound        Code = "disbursement_account_not_found"
+	MsgDisbursementAccountNotOwned        Code = "disbursement_account_not_owned"
+	MsgLoanAccountCOAMissing              Code = "loan_account_coa_missing"
+	MsgLoanNotActive                      Code = "loan_not_active"
+	MsgInstallmentNotFound                Code = "installment_not_found"
+	MsgInstallmentAlreadyPaid             Code = "installment_already_paid"
+	MsgDisbursementCancelReasonRequired   Code = "disbursement_cancel_reason_required"
+	MsgLoanCorrectionReasonRequired       Code = "loan_correction_reason_required"
+	MsgRestructureOnlyActiveLoan          Code = "restructure_only_active_loan"
+	MsgRestructureNewTermPositive         Code = "restructure_new_term_positive"
+	MsgRecoveryAmountPositive             Code = "recovery_amount_positive"
+	MsgCustomerNameRequired               Code = "customer_name_required"
+	MsgSameAccountTransfer                Code = "same_account_transfer"
+	MsgAccountNumberTaken                 Code = "account_number_taken"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -479,6 +495,22 @@ var codeList = []Code{
 	MsgCollateralWeightAssessment,
 	MsgCollateralWeightActivated,
 	MsgEODInProgress,
+	MsgProductAmountAboveMax,
+	MsgProductTermOutOfRange,
+	MsgDisbursementAccountNotFound,
+	MsgDisbursementAccountNotOwned,
+	MsgLoanAccountCOAMissing,
+	MsgLoanNotActive,
+	MsgInstallmentNotFound,
+	MsgInstallmentAlreadyPaid,
+	MsgDisbursementCancelReasonRequired,
+	MsgLoanCorrectionReasonRequired,
+	MsgRestructureOnlyActiveLoan,
+	MsgRestructureNewTermPositive,
+	MsgRecoveryAmountPositive,
+	MsgCustomerNameRequired,
+	MsgSameAccountTransfer,
+	MsgAccountNumberTaken,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1406,5 +1438,69 @@ var catalog = map[Code]map[Lang]string{
 	MsgEODInProgress: {
 		ID: "tutup hari sedang berjalan; tunggu sampai selesai",
 		EN: "end of day is in progress; wait until it finishes",
+	},
+	MsgProductAmountAboveMax: {
+		ID: "nominal di atas maksimum produk",
+		EN: "amount is above the product maximum",
+	},
+	MsgProductTermOutOfRange: {
+		ID: "jangka waktu di luar rentang produk",
+		EN: "tenor is outside the product range",
+	},
+	MsgDisbursementAccountNotFound: {
+		ID: "rekening pencairan tidak ditemukan",
+		EN: "disbursement account not found",
+	},
+	MsgDisbursementAccountNotOwned: {
+		ID: "rekening pencairan bukan milik nasabah yang mengajukan",
+		EN: "the disbursement account does not belong to the applying customer",
+	},
+	MsgLoanAccountCOAMissing: {
+		ID: "rekening nasabah tidak punya kode COA; jurnal tidak dapat dipetakan",
+		EN: "the customer account has no COA code; the journal entry cannot be mapped",
+	},
+	MsgLoanNotActive: {
+		ID: "kredit tidak dalam status aktif",
+		EN: "the loan is not in active status",
+	},
+	MsgInstallmentNotFound: {
+		ID: "jadwal angsuran tidak ditemukan",
+		EN: "installment schedule not found",
+	},
+	MsgInstallmentAlreadyPaid: {
+		ID: "angsuran ini sudah dibayar penuh",
+		EN: "this installment has already been paid in full",
+	},
+	MsgDisbursementCancelReasonRequired: {
+		ID: "alasan pembatalan pencairan wajib diisi",
+		EN: "a reason for cancelling the disbursement is required",
+	},
+	MsgLoanCorrectionReasonRequired: {
+		ID: "alasan koreksi nominal wajib diisi",
+		EN: "a reason for the amount correction is required",
+	},
+	MsgRestructureOnlyActiveLoan: {
+		ID: "hanya kredit aktif yang dapat direstrukturisasi",
+		EN: "only active loans can be restructured",
+	},
+	MsgRestructureNewTermPositive: {
+		ID: "jangka waktu baru harus positif",
+		EN: "the new tenor must be positive",
+	},
+	MsgRecoveryAmountPositive: {
+		ID: "nominal recovery harus positif",
+		EN: "the recovery amount must be positive",
+	},
+	MsgCustomerNameRequired: {
+		ID: "nama lengkap wajib diisi",
+		EN: "full name is required",
+	},
+	MsgSameAccountTransfer: {
+		ID: "rekening asal dan tujuan tidak boleh sama",
+		EN: "the source and destination accounts must not be the same",
+	},
+	MsgAccountNumberTaken: {
+		ID: "nomor rekening sudah terpakai, silakan coba lagi",
+		EN: "the account number is already taken; please try again",
 	},
 }

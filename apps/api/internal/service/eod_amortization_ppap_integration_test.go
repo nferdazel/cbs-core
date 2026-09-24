@@ -59,7 +59,6 @@ func eodStepIndex(t *testing.T, summary *domain.EODSummaryResult, name string) i
 func TestIntegrasiEODAmortisasiSebelumPPAP(t *testing.T) {
 	e := newMoneyEnv(t)
 	setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "true")
-	t.Cleanup(func() { setRestructureLossConfig(t, e, "loan.restructure.loss.enabled", "false") })
 	// Agunan mati agar eksposur sama dengan nilai tercatat, sehingga selisih akibat
 	// urutan amortisasi tidak tercampur pengurang agunan.
 	setRestructureLossConfig(t, e, "ppap.collateral.enabled", "false")
@@ -234,11 +233,6 @@ func TestIntegrasiCKPNModeBayanganTidakMenjurnal(t *testing.T) {
 	setRestructureLossConfig(t, e, "ppap.collateral.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.enabled", "false")
 	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "true")
-	// Kembalikan saklar ke bawaan produksi agar uji integrasi lain tidak terpengaruh.
-	t.Cleanup(func() {
-		setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
-		setCKPNConfig(t, e, "ckpn.enabled", "false")
-	})
 	// Semua PD + LGD diisi agar CKPN dapat dihitung, bukan dilaporkan sebagai gap.
 	setCKPNConfig(t, e, "ckpn.pd_frac.gol_1", "0.005")
 	setCKPNConfig(t, e, "ckpn.pd_frac.gol_2", "0.05")
@@ -308,10 +302,6 @@ func TestIntegrasiEODCKPNMenyalaMenjurnalPortofolioCampuran(t *testing.T) {
 	setCKPNConfig(t, e, "ckpn.coa.reserve", "10950")
 	setCKPNConfig(t, e, "ckpn.coa.expense.syariah", "15901")
 	setCKPNConfig(t, e, "ckpn.coa.reserve.syariah", "11950")
-	t.Cleanup(func() {
-		setCKPNConfig(t, e, "ckpn.enabled", "false")
-		setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
-	})
 
 	branchCode := ckpnTestBranchCode("E")
 	branchID := e.ensureBranch(t, branchCode, "Cabang Uji EOD CKPN")
