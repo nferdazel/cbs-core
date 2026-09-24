@@ -304,6 +304,8 @@ const (
 
 	// Validasi penagihan/collection mobile.
 	MsgCKPNIndividualDisposalCostSaved Code = "ckpn_individual_disposal_cost_saved"
+	MsgCKPNIndividualScan              Code = "ckpn_individual_scan"
+	MsgCKPNIndividualEntryMarked       Code = "ckpn_individual_entry_marked"
 	MsgCollectionTypeUnknown           Code = "collection_type_unknown"
 	MsgCollectionLoanRefs              Code = "collection_loan_refs_required"
 )
@@ -590,6 +592,8 @@ var codeList = []Code{
 	MsgLimitConfigMissing,
 	MsgLimitConfigInvalid,
 	MsgCKPNIndividualDisposalCostSaved,
+	MsgCKPNIndividualScan,
+	MsgCKPNIndividualEntryMarked,
 	MsgCollectionTypeUnknown,
 	MsgCollectionLoanRefs,
 }
@@ -1714,6 +1718,14 @@ var catalog = map[Code]map[Lang]string{
 	MsgCKPNIndividualDisposalCostSaved: {
 		ID: "biaya pelepasan agunan tersimpan",
 		EN: "collateral disposal cost saved",
+	},
+	MsgCKPNIndividualScan: {
+		ID: "hasil pemindaian pintu masuk CKPN individual (usulan, belum menandai kredit)",
+		EN: "individual CKPN entry scan result (proposal, loans not yet marked)",
+	},
+	MsgCKPNIndividualEntryMarked: {
+		ID: "keputusan pintu masuk CKPN individual tercatat; required_ckpn tidak berubah",
+		EN: "individual CKPN entry decision recorded; required_ckpn unchanged",
 	},
 	MsgCollectionTypeUnknown: {
 		ID: "jenis penagihan tidak dikenal",

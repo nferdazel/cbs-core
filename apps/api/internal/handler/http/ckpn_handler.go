@@ -118,6 +118,10 @@ func (h *CKPNHandler) RegisterRoutes(r chi.Router) {
 		// approve kredit.
 		if h.Individual != nil {
 			r.With(middleware.RequirePermission(domain.PermLoansRead)).
+				Get("/individual/scan", h.IndividualScan)
+			r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+				Post("/individual/{loanNumber}/entry", h.MarkIndividualEntry)
+			r.With(middleware.RequirePermission(domain.PermLoansRead)).
 				Get("/individual/{loanNumber}/assessment", h.IndividualAssessment)
 			r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 				Put("/individual/{loanNumber}/projections", h.ReplaceIndividualProjections)

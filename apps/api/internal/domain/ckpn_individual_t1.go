@@ -201,6 +201,15 @@ type CKPNIndividualRepository interface {
 	// ReplaceCashflowProjections mengganti seluruh proyeksi kredit pada tanggal asOf
 	// dalam satu transaksi, sehingga tidak ada campuran versi lama dan baru.
 	ReplaceCashflowProjections(ctx context.Context, loanID uuid.UUID, asOf time.Time, projs []CKPNCashflowProjection, createdBy string) error
+
+	// T3: pintu masuk jalur individual.
+	// ListEntryScanCandidates membaca kredit aktif yang boleh diakses aktor untuk
+	// pemindaian pintu masuk, terurut sisa pokok terbesar dahulu.
+	ListEntryScanCandidates(ctx context.Context, actor Actor) ([]CKPNIndividualScanRow, error)
+	// MarkEntry menandai keputusan pintu masuk pada satu kredit; required_ckpn tidak
+	// disentuh. RecordAssessmentTrail menulis jejak audit penilaian.
+	MarkEntry(ctx context.Context, loanID uuid.UUID, method CKPNIndividualMethod, significant, objectiveEvidence bool, updatedBy string) error
+	RecordAssessmentTrail(ctx context.Context, loanID uuid.UUID, asOf time.Time, method CKPNIndividualMethod, carrying, pv, nrv, target decimal.Decimal, basis, decidedBy string) error
 }
 
 // CKPNIndividualService adalah T1: menilai satu kredit dengan DCF memakai proyeksi
@@ -213,4 +222,14 @@ type CKPNIndividualService interface {
 	// SetDisposalCost menyimpan estimasi biaya pelepasan satu agunan milik kredit
 	// (T2). Nilai nol sah; nil berarti belum diisi (NRV tanpa pengurangan).
 	SetDisposalCost(ctx context.Context, loanNumber string, collateralID uuid.UUID, cost *decimal.Decimal, actor Actor) error
+
+	// T3: ScanEntries memindai portofolio yang boleh diakses aktor dan melaporkan
+	// kredit yang memenuhi jalur individual beserta alasannya (usulan, bukan
+	// penandaan). MarkLoanEntry mencatat keputusan pengelola pada satu kredit dan
+	// menulis jejak auditnya; required_ckpn tidak pernah disentuh.
+	ScanEntries(ctx context.Context, actor Actor) (CKPNIndividualScanResult, error)
+	MarkLoanEntry(ctx context.Context, loanNumber string, method CKPNIndividualMethod, significant, objectiveEvidence, excludedAsetBaik bool, actor Actor) (CKPNIndividualEntry, error)
 }
+
+// CKPNIndividualScanResult dipakai lintas lapisan (repo → service → handler); didefinisikan
+// ulang sebagai alias agar deklarasi di ckpn_individual_t3.go tetap sumber kebenaran.

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -178,3 +179,88 @@ func ckpnMandatoryTrigger(loan *domain.Loan, policy domain.CKPNIndividualPolicy)
 }
 
 var _ domain.CKPNIndividualService = (*ckpnIndividualService)(nil)
+
+// ScanEntries memindai portofolio yang boleh diakses aktor (T3) dan melaporkan kredit
+// yang memenuhi jalur individual beserta seluruh alasannya. Hasilnya USULAN: tidak ada
+// penandaan yang berubah oleh pemindaian. Kredit aset baik yang dikeluarkan bank
+// dilaporkan terpisah agar keputusan itu tetap terdokumentasi.
+func (s *ckpnIndividualService) ScanEntries(ctx context.Context, actor domain.Actor) (domain.CKPNIndividualScanResult, error) {
+	policy := ckpnIndividualPolicy(ctx, s.config)
+	rows, err := s.repo.ListEntryScanCandidates(ctx, actor)
+	if err != nil {
+		return domain.CKPNIndividualScanResult{}, err
+	}
+	// Kredit yang sudah ditandai pengecualian (ckpn_method EXCLUDED_ASET_BAIK) sudah
+	// terbawa pada baris pemindaian dan dilaporkan sebagai pengecualian.
+	return domain.ScanIndividualEntries(rows, nil, policy), nil
+}
+
+// MarkLoanEntry mencatat keputusan pintu masuk pengelola untuk satu kredit (T3):
+// metode individual, penanda signifikansi, penanda bukti objektif, atau penanda
+// pengecualian aset baik. required_ckpn TIDAK disentuh (itu wewenang langkah CKPN EOD),
+// dan keputusan ditulis ke jejak audit agar dapat dinilai ulang.
+func (s *ckpnIndividualService) MarkLoanEntry(ctx context.Context, loanNumber string, method domain.CKPNIndividualMethod, significant, objectiveEvidence, excludedAsetBaik bool, actor domain.Actor) (domain.CKPNIndividualEntry, error) {
+	if excludedAsetBaik {
+		// Penandaan pengecualian memakai metode khusus; argumen lain diabaikan agar
+		// keadaan tersimpan tidak ambigu.
+		method = domain.CKPNIndividualMethodExcludedAsetBaik
+		significant, objectiveEvidence = false, false
+	} else if !method.Valid() || method == domain.CKPNIndividualMethodExcludedAsetBaik {
+		return domain.CKPNIndividualEntry{}, fmt.Errorf("%w: metode %q tidak sah untuk penandaan individual", domain.ErrCKPNParameterInvalid, method)
+	}
+	loan, err := s.loadScopedLoan(ctx, loanNumber, actor)
+	if err != nil {
+		return domain.CKPNIndividualEntry{}, err
+	}
+	policy := ckpnIndividualPolicy(ctx, s.config)
+
+	// Sinyal agunan dibaca dari data, bukan diasumsikan: saran metode menentukan
+	// apakah pengelola diberi pilihan MAX atau hanya DCF.
+	cols, err := s.repo.ListActiveCollaterals(ctx, loan.ID)
+	if err != nil {
+		return domain.CKPNIndividualEntry{}, err
+	}
+
+	// Keputusan pengelola ditinjau ulang terhadap kebijakan: penanda WAJIB mencerminkan
+	// keadaan kredit sekarang, bukan klaim yang tidak diverifikasi. Bukti objektif
+	// adalah penanda manual pengelola; pemicu otomatis dihitung ulang di sini agar
+	// jejak audit menyebut alasan yang benar.
+	check := domain.CKPNIndividualEntryCheck{
+		Outstanding:       loan.OutstandingPrincipal,
+		Collectibility:    loan.Collectibility,
+		DPD:               loan.DPD,
+		IsRestructured:    loan.IsRestructured,
+		HasCollateral:     len(cols) > 0,
+		ObjectiveEvidence: objectiveEvidence,
+		ExcludedAsetBaik:  excludedAsetBaik,
+	}
+	entry := domain.EvaluateCKPNIndividualEntry(check, policy)
+	if !excludedAsetBaik {
+		entry.SuggestedMethod = method // keputusan pengelola menimpa saran.
+		if !entry.Individual && !significant {
+			return domain.CKPNIndividualEntry{}, fmt.Errorf("%w: kredit %s tidak memenuhi pemicu wajib maupun signifikansi; gunakan penanda pengecualian aset baik bila memang tidak dinilai individual", domain.ErrCKPNParameterInvalid, loanNumber)
+		}
+	}
+
+	updatedBy := actor.Username
+	if updatedBy == "" {
+		updatedBy = actor.UserID.String()
+	}
+	if err := s.repo.MarkEntry(ctx, loan.ID, method, significant, objectiveEvidence, updatedBy); err != nil {
+		return domain.CKPNIndividualEntry{}, err
+	}
+	basis, _ := json.Marshal(map[string]any{
+		"keputusan":              "pintu_masuk_t3",
+		"metode":                 string(method),
+		"signifikan":             significant,
+		"bukti_objektif":         objectiveEvidence,
+		"pengecualian_aset_baik": excludedAsetBaik,
+		"pemicu":                 entry.Triggers,
+		"sisa_pokok":             loan.OutstandingPrincipal,
+	})
+	if err := s.repo.RecordAssessmentTrail(ctx, loan.ID, time.Now().UTC(), method,
+		loan.OutstandingPrincipal, decimal.Zero, decimal.Zero, decimal.Zero, string(basis), updatedBy); err != nil {
+		return domain.CKPNIndividualEntry{}, err
+	}
+	return entry, nil
+}

@@ -123,3 +123,56 @@ func (h *CKPNHandler) SetIndividualDisposalCost(w http.ResponseWriter, r *http.R
 		"collateral_id": collateralID,
 	})
 }
+
+// CKPNIndividualEntryMarkRequest adalah payload penandaan pintu masuk individual (T3).
+type CKPNIndividualEntryMarkRequest struct {
+	Method            string `json:"method"`
+	Significant       bool   `json:"significant"`
+	ObjectiveEvidence bool   `json:"objective_evidence"`
+	ExcludedAsetBaik  bool   `json:"excluded_aset_baik"`
+}
+
+// IndividualScan handles GET /api/v1/ckpn/individual/scan. Baca-saja: melaporkan
+// kredit yang memenuhi jalur individual beserta alasannya (usulan, bukan penandaan).
+func (h *CKPNHandler) IndividualScan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	res, err := h.Individual.ScanEntries(r.Context(),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		h.failIndividual(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgCKPNIndividualScan, res)
+}
+
+// MarkIndividualEntry handles POST /api/v1/ckpn/individual/{loanNumber}/entry: mencatat
+// keputusan pengelola atas pintu masuk individual satu kredit. required_ckpn tidak
+// disentuh; seluruhnya bayangan sampai tahap T4.
+func (h *CKPNHandler) MarkIndividualEntry(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var req CKPNIndividualEntryMarkRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	loanNumber := chi.URLParam(r, "loanNumber")
+	entry, err := h.Individual.MarkLoanEntry(r.Context(), loanNumber,
+		domain.CKPNIndividualMethod(req.Method), req.Significant, req.ObjectiveEvidence,
+		req.ExcludedAsetBaik,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		h.failIndividual(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgCKPNIndividualEntryMarked, entry)
+}

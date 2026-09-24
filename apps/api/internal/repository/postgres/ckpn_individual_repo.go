@@ -124,3 +124,82 @@ func (r *CKPNIndividualRepository) SetDisposalCost(ctx context.Context, collater
 	}
 	return nil
 }
+
+// ListEntryScanCandidates membaca kredit AKTIF untuk pemindaian pintu masuk individual
+// (T3), terurut sisa pokok terbesar dahulu sehingga peringkat eksposur dapat dihitung
+// pemanggil. Hanya kolom yang dibutuhkan penilaian pintu masuk yang dibaca.
+func (r *CKPNIndividualRepository) ListEntryScanCandidates(ctx context.Context, actor domain.Actor) ([]domain.CKPNIndividualScanRow, error) {
+	where, args := branchReadClause("loans.branch_id", actor)
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = loans.product_id)"
+	if clause, cargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		args = append(args, cargs...)
+		where = andCondition(where, clause)
+	}
+	query := `
+		SELECT loans.id, loans.loan_number, COALESCE(b.code, ''),
+		       loans.outstanding_principal, loans.collectibility::text, loans.dpd,
+		       loans.is_restructured, loans.ckpn_objective_evidence, loans.ckpn_method,
+		       EXISTS (SELECT 1 FROM loan_collaterals lc
+		               WHERE lc.loan_id = loans.id AND lc.status = 'ACTIVE')
+		FROM loans
+		LEFT JOIN branches b ON b.id = loans.branch_id`
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += " ORDER BY loans.outstanding_principal DESC"
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("membaca kandidat pintu masuk CKPN individual: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []domain.CKPNIndividualScanRow{}
+	for rows.Next() {
+		var row domain.CKPNIndividualScanRow
+		var kol string
+		if err := rows.Scan(&row.LoanID, &row.LoanNumber, &row.BranchCode,
+			&row.Outstanding, &kol, &row.DPD, &row.IsRestructured,
+			&row.ObjectiveEvidence, &row.Method, &row.HasCollateral); err != nil {
+			return nil, fmt.Errorf("memindai kandidat CKPN individual: %w", err)
+		}
+		row.Collectibility = domain.OJKCollectibility(kol)
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// MarkEntry menandai hasil keputusan pintu masuk pada satu kredit (T3): metode,
+// penanda signifikansi, dan penanda bukti objektif. required_ckpn TIDAK disentuh.
+// updated_by dicatat untuk jejak siapa yang memutuskan.
+func (r *CKPNIndividualRepository) MarkEntry(ctx context.Context, loanID uuid.UUID, method domain.CKPNIndividualMethod, significant, objectiveEvidence bool, updatedBy string) error {
+	if !method.Valid() {
+		return fmt.Errorf("metode CKPN individual %q tidak dikenal", method)
+	}
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE loans
+		SET ckpn_method = $2, ckpn_significant = $3, ckpn_objective_evidence = $4
+		WHERE id = $1`, loanID, string(method), significant, objectiveEvidence)
+	if err != nil {
+		return fmt.Errorf("menandai pintu masuk CKPN individual: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("kredit %s tidak ditemukan", loanID)
+	}
+	_ = updatedBy // kolom updated_by tidak ada pada loans; jejak memakai tabel assessment.
+	return nil
+}
+
+// RecordAssessmentTrail menulis jejak audit keputusan pintu masuk/perhitungan ke
+// loan_ckpn_individual_assessments (tabel T0). Tidak menyentuh required_ckpn.
+func (r *CKPNIndividualRepository) RecordAssessmentTrail(ctx context.Context, loanID uuid.UUID, asOf time.Time, method domain.CKPNIndividualMethod, carrying, pv, nrv, target decimal.Decimal, basis string, decidedBy string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO loan_ckpn_individual_assessments
+			(loan_id, as_of, method, carrying_amount, present_value, collateral_nrv,
+			 target, basis, decided_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, '')::jsonb, NULLIF($9, ''))`,
+		loanID, asOf.UTC(), string(method), carrying, pv, nrv, target, basis, decidedBy)
+	if err != nil {
+		return fmt.Errorf("menulis jejak penilaian CKPN individual: %w", err)
+	}
+	return nil
+}

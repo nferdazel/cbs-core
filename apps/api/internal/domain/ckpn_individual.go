@@ -29,7 +29,8 @@ const (
 // sebagai MAX diam-diam: metode menentukan angka cadangan.
 func (m CKPNIndividualMethod) Valid() bool {
 	switch m {
-	case CKPNIndividualMethodDCF, CKPNIndividualMethodCollateral, CKPNIndividualMethodMax:
+	case CKPNIndividualMethodDCF, CKPNIndividualMethodCollateral, CKPNIndividualMethodMax,
+		CKPNIndividualMethodExcludedAsetBaik:
 		return true
 	}
 	return false
