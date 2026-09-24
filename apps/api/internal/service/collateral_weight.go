@@ -168,6 +168,13 @@ func (s *collateralWeightService) Assess(
 	return domain.EvaluateCollateralWeightActivation(req), nil
 }
 
+// ListCategories menyajikan daftar kategori bobot agunan dari basis data. Tampilan
+// memakainya agar daftar kategori tidak disalin ke kode klien: bila kategori bertambah
+// (kebijakan bank/regulasi), klien ikut menyesuaikan tanpa rilis ulang. Baca-saja.
+func (s *collateralWeightService) ListCategories(ctx context.Context) ([]domain.CollateralWeightCategory, error) {
+	return s.repo.ListCategories(ctx)
+}
+
 // ExecuteApproved menjalankan gerbang aktivasi saat pengajuan maker-checker disetujui,
 // di dalam transaksi milik maker-checker service sehingga keputusan dan efeknya commit
 // bersama. Identitas diambil dari sumber terautentikasi: pembuat dari payload yang

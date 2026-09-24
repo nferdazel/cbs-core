@@ -48,7 +48,12 @@ var ErrCollateralWeightActivationRejected = NewLocalizedError("collateral_weight
 // CollateralWeightCategory adalah satu baris kategori pada
 // collateral_lampiran_ii_weights beserta penanda persetujuannya.
 type CollateralWeightCategory struct {
-	CategoryCode       string
+	CategoryCode string
+	// Label adalah nama kategori sebagaimana tertulis pada tabel
+	// collateral_lampiran_ii_weights (butir Lampiran II). Dibaca dari basis data, BUKAN
+	// dari daftar di kode klien: bila bank/regulasi menambah kategori, tampilan ikut
+	// menyesuaikan tanpa rilis ulang.
+	Label              string
 	LampiranIIItem     int
 	OfficialWeightFrac decimal.Decimal
 	AppliedWeightFrac  decimal.Decimal
@@ -166,6 +171,9 @@ type CollateralWeightActivationApproval struct {
 type CollateralWeightService interface {
 	MakerCheckerExecutor
 	Assess(ctx context.Context, categoryCode string, approval CollateralWeightActivationApproval, actor Actor) (CollateralWeightActivationResult, error)
+	// ListCategories menyajikan daftar kategori dari basis data untuk tampilan.
+	// Baca-saja: tidak menilai syarat dan tidak mengubah apa pun.
+	ListCategories(ctx context.Context) ([]CollateralWeightCategory, error)
 }
 
 // EvaluateCollateralWeightActivation menjalankan seluruh syarat C1-C9 dan gerbang
@@ -344,6 +352,10 @@ func AppraisalExpiredFor(appraisalDate time.Time, validUntil *time.Time, asOf ti
 // kredit. Aktivasi HANYA boleh lewat EnableCategory setelah gerbang lolos.
 type CollateralWeightRepository interface {
 	GetCategory(ctx context.Context, categoryCode string) (*CollateralWeightCategory, error)
+	// ListCategories mengembalikan seluruh kategori beserta label dan status aktifnya,
+	// terurut menurut butir Lampiran II. Dipakai tampilan agar daftar kategori tidak
+	// disalin ke kode klien.
+	ListCategories(ctx context.Context) ([]CollateralWeightCategory, error)
 	// ListActiveCollateralsWithExposure mengembalikan seluruh agunan AKTIF beserta sisa
 	// pokok kreditnya. Penyaringan kategori dilakukan gerbang, bukan query, agar
 	// cakupan dapat dihitung atas nilai agunan seluruh kategori.

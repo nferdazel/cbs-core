@@ -242,23 +242,26 @@ const (
 	MsgCollateralWeightActivationRejected Code = "collateral_weight_activation_rejected"
 	MsgCollateralWeightAssessment         Code = "collateral_weight_assessment"
 	MsgCollateralWeightActivated          Code = "collateral_weight_activated"
-	MsgEODInProgress                      Code = "eod_in_progress"
-	MsgProductAmountAboveMax              Code = "product_amount_above_max"
-	MsgProductTermOutOfRange              Code = "product_term_out_of_range"
-	MsgDisbursementAccountNotFound        Code = "disbursement_account_not_found"
-	MsgDisbursementAccountNotOwned        Code = "disbursement_account_not_owned"
-	MsgLoanAccountCOAMissing              Code = "loan_account_coa_missing"
-	MsgLoanNotActive                      Code = "loan_not_active"
-	MsgInstallmentNotFound                Code = "installment_not_found"
-	MsgInstallmentAlreadyPaid             Code = "installment_already_paid"
-	MsgDisbursementCancelReasonRequired   Code = "disbursement_cancel_reason_required"
-	MsgLoanCorrectionReasonRequired       Code = "loan_correction_reason_required"
-	MsgRestructureOnlyActiveLoan          Code = "restructure_only_active_loan"
-	MsgRestructureNewTermPositive         Code = "restructure_new_term_positive"
-	MsgRecoveryAmountPositive             Code = "recovery_amount_positive"
-	MsgCustomerNameRequired               Code = "customer_name_required"
-	MsgSameAccountTransfer                Code = "same_account_transfer"
-	MsgAccountNumberTaken                 Code = "account_number_taken"
+	// MsgCollateralWeightCategories menyertai daftar kategori bobot agunan yang dibaca
+	// dari basis data (bukan dari daftar di kode klien).
+	MsgCollateralWeightCategories       Code = "collateral_weight_categories"
+	MsgEODInProgress                    Code = "eod_in_progress"
+	MsgProductAmountAboveMax            Code = "product_amount_above_max"
+	MsgProductTermOutOfRange            Code = "product_term_out_of_range"
+	MsgDisbursementAccountNotFound      Code = "disbursement_account_not_found"
+	MsgDisbursementAccountNotOwned      Code = "disbursement_account_not_owned"
+	MsgLoanAccountCOAMissing            Code = "loan_account_coa_missing"
+	MsgLoanNotActive                    Code = "loan_not_active"
+	MsgInstallmentNotFound              Code = "installment_not_found"
+	MsgInstallmentAlreadyPaid           Code = "installment_already_paid"
+	MsgDisbursementCancelReasonRequired Code = "disbursement_cancel_reason_required"
+	MsgLoanCorrectionReasonRequired     Code = "loan_correction_reason_required"
+	MsgRestructureOnlyActiveLoan        Code = "restructure_only_active_loan"
+	MsgRestructureNewTermPositive       Code = "restructure_new_term_positive"
+	MsgRecoveryAmountPositive           Code = "recovery_amount_positive"
+	MsgCustomerNameRequired             Code = "customer_name_required"
+	MsgSameAccountTransfer              Code = "same_account_transfer"
+	MsgAccountNumberTaken               Code = "account_number_taken"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -494,6 +497,7 @@ var codeList = []Code{
 	MsgCollateralWeightActivationRejected,
 	MsgCollateralWeightAssessment,
 	MsgCollateralWeightActivated,
+	MsgCollateralWeightCategories,
 	MsgEODInProgress,
 	MsgProductAmountAboveMax,
 	MsgProductTermOutOfRange,
@@ -1434,6 +1438,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgCollateralWeightActivated: {
 		ID: "kategori bobot agunan diaktifkan",
 		EN: "collateral weight category activated",
+	},
+	MsgCollateralWeightCategories: {
+		ID: "daftar kategori bobot agunan",
+		EN: "collateral weight category list",
 	},
 	MsgEODInProgress: {
 		ID: "tutup hari sedang berjalan; tunggu sampai selesai",

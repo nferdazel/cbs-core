@@ -87,6 +87,35 @@ func (r *CollateralWeightRepository) GetCategory(ctx context.Context, categoryCo
 	return &c, nil
 }
 
+// ListCategories mengembalikan seluruh kategori bobot agunan dari tabel, terurut
+// menurut butir Lampiran II, sehingga tampilan tidak perlu menyalin daftarnya. Hanya
+// kolom yang aman ditampilkan pengguna yang dibaca; bukti aktivasi (C8/C9) tidak ikut.
+func (r *CollateralWeightRepository) ListCategories(ctx context.Context) ([]domain.CollateralWeightCategory, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT category_code, label, lampiran_ii_item,
+		       official_weight_frac, applied_weight_frac, enabled
+		FROM collateral_lampiran_ii_weights
+		ORDER BY lampiran_ii_item, category_code`)
+	if err != nil {
+		return nil, fmt.Errorf("membaca daftar kategori bobot agunan: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]domain.CollateralWeightCategory, 0)
+	for rows.Next() {
+		var c domain.CollateralWeightCategory
+		if err := rows.Scan(&c.CategoryCode, &c.Label, &c.LampiranIIItem,
+			&c.OfficialWeightFrac, &c.AppliedWeightFrac, &c.Enabled); err != nil {
+			return nil, fmt.Errorf("memindai kategori bobot agunan: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("menelusuri kategori bobot agunan: %w", err)
+	}
+	return out, nil
+}
+
 // ListActiveCollateralsWithExposure mengembalikan seluruh agunan AKTIF beserta sisa
 // pokok kreditnya. Hanya ACTIVE yang dihitung: agunan lepas/eksekusi tidak menjamin
 // apa pun. Eksposur dipakai gerbang C6.

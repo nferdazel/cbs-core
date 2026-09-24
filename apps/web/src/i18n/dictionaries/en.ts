@@ -1199,6 +1199,9 @@ export const dictionaryEN: Dictionary = {
       "This category is active: the official Lampiran II weight is used in the calculation.",
     category: "Collateral category",
     categoryPlaceholder: "Select a collateral category",
+    noCategoriesTitle: "Category list unavailable",
+    noCategoriesBody:
+      "The system found no collateral weight categories in the data. Contact your system administrator: the gate cannot be assessed until categories exist.",
     promptSelect:
       "Select a collateral category to assess conditions C1 through C9.",
     loadError: "Failed to assess the collateral weight gate.",
@@ -1258,16 +1261,5 @@ export const dictionaryEN: Dictionary = {
       "Your role can only assess. Requesting activation requires the system settings permission.",
     statusActive: "Active",
     statusNotActive: "Not active",
-    categories: {
-      EMAS_PERHIASAN: "Gold jewellery",
-      TANAH_BANGUNAN_HAK_TANGGUNGAN: "Land/building with mortgage right",
-      TANAH_BANGUNAN_FIDUSIA: "Land/building with fiduciary transfer",
-      TANAH_BANGUNAN_TANPA_BEBAN: "Land/building without encumbrance",
-      KENDARAAN_HIPOTEK: "Vehicle with hypothec",
-      KENDARAAN_FIDUSIA: "Vehicle with fiduciary transfer",
-      UMK: "Micro and small enterprise (UMK)",
-      LAINNYA: "Other receivables",
-      JATUH_TEMPO_MACET: "Overdue or non-performing",
-    },
   },
 };

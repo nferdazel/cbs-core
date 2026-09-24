@@ -351,3 +351,85 @@ func cwEnabled(t *testing.T, e *moneyEnv, kode string) bool {
 	}
 	return enabled
 }
+
+// Daftar kategori dibaca dari TABEL, bukan dari konstanta di kode klien. Uji ini
+// membuktikan: (1) rute daftar tidak tertangkap rute ber-{categoryCode}, (2) seluruh
+// baris tabel ikut terkirim beserta labelnya sehingga kategori baru langsung tampil
+// tanpa rilis ulang klien, dan (3) kategori yang baru disisipkan muncul pada respons.
+func TestIntegrasiDaftarKategoriBobotDariTabel(t *testing.T) {
+	e := newMoneyEnv(t)
+	jalankanMigrasiPanelT0(t, e)
+
+	const kategoriBaru = "UJI_DAFTAR_KATEGORI_BARU"
+	const labelBaru = "kategori baru dari tabel"
+	if _, err := e.db.ExecContext(e.ctx, `
+		INSERT INTO collateral_lampiran_ii_weights
+			(category_code, lampiran_ii_item, label, official_weight_frac,
+			 applied_weight_frac, enabled, notes)
+		VALUES ($1, 99, $2, 0.50000, 1.00000, FALSE, 'uji daftar')
+		ON CONFLICT (category_code) DO UPDATE SET label = EXCLUDED.label`,
+		kategoriBaru, labelBaru); err != nil {
+		t.Fatalf("menyisipkan kategori uji daftar: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = e.db.ExecContext(e.ctx, `DELETE FROM collateral_lampiran_ii_weights WHERE category_code = $1`, kategoriBaru)
+	})
+
+	repo := postgres.NewCollateralWeightRepository(e.db)
+	auditRepo := postgres.NewAuditRepository(e.db)
+	svc := service.NewCollateralWeightService(repo, e.configSvc, auditRepo)
+	router := chi.NewRouter()
+	httpHandler.NewCollateralWeightHandler(svc, nil).RegisterRoutes(router)
+
+	auditor := &domain.JWTClaims{UserID: uuid.New(), Username: "auditor.daftar", Role: domain.RoleAuditor}
+	rec := cwRequest(t, router, auditor, http.MethodGet, "/collateral/weights", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("daftar kategori = %d, mau 200 (%s)", rec.Code, rec.Body.String())
+	}
+
+	var env struct {
+		Data []struct {
+			CategoryCode   string `json:"category_code"`
+			Label          string `json:"label"`
+			LampiranIIItem int    `json:"lampiran_ii_item"`
+			Enabled        bool   `json:"enabled"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("mengurai daftar kategori: %v (%s)", err, rec.Body.String())
+	}
+
+	// Jumlah harus sama dengan isi tabel: daftar tidak boleh disaring di kode.
+	var mauJumlah int
+	if err := e.db.QueryRowContext(e.ctx, `SELECT count(*) FROM collateral_lampiran_ii_weights`).Scan(&mauJumlah); err != nil {
+		t.Fatalf("menghitung kategori tabel: %v", err)
+	}
+	if len(env.Data) != mauJumlah {
+		t.Fatalf("daftar memuat %d kategori, tabel memuat %d", len(env.Data), mauJumlah)
+	}
+
+	var ketemu bool
+	for _, k := range env.Data {
+		if k.CategoryCode == kategoriBaru {
+			ketemu = true
+			if k.Label != labelBaru {
+				t.Fatalf("label kategori baru %q, mau %q", k.Label, labelBaru)
+			}
+			if k.Enabled {
+				t.Fatal("kategori uji tidak boleh aktif: bobot agunan tetap mati bawaan")
+			}
+		}
+		if k.Label == "" {
+			t.Fatalf("kategori %s tidak membawa label; klien tidak boleh harus menebak", k.CategoryCode)
+		}
+	}
+	if !ketemu {
+		t.Fatalf("kategori %s yang baru disisipkan tidak muncul pada daftar", kategoriBaru)
+	}
+
+	// Izin: daftar memakai izin baca, jadi peran tanpa izin tulis tetap boleh.
+	teller := &domain.JWTClaims{UserID: uuid.New(), Username: "teller.daftar", Role: domain.RoleTeller}
+	if recTeller := cwRequest(t, router, teller, http.MethodGet, "/collateral/weights", ""); recTeller.Code != http.StatusForbidden {
+		t.Fatalf("teller tanpa system:config:read = %d, mau 403", recTeller.Code)
+	}
+}

@@ -1194,6 +1194,9 @@ export const dictionaryID = {
       "Kategori ini sudah aktif: bobot resmi Lampiran II dipakai dalam perhitungan.",
     category: "Kategori agunan",
     categoryPlaceholder: "Pilih kategori agunan",
+    noCategoriesTitle: "Daftar kategori tidak tersedia",
+    noCategoriesBody:
+      "Sistem tidak menemukan satu pun kategori bobot agunan pada data. Hubungi pengelola sistem: gerbang tidak dapat dinilai sebelum kategori tersedia.",
     promptSelect: "Pilih kategori agunan untuk menilai syarat C1 sampai C9.",
     loadError: "Gagal menilai gerbang bobot agunan.",
     forbidden: "Anda tidak memiliki izin menilai gerbang bobot agunan (403).",
@@ -1251,17 +1254,6 @@ export const dictionaryID = {
       "Peran Anda hanya dapat menilai. Mengajukan aktivasi memerlukan izin pengaturan sistem.",
     statusActive: "Aktif",
     statusNotActive: "Belum aktif",
-    categories: {
-      EMAS_PERHIASAN: "Emas perhiasan",
-      TANAH_BANGUNAN_HAK_TANGGUNGAN: "Tanah/bangunan ber-hak tanggungan",
-      TANAH_BANGUNAN_FIDUSIA: "Tanah/bangunan ber-fidusia",
-      TANAH_BANGUNAN_TANPA_BEBAN: "Tanah/bangunan tanpa beban",
-      KENDARAAN_HIPOTEK: "Kendaraan ber-hipotek",
-      KENDARAAN_FIDUSIA: "Kendaraan ber-fidusia",
-      UMK: "Usaha mikro dan kecil (UMK)",
-      LAINNYA: "Tagihan lain",
-      JATUH_TEMPO_MACET: "Jatuh tempo atau macet",
-    },
   },
 };
 

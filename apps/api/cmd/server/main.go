@@ -36,11 +36,15 @@ func main() {
 		SSLMode:  cfg.DBSSLMode,
 	})
 	if err != nil {
-		logger.Error("koneksi database gagal; server berjalan tanpa database", "error", err)
-	} else {
-		defer func() { _ = db.Close() }()
-		logger.Info("postgresql terhubung")
+		// Gagal cepat dengan pesan yang jelas. Sebelumnya kode ini mencatat "server
+		// berjalan tanpa database" lalu melanjutkan dan MENABRAK db yang nil, sehingga
+		// operator melihat SIGSEGV (nil pointer) alih-alih sebab sebenarnya. Sistem
+		// tidak punya mode tanpa basis data: seluruh layanan memakainya.
+		logger.Error("koneksi database gagal; server dihentikan", "error", err)
+		os.Exit(1)
 	}
+	defer func() { _ = db.Close() }()
+	logger.Info("postgresql terhubung")
 
 	// 2. Enkripsi data pribadi (envelope encryption, master key dari environment)
 	var cipher *crypto.Cipher

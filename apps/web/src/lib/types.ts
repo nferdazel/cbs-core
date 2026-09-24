@@ -130,6 +130,21 @@ export interface CollateralWeightAssessment {
   shadow_months_required: number;
 }
 
+/**
+ * Satu kategori bobot agunan pada daftar
+ * (GET /collateral/weights, dibaca dari tabel collateral_lampiran_ii_weights).
+ * `label` berasal dari basis data, bukan dari daftar di kode klien: kategori baru
+ * langsung tampil tanpa rilis ulang. `enabled` selalu false selama fase persiapan.
+ */
+export interface CollateralWeightCategory {
+  category_code: string;
+  label: string;
+  lampiran_ii_item: number;
+  official_weight_frac: string;
+  applied_weight_frac: string;
+  enabled: boolean;
+}
+
 /** Balasan PENGAJUAN aktivasi (202) sebelum disetujui pemeriksa lain. */
 export interface CollateralWeightActivationPending {
   request_id: string;

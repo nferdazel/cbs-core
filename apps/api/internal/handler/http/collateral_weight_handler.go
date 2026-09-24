@@ -39,10 +39,47 @@ func NewCollateralWeightHandler(svc domain.CollateralWeightService, mc domain.Ma
 // baca konfigurasi sistem agar pengawas dapat mengaudit tanpa wewenang menulis;
 // aktivasi hanya lewat izin system:config, sesuai syarat C9.
 func (h *CollateralWeightHandler) RegisterRoutes(r chi.Router) {
+	// Urutan pendaftaran tidak menentukan: chi memilih rute statis
+	// (/collateral/weights) lebih dulu daripada pola ber-{categoryCode}, sudah diuji.
+	r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+		Get("/collateral/weights", h.List)
 	r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
 		Get("/collateral/weights/{categoryCode}", h.Assess)
 	r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 		Post("/collateral/weights/{categoryCode}/activate", h.Activate)
+}
+
+// collateralWeightCategoryResponse adalah satu kategori pada daftar: kode dan label
+// dibaca dari basis data, bukan dari daftar di kode klien.
+type collateralWeightCategoryResponse struct {
+	CategoryCode       string          `json:"category_code"`
+	Label              string          `json:"label"`
+	LampiranIIItem     int             `json:"lampiran_ii_item"`
+	OfficialWeightFrac decimal.Decimal `json:"official_weight_frac"`
+	AppliedWeightFrac  decimal.Decimal `json:"applied_weight_frac"`
+	Enabled            bool            `json:"enabled"`
+}
+
+// List mengirim daftar kategori bobot agunan (GET /api/v1/collateral/weights).
+// Izinnya sama dengan penilaian: cukup baca konfigurasi sistem.
+func (h *CollateralWeightHandler) List(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.svc.ListCategories(r.Context())
+	if err != nil {
+		InternalError(w, r, err)
+		return
+	}
+	out := make([]collateralWeightCategoryResponse, 0, len(categories))
+	for _, c := range categories {
+		out = append(out, collateralWeightCategoryResponse{
+			CategoryCode:       c.CategoryCode,
+			Label:              c.Label,
+			LampiranIIItem:     c.LampiranIIItem,
+			OfficialWeightFrac: c.OfficialWeightFrac,
+			AppliedWeightFrac:  c.AppliedWeightFrac,
+			Enabled:            c.Enabled,
+		})
+	}
+	Success(w, http.StatusOK, i18n.MsgCollateralWeightCategories, out)
 }
 
 // collateralWeightAssessmentResponse adalah bentuk baca-saja hasil gerbang: syarat yang

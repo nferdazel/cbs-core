@@ -5,6 +5,7 @@ import { ApiError, request } from "@/lib/api";
 import type {
   CollateralWeightActivationPending,
   CollateralWeightAssessment,
+  CollateralWeightCategory,
 } from "@/lib/types";
 import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
@@ -23,21 +24,10 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 
 /**
- * Kode kategori agunan mengikuti seed `collateral_lampiran_ii_weights` migrasi
- * 000087. Belum ada endpoint daftar kategori, jadi daftar ini disalin di web;
- * tambahkan kode baru di sini bila kategori di database bertambah.
+ * Daftar kategori TIDAK disalin di web: sumbernya tabel
+ * `collateral_lampiran_ii_weights` dan dibaca lewat `GET /collateral/weights`, supaya
+ * kategori baru (kebijakan bank/regulasi) langsung tampil tanpa rilis ulang.
  */
-const CATEGORY_CODES = [
-  "EMAS_PERHIASAN",
-  "TANAH_BANGUNAN_HAK_TANGGUNGAN",
-  "TANAH_BANGUNAN_FIDUSIA",
-  "TANAH_BANGUNAN_TANPA_BEBAN",
-  "KENDARAAN_HIPOTEK",
-  "KENDARAAN_FIDUSIA",
-  "UMK",
-  "LAINNYA",
-  "JATUH_TEMPO_MACET",
-] as const;
 
 /** Kode syarat C1-C9 plus gerbang tambahan pada `failures` server. */
 const CONDITION_CODES = [
@@ -98,6 +88,33 @@ export function CollateralWeightGate() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, setPending] =
     useState<CollateralWeightActivationPending | null>(null);
+
+  const [categories, setCategories] = useState<CollateralWeightCategory[]>([]);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  // Daftar kategori diambil dari API (sumbernya tabel), bukan dari konstanta di web.
+  const loadCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    try {
+      const response = await request<CollateralWeightCategory[]>(
+        "/collateral/weights",
+      );
+      setCategories(response.data ?? []);
+    } catch (err) {
+      setCategories([]);
+      setCategoriesError(
+        err instanceof ApiError ? err.message : t.collateralWeight.loadError,
+      );
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const load = useCallback(async () => {
     if (!category) return;
@@ -163,9 +180,11 @@ export function CollateralWeightGate() {
     }
   };
 
-  const categoryOptions = CATEGORY_CODES.map((code) => ({
-    value: code,
-    label: t.collateralWeight.categories[code],
+  const categoryOptions = categories.map((item) => ({
+    value: item.category_code,
+    // Label dari basis data; jangan ditempel "belum aktif" di sini karena status
+    // kategori sudah ditampilkan pada panel penilaian setelah dipilih.
+    label: item.label,
   }));
 
   const conditionLabels: Record<string, string> = {
@@ -240,10 +259,27 @@ export function CollateralWeightGate() {
             onChange={(event) => onCategoryChange(event.target.value)}
             placeholder={t.collateralWeight.categoryPlaceholder}
             options={categoryOptions}
+            disabled={categoriesLoading || categories.length === 0}
           />
         </div>
 
-        {!category ? (
+        {categoriesLoading ? (
+          <LoadingState label={t.states.loading} />
+        ) : categoriesError ? (
+          <ErrorState
+            title={t.collateralWeight.title}
+            description={categoriesError}
+            action={
+              <Button variant="secondary" onClick={loadCategories}>
+                {t.common.retry}
+              </Button>
+            }
+          />
+        ) : categories.length === 0 ? (
+          <Alert variant="warning" title={t.collateralWeight.noCategoriesTitle}>
+            {t.collateralWeight.noCategoriesBody}
+          </Alert>
+        ) : !category ? (
           <p className="text-body text-ink-600">
             {t.collateralWeight.promptSelect}
           </p>
