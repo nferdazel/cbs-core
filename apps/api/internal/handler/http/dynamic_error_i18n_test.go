@@ -284,6 +284,20 @@ func TestPesanValidasiOperatorIkutBahasaInstalasi(t *testing.T) {
 			kode:    i18n.MsgCKPNValueNotDecimal,
 			err:     domain.CKPNValueNotDecimal("abc"),
 		},
+		{
+			// Sebelumnya BERBAHASA INGGRIS ("invalid collection_type").
+			nama:    "jenis penagihan tidak dikenal",
+			pesanID: "jenis penagihan tidak dikenal",
+			kode:    i18n.MsgCollectionTypeUnknown,
+			err:     domain.ErrCollectionTypeUnknown,
+		},
+		{
+			// Sebelumnya BERBAHASA INGGRIS ("loan_id and installment_no are required...").
+			nama:    "referensi kredit wajib untuk penagihan angsuran",
+			pesanID: "loan_id dan installment_no wajib diisi untuk penagihan angsuran kredit",
+			kode:    i18n.MsgCollectionLoanRefs,
+			err:     domain.ErrCollectionLoanRefs,
+		},
 	}
 	for _, k := range kasus {
 		t.Run(k.nama, func(t *testing.T) {
@@ -316,7 +330,10 @@ func TestPesanValidasiOperatorIkutBahasaInstalasi(t *testing.T) {
 			// Penjaga yang tidak bergantung katalog itu sendiri: teks EN tidak boleh
 			// memuat kata khas Indonesia. Tanpa ini, entri EN yang keliru diisi bahasa
 			// Indonesia akan lolos karena pembandingnya katalog yang sama.
-			for _, kata := range []string{"tidak ada", "angsuran", "nilai", "bukan angka"} {
+			for _, kata := range []string{
+				"tidak ada", "angsuran", "nilai", "bukan angka",
+				"tidak dikenal", "wajib diisi", "penagihan", "belum dibayar",
+			} {
 				if strings.Contains(en, kata) {
 					t.Fatalf("pesan EN masih memuat kata Indonesia %q: %q", kata, en)
 				}

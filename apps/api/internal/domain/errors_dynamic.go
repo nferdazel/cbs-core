@@ -132,3 +132,10 @@ func LimitConfigMissing(key string) *LocalizedError {
 func LimitConfigInvalid(key, value string) *LocalizedError {
 	return NewLocalizedErrorf(ErrLimitConfigInvalidID, "konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi", key, value)
 }
+
+// Validasi penagihan/collection mobile. Keduanya masukan pengguna yang berbahasa
+// Inggris sebelum ini; kini mengikuti bahasa instalasi.
+var (
+	ErrCollectionTypeUnknown = NewLocalizedError("collection_type_unknown", "jenis penagihan tidak dikenal")
+	ErrCollectionLoanRefs    = NewLocalizedError("collection_loan_refs_required", "loan_id dan installment_no wajib diisi untuk penagihan angsuran kredit")
+)

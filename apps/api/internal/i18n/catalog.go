@@ -301,6 +301,10 @@ const (
 	MsgNIKTooShort        Code = "nik_too_short"
 	MsgLimitConfigMissing Code = "limit_config_missing"
 	MsgLimitConfigInvalid Code = "limit_config_invalid"
+
+	// Validasi penagihan/collection mobile.
+	MsgCollectionTypeUnknown Code = "collection_type_unknown"
+	MsgCollectionLoanRefs    Code = "collection_loan_refs_required"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -584,6 +588,8 @@ var codeList = []Code{
 	MsgNIKTooShort,
 	MsgLimitConfigMissing,
 	MsgLimitConfigInvalid,
+	MsgCollectionTypeUnknown,
+	MsgCollectionLoanRefs,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1702,5 +1708,13 @@ var catalog = map[Code]map[Lang]string{
 	MsgLimitConfigInvalid: {
 		ID: "konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi",
 		EN: "the %s limit setting is %q, which is not a number; fix it before running transactions",
+	},
+	MsgCollectionTypeUnknown: {
+		ID: "jenis penagihan tidak dikenal",
+		EN: "unknown collection type",
+	},
+	MsgCollectionLoanRefs: {
+		ID: "loan_id dan installment_no wajib diisi untuk penagihan angsuran kredit",
+		EN: "loan_id and installment_no are required for loan instalment collection",
 	},
 }

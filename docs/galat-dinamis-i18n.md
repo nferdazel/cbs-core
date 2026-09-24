@@ -190,3 +190,12 @@ Semua sisa pesan yang belum berkode sudah diperiksa satu per satu dan termasuk k
 yang SENGAJA tidak diterjemahkan (pemetaan jurnal produk, payload persetujuan, struktur
 jurnal tidak sah, tanggal bisnis belum terpasang) - kecuali yang muncul di putaran
 berikutnya bila ada temuan baru.
+
+## Putaran lanjutan 4 (SELESAI)
+- **`collection_service.go` (2 titik)**: "invalid collection_type" dan "loan_id and
+  installment_no are required for loan installment collection" - dua pesan BERBAHASA
+  INGGRIS untuk masukan pengguna pada penagihan mobile. Kini berkode katalog.
+- Pelajaran uji (diulang): penjaga kata Indonesia HARUS memuat kata yang benar-benar
+  muncul di pesan yang diuji. Percobaan pertama saya lupa menambahkan "tidak dikenal"
+  sehingga uji versi lama LULUS meski EN sengaja dirusak; setelah daftar kata dilengkapi
+  (tidak dikenal, wajib diisi, penagihan, belum dibayar) uji menangkapnya.

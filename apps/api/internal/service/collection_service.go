@@ -42,7 +42,7 @@ func (s *collectionService) ProcessMobileCollection(ctx context.Context, input d
 
 	case domain.CollectionLoanInstallment:
 		if input.LoanID == nil || input.InstallmentNo == nil {
-			return nil, fmt.Errorf("loan_id and installment_no are required for loan installment collection")
+			return nil, domain.ErrCollectionLoanRefs
 		}
 		_, err := s.loanSvc.PayInstallment(ctx, domain.PayInstallmentInput{
 			LoanID:        *input.LoanID,
@@ -55,7 +55,7 @@ func (s *collectionService) ProcessMobileCollection(ctx context.Context, input d
 		refNo = receiptNo
 
 	default:
-		return nil, fmt.Errorf("invalid collection_type")
+		return nil, domain.ErrCollectionTypeUnknown
 	}
 
 	return &domain.MobileCollectionResult{
