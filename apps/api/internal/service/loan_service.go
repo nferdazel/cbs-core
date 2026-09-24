@@ -1334,6 +1334,15 @@ func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*d
 	// Syarat 2: cadangan 100% dari nilai tercatat. Pihak bank boleh menetapkan tarif
 	// PPAP lebih tinggi, tetapi POJK menetapkan lantai 100% untuk kualitas Macet,
 	// sehingga lantai itu dipakai langsung (bukan tarif yang bisa lebih rendah).
+	//
+	// T4/T5: gerbang ini sengaja TETAP mengukur required_ppap walau jalur CKPN aktif.
+	// Keputusan yang sudah ditetapkan (426cdd0, keputusan panel "pelepasan CKPN
+	// sebesar cadangan"): pada jalur CKPN, selisih pokok yang belum dicadangkan
+	// diakui sebagai beban kerugian penurunan nilai (writeOffTx), sehingga hapus
+	// buku sah walau required_ckpn < carrying. required_ppap adalah syarat
+	// kepatuhan POJK; required_ckpn adalah ukuran PELEPASAN. Mengubah gerbang ke
+	// required_ckpn akan menolak kredit yang selama ini sah — uji integrasi
+	// "CKPNMelepasSejumlahCadangan" mengunci keputusan itu.
 	carrying := domain.PPAPCarryingAmount(principal, loan.RestructureLossBalance)
 	requiredReserve := domain.RoundToRupiah(carrying)
 	if loan.RequiredPPAP.LessThan(requiredReserve) {

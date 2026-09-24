@@ -52,7 +52,11 @@ type LoanRow struct {
 	// Outstanding adalah baki debet pokok.
 	Outstanding decimal.Decimal
 	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
-	RequiredCKPN       decimal.Decimal
+	RequiredCKPN decimal.Decimal
+	// CKPNMethod adalah segel metode per kredit (loans.ckpn_method): sumber kolom
+	// "Jenis CKPN" Form 06.00 (sandi XXI). Kosong berarti kredit lama sebelum T3;
+	// dilaporkan kolektif (bawaan kebijakan) agar tidak tersangkut data lama.
+	CKPNMethod         string
 	IsRestructured     bool
 	RestructuredCount  int
 	InterestRateAnnual decimal.Decimal

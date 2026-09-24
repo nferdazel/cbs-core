@@ -165,6 +165,7 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		DPD:                l.DPD,
 		Outstanding:        l.OutstandingPrincipal,
 		RequiredCKPN:       l.RequiredCKPN,
+		CKPNMethod:         l.CKPNMethod,
 		IsRestructured:     l.IsRestructured,
 		RestructuredCount:  l.RestructuredCount,
 		InterestRateAnnual: l.InterestRateAnnual,

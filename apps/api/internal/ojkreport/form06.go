@@ -3,6 +3,8 @@ package ojkreport
 import (
 	"fmt"
 	"strings"
+
+	"cbs-core/apps/core-api/internal/domain"
 )
 
 // form06.go membangun Form 06.00 DAFTAR KREDIT YANG DIBERIKAN dari baris kredit.
@@ -153,7 +155,26 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiCKPNKurang, Nama: "CKPN Aset Kurang Baik", Reason: "pemisahan CKPN per golongan kualitas tidak disimpan; required_ckpn hanya total per kredit"},
 	{Sandi: form06SandiCKPNTidak, Nama: "CKPN Aset Tidak Baik", Reason: "pemisahan CKPN per golongan kualitas tidak disimpan; required_ckpn hanya total per kredit"},
 	{Sandi: form06SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Reason: "klasifikasi SAK EP belum dipetakan per kredit"},
-	{Sandi: form06SandiJenisCKPN, Nama: "Jenis CKPN", Reason: "jenis CKPN individual/kolektif tidak disimpan pada baris kredit"},
+	{Sandi: form06SandiJenisCKPN, Nama: "Jenis CKPN", Value: func(r LoanRow) string {
+		return sandiJenisCKPN(r.CKPNMethod)
+	}},
+}
+
+// sandiJenisCKPN memetakan segel metode per kredit ke sandi kolom "Jenis CKPN"
+// (sandi XXI Form 06.00; penjelasan umum kolom Q SEOJK 16/2024): sandi 1 = CKPN
+// individual, sandi 2 = CKPN kolektif. Kredit lama tanpa segel dilaporkan kolektif
+// (bawaan kebijakan mesin), bukan dikosongkan, agar baris tetap dilaporkan.
+func sandiJenisCKPN(method string) string {
+	switch domain.CKPNIndividualMethod(method) {
+	// Bentuk T3 (DCF/COLLATERAL/MAX) dan bentuk nama penuh T0 (INDIVIDUAL_*)
+	// keduanya diterima: kolom ckpn_method pernah membawa kedua konvensi di
+	// rancangan, dan laporan tidak boleh salah golongan karena penamaan lama.
+	case domain.CKPNIndividualMethodDCF, domain.CKPNIndividualMethodCollateral, domain.CKPNIndividualMethodMax,
+		"INDIVIDUAL_DCF", "INDIVIDUAL_COLLATERAL", "INDIVIDUAL_MAX":
+		return "1"
+	default:
+		return "2"
+	}
 }
 
 // buildForm06 menyusun Form 06.00 dari baris kredit. Kredit di luar status berjalan
