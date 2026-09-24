@@ -8,6 +8,7 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // CKPNIndividualRepository menyimpan/membaca proyeksi arus kas manual CKPN individual
@@ -70,4 +71,56 @@ func (r *CKPNIndividualRepository) ReplaceCashflowProjections(ctx context.Contex
 		}
 	}
 	return tx.Commit()
+}
+
+// ListActiveCollaterals membaca agunan AKTIF kredit untuk NRV (T2): taksasi, haircut,
+// bound_amount, dan biaya pelepasan. Hanya status ACTIVE — agunan RELEASED/EXECUTED
+// tidak menjamin apa pun. BoundAmount dibaca apa adanya karena dihitung basis data.
+func (r *CKPNIndividualRepository) ListActiveCollaterals(ctx context.Context, loanID uuid.UUID) ([]domain.CKPNIndividualCollateral, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, collateral_type::text, description,
+		       appraisal_value, haircut_percent, bound_amount, disposal_cost_amount
+		FROM loan_collaterals
+		WHERE loan_id = $1 AND status = 'ACTIVE'
+		ORDER BY created_at, id`, loanID)
+	if err != nil {
+		return nil, fmt.Errorf("membaca agunan aktif untuk CKPN individual: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []domain.CKPNIndividualCollateral{}
+	for rows.Next() {
+		var c domain.CKPNIndividualCollateral
+		var cost sql.NullString
+		if err := rows.Scan(&c.ID, &c.CollateralType, &c.Description,
+			&c.AppraisalValue, &c.HaircutPercent, &c.BoundAmount, &cost); err != nil {
+			return nil, fmt.Errorf("memindai agunan CKPN individual: %w", err)
+		}
+		if cost.Valid {
+			d, err := decimal.NewFromString(cost.String)
+			if err != nil {
+				return nil, fmt.Errorf("membaca biaya pelepasan agunan %s: %w", c.ID, err)
+			}
+			c.DisposalCostAmount = &d
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetDisposalCost menyimpan estimasi biaya pelepasan satu agunan. cost nil berarti
+// mengosongkan (NRV tanpa pengurangan); nilai tidak boleh negatif (sudah dicegah
+// service, dan ditolak sekali lagi oleh CHECK basis data).
+func (r *CKPNIndividualRepository) SetDisposalCost(ctx context.Context, collateralID uuid.UUID, cost *decimal.Decimal, updatedBy string) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE loan_collaterals
+		SET disposal_cost_amount = $2, updated_by = NULLIF($3, '')
+		WHERE id = $1`, collateralID, cost, updatedBy)
+	if err != nil {
+		return fmt.Errorf("menyimpan biaya pelepasan agunan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("agunan %s tidak ditemukan", collateralID)
+	}
+	return nil
 }

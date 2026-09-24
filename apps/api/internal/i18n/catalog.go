@@ -303,8 +303,9 @@ const (
 	MsgLimitConfigInvalid Code = "limit_config_invalid"
 
 	// Validasi penagihan/collection mobile.
-	MsgCollectionTypeUnknown Code = "collection_type_unknown"
-	MsgCollectionLoanRefs    Code = "collection_loan_refs_required"
+	MsgCKPNIndividualDisposalCostSaved Code = "ckpn_individual_disposal_cost_saved"
+	MsgCollectionTypeUnknown           Code = "collection_type_unknown"
+	MsgCollectionLoanRefs              Code = "collection_loan_refs_required"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -588,6 +589,7 @@ var codeList = []Code{
 	MsgNIKTooShort,
 	MsgLimitConfigMissing,
 	MsgLimitConfigInvalid,
+	MsgCKPNIndividualDisposalCostSaved,
 	MsgCollectionTypeUnknown,
 	MsgCollectionLoanRefs,
 }
@@ -1708,6 +1710,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgLimitConfigInvalid: {
 		ID: "konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi",
 		EN: "the %s limit setting is %q, which is not a number; fix it before running transactions",
+	},
+	MsgCKPNIndividualDisposalCostSaved: {
+		ID: "biaya pelepasan agunan tersimpan",
+		EN: "collateral disposal cost saved",
 	},
 	MsgCollectionTypeUnknown: {
 		ID: "jenis penagihan tidak dikenal",

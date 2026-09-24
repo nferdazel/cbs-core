@@ -112,14 +112,17 @@ func (h *CKPNHandler) RegisterRoutes(r chi.Router) {
 		r.With(middleware.RequirePermission(domain.PermLoansRead)).
 			Get("/status", h.Status)
 
-		// CKPN individual T1 (mode bayangan baca-saja). Hanya dipasang bila layanan
-		// disiapkan; menilai cukup izin baca kredit, mengisi proyeksi arus kas (data
-		// operasional pengelola kredit) memakai izin approve kredit.
+		// CKPN individual T1+T2 (mode bayangan baca-saja). Hanya dipasang bila layanan
+		// disiapkan; menilai cukup izin baca kredit, mengisi proyeksi arus kas dan
+		// biaya pelepasan agunan (data operasional pengelola kredit) memakai izin
+		// approve kredit.
 		if h.Individual != nil {
 			r.With(middleware.RequirePermission(domain.PermLoansRead)).
 				Get("/individual/{loanNumber}/assessment", h.IndividualAssessment)
 			r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 				Put("/individual/{loanNumber}/projections", h.ReplaceIndividualProjections)
+			r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+				Put("/individual/{loanNumber}/collaterals/{collateralID}/disposal-cost", h.SetIndividualDisposalCost)
 		}
 	})
 }

@@ -56,6 +56,22 @@ type CKPNIndividualAssessment struct {
 	EIRSource string `json:"eir_source"`
 	// Method adalah metode yang dipakai bank (bawaan MAX); pada T1 hanya DCF tersedia.
 	Method CKPNIndividualMethod `json:"method"`
+	// Rincian agunan (T2): NRV per agunan dan target agunan. Kosong bila kredit tidak
+	// beragunan. FinalTarget = max(target DCF, target agunan) sesuai metode MAX;
+	// Target tetap menyimpan angka DCF agar kedua komponen dapat diaudit terpisah.
+	Collaterals []CKPNIndividualCollateral `json:"collaterals,omitempty"`
+	// TotalNRV adalah jumlah NRV seluruh agunan aktif; nol bila tidak beragunan.
+	TotalNRV decimal.Decimal `json:"total_nrv"`
+	// CollateralTarget = max(0, carrying − TotalNRV). Bila lebih besar dari Target
+	// (DCF), maka FinalTarget mengikuti agunan sesuai aturan MAX.
+	CollateralTarget decimal.Decimal `json:"collateral_target"`
+	// FinalTarget adalah target individual akhir menurut metode MAX. Pada T1
+	// (= tanpa agunan) FinalTarget == Target.
+	FinalTarget decimal.Decimal `json:"final_target"`
+	// MissingDisposalCost menghitung agunan yang biaya pelepasannya belum diisi bank:
+	// NRV agunan itu memakai bound_amount penuh (konservatif) dan angkanya wajib
+	// dibaca dengan tanda itu, bukan dianggap final.
+	MissingDisposalCostCount int `json:"missing_disposal_cost_count"`
 	// MandatoryTrigger menyebut pemicu individual wajib, bila ada (macet,
 	// restrukturisasi, atau DPD melewati ambang). Kosong berarti kredit masuk jalur
 	// individual karena signifikansi nominal (belum dihitung T1) atau penilaian manual.
@@ -115,9 +131,71 @@ func CKPNIndividualDCF(carrying, eirMonthly decimal.Decimal, projs []CKPNCashflo
 	return pvRupiah, ckpn, nil
 }
 
-// CKPNIndividualRepository menyimpan/membaca arus kas proyeksi manual per kredit (T1).
-// Ia tidak menyentuh required_ckpn: T1 hanya membaca dan mencatat data operasional.
+// CKPNIndividualCollateral adalah satu agunan aktif pada penilaian individual T2.
+// Seluruh angka BACA-SAJA; penilaian tidak pernah mengubah agunan.
+type CKPNIndividualCollateral struct {
+	ID             uuid.UUID      `json:"id"`
+	CollateralType CollateralType `json:"collateral_type"`
+	Description    string         `json:"description"`
+	// AppraisalValue adalah nilai taksasi penuh; HaircutPercent adalah kebijakan
+	// pengurang PPKA (bukan biaya penjualan). BoundAmount = taksasi × (1−haircut),
+	// dihitung basis data agar selalu konsisten dengan keduanya.
+	AppraisalValue decimal.Decimal `json:"appraisal_value"`
+	HaircutPercent decimal.Decimal `json:"haircut_percent"`
+	BoundAmount    decimal.Decimal `json:"bound_amount"`
+	// DisposalCostAmount adalah estimasi biaya pelepasan (penjualan/lelang, pajak,
+	// notaris). KOSONG berarti bank belum mengisinya: NRV memakai bound_amount tanpa
+	// pengurangan dan penilaian menandai hal itu, bukan menebak.
+	DisposalCostAmount *decimal.Decimal `json:"disposal_cost_amount,omitempty"`
+	// NRV (net realisable value) agunan ini = max(0, bound_amount − disposal_cost).
+	// Dibatasi nol agar biaya yang lebih besar daripada nilai tidak menghasilkan
+	// nilai negatif (agunan tidak pernah "menambah" kerugian kredit).
+	NRV decimal.Decimal `json:"nrv"`
+	// MissingDisposalCost bernilai true bila bank belum mengisi biaya pelepasan:
+	// NRV dihitung tanpa pengurangan, dan itu harus terbuka pada penilaian agar
+	// pengguna tahu angkanya konservatif karena data belum lengkap.
+	MissingDisposalCost bool `json:"missing_disposal_cost"`
+}
+
+// CKPNIndividualNRV menghitung nilai realisasi bersih satu agunan menurut PA BPR
+// 12.4.g.1.b: NRV = max(0, bound_amount − biaya pelepasan). BoundAmount dipakai apa
+// adanya (sudah = taksasi × (1−haircut), dihitung basis data), dan biaya pelepasan
+// kosong berarti tanpa pengurangan — bukan nol yang dikarang.
+func CKPNIndividualNRV(boundAmount decimal.Decimal, disposalCost *decimal.Decimal) (nrv decimal.Decimal, missingCost bool) {
+	if disposalCost == nil {
+		missingCost = true
+	} else {
+		boundAmount = boundAmount.Sub(*disposalCost)
+	}
+	if boundAmount.IsNegative() {
+		boundAmount = decimal.Zero
+	}
+	return boundAmount, missingCost
+}
+
+// CKPNIndividualCollateralTarget menerapkan aturan metode MAX (PA BPR 12.4.g.1.c):
+// CKPN individual = max(target DCF, target agunan). Target agunan =
+// max(0, carrying − Σ NRV). Fungsi ini MURNI: tidak menyentuh basis data.
+func CKPNIndividualCollateralTarget(carrying, dcfTarget decimal.Decimal, totalNRV decimal.Decimal) (collateralTarget, finalTarget decimal.Decimal) {
+	collateralTarget = carrying.Sub(totalNRV)
+	if collateralTarget.IsNegative() {
+		collateralTarget = decimal.Zero
+	}
+	finalTarget = dcfTarget
+	if collateralTarget.GreaterThan(finalTarget) {
+		finalTarget = collateralTarget
+	}
+	return collateralTarget, finalTarget
+}
+
 type CKPNIndividualRepository interface {
+	// ListActiveCollaterals mengembalikan agunan AKTIF kredit (T2) beserta taksasi,
+	// haircut, bound_amount, dan biaya pelepasan. Hanya ACTIVE: agunan lepas/eksekusi
+	// tidak menjamin apa pun untuk NRV.
+	ListActiveCollaterals(ctx context.Context, loanID uuid.UUID) ([]CKPNIndividualCollateral, error)
+	// SetDisposalCost menyimpan estimasi biaya pelepasan satu agunan (T2). Nilai boleh
+	// nol (tanpa biaya) tetapi tidak boleh negatif; mengubah data operasional bank.
+	SetDisposalCost(ctx context.Context, collateralID uuid.UUID, cost *decimal.Decimal, updatedBy string) error
 	// ListCashflowProjections mengambil proyeksi pada tanggal asOf, terurut periode.
 	ListCashflowProjections(ctx context.Context, loanID uuid.UUID, asOf time.Time) ([]CKPNCashflowProjection, error)
 	// ReplaceCashflowProjections mengganti seluruh proyeksi kredit pada tanggal asOf
@@ -132,4 +210,7 @@ type CKPNIndividualService interface {
 	Evaluate(ctx context.Context, loanNumber string, asOf time.Time, actor Actor) (CKPNIndividualAssessment, error)
 	// ReplaceProjections memvalidasi lalu menyimpan proyeksi arus kas kredit.
 	ReplaceProjections(ctx context.Context, loanNumber string, asOf time.Time, projs []CKPNCashflowProjection, actor Actor) error
+	// SetDisposalCost menyimpan estimasi biaya pelepasan satu agunan milik kredit
+	// (T2). Nilai nol sah; nil berarti belum diisi (NRV tanpa pengurangan).
+	SetDisposalCost(ctx context.Context, loanNumber string, collateralID uuid.UUID, cost *decimal.Decimal, actor Actor) error
 }

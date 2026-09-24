@@ -199,3 +199,20 @@ berikutnya bila ada temuan baru.
   muncul di pesan yang diuji. Percobaan pertama saya lupa menambahkan "tidak dikenal"
   sehingga uji versi lama LULUS meski EN sengaja dirusak; setelah daftar kata dilengkapi
   (tidak dikenal, wajib diisi, penagihan, belum dibayar) uji menangkapnya.
+
+
+---
+# CKPN INDIVIDUAL TAHAP T2 (dikerjakan terpisah dari i18n)
+T2 (NRV agunan + aturan MAX) SELESAI dan teruji:
+- migrasi 000097: kolom `loan_collaterals.disposal_cost_amount` (bawaan NULL; haircut
+  TIDAK dipakai sebagai biaya penjualan karena itu kebijakan pengurang PPKA, konsep lain).
+- domain: `CKPNIndividualNRV` (max(0, bound − biaya)), `CKPNIndividualCollateralTarget`
+  (final = max(DCF, agunan)); assessment memuat rincian per agunan + `TotalNRV` +
+  `CollateralTarget` + `FinalTarget` + `MissingDisposalCostCount`.
+- API: `PUT /ckpn/individual/{loanNumber}/collaterals/{collateralID}/disposal-cost`
+  (izin loans:approve; bidang tak dikenal/negatif/UUID salah ditolak 422).
+- Angka yang dibuktikan dengan hitungan tangan: carrying 150rb, EIR 10%, proyeksi 110rb
+  -> DCF 50rb; agunan taksasi 200rb haircut 50% -> bound 100rb; biaya 60rb -> NRV 40rb ->
+  target agunan 110rb -> final 110rb (MAX memilih agunan).
+- Baca-saja terjaga: required_ckpn tidak berubah (dibuktikan dengan penanda pembanding).
+- Sisa T3 (input signifikansi + penanda kredit) dan T4/T5 belum dikerjakan.
