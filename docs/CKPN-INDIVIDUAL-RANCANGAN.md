@@ -422,14 +422,18 @@ Bukan karena perhitungannya (primitif `PresentValue`/EIR sudah ada), tetapi kare
 
 ### 7.2 Tahapan yang dapat dirilis bertahap
 
-| Tahap | Isi | Hasil | Risiko | Perkiraan |
-|---|---|---|---|---|
-| **T0** | Migrasi `000092` (kolom, tabel, kunci config); semua saklar `false` | Struktur siap, **nol perubahan perilaku** | Rendah | kecil |
-| **T1** | Kalkulasi DCF individual + baca EIR; mode bayangan hanya membaca | Angka bayangan individual terlihat, tanpa jurnal | Sedang | sedang |
-| **T2** | Kalkulasi agunan (`NRV`, biaya pelepasan) + aturan `max`/lantai | Metode agunan lengkap di bayangan | Sedang | sedang |
-| **T3** | Alur signifikansi & bukti objektif: input proyeksi arus kas + tandai kredit (API/UI) | Bank dapat mengisi data & memutuskan | **Tinggi** (bagian terbesar) | besar |
-| **T4** | Integrasi EOD: individual di dalam langkah CKPN, anti-double-count, jurnal, pemulihan | `ckpn.enabled=true` aman termasuk individual | Tinggi | sedang–besar |
-| **T5** | Hapus buku pakai `required_ckpn`; pelaporan Form 05/06 (jenis CKPN) & KPMM | Konsistensi laporan & pelepasan | Sedang | sedang |
+| Tahap | Isi | Hasil | Risiko | Perkiraan | Status |
+|---|---|---|---|---|---|
+| **T0** | Migrasi `000094` (kolom, tabel, kunci config); semua saklar `false` | Struktur siap, **nol perubahan perilaku** | Rendah | kecil | **SELESAI** (`000094`, ter-deploy) |
+| **T1** | Kalkulasi DCF individual + baca EIR; mode bayangan hanya membaca | Angka bayangan individual terlihat, tanpa jurnal | Sedang | sedang | **SELESAI** (`adf4374`) |
+| **T2** | Kalkulasi agunan (`NRV`, biaya pelepasan) + aturan `max`/lantai | Metode agunan lengkap di bayangan | Sedang | sedang | **SELESAI** (`adf4374`, `000097`, konsolidasi kolom `000098`) |
+| **T3** | Alur signifikansi & bukti objektif: pemindaian kandidat + tandai kredit (API) | Bank dapat mengisi data & memutuskan | **Tinggi** (bagian terbesar) | besar | **SELESAI** (`cc72a0c`: `GET /ckpn/individual/scan`, `POST /ckpn/individual/{loanNumber}/entry`, jejak audit) |
+| **T4** | Integrasi EOD: individual di dalam langkah CKPN, anti-double-count, jurnal, pemulihan | `ckpn.enabled=true` aman termasuk individual | Tinggi | sedang–besar | **SELESAI** (`6d51046`: segel `ckpn_method` menentukan jalur, lantai 12.4.g.1.c, jurnal & `required_ckpn` satu mekanisme, jejak EOD) |
+| **T5** | Hapus buku pakai `required_ckpn`; pelaporan Form 05/06 (jenis CKPN) & KPMM | Konsistensi laporan & pelepasan | Sedang | sedang | **SELESAI SEBAGIAN** (`da5f781`: Form 06.00 sandi XXI hidup; hapus buku sudah melepas sebesar `required_ckpn` sejak `426cdd0`; gerbang syarat 100% TETAP mengukur `required_ppap` — keputusan `426cdd0` ditegakkan, lihat catatan di `writeOffTarget`) |
+
+**Sisa T5/KPMM (belum):** Form 05.00 kolom jenis CKPN untuk penempatan (penempatan
+belum memodelkan CKPN per baris), dan penyambungan pengurang modal inti KPMM dengan
+pemisahan jalur individual/kolektif bila kelak dibutuhkan laporannya.
 
 **Saran rilis:** T0–T2 dahulu (menambah informasi tanpa mengubah akuntansi), lalu T3 di
 produksi sebagai alat kerja, baru T4 menyalakan. Jangan menyalakan `ckpn.enabled` untuk
