@@ -213,13 +213,13 @@ func (s *loanService) restructureLoanWithLoss(ctx context.Context, input domain.
 			return domain.ErrCrossBookAccess
 		}
 		if fresh.Status != domain.LoanStatusDisbursed {
-			return errors.New("hanya kredit aktif yang dapat direstrukturisasi")
+			return domain.ErrRestructureOnlyActiveLoan
 		}
 		if input.NewTermMonths <= 0 {
-			return errors.New("jangka waktu baru harus positif")
+			return domain.ErrRestructureNewTermPositive
 		}
 		if fresh.ProductID == nil {
-			return errors.New("kredit tidak terhubung ke produk")
+			return domain.ErrLoanProductMissing
 		}
 		product, err := s.productRepo.GetByID(ctx, *fresh.ProductID)
 		if err != nil {

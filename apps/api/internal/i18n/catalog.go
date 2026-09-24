@@ -281,6 +281,17 @@ const (
 	MsgBranchInactive               Code = "branch_inactive"
 	MsgCOAAccountNotFound           Code = "coa_account_not_found"
 	MsgAROInstructionUnknown        Code = "aro_instruction_unknown"
+
+	// Manajemen staf & kata sandi (sebelumnya berbaur Inggris/Indonesia).
+	MsgStaffPasswordTooShort   Code = "staff_password_too_short"
+	MsgStaffPasswordWeak       Code = "staff_password_weak"
+	MsgStaffPrivilegedCreate   Code = "staff_privileged_create"
+	MsgStaffPrivilegedRole     Code = "staff_privileged_role"
+	MsgStaffCurrentPassword    Code = "staff_current_password_wrong"
+	MsgStaffPasswordUnchanged  Code = "staff_password_unchanged"
+	MsgStaffUseOwnPasswordFlow Code = "staff_use_own_password_flow"
+	MsgStaffSelfDeactivate     Code = "staff_self_deactivate"
+	MsgStaffPasswordOnlySelf   Code = "staff_password_only_self"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -550,6 +561,15 @@ var codeList = []Code{
 	MsgBranchInactive,
 	MsgCOAAccountNotFound,
 	MsgAROInstructionUnknown,
+	MsgStaffPasswordTooShort,
+	MsgStaffPasswordWeak,
+	MsgStaffPrivilegedCreate,
+	MsgStaffPrivilegedRole,
+	MsgStaffCurrentPassword,
+	MsgStaffPasswordUnchanged,
+	MsgStaffUseOwnPasswordFlow,
+	MsgStaffSelfDeactivate,
+	MsgStaffPasswordOnlySelf,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1611,5 +1631,41 @@ var catalog = map[Code]map[Lang]string{
 	MsgAROInstructionUnknown: {
 		ID: "instruksi ARO tidak dikenal",
 		EN: "unknown ARO instruction",
+	},
+	MsgStaffPasswordTooShort: {
+		ID: "kata sandi minimal 8 karakter",
+		EN: "password must be at least 8 characters",
+	},
+	MsgStaffPasswordWeak: {
+		ID: "kata sandi harus memuat huruf besar, huruf kecil, angka, dan karakter khusus",
+		EN: "password must contain uppercase, lowercase, number, and special character",
+	},
+	MsgStaffPrivilegedCreate: {
+		ID: "SUPERADMIN atau SYSTEM tidak dapat dibuat lewat endpoint ini",
+		EN: "SUPERADMIN or SYSTEM cannot be created through this endpoint",
+	},
+	MsgStaffPrivilegedRole: {
+		ID: "peran SUPERADMIN atau SYSTEM tidak dapat diberikan lewat pembaruan",
+		EN: "the SUPERADMIN or SYSTEM role cannot be assigned via update",
+	},
+	MsgStaffCurrentPassword: {
+		ID: "kata sandi saat ini salah",
+		EN: "the current password is incorrect",
+	},
+	MsgStaffPasswordUnchanged: {
+		ID: "kata sandi baru harus berbeda dari kata sandi saat ini",
+		EN: "the new password must be different from the current password",
+	},
+	MsgStaffUseOwnPasswordFlow: {
+		ID: "gunakan ubah kata sandi untuk akun sendiri",
+		EN: "use change password for your own account",
+	},
+	MsgStaffSelfDeactivate: {
+		ID: "akun sendiri tidak dapat dinonaktifkan",
+		EN: "your own account cannot be deactivated",
+	},
+	MsgStaffPasswordOnlySelf: {
+		ID: "ubah kata sandi hanya berlaku untuk akun sendiri",
+		EN: "changing the password only applies to your own account",
 	},
 }

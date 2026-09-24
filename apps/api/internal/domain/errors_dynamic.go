@@ -82,3 +82,19 @@ func BranchInactive(code string) *LocalizedError {
 func COAAccountNotFound(code string) *LocalizedError {
 	return NewLocalizedErrorf("coa_account_not_found", "akun COA %s tidak ditemukan", code)
 }
+
+// Galat manajemen staf dan kata sandi. Pesan lama pada berkas ini BERBAUR: sebagian
+// Inggris ("password must be at least 8 characters") dan sebagian Indonesia, padahal
+// semuanya ditampilkan ke pengguna. Semua kini berkode katalog agar bahasa instalasi
+// dipatuhi seragam; bunyi Indonesia yang sudah ada dipertahankan apa adanya.
+var (
+	ErrStaffPasswordTooShort   = NewLocalizedError("staff_password_too_short", "kata sandi minimal 8 karakter")
+	ErrStaffPasswordWeak       = NewLocalizedError("staff_password_weak", "kata sandi harus memuat huruf besar, huruf kecil, angka, dan karakter khusus")
+	ErrStaffPrivilegedCreate   = NewLocalizedError("staff_privileged_create", "SUPERADMIN atau SYSTEM tidak dapat dibuat lewat endpoint ini")
+	ErrStaffPrivilegedRole     = NewLocalizedError("staff_privileged_role", "peran SUPERADMIN atau SYSTEM tidak dapat diberikan lewat pembaruan")
+	ErrStaffCurrentPassword    = NewLocalizedError("staff_current_password_wrong", "kata sandi saat ini salah")
+	ErrStaffPasswordUnchanged  = NewLocalizedError("staff_password_unchanged", "kata sandi baru harus berbeda dari kata sandi saat ini")
+	ErrStaffUseOwnPasswordFlow = NewLocalizedError("staff_use_own_password_flow", "gunakan ubah kata sandi untuk akun sendiri")
+	ErrStaffSelfDeactivate     = NewLocalizedError("staff_self_deactivate", "akun sendiri tidak dapat dinonaktifkan")
+	ErrStaffPasswordOnlySelf   = NewLocalizedError("staff_password_only_self", "ubah kata sandi hanya berlaku untuk akun sendiri")
+)

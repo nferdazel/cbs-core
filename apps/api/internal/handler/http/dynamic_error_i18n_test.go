@@ -194,3 +194,71 @@ func TestPesanValidasiLanjutanIkutBahasaInstalasi(t *testing.T) {
 		})
 	}
 }
+
+// Galat manajemen staf sebelumnya BERBAUR: sebagian pesannya berbahasa Inggris
+// ("password must be at least 8 characters") padahal ditampilkan ke pengguna, sebagian
+// lagi Indonesia. Uji ini mengunci keseragaman: pesan ID memakai bahasa Indonesia dan
+// pesan EN memakai katalog, untuk kedua kelompok itu.
+func TestPesanStaffIkutBahasaInstalasi(t *testing.T) {
+	kasus := []struct {
+		nama    string
+		pesanID string
+		kode    i18n.Code
+		err     error
+	}{
+		{
+			nama:    "kata sandi terlalu pendek",
+			pesanID: "kata sandi minimal 8 karakter",
+			kode:    i18n.MsgStaffPasswordTooShort,
+			err:     domain.ErrStaffPasswordTooShort,
+		},
+		{
+			nama:    "kata sandi lemah",
+			pesanID: "kata sandi harus memuat huruf besar, huruf kecil, angka, dan karakter khusus",
+			kode:    i18n.MsgStaffPasswordWeak,
+			err:     domain.ErrStaffPasswordWeak,
+		},
+		{
+			nama:    "akun sendiri tidak dapat dinonaktifkan",
+			pesanID: "akun sendiri tidak dapat dinonaktifkan",
+			kode:    i18n.MsgStaffSelfDeactivate,
+			err:     domain.ErrStaffSelfDeactivate,
+		},
+		{
+			nama:    "kata sandi saat ini salah",
+			pesanID: "kata sandi saat ini salah",
+			kode:    i18n.MsgStaffCurrentPassword,
+			err:     domain.ErrStaffCurrentPassword,
+		},
+		{
+			nama:    "peran istimewa lewat pembaruan",
+			pesanID: "peran SUPERADMIN atau SYSTEM tidak dapat diberikan lewat pembaruan",
+			kode:    i18n.MsgStaffPrivilegedRole,
+			err:     domain.ErrStaffPrivilegedRole,
+		},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			t.Setenv("CBS_LANGUAGE", "id")
+			idRec := httptest.NewRecorder()
+			httpHandler.Fail(idRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			if got := decodeError(t, idRec); got != k.pesanID {
+				t.Fatalf("pesan ID tidak sesuai:\n  dapat %q\n  mau   %q", got, k.pesanID)
+			}
+
+			t.Setenv("CBS_LANGUAGE", "en")
+			enRec := httptest.NewRecorder()
+			httpHandler.Fail(enRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			if en := decodeError(t, enRec); en != i18n.T(i18n.EN, k.kode) {
+				t.Fatalf("pesan EN tidak sesuai katalog:\n  dapat %q\n  mau   %q", en, i18n.T(i18n.EN, k.kode))
+			}
+			// Pesan EN tidak boleh lagi berbahasa Indonesia (regresi kelompok ini).
+			if strings.Contains(decodeError(t, enRec), "kata sandi") ||
+				strings.Contains(decodeError(t, enRec), "akun sendiri") {
+				t.Fatalf("pesan EN masih berbahasa Indonesia: %q", decodeError(t, enRec))
+			}
+		})
+	}
+}

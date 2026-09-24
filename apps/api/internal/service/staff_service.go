@@ -86,7 +86,7 @@ func BranchCoverageWarnings(ctx context.Context, reader domain.BranchScopeMismat
 
 func validatePassword(password string) error {
 	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
+		return domain.ErrStaffPasswordTooShort
 	}
 	var hasUpper, hasLower, hasDigit, hasSpecial bool
 	for _, c := range password {
@@ -102,7 +102,7 @@ func validatePassword(password string) error {
 		}
 	}
 	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
-		return errors.New("password must contain uppercase, lowercase, number, and special character")
+		return domain.ErrStaffPasswordWeak
 	}
 	return nil
 }
@@ -125,7 +125,7 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 
 	// Prevent creating another SUPERADMIN via this path
 	if input.Role == domain.RoleSuperAdmin || input.Role == domain.RoleSystem {
-		return nil, errors.New("cannot create SUPERADMIN or SYSTEM through this endpoint")
+		return nil, domain.ErrStaffPrivilegedCreate
 	}
 
 	// Peran lintas cabang tidak dibuat lewat endpoint ini, tetapi bila kelak
@@ -223,7 +223,7 @@ func (s *staffService) UpdateStaff(ctx context.Context, id uuid.UUID, input doma
 		return nil, errStaffRoleNotManageable
 	}
 	if input.IsActive != nil && !*input.IsActive && id == actor.UserID {
-		return nil, errors.New("akun sendiri tidak dapat dinonaktifkan")
+		return nil, domain.ErrStaffSelfDeactivate
 	}
 
 	if input.FullName != nil {
@@ -239,7 +239,7 @@ func (s *staffService) UpdateStaff(ctx context.Context, id uuid.UUID, input doma
 			return nil, errStaffRoleNotManageable
 		}
 		if *input.Role == domain.RoleSuperAdmin || *input.Role == domain.RoleSystem {
-			return nil, errors.New("cannot assign SUPERADMIN or SYSTEM role via update")
+			return nil, domain.ErrStaffPrivilegedRole
 		}
 		user.Role = *input.Role
 	}
@@ -274,7 +274,7 @@ func (s *staffService) ChangePassword(ctx context.Context, id uuid.UUID, input d
 	// Jalur ini adalah ubah kata sandi milik sendiri: penggantian kata sandi orang lain
 	// harus lewat reset yang diaudit dan diperiksa hierarkinya.
 	if id != actor.UserID {
-		return errors.New("ubah kata sandi hanya berlaku untuk akun sendiri")
+		return domain.ErrStaffPasswordOnlySelf
 	}
 
 	user, err := s.staffRepo.GetByID(ctx, id)
@@ -283,7 +283,7 @@ func (s *staffService) ChangePassword(ctx context.Context, id uuid.UUID, input d
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.CurrentPassword)); err != nil {
-		return errors.New("current password is incorrect")
+		return domain.ErrStaffCurrentPassword
 	}
 
 	if err := validatePassword(input.NewPassword); err != nil {
@@ -292,7 +292,7 @@ func (s *staffService) ChangePassword(ctx context.Context, id uuid.UUID, input d
 
 	// Prevent reusing the same password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.NewPassword)); err == nil {
-		return errors.New("new password must be different from current password")
+		return domain.ErrStaffPasswordUnchanged
 	}
 
 	hash, err := hashPassword(input.NewPassword)
@@ -313,7 +313,7 @@ func (s *staffService) ResetPassword(ctx context.Context, id uuid.UUID, newPassw
 		return err
 	}
 	if id == actor.UserID {
-		return errors.New("gunakan ubah kata sandi untuk akun sendiri")
+		return domain.ErrStaffUseOwnPasswordFlow
 	}
 	// Reset kata sandi adalah jalan masuk ke akun orang lain: hierarki peran wajib
 	// diperiksa lebih dulu, dan aksinya meninggalkan jejak audit.
