@@ -83,11 +83,17 @@ func normalizeListData(data any) any {
 // ditambahkan pemanggil di belakang pesan dasar tetap dipertahankan agar maknanya
 // tidak hilang.
 func translatedDomainError(err error) (string, bool) {
-	code, base, ok := domain.LocalizedMessage(err)
+	code, base, args, ok := domain.LocalizedMessageArgs(err)
 	if !ok {
 		return "", false
 	}
-	translated := i18n.Text(i18n.Code(code))
+	// Pesan katalog berplaceholder (data di TENGAH pesan) diterjemahkan dengan argumen
+	// aslinya; pesan biasa tetap lewat Text. Pesan dasar Indonesia sudah lengkap, jadi
+	// bunyi ID tidak berubah sementara EN memakai susunan katanya sendiri.
+	translated := i18n.T(i18n.Default(), i18n.Code(code))
+	if len(args) > 0 {
+		translated = i18n.Textf(i18n.Code(code), args...)
+	}
 	if full := err.Error(); full != base && strings.HasPrefix(full, base) {
 		translated += strings.TrimPrefix(full, base)
 	}

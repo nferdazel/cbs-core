@@ -262,6 +262,25 @@ const (
 	MsgCustomerNameRequired             Code = "customer_name_required"
 	MsgSameAccountTransfer              Code = "same_account_transfer"
 	MsgAccountNumberTaken               Code = "account_number_taken"
+
+	// Galat validasi dinamis lanjutan (putaran i18n berikutnya): produk/rekening yang
+	// tidak cocok, hapus buku, dan koreksi nominal.
+	MsgNotLoanProduct               Code = "not_loan_product"
+	MsgLoanProductMissing           Code = "loan_product_missing"
+	MsgPaymentMethodUnknown         Code = "payment_method_unknown"
+	MsgInstallmentAccountNotFound   Code = "installment_account_missing"
+	MsgRecoveryAccountNotFound      Code = "recovery_account_missing"
+	MsgWriteOffOnlyActive           Code = "write_off_only_active"
+	MsgWriteOffNoPrincipal          Code = "write_off_no_principal"
+	MsgWriteOffNotWrittenOff        Code = "write_off_not_written_off"
+	MsgWriteOffMappingMissing       Code = "write_off_mapping_missing"
+	MsgCorrectionBelowPaidPrincipal Code = "correction_below_paid_principal"
+	MsgCorrectionBelowScheduled     Code = "correction_below_scheduled"
+	MsgProductNotForSavings         Code = "product_not_for_savings"
+	MsgProductInactive              Code = "product_inactive"
+	MsgBranchInactive               Code = "branch_inactive"
+	MsgCOAAccountNotFound           Code = "coa_account_not_found"
+	MsgAROInstructionUnknown        Code = "aro_instruction_unknown"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -515,6 +534,22 @@ var codeList = []Code{
 	MsgCustomerNameRequired,
 	MsgSameAccountTransfer,
 	MsgAccountNumberTaken,
+	MsgNotLoanProduct,
+	MsgLoanProductMissing,
+	MsgPaymentMethodUnknown,
+	MsgInstallmentAccountNotFound,
+	MsgRecoveryAccountNotFound,
+	MsgWriteOffOnlyActive,
+	MsgWriteOffNoPrincipal,
+	MsgWriteOffNotWrittenOff,
+	MsgWriteOffMappingMissing,
+	MsgCorrectionBelowPaidPrincipal,
+	MsgCorrectionBelowScheduled,
+	MsgProductNotForSavings,
+	MsgProductInactive,
+	MsgBranchInactive,
+	MsgCOAAccountNotFound,
+	MsgAROInstructionUnknown,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1510,5 +1545,71 @@ var catalog = map[Code]map[Lang]string{
 	MsgAccountNumberTaken: {
 		ID: "nomor rekening sudah terpakai, silakan coba lagi",
 		EN: "the account number is already taken; please try again",
+	},
+	MsgNotLoanProduct: {
+		ID: "produk %s bukan produk kredit/pembiayaan",
+		EN: "product %s is not a loan/financing product",
+	},
+	MsgLoanProductMissing: {
+		ID: "kredit tidak terhubung ke produk",
+		EN: "the loan is not linked to a product",
+	},
+	MsgPaymentMethodUnknown: {
+		ID: "metode pembayaran %q tidak dikenal",
+		EN: "payment method %q is not recognised",
+	},
+	MsgInstallmentAccountNotFound: {
+		ID: "rekening pembayaran angsuran tidak ditemukan",
+		EN: "the instalment payment account was not found",
+	},
+	MsgRecoveryAccountNotFound: {
+		ID: "rekening recovery tidak ditemukan",
+		EN: "the recovery account was not found",
+	},
+	MsgWriteOffOnlyActive: {
+		ID: "hanya kredit aktif yang dapat dihapus buku",
+		EN: "only active loans can be written off",
+	},
+	MsgWriteOffNoPrincipal: {
+		ID: "kredit tidak memiliki sisa pokok yang dapat dihapus buku",
+		EN: "the loan has no outstanding principal to write off",
+	},
+	MsgWriteOffNotWrittenOff: {
+		ID: "kredit tidak berstatus hapus buku",
+		EN: "the loan is not in written-off status",
+	},
+	MsgWriteOffMappingMissing: {
+		ID: "pemetaan hapus buku belum lengkap",
+		EN: "the write-off product mapping is incomplete",
+	},
+	MsgCorrectionBelowPaidPrincipal: {
+		ID: "nominal baru lebih kecil daripada pokok yang sudah dibayar",
+		EN: "the new amount is lower than the principal already paid",
+	},
+	MsgCorrectionBelowScheduled: {
+		ID: "nominal baru lebih kecil daripada pokok jadwal yang sudah dibayar",
+		EN: "the new amount is lower than the scheduled principal already paid",
+	},
+	MsgProductNotForSavings: {
+		ID: "produk %s tidak untuk pembukaan rekening simpanan",
+		EN: "product %s is not for opening a savings account",
+	},
+	MsgProductInactive: {
+		ID: "produk %s sedang tidak aktif",
+		EN: "product %s is not active",
+	},
+	MsgBranchInactive: {
+		ID: "cabang %s sedang tidak aktif",
+		EN: "branch %s is not active",
+	},
+	MsgCOAAccountNotFound: {
+		// Data (kode akun) berada di TENGAH pesan, jadi kedua bahasa memakai
+		// placeholder dan diisi lewat Textf dengan argumen asli galat.
+		ID: "akun COA %s tidak ditemukan",
+		EN: "chart-of-accounts account %s was not found",
+	},
+	MsgAROInstructionUnknown: {
+		ID: "instruksi ARO tidak dikenal",
+		EN: "unknown ARO instruction",
 	},
 }

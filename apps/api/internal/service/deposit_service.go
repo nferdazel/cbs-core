@@ -226,7 +226,7 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 		return nil, fmt.Errorf("cabang tidak valid: %w", domain.ErrBranchNotFound)
 	}
 	if !branch.IsActive {
-		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branch.Code)
+		return nil, domain.BranchInactive(branch.Code)
 	}
 
 	coaCode, err := liabilityCOAForProduct(product)
@@ -254,7 +254,7 @@ func (s *depositService) preparePlacement(ctx context.Context, input domain.Plac
 		instruction = domain.AROInstructionPrincipal
 	}
 	if instruction != domain.AROInstructionPrincipal && instruction != domain.AROInstructionPrincipalAndProfit && instruction != domain.AROInstructionNone {
-		return nil, errors.New("instruksi ARO tidak dikenal")
+		return nil, domain.ErrAROInstructionUnknown
 	}
 
 	return &depositPlacementPrep{

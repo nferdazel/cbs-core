@@ -99,7 +99,7 @@ func (s *loanService) ApplyLoan(ctx context.Context, input domain.ApplyLoanInput
 		return nil, err
 	}
 	if product.Family != domain.FamilyLoan {
-		return nil, fmt.Errorf("produk %s bukan produk kredit/pembiayaan", product.Code)
+		return nil, domain.NotLoanProduct(product.Code)
 	}
 	if input.PrincipalAmount.LessThan(product.MinAmount) {
 		return nil, fmt.Errorf("%w %s (%s)", domain.ErrProductAmountBelowMin, product.Code, product.MinAmount.String())
@@ -360,7 +360,7 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID, actor 
 		return nil, domain.ErrLoanNotApproved
 	}
 	if loan.ProductID == nil {
-		return nil, errors.New("kredit tidak terhubung ke produk")
+		return nil, domain.ErrLoanProductMissing
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
@@ -531,7 +531,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		method = domain.LoanPaymentAccount
 	}
 	if method != domain.LoanPaymentAccount && method != domain.LoanPaymentCash {
-		return nil, fmt.Errorf("metode pembayaran %q tidak dikenal", input.Method)
+		return nil, domain.PaymentMethodUnknown(string(input.Method))
 	}
 
 	loan, err := s.loanRepo.GetByID(ctx, input.LoanID)
@@ -548,7 +548,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 		return nil, domain.ErrLoanNotActive
 	}
 	if loan.ProductID == nil {
-		return nil, errors.New("kredit tidak terhubung ke produk")
+		return nil, domain.ErrLoanProductMissing
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
@@ -557,7 +557,7 @@ func (s *loanService) PayInstallment(ctx context.Context, input domain.PayInstal
 
 	payAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 	if err != nil {
-		return nil, errors.New("rekening pembayaran angsuran tidak ditemukan")
+		return nil, domain.ErrInstallmentAccountNotFound
 	}
 
 	// Hasil perhitungan di dalam transaksi disimpan ke variabel luar untuk dipakai
@@ -1022,7 +1022,7 @@ func (s *loanService) RestructureLoan(ctx context.Context, input domain.Restruct
 		return nil, domain.ErrRestructureNewTermPositive
 	}
 	if loan.ProductID == nil {
-		return nil, errors.New("kredit tidak terhubung ke produk")
+		return nil, domain.ErrLoanProductMissing
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
@@ -1309,10 +1309,10 @@ func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*d
 	// Kredit tidak aktif (PAID_OFF/WRITTEN_OFF/CANCELLED) sudah tidak punya eksposur.
 	// DEFAULTED tetap boleh karena ia masih punya eksposur dan justru golongan macet.
 	if loan.Status != domain.LoanStatusDisbursed && loan.Status != domain.LoanStatusDefaulted {
-		return nil, writeOffTerms{}, errors.New("hanya kredit aktif yang dapat dihapus buku")
+		return nil, writeOffTerms{}, domain.ErrWriteOffOnlyActive
 	}
 	if loan.ProductID == nil {
-		return nil, writeOffTerms{}, errors.New("kredit tidak terhubung ke produk")
+		return nil, writeOffTerms{}, domain.ErrLoanProductMissing
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
@@ -1328,7 +1328,7 @@ func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*d
 	// yang tercatat (POJK 1/2024 Pasal 42 ayat (2)). Sisa pokok nol berarti tidak ada
 	// lagi yang bisa dihapus buku.
 	if !loan.OutstandingPrincipal.IsPositive() {
-		return nil, writeOffTerms{}, errors.New("kredit tidak memiliki sisa pokok yang dapat dihapus buku")
+		return nil, writeOffTerms{}, domain.ErrWriteOffNoPrincipal
 	}
 	principal := loan.OutstandingPrincipal
 	// Syarat 2: cadangan 100% dari nilai tercatat. Pihak bank boleh menetapkan tarif
@@ -1355,10 +1355,10 @@ func (s *loanService) writeOffTarget(ctx context.Context, loan *domain.Loan) (*d
 // recoveryTarget memvalidasi kredit hapus buku dan menyiapkan rekening penerimaannya.
 func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*domain.BankingProduct, map[string]string, error) {
 	if loan.Status != domain.LoanStatusWrittenOff {
-		return nil, nil, errors.New("kredit tidak berstatus hapus buku")
+		return nil, nil, domain.ErrWriteOffNotWrittenOff
 	}
 	if loan.ProductID == nil {
-		return nil, nil, errors.New("kredit tidak terhubung ke produk")
+		return nil, nil, domain.ErrLoanProductMissing
 	}
 	product, err := s.productRepo.GetByID(ctx, *loan.ProductID)
 	if err != nil {
@@ -1366,7 +1366,7 @@ func (s *loanService) recoveryTarget(ctx context.Context, loan *domain.Loan) (*d
 	}
 	recoveryAccount, err := s.accountRepo.GetByID(ctx, loan.DisbursementAccountID)
 	if err != nil {
-		return nil, nil, errors.New("rekening recovery tidak ditemukan")
+		return nil, nil, domain.ErrRecoveryAccountNotFound
 	}
 	overrides, err := customerAccountOverrides(product, recoveryAccount)
 	if err != nil {
@@ -2113,13 +2113,13 @@ func recalculateSchedules(schedules []domain.LoanSchedule, newAmount decimal.Dec
 	// Sisa pokok baru adalah nominal baru dikurangi pokok yang sudah dibayar.
 	outstanding := newAmount.Sub(paidPrincipal)
 	if outstanding.IsNegative() {
-		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("nominal baru lebih kecil daripada pokok yang sudah dibayar")
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, domain.ErrCorrectionBelowPaidPrincipal
 	}
 	// Pokok yang dibagi ke angsuran belum dibayar adalah nominal baru dikurangi
 	// pokok jadwal yang dibekukan, supaya total pokok seluruh jadwal tepat nominal baru.
 	distributable := newAmount.Sub(frozenPrincipal)
 	if distributable.IsNegative() {
-		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("nominal baru lebih kecil daripada pokok jadwal yang sudah dibayar")
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, domain.ErrCorrectionBelowScheduled
 	}
 	base := domain.RoundToRupiah(distributable.Div(decimal.NewFromInt(int64(len(unpaid)))))
 	allocated := decimal.Zero

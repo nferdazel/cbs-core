@@ -99,3 +99,43 @@ bisa gagal bila sentinel dikembalikan ke `fmt.Errorf`).
    — mayoritas galat operator/dukungan, frekuensi rendah bagi pengguna akhir.
 6. Terakhir, galat pembungkus internal (`"membaca ...: %w"`, `"menyimpan ...: %w"`) —
    tidak ditampilkan ke pengguna (ditangkap `isBusinessError`), jadi prioritas rendah.
+
+## Putaran lanjutan 1 (SELESAI)
+
+Ditambahkan mekanisme **placeholder ber-argumen** untuk pesan yang datanya berada di
+TENGAH kalimat (mis. "produk ABC bukan produk kredit/pembiayaan"). Sebelumnya hanya
+bisa menempelkan data di AKHIR lewat `%w`, yang akan MENGUBAH bunyi pesan Indonesia -
+dilarang karena bank membandingkan berkas lama.
+
+- `domain.NewLocalizedErrorf(code, format, args...)` menyimpan argumen; lapisan HTTP
+  menerjemahkan lewat `i18n.Textf` sehingga ID dan EN masing-masing menyusun kalimat
+  dengan placeholder yang sama, dan data dinamis berada di posisi yang benar.
+- Konstruktor berplaceholder: `NotLoanProduct`, `PaymentMethodUnknown`,
+  `ProductNotForSavings`, `ProductInactive`, `BranchInactive`, `COAAccountNotFound`.
+- Semua sentinel lama yang berbunyi "data di akhir" untuk enam kasus itu DIHAPUS agar
+  tidak ada dua bentuk pesan untuk kondisi yang sama.
+
+Titik yang diselesaikan putaran ini:
+- `loan_service.go`: produk bukan produk kredit, metode pembayaran tidak dikenal,
+  kredit tidak terhubung ke produk (5 lokasi), rekening pembayaran angsuran tidak
+  ditemukan, hapus buku (hanya aktif / tanpa sisa pokok / bukan status hapus buku),
+  rekening recovery tidak ditemukan, koreksi di bawah pokok dibayar, koreksi di bawah
+  pokok jadwal (dipisah karena bunyinya berbeda).
+- `deposit_service.go`: cabang tidak aktif, instruksi ARO tidak dikenal.
+- `account_service.go`: produk tidak untuk rekening simpanan, produk tidak aktif,
+  cabang tidak aktif, akun COA tidak ditemukan (placeholder).
+- Uji: `TestPesanValidasiLanjutanIkutBahasaInstalasi` (12 kasus) menegakkan pesan ID
+  TIDAK berubah dan pesan EN memakai katalog; dibuktikan bisa gagal dengan mematikan
+  jalur `Textf` (raw `%s` bocor ke pesan pengguna -> uji gagal).
+
+### Sisa (urutan berikutnya, masih berlaku)
+1. `ledger_service.go` / `posting_service.go`: SEBAGIAN BESAR adalah galat invarian
+   posting (jurnal tanpa baris/sisi debit, tanggal bisnis belum terpasang). Ini bukan
+   kesalahan masukan pengguna dan tidak masuk `businessErrors`, jadi SENGAJA tidak
+   diterjemahkan - menerjemahkannya akan menyiratkan kesalahan operator. Sisanya yang
+   benar-benar user-facing: `ErrSelfReversal` sudah berkode.
+2. Sisa pesan validasi statis pada alur yang sama bila masih ada.
+3. `restructure_loss_service.go`, `savings_interest_service.go`.
+4. `batch_process_service.go`, `document_service.go`, `staff_service.go`, `ckpn_service.go`
+   (mayoritas galat operator/dukungan, frekuensi rendah).
+5. Galat pembungkus internal ("membaca ...: %w") - prioritas rendah, disembunyikan.

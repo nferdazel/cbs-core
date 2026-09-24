@@ -77,7 +77,7 @@ func liabilityCOAForProduct(p *domain.BankingProduct) (string, error) {
 			return "12300", nil // Giro (belum ada akun giro syariah terpisah)
 		}
 	}
-	return "", fmt.Errorf("produk %s tidak untuk pembukaan rekening simpanan", p.Code)
+	return "", domain.ProductNotForSavings(p.Code)
 }
 
 func accountTypeForFamily(f domain.ProductFamily) domain.AccountType {
@@ -110,7 +110,7 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 		return nil, err
 	}
 	if !product.IsActive {
-		return nil, fmt.Errorf("produk %s sedang tidak aktif", product.Code)
+		return nil, domain.ProductInactive(product.Code)
 	}
 	// Rekening hanya boleh dibuka pada buku yang dapat diakses aktor. Tanpa ini,
 	// pengguna/instalasi buku konvensional dapat membuka rekening dari produk
@@ -139,7 +139,7 @@ func (s *accountService) OpenAccount(ctx context.Context, input domain.OpenAccou
 		return nil, fmt.Errorf("cabang tidak valid: %w", domain.ErrBranchNotFound)
 	}
 	if !branch.IsActive {
-		return nil, fmt.Errorf("cabang %s sedang tidak aktif", branch.Code)
+		return nil, domain.BranchInactive(branch.Code)
 	}
 
 	coaCode, err := liabilityCOAForProduct(product)
@@ -221,7 +221,7 @@ func (s *accountService) resolveCOAID(ctx context.Context, tx *sql.Tx, code stri
 		Scan(&id, &normalBalance, &book)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, "", "", fmt.Errorf("akun COA %s tidak ditemukan", code)
+			return uuid.Nil, "", "", domain.COAAccountNotFound(code)
 		}
 		return uuid.Nil, "", "", err
 	}
