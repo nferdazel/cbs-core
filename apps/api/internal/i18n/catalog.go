@@ -296,6 +296,11 @@ const (
 	// Validasi masukan operator pada alur yang diisi manusia.
 	MsgNoUnpaidInstallment Code = "no_unpaid_installment"
 	MsgCKPNValueNotDecimal Code = "ckpn_value_not_decimal"
+
+	// Validasi NIK dan konfigurasi batas transaksi.
+	MsgNIKTooShort        Code = "nik_too_short"
+	MsgLimitConfigMissing Code = "limit_config_missing"
+	MsgLimitConfigInvalid Code = "limit_config_invalid"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -576,6 +581,9 @@ var codeList = []Code{
 	MsgStaffPasswordOnlySelf,
 	MsgNoUnpaidInstallment,
 	MsgCKPNValueNotDecimal,
+	MsgNIKTooShort,
+	MsgLimitConfigMissing,
+	MsgLimitConfigInvalid,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1682,5 +1690,17 @@ var catalog = map[Code]map[Lang]string{
 		// Nilai yang salah dikutip di tengah pesan, jadi memakai placeholder.
 		ID: "nilai %q bukan angka desimal yang sah",
 		EN: "value %q is not a valid decimal number",
+	},
+	MsgNIKTooShort: {
+		ID: "NIK harus 16 digit",
+		EN: "the national ID number (NIK) must be 16 digits",
+	},
+	MsgLimitConfigMissing: {
+		ID: "konfigurasi batas %s belum diisi; batas transaksi tidak boleh memakai angka bawaan",
+		EN: "the %s limit setting has not been filled in; transaction limits must not fall back to a default value",
+	},
+	MsgLimitConfigInvalid: {
+		ID: "konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi",
+		EN: "the %s limit setting is %q, which is not a number; fix it before running transactions",
 	},
 }

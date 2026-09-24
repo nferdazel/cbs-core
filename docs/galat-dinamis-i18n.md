@@ -168,3 +168,25 @@ sehingga pesan Indonesia teknis justru lebih berguna bagi operator/dukungan:
 - payload persetujuan (maker-checker) tidak lengkap;
 - struktur jurnal tidak sah (tanpa baris / tanpa sisi debit / tanpa nomor rekening);
 - sumber tanggal bisnis belum terpasang.
+
+## Putaran lanjutan 3 (SELESAI)
+
+- **`integration_service.go` (2 titik)**: "invalid NIK format, must be 16 digits" dan
+  "invalid NIK format" - pesan BERBAHASA INGGRIS untuk masukan pengguna. NIK diisi staf
+  saat mendaftarkan nasabah. Kini berkode katalog.
+- **`limit_service.go` (2 titik)**: pesan penolakan transaksi karena konfigurasi batas
+  belum diisi atau bukan angka. Ini pesan PENTING bagi operator: ia menjelaskan mengapa
+  transaksi ditolak dan apa yang harus diperbaiki, jadi tidak boleh hanya berbahasa
+  Indonesia. Memakai placeholder karena kunci/nilai berada di tengah pesan.
+
+### Catatan mutu uji (lanjutan)
+Daftar "kata Indonesia" pada penjaga harus memuat HANYA kata yang tidak sah dalam bahasa
+Inggris. Percobaan pertama saya memasukkan "NIK" dan "digit" - keduanya juga kata Inggris
+sah ("national ID number (NIK)", "16 digits") - sehingga menghasilkan kegagalan palsu.
+Aturan praktisnya: pilih kata yang jelas Indonesia ("harus", "belum diisi", "bukan angka").
+
+### Sisa
+Semua sisa pesan yang belum berkode sudah diperiksa satu per satu dan termasuk kategori
+yang SENGAJA tidak diterjemahkan (pemetaan jurnal produk, payload persetujuan, struktur
+jurnal tidak sah, tanggal bisnis belum terpasang) - kecuali yang muncul di putaran
+berikutnya bila ada temuan baru.

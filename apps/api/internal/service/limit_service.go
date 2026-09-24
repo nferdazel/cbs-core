@@ -102,11 +102,11 @@ const missingLimitConfig = "\x00_limit_config_missing"
 func (s *transactionLimitService) requiredLimit(ctx context.Context, key string) (decimal.Decimal, error) {
 	value := s.config.GetString(ctx, key, missingLimitConfig)
 	if value == missingLimitConfig {
-		return decimal.Zero, fmt.Errorf("konfigurasi batas %s belum diisi; batas transaksi tidak boleh memakai angka bawaan", key)
+		return decimal.Zero, domain.LimitConfigMissing(key)
 	}
 	d, err := decimal.NewFromString(strings.TrimSpace(value))
 	if err != nil {
-		return decimal.Zero, fmt.Errorf("konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi", key, value)
+		return decimal.Zero, domain.LimitConfigInvalid(key, value)
 	}
 	return d, nil
 }

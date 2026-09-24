@@ -324,3 +324,77 @@ func TestPesanValidasiOperatorIkutBahasaInstalasi(t *testing.T) {
 		})
 	}
 }
+
+// Validasi NIK (masukan pengguna) dan konfigurasi batas transaksi (dibaca operator dari
+// penolakan transaksi). Keduanya harus terbaca dalam bahasa instalasi; penjaga kata
+// Indonesia dipakai supaya entri EN yang keliru tidak lolos membandingkan katalog
+// dengan dirinya sendiri.
+func TestPesanNIKDanBatasIkutBahasaInstalasi(t *testing.T) {
+	kasus := []struct {
+		nama    string
+		pesanID string
+		kode    i18n.Code
+		err     error
+		kataID  []string
+	}{
+		{
+			nama:    "NIK kurang dari 16 digit",
+			pesanID: "NIK harus 16 digit",
+			kode:    i18n.MsgNIKTooShort,
+			err:     domain.ErrNIKTooShort,
+			// "NIK" dan "digit" sengaja TIDAK masuk daftar: keduanya juga kata Inggris
+			// sah ("national ID number (NIK)", "16 digits"), jadi menandainya sebagai
+			// kebocoran bahasa akan menghasilkan kegagalan palsu.
+			kataID: []string{"harus", "wajib"},
+		},
+		{
+			nama:    "konfigurasi batas belum diisi",
+			pesanID: "konfigurasi batas limit.teller harian belum diisi; batas transaksi tidak boleh memakai angka bawaan",
+			kode:    i18n.MsgLimitConfigMissing,
+			err:     domain.LimitConfigMissing("limit.teller harian"),
+			kataID:  []string{"konfigurasi", "batas", "belum diisi"},
+		},
+		{
+			nama:    "konfigurasi batas bukan angka",
+			pesanID: `konfigurasi batas limit.teller harian bernilai "abc", bukan angka; perbaiki nilainya sebelum bertransaksi`,
+			kode:    i18n.MsgLimitConfigInvalid,
+			err:     domain.LimitConfigInvalid("limit.teller harian", "abc"),
+			kataID:  []string{"konfigurasi", "batas", "bukan angka"},
+		},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			t.Setenv("CBS_LANGUAGE", "id")
+			idRec := httptest.NewRecorder()
+			httpHandler.Fail(idRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			if got := decodeError(t, idRec); got != k.pesanID {
+				t.Fatalf("pesan ID tidak sesuai:\n  dapat %q\n  mau   %q", got, k.pesanID)
+			}
+
+			t.Setenv("CBS_LANGUAGE", "en")
+			enRec := httptest.NewRecorder()
+			httpHandler.Fail(enRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			en := decodeError(t, enRec)
+			args := []any{}
+			if ap, ok := k.err.(interface{ MessageArgs() []any }); ok {
+				args = ap.MessageArgs()
+			}
+			var mauEN string
+			if len(args) > 0 {
+				mauEN = i18n.Textf(k.kode, args...)
+			} else {
+				mauEN = i18n.T(i18n.EN, k.kode)
+			}
+			if en != mauEN {
+				t.Fatalf("pesan EN tidak sesuai katalog:\n  dapat %q\n  mau   %q", en, mauEN)
+			}
+			for _, kata := range k.kataID {
+				if strings.Contains(en, kata) {
+					t.Fatalf("pesan EN masih memuat kata Indonesia %q: %q", kata, en)
+				}
+			}
+		})
+	}
+}

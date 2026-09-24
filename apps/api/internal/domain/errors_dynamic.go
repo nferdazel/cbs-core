@@ -111,3 +111,24 @@ var (
 func CKPNValueNotDecimal(raw string) *LocalizedError {
 	return NewLocalizedErrorf(ErrCKPNValueNotDecimalID, "nilai %q bukan angka desimal yang sah", raw)
 }
+
+// Validasi NIK dan konfigurasi batas transaksi. NIK adalah masukan pengguna (16 digit);
+// pesan batas menjelaskan mengapa transaksi DITOLAK dan apa yang harus diperbaiki
+// operator, jadi keduanya harus terbaca dalam bahasa instalasi.
+var (
+	ErrNIKTooShort          = NewLocalizedError("nik_too_short", "NIK harus 16 digit")
+	ErrLimitConfigMissingID = "limit_config_missing"
+	ErrLimitConfigInvalidID = "limit_config_invalid"
+)
+
+// LimitConfigMissing membentuk galat konfigurasi batas yang belum diisi. Kunci konfigurasi
+// berada di TENGAH pesan, jadi memakai placeholder supaya bunyi Indonesia tidak berubah.
+func LimitConfigMissing(key string) *LocalizedError {
+	return NewLocalizedErrorf(ErrLimitConfigMissingID, "konfigurasi batas %s belum diisi; batas transaksi tidak boleh memakai angka bawaan", key)
+}
+
+// LimitConfigInvalid membentuk galat konfigurasi batas yang bukan angka, dengan kunci dan
+// nilai apa adanya supaya operator tahu persis yang harus diperbaiki.
+func LimitConfigInvalid(key, value string) *LocalizedError {
+	return NewLocalizedErrorf(ErrLimitConfigInvalidID, "konfigurasi batas %s bernilai %q, bukan angka; perbaiki nilainya sebelum bertransaksi", key, value)
+}

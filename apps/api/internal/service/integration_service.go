@@ -16,7 +16,7 @@ func NewMockSLIKGateway() domain.SLIKGateway {
 
 func (g *mockSLIKGateway) CheckDebtor(_ context.Context, nik string) (*domain.SLIKCheckResult, error) {
 	if len(nik) < 16 {
-		return nil, fmt.Errorf("invalid NIK format, must be 16 digits")
+		return nil, domain.ErrNIKTooShort
 	}
 
 	// Mock logic: NIK ending in '5' returns bad collectibility (NPL) for testing
@@ -63,7 +63,7 @@ func NewMockDukcapilGateway() domain.DukcapilGateway {
 
 func (g *mockDukcapilGateway) VerifyIdentity(_ context.Context, input domain.DukcapilVerifyInput) (*domain.DukcapilVerifyResult, error) {
 	if len(input.NIK) < 16 {
-		return nil, fmt.Errorf("invalid NIK format")
+		return nil, domain.ErrNIKTooShort
 	}
 	return &domain.DukcapilVerifyResult{
 		NIK:          input.NIK,
