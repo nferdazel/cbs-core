@@ -262,3 +262,65 @@ func TestPesanStaffIkutBahasaInstalasi(t *testing.T) {
 		})
 	}
 }
+
+// Validasi masukan operator: koreksi jadwal angsuran dan parameter CKPN yang bukan
+// angka. Keduanya diisi manusia lewat layar, jadi harus ikut bahasa instalasi.
+func TestPesanValidasiOperatorIkutBahasaInstalasi(t *testing.T) {
+	kasus := []struct {
+		nama    string
+		pesanID string
+		kode    i18n.Code
+		err     error
+	}{
+		{
+			nama:    "tidak ada angsuran belum dibayar",
+			pesanID: "tidak ada angsuran belum dibayar yang dapat disesuaikan",
+			kode:    i18n.MsgNoUnpaidInstallment,
+			err:     domain.ErrNoUnpaidInstallment,
+		},
+		{
+			nama:    "parameter CKPN bukan angka desimal",
+			pesanID: `nilai "abc" bukan angka desimal yang sah`,
+			kode:    i18n.MsgCKPNValueNotDecimal,
+			err:     domain.CKPNValueNotDecimal("abc"),
+		},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			t.Setenv("CBS_LANGUAGE", "id")
+			idRec := httptest.NewRecorder()
+			httpHandler.Fail(idRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			if got := decodeError(t, idRec); got != k.pesanID {
+				t.Fatalf("pesan ID tidak sesuai:\n  dapat %q\n  mau   %q", got, k.pesanID)
+			}
+
+			t.Setenv("CBS_LANGUAGE", "en")
+			enRec := httptest.NewRecorder()
+			httpHandler.Fail(enRec, httptest.NewRequest(http.MethodPost, "/", nil),
+				http.StatusUnprocessableEntity, k.err)
+			args := []any{}
+			if ap, ok := k.err.(interface{ MessageArgs() []any }); ok {
+				args = ap.MessageArgs()
+			}
+			var mauEN string
+			if len(args) > 0 {
+				mauEN = i18n.Textf(k.kode, args...)
+			} else {
+				mauEN = i18n.T(i18n.EN, k.kode)
+			}
+			en := decodeError(t, enRec)
+			if en != mauEN {
+				t.Fatalf("pesan EN tidak sesuai katalog:\n  dapat %q\n  mau   %q", en, mauEN)
+			}
+			// Penjaga yang tidak bergantung katalog itu sendiri: teks EN tidak boleh
+			// memuat kata khas Indonesia. Tanpa ini, entri EN yang keliru diisi bahasa
+			// Indonesia akan lolos karena pembandingnya katalog yang sama.
+			for _, kata := range []string{"tidak ada", "angsuran", "nilai", "bukan angka"} {
+				if strings.Contains(en, kata) {
+					t.Fatalf("pesan EN masih memuat kata Indonesia %q: %q", kata, en)
+				}
+			}
+		})
+	}
+}

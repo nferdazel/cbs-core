@@ -2108,7 +2108,7 @@ func recalculateSchedules(schedules []domain.LoanSchedule, newAmount decimal.Dec
 		frozenPrincipal = frozenPrincipal.Add(s.PrincipalAmount)
 	}
 	if len(unpaid) == 0 {
-		return nil, decimal.Zero, decimal.Zero, decimal.Zero, errors.New("tidak ada angsuran belum dibayar yang dapat disesuaikan")
+		return nil, decimal.Zero, decimal.Zero, decimal.Zero, domain.ErrNoUnpaidInstallment
 	}
 	// Sisa pokok baru adalah nominal baru dikurangi pokok yang sudah dibayar.
 	outstanding := newAmount.Sub(paidPrincipal)

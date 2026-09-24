@@ -98,3 +98,16 @@ var (
 	ErrStaffSelfDeactivate     = NewLocalizedError("staff_self_deactivate", "akun sendiri tidak dapat dinonaktifkan")
 	ErrStaffPasswordOnlySelf   = NewLocalizedError("staff_password_only_self", "ubah kata sandi hanya berlaku untuk akun sendiri")
 )
+
+// Validasi masukan operator pada alur yang memang diisi manusia: koreksi jadwal
+// angsuran dan pengisian parameter CKPN. Keduanya bukan galat invarian internal.
+var (
+	ErrNoUnpaidInstallment   = NewLocalizedError("no_unpaid_installment", "tidak ada angsuran belum dibayar yang dapat disesuaikan")
+	ErrCKPNValueNotDecimalID = "ckpn_value_not_decimal"
+)
+
+// CKPNValueNotDecimal membentuk galat parameter CKPN yang bukan angka desimal, dengan
+// nilai apa adanya di TENGAH pesan supaya bunyi Indonesia lama tidak berubah.
+func CKPNValueNotDecimal(raw string) *LocalizedError {
+	return NewLocalizedErrorf(ErrCKPNValueNotDecimalID, "nilai %q bukan angka desimal yang sah", raw)
+}

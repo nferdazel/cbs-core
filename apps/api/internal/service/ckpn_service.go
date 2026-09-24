@@ -697,7 +697,7 @@ func configDecimal(ctx context.Context, config domain.SystemConfigService, key s
 	}
 	d, err := decimal.NewFromString(raw)
 	if err != nil {
-		return decimal.Zero, true, fmt.Errorf("nilai %q bukan angka desimal yang sah", raw)
+		return decimal.Zero, true, domain.CKPNValueNotDecimal(raw)
 	}
 	return d, true, nil
 }

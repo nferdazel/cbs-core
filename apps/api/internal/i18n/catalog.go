@@ -292,6 +292,10 @@ const (
 	MsgStaffUseOwnPasswordFlow Code = "staff_use_own_password_flow"
 	MsgStaffSelfDeactivate     Code = "staff_self_deactivate"
 	MsgStaffPasswordOnlySelf   Code = "staff_password_only_self"
+
+	// Validasi masukan operator pada alur yang diisi manusia.
+	MsgNoUnpaidInstallment Code = "no_unpaid_installment"
+	MsgCKPNValueNotDecimal Code = "ckpn_value_not_decimal"
 )
 
 // codeList memuat seluruh kode. Uji katalog memastikan setiap konstanta punya
@@ -570,6 +574,8 @@ var codeList = []Code{
 	MsgStaffUseOwnPasswordFlow,
 	MsgStaffSelfDeactivate,
 	MsgStaffPasswordOnlySelf,
+	MsgNoUnpaidInstallment,
+	MsgCKPNValueNotDecimal,
 }
 
 // catalog memetakan kode ke terjemahan. ID adalah bahasa utama; EN wajib ada.
@@ -1667,5 +1673,14 @@ var catalog = map[Code]map[Lang]string{
 	MsgStaffPasswordOnlySelf: {
 		ID: "ubah kata sandi hanya berlaku untuk akun sendiri",
 		EN: "changing the password only applies to your own account",
+	},
+	MsgNoUnpaidInstallment: {
+		ID: "tidak ada angsuran belum dibayar yang dapat disesuaikan",
+		EN: "there is no unpaid instalment to adjust",
+	},
+	MsgCKPNValueNotDecimal: {
+		// Nilai yang salah dikutip di tengah pesan, jadi memakai placeholder.
+		ID: "nilai %q bukan angka desimal yang sah",
+		EN: "value %q is not a valid decimal number",
 	},
 }

@@ -139,3 +139,32 @@ Titik yang diselesaikan putaran ini:
 4. `batch_process_service.go`, `document_service.go`, `staff_service.go`, `ckpn_service.go`
    (mayoritas galat operator/dukungan, frekuensi rendah).
 5. Galat pembungkus internal ("membaca ...: %w") - prioritas rendah, disembunyikan.
+
+## Putaran lanjutan 2 (SELESAI)
+
+- **`staff_service.go` (9 titik)**: temuan - pesan pada berkas ini BERBAUR dua bahasa
+  dalam satu berkas ("password must be at least 8 characters" berdampingan dengan
+  "akun sendiri tidak dapat dinonaktifkan"), padahal semuanya tampil ke pengguna.
+  Kini berkode katalog; bunyi Indonesia yang sudah ada dipertahankan.
+- **`restructure_loss_service.go` (3 titik)**: sebenarnya sudah punya sentinel sejak
+  putaran sebelumnya tetapi belum dipakai, sehingga kondisi yang sama bisa muncul dengan
+  dua bentuk pesan berbeda tergantung jalur masuknya. Kini memakai sentinel yang sama.
+- **`loan_service.go`: "tidak ada angsuran belum dibayar yang dapat disesuaikan"**
+  (validasi koreksi jadwal yang diisi operator).
+- **`ckpn_service.go`: "nilai %q bukan angka desimal yang sah"** (operator mengisi
+  parameter CKPN) - memakai placeholder karena nilainya di TENGAH pesan.
+
+### Catatan mutu uji
+Uji bahasa yang membandingkan pesan EN dengan `i18n.T(EN, kode)` bersifat MEMBANDINGKAN
+KATALOG DENGAN DIRINYA SENDIRI: entri EN yang keliru diisi bahasa Indonesia akan lolos.
+Uji `TestPesanValidasiOperatorIkutBahasaInstalasi` karena itu diperkuat dengan penjaga
+kata khas Indonesia ("tidak ada", "angsuran", ...). Terbukti: dengan entri EN sengaja
+dirusak, uji versi lama LULUS dan versi baru GAGAL. Uji lain sebaiknya mengikuti pola ini.
+
+### Sisa yang SENGAJA tidak diterjemahkan (bukan kelalaian)
+Galat berikut bukan masukan pengguna melainkan cacat konfigurasi atau invarian internal,
+sehingga pesan Indonesia teknis justru lebih berguna bagi operator/dukungan:
+- pemetaan jurnal produk tidak lengkap / tanpa kaki debit (bank harus memperbaiki pemetaan);
+- payload persetujuan (maker-checker) tidak lengkap;
+- struktur jurnal tidak sah (tanpa baris / tanpa sisi debit / tanpa nomor rekening);
+- sumber tanggal bisnis belum terpasang.
