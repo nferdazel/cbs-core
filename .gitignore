@@ -34,8 +34,12 @@ id_ed25519
 
 # Go
 apps/core-api/core-api
-# Biner server hasil build lokal (bukan artefak sumber)
+# Biner hasil build lokal (bukan artefak sumber). `go build ./cmd/x` tanpa -o
+# menaruh biner di direktori paket; dua perintah cmd sempat ter-commit karena pola
+# sebelumnya hanya menutup `server`.
 apps/api/server
+apps/api/backfill-name-tokens
+apps/api/reindex-customer-indexes
 
 # Logs
 logs/
