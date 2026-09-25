@@ -27,6 +27,8 @@ export const dictionaryID = {
     checkingSession: "Memeriksa sesi...",
     typeToConfirmPrefix: "Ketik",
     typeToConfirmSuffix: "untuk mengonfirmasi",
+    yes: "Ya",
+    no: "Tidak",
   },
   header: {
     businessDate: "Tanggal Buku",
@@ -530,6 +532,10 @@ export const dictionaryID = {
     collateralWeightDescription:
       "Nilai syarat C1 sampai C9 dan ajukan aktivasi bobot risiko agunan lewat maker-checker.",
     collateralWeightAction: "Buka Gerbang Bobot Agunan",
+    ckpnActivationTitle: "Aktivasi CKPN",
+    ckpnActivationDescription:
+      "Isi parameter PD/LGD dan bukti ratifikasi CKPN, lalu nyalakan setelah seluruh penahan selesai.",
+    ckpnActivationAction: "Buka Aktivasi CKPN",
   },
   reactivation: {
     error: "Reaktivasi gagal diproses.",
@@ -1338,6 +1344,76 @@ export const dictionaryID = {
     markedTitle: "Keputusan tercatat",
     markedBody:
       "Keputusan pengelola tersimpan pada jejak audit. required_ckpn tidak berubah dan tidak ada jurnal.",
+  },
+  ckpnActivation: {
+    title: "Aktivasi CKPN",
+    description:
+      "Isi parameter PD/LGD, akun CKPN syariah, dan bukti ratifikasi. Menyalakan CKPN adalah aksi terpisah yang hanya aktif setelah seluruh penahan selesai. Angka di sini adalah data bank, bukan nilai bawaan sistem.",
+    loadError: "Pengaturan aktivasi CKPN gagal dimuat.",
+    forbidden:
+      "Akun Anda tidak berwenang membaca pengaturan aktivasi CKPN (system:config:read).",
+    readOnly:
+      "Anda hanya dapat meninjau. Mengubah pengaturan butuh izin system:config.",
+    save: "Simpan parameter",
+    saving: "Menyimpan...",
+    saved: "Pengaturan aktivasi CKPN diperbarui.",
+    saveError: "Pengaturan aktivasi CKPN gagal disimpan.",
+    saveForbidden:
+      "Akun Anda tidak berwenang mengubah pengaturan ini (system:config).",
+    statusTitle: "Status parameter",
+    statusSementara: "Parameter SEMENTARA",
+    statusSementaraBody:
+      "Angka CKPN ini belum diratifikasi Direksi dan akuntan (DPS untuk BPRS). Selama SEMENTARA, angka ini hanya untuk internal dan dilarang menjadi dasar kolom CKPN laporan OJK/APOLO.",
+    statusFinal: "Parameter FINAL",
+    statusFinalBody:
+      "Parameter sudah diratifikasi. Angka CKPN boleh dipakai sebagai dasar laporan OJK.",
+    warningsTitle: "Peringatan",
+    gapsTitle: "Penahan penyalakan",
+    gapsReady: "Tidak ada penahan. CKPN siap dinyalakan.",
+    fieldStatus: "Status parameter",
+    statusHint:
+      "FINAL hanya dapat disetel bila bukti ratifikasi lengkap. Server menolak FINAL tanpa bukti.",
+    optSementara: "SEMENTARA (sementara)",
+    optFinal: "FINAL (teratifikasi)",
+    temporarySince: "Parameter sementara sejak",
+    ratificationDeadline: "Batas ratifikasi (YYYY-MM-DD)",
+    floorPpka: "Lantai PPKA ditegakkan",
+    ojkExportBlocked: "Ekspor OJK diblokir",
+    ckpnEnabledLabel: "CKPN menyala",
+    enableTitle: "Menyalakan CKPN",
+    enableDescription:
+      "Menyalakan CKPN membuat tutup hari membentuk dan menjurnal CKPN. Aksi ini diaudit dan tidak dapat dibatalkan dari sini. Pastikan seluruh penahan sudah selesai.",
+    enableAction: "Nyalakan CKPN",
+    enabledNotice: "CKPN sudah menyala.",
+    enableConfirmTitle: "Nyalakan CKPN?",
+    enableConfirmBody:
+      "Tutup hari berikutnya akan membentuk CKPN dari parameter tersimpan dan menjurnal selisihnya. Pastikan parameter sudah FINAL dan akun jurnal benar.",
+    enableConfirmKeyword: "NYALAKAN",
+    sectionParameter: "Parameter PD/LGD",
+    fractionHint: "Satuan fraksi 0..1, bukan persen. Contoh 0,0100 untuk 1%.",
+    pdGol1: "PD golongan 1 (Lancar)",
+    pdGol2: "PD golongan 2 (Dalam Perhatian Khusus)",
+    pdGol3: "PD golongan 3 (Kurang Lancar)",
+    pdGol4: "PD golongan 4 (Diragukan)",
+    pdGol5: "PD golongan 5 (Macet)",
+    lgdFrac: "LGD",
+    sectionCoaSyariah: "Akun CKPN syariah",
+    coaSyariahHint:
+      "Wajib dipetakan bila instalasi melayani buku syariah. Bila kosong, jurnal CKPN pembiayaan jatuh ke akun konvensional.",
+    coaExpenseSyariah: "Akun beban CKPN syariah",
+    coaReserveSyariah: "Akun cadangan CKPN syariah",
+    sectionRatification: "Bukti ratifikasi",
+    baNumber: "Nomor berita acara",
+    baDate: "Tanggal berita acara",
+    approvedBy: "Pengesah (nama dan jabatan)",
+    pdLgdBasis: "Dasar perhitungan PD/LGD",
+    pdLgdFromBank: "PD/LGD dari data historis bank",
+    pdLgdFromBankHint:
+      "Pilih Ya bila PD (PA BPR 12.6) dan LGD (12.7) dihitung dari data historis bank, bukan turunan tarif PPKA.",
+    sectionFlags: "Saklar",
+    shadowMode: "Mode bayangan",
+    shadowModeHint:
+      "Mode bayangan menghitung CKPN tanpa menjurnal. Matikan setelah CKPN menyala agar tidak ada dua angka.",
   },
 };
 

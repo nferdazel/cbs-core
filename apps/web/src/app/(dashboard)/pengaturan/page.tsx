@@ -196,6 +196,25 @@ export default function PengaturanPage() {
           </CardContent>
         </Card>
       )}
+
+      {canViewSystemConfig && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>{t.settingsPage.ckpnActivationTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-start justify-between gap-4">
+            <p className="text-body text-ink-600">
+              {t.settingsPage.ckpnActivationDescription}
+            </p>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/pengaturan/ckpn")}
+            >
+              {t.settingsPage.ckpnActivationAction}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }

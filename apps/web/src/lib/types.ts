@@ -498,3 +498,36 @@ export type {
   OJKCollectibility,
   ProfitType,
 } from "./operations-types";
+
+/**
+ * domain.CKPNParametersStatus (apps/api/internal/domain/ckpn_parameters.go). Ringkasan
+ * status parameter CKPN: SEMENTARA/FINAL, batas ratifikasi, blokir ekspor OJK, dan
+ * peringatan yang sama dengan yang muncul saat start/EOD. Baca-saja.
+ */
+export interface CKPNParametersStatus {
+  status: string;
+  sementara: boolean;
+  temporary_since?: string;
+  ratification_months: number;
+  ratification_deadline?: string;
+  deadline_passed: boolean;
+  floor_ppka_enforced: boolean;
+  ojk_export_blocked: boolean;
+  ojk_export_block_reason?: string;
+  ratification_ready: boolean;
+  ratification_missing?: string[];
+  enablement_gaps?: string[];
+  warnings?: string[];
+}
+
+/**
+ * domain.CKPNActivation (apps/api/internal/domain/ckpn_activation.go). Pengaturan
+ * aktivasi CKPN: nilai tiap kunci yang dikelola (dipetakan per kunci system_config,
+ * kosong berarti belum diisi) beserta status parameter dan sisa penahan penyalakan.
+ */
+export interface CKPNActivation {
+  values: Record<string, string>;
+  status: CKPNParametersStatus;
+  enablement_ready: boolean;
+  enablement_gaps?: string[];
+}

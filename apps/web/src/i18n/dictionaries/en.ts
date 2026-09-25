@@ -29,6 +29,8 @@ export const dictionaryEN: Dictionary = {
     checkingSession: "Checking session...",
     typeToConfirmPrefix: "Type",
     typeToConfirmSuffix: "to confirm",
+    yes: "Yes",
+    no: "No",
   },
   header: {
     businessDate: "Business Date",
@@ -535,6 +537,10 @@ export const dictionaryEN: Dictionary = {
     collateralWeightDescription:
       "Assess conditions C1 through C9 and request collateral risk weight activation through maker-checker.",
     collateralWeightAction: "Open Collateral Weight Gate",
+    ckpnActivationTitle: "CKPN Activation",
+    ckpnActivationDescription:
+      "Fill in the CKPN PD/LGD parameters and ratification evidence, then enable once every blocker is cleared.",
+    ckpnActivationAction: "Open CKPN Activation",
   },
   reactivation: {
     error: "Reactivation failed to process.",
@@ -1345,5 +1351,75 @@ export const dictionaryEN: Dictionary = {
     markedTitle: "Decision recorded",
     markedBody:
       "The manager's decision is stored in the audit trail. required_ckpn does not change and no journal is written.",
+  },
+  ckpnActivation: {
+    title: "CKPN activation",
+    description:
+      "Fill in the PD/LGD parameters, syariah CKPN accounts, and ratification evidence. Enabling CKPN is a separate action that only becomes available once every blocker is cleared. These are the bank's own figures, not system defaults.",
+    loadError: "CKPN activation settings failed to load.",
+    forbidden:
+      "Your account may not read CKPN activation settings (system:config:read).",
+    readOnly:
+      "You can review only. Changing settings requires the system:config permission.",
+    save: "Save parameters",
+    saving: "Saving...",
+    saved: "CKPN activation settings updated.",
+    saveError: "CKPN activation settings failed to save.",
+    saveForbidden:
+      "Your account may not change these settings (system:config).",
+    statusTitle: "Parameter status",
+    statusSementara: "PROVISIONAL parameters",
+    statusSementaraBody:
+      "These CKPN figures are not yet ratified by the board and the accountant (DPS for BPRS). While PROVISIONAL, they are for internal use only and must not feed the CKPN column of OJK/APOLO reports.",
+    statusFinal: "FINAL parameters",
+    statusFinalBody:
+      "The parameters are ratified. CKPN figures may be used as the basis of OJK reports.",
+    warningsTitle: "Warnings",
+    gapsTitle: "Enablement blockers",
+    gapsReady: "No blockers. CKPN is ready to be enabled.",
+    fieldStatus: "Parameter status",
+    statusHint:
+      "FINAL can only be set when ratification evidence is complete. The server rejects FINAL without evidence.",
+    optSementara: "SEMENTARA (provisional)",
+    optFinal: "FINAL (ratified)",
+    temporarySince: "Provisional since",
+    ratificationDeadline: "Ratification deadline (YYYY-MM-DD)",
+    floorPpka: "PPKA floor enforced",
+    ojkExportBlocked: "OJK export blocked",
+    ckpnEnabledLabel: "CKPN enabled",
+    enableTitle: "Enabling CKPN",
+    enableDescription:
+      "Enabling CKPN makes end of day form and journal CKPN. This action is audited and cannot be undone here. Make sure every blocker is cleared.",
+    enableAction: "Enable CKPN",
+    enabledNotice: "CKPN is enabled.",
+    enableConfirmTitle: "Enable CKPN?",
+    enableConfirmBody:
+      "The next end of day will form CKPN from the stored parameters and journal the difference. Make sure the parameters are FINAL and the journal accounts are correct.",
+    enableConfirmKeyword: "ENABLE",
+    sectionParameter: "PD/LGD parameters",
+    fractionHint: "Fraction 0..1, not percent. Example 0.0100 for 1%.",
+    pdGol1: "PD grade 1 (Current)",
+    pdGol2: "PD grade 2 (Special Mention)",
+    pdGol3: "PD grade 3 (Substandard)",
+    pdGol4: "PD grade 4 (Doubtful)",
+    pdGol5: "PD grade 5 (Loss)",
+    lgdFrac: "LGD",
+    sectionCoaSyariah: "Syariah CKPN accounts",
+    coaSyariahHint:
+      "Required when the installation serves the syariah book. If empty, financing CKPN journals fall to the conventional accounts.",
+    coaExpenseSyariah: "Syariah CKPN expense account",
+    coaReserveSyariah: "Syariah CKPN reserve account",
+    sectionRatification: "Ratification evidence",
+    baNumber: "Minutes number",
+    baDate: "Minutes date",
+    approvedBy: "Approver (name and title)",
+    pdLgdBasis: "PD/LGD calculation basis",
+    pdLgdFromBank: "PD/LGD from the bank's own data",
+    pdLgdFromBankHint:
+      "Choose Yes when PD (PA BPR 12.6) and LGD (12.7) are computed from the bank's historical data, not derived from PPKA rates.",
+    sectionFlags: "Switches",
+    shadowMode: "Shadow mode",
+    shadowModeHint:
+      "Shadow mode computes CKPN without journaling. Turn it off once CKPN is enabled so there are not two sets of figures.",
   },
 };
