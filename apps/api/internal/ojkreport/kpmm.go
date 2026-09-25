@@ -183,6 +183,11 @@ func HitungATMR(rows []domain.ReportRow, bobot BobotRisikoATMR) ATMRHasil {
 // (dinaikkan ke nol bila negatif); selain itu (termasuk kosong) memakai
 // per-kredit Σ max(PPKA_i − CKPN_i, 0) yang secara umum lebih besar sehingga
 // konservatif. basisEfektif dikembalikan untuk dicatat pada laporan.
+//
+// Kontrak pemanggil: perKredit dan agregat SUDAH memuat jalur CKPN individual
+// (target tersegel ckpn_method, T4) dari mesin CKPN; fungsi ini hanya memilih dasar
+// dan TIDAK menghitung ulang. Menghitung ulang CKPN per kredit di lapisan KPMM akan
+// dobel-hitung dengan mesin CKPN — satu sumber kebenaran (required_ckpn) yang sama.
 func PilihPengurangModalInti(basis string, perKredit, agregat decimal.Decimal) (nilai decimal.Decimal, basisEfektif string) {
 	if basis == "agregat" {
 		if agregat.IsPositive() {
