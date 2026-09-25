@@ -109,6 +109,7 @@ const (
 	MsgBankProfile                    Code = "bank_profile"
 	MsgBankProfileUpdated             Code = "bank_profile_updated"
 	MsgHealthOK                       Code = "health_o_k"
+	MsgMonitoringSnapshot             Code = "monitoring_snapshot"
 	MsgAuthenticationRequired         Code = "authentication_required"
 	MsgAccessTokenMissing             Code = "access_token_missing"
 	MsgAccessTokenExpired             Code = "access_token_expired"
@@ -418,6 +419,7 @@ var codeList = []Code{
 	MsgBankProfile,
 	MsgBankProfileUpdated,
 	MsgHealthOK,
+	MsgMonitoringSnapshot,
 	MsgAuthenticationRequired,
 	MsgAccessTokenMissing,
 	MsgAccessTokenExpired,
@@ -1015,6 +1017,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgHealthOK: {
 		ID: "Core Banking API sehat",
 		EN: "Core Banking API is healthy",
+	},
+	MsgMonitoringSnapshot: {
+		ID: "potret kesehatan operasional",
+		EN: "operational health snapshot",
 	},
 	MsgAuthenticationRequired: {
 		ID: "autentikasi diperlukan",

@@ -72,6 +72,9 @@ type RouterParams struct {
 	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
 	// pemetaan izin (lewat maker-checker, teraudit).
 	PermissionHandler *PermissionHandler
+	// MonitoringHandler menyajikan temuan kesehatan operasional (tanggal bisnis,
+	// run EOD, PPAP, dan parameter CKPN). Baca-saja, rutenya tidak dipasang bila nil.
+	MonitoringHandler *MonitoringHandler
 	AuthService       domain.AuthService
 	// ConfigService membaca cakupan buku tingkat instalasi (institution.book_scope)
 	// yang diisi ke klaim setiap permintaan oleh BookScopeMiddleware. Bila nil,
@@ -380,6 +383,14 @@ func NewRouter(p RouterParams) *chi.Mux {
 
 			// ── Banking Business Date & EOD / EOM / EOY Batch Processes ──
 			r.Get("/system/business-date", p.BatchProcessHandler.GetBusinessDate)
+
+			// ── Pemantauan kesehatan operasional (baca-saja) ──
+			// Izin baca konfigurasi/status instalasi yang sudah ada (system:config:read,
+			// dipakai juga oleh bank-profile dan riwayat EOD); tidak ada izin baru.
+			if p.MonitoringHandler != nil {
+				r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+					Get("/system/monitoring", p.MonitoringHandler.Get)
+			}
 
 			// ── Definisi & riwayat langkah EOD (dikelola di database) ──
 			// Definisi urutan adalah konfigurasi keuangan: baca cukup

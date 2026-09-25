@@ -12,6 +12,7 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
 	"cbs-core/apps/core-api/internal/middleware"
+	"cbs-core/apps/core-api/internal/monitoring"
 	"cbs-core/apps/core-api/internal/observability"
 	"cbs-core/apps/core-api/internal/ojkreport"
 	"cbs-core/apps/core-api/internal/repository/postgres"
@@ -282,6 +283,17 @@ func main() {
 	ckpnHandler.Individual = ckpnIndividualSvc
 	lpsPlacementHandler := httpHandler.NewLPSPlacementHandler(lpsPlacementSvc)
 	permissionHandler := httpHandler.NewPermissionHandler(permissionSvc)
+	// Pemantauan kesehatan operasional (W10): membaca tanggal bisnis, riwayat langkah
+	// EOD, penanda run PPAP, dan parameter CKPN lalu mengevaluasinya secara baca-saja.
+	// Tidak ada dependensi baru dan tidak ada state yang diubah.
+	monitoringCollector := monitoring.NewCollector(monitoring.Deps{
+		Dates:    dateRepo,
+		EOD:      eodStepRepo,
+		PPAP:     ppapRunMarker,
+		Activity: dateRepo,
+		Config:   configSvc,
+	})
+	monitoringHandler := httpHandler.NewMonitoringHandler(monitoringCollector)
 	collateralSvc := service.NewCollateralService(collateralRepo, configSvc, branchRepo, auditRepo)
 	// Gerbang aktivasi bobot agunan (Lampiran II SEOJK 2/2025): baca-saja untuk audit
 	// dan aktivasi teraudit yang menegakkan C1-C9. Bobot tetap 100%/mati sampai sebuah
@@ -323,6 +335,7 @@ func main() {
 		BankProfileHandler:      bankProfileHandler,
 		OJKProfileHandler:       ojkProfileHandler,
 		PermissionHandler:       permissionHandler,
+		MonitoringHandler:       monitoringHandler,
 		AuthService:             authSvc,
 		ConfigService:           configSvc,
 		// Cakupan unit organisasi (cabang/area/wilayah) diresolusi per permintaan
