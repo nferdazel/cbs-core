@@ -287,6 +287,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 				// pencatat transaksi asal tidak boleh membatalkannya sendiri.
 				r.With(middleware.RequirePermission(domain.PermTransactionsReverse)).
 					Post("/{reference}/reverse", p.LedgerHandler.Reverse)
+				// Jurnal majemuk manual menyentuh buku besar di luar alur domain,
+				// jadi dijaga izin pengelolaan data master akuntansi (coa:manage,
+				// ADMIN/SUPERADMIN) — sejajar dengan perubahan bagan akun dan
+				// parameter produk.
+				r.With(middleware.RequirePermission(domain.PermCOAManage)).
+					Post("/journals", p.LedgerHandler.PostCompoundJournal)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).
 					Get("/journals", p.LedgerHandler.ListJournals)
 				r.With(middleware.RequirePermission(domain.PermLedgerRead)).

@@ -594,8 +594,6 @@ func actorName(actor domain.Actor, fallback string) string {
 	return fallback
 }
 
-// PostCompoundJournal memposting jurnal majemuk yang disusun operator. Posting engine
-// yang menghitung saldo; service ini tidak lagi menebak sifat saldo dari nomor akun.
 // Reverse membatalkan jurnal yang sudah diposting dengan jurnal kontra.
 //
 // Aturan yang ditegakkan di sini:
@@ -831,6 +829,11 @@ func debitTotal(original *domain.JournalEntry) decimal.Decimal {
 	return total
 }
 
+// PostCompoundJournal memposting jurnal majemuk yang disusun operator. Posting engine
+// yang menghitung saldo dan menegakkan keseimbangan (domain.ValidateDoubleEntry);
+// service ini tidak menebak sifat saldo dari nomor akun. Izin pemanggilnya adalah
+// pengelolaan data master akuntansi (coa:manage) karena menyentuh buku besar di luar
+// alur domain.
 func (s *ledgerService) PostCompoundJournal(ctx context.Context, req domain.CustomJournalRequest) (*domain.JournalEntry, error) {
 	if len(req.Lines) < 2 {
 		return nil, fmt.Errorf("jurnal majemuk memerlukan minimal dua baris")
@@ -870,17 +873,19 @@ func (s *ledgerService) resolveCashAccount(ctx context.Context, acc *domain.Acco
 	return s.resolver.ResolveGLAccount(ctx, nil, coaCode)
 }
 
-// isSyariahAccount menentukan buku rekening dari produknya. Tanpa produk (data lama),
-// rekening dianggap konvensional.
+// isSyariahAccount menentukan buku rekening dari produknya, dan dari buku COA
+// rekening sebagai cadangan bila produk tidak ada atau tidak terbaca. Rekening lama
+// (tanpa produk) tetap punya COA ber-book, sehingga sifat syariahnya tidak lagi
+// menghilang; sebaliknya data yang produknya ada tetapi bukunya kosong tetap dinilai
+// dari produk.
 func (s *ledgerService) isSyariahAccount(ctx context.Context, acc *domain.Account) bool {
-	if acc.ProductID == nil || s.productRepo == nil {
-		return false
+	if acc.ProductID != nil && s.productRepo != nil {
+		product, err := s.productRepo.GetByID(ctx, *acc.ProductID)
+		if err == nil {
+			return product.Book == domain.BookSyariah
+		}
 	}
-	product, err := s.productRepo.GetByID(ctx, *acc.ProductID)
-	if err != nil {
-		return false
-	}
-	return product.Book == domain.BookSyariah
+	return acc.COABook == domain.BookSyariah
 }
 
 func (s *ledgerService) GetJournalByReference(ctx context.Context, ref string) (*domain.JournalEntry, error) {
@@ -904,13 +909,14 @@ func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber s
 		return nil, 0, err
 	}
 
-	// Konsisten dengan detail rekening: rekening cabang lain ditolak 403, bukan
-	// diam-diam mengembalikan daftar kosong yang menyamarkan penolakan sebagai
-	// "tidak ada mutasi".
+	// Mutasi rekening cabang lain ditolak 403 lewat Fail (batas keamanan), bukan
+	// dikembalikan sebagai daftar kosong yang menyamarkan penolakan sebagai
+	// "tidak ada mutasi". Berbeda dari detail rekening, yang menyamarkan baca
+	// lintas cabang sebagai 404 agar keberadaan rekening tidak bocor.
 	if !actor.CanAccessBranch(acc.BranchCode) {
 		return nil, 0, domain.ErrCrossBranchAccess
 	}
-	// Mutasi rekening buku lain juga ditolak, konsisten dengan detail rekening.
+	// Mutasi rekening buku lain ditolak dengan aturan batas keamanan yang sama.
 	if !actor.CanAccessBook(acc.COABook) {
 		return nil, 0, domain.ErrCrossBookAccess
 	}

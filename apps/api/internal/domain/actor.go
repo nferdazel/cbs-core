@@ -7,15 +7,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// ErrCrossBranchAccess menandai operasi tulis yang ditolak karena objeknya berada
-// di cabang lain dari cabang aktor. Handlernya memetakan error ini ke HTTP 403
-// dengan pesan yang jelas, tanpa membocorkan detail internal.
+// ErrCrossBranchAccess menandai operasi yang ditolak karena objeknya berada di
+// cabang lain dari cabang aktor. Handler memetakannya lewat Fail: penulisan selalu
+// 403, sedangkan pembacaan yang pemanggilnya memilih 404 tetap 404 agar keberadaan
+// data tidak bocor. Pesannya tetap dari katalog i18n, tanpa detail internal.
 var ErrCrossBranchAccess = NewLocalizedError("cross_branch_access", "akses lintas cabang ditolak: data berada di cabang lain")
 
-// ErrCrossBookAccess menandai operasi baca yang ditolak karena objeknya berada di
+// ErrCrossBookAccess menandai operasi yang ditolak karena objeknya berada di
 // buku COA (konvensional/syariah) lain dari buku aktor. Ia sejajar dengan
 // ErrCrossBranchAccess sebagai batas keamanan sisi server: filter di klien hanya
-// tampilan, bukan penentu akses.
+// tampilan, bukan penentu akses. Handler memetakannya lewat Fail — penulisan 403,
+// pembacaan yang disaring tetap 404.
 var ErrCrossBookAccess = errors.New("akses lintas buku ditolak: data berada di buku lain")
 
 // Actor adalah identitas pelaku sebuah aksi bisnis. Nilainya HANYA boleh dibangun

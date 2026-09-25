@@ -282,9 +282,11 @@ func (h *CollateralHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusOK, i18n.MsgCollateral, collateral)
 }
 
-// writeCollateralError memetakan kesalahan agunan ke status HTTP. Agunan yang tidak ada
-// dan agunan cabang lain sama-sama 404 — membedakannya memberi tahu pemanggil bahwa
-// agunan dengan id tertentu memang ada di bank ini.
+// writeCollateralError memetakan kesalahan agunan ke status HTTP. Pada pembacaan
+// detail, agunan yang tidak ada dan agunan cabang lain sama-sama 404 — membedakannya
+// memberi tahu pemanggil bahwa agunan dengan id tertentu memang ada di bank ini.
+// Penolakan batas keamanan yang dikembalikan langsung (ErrCrossBranchAccess /
+// ErrCrossBookAccess, mis. pada penulisan) tetap dibalas 403.
 func writeCollateralError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCollateralNotFound):

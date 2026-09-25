@@ -37,6 +37,8 @@ const (
 	MsgTransferExecuted               Code = "transfer_executed"
 	MsgJournalEntryRetrieved          Code = "journal_entry_retrieved"
 	MsgJournalsListed                 Code = "journals_listed"
+	MsgCompoundJournalPosted          Code = "compound_journal_posted"
+	MsgCompoundJournalLinesRequired   Code = "compound_journal_lines_required"
 	MsgAccountStatementListed         Code = "account_statement_listed"
 	MsgChartOfAccountsListed          Code = "chart_of_accounts_listed"
 	MsgDepositPlaced                  Code = "deposit_placed"
@@ -344,6 +346,8 @@ var codeList = []Code{
 	MsgTransferExecuted,
 	MsgJournalEntryRetrieved,
 	MsgJournalsListed,
+	MsgCompoundJournalPosted,
+	MsgCompoundJournalLinesRequired,
 	MsgAccountStatementListed,
 	MsgChartOfAccountsListed,
 	MsgDepositPlaced,
@@ -723,6 +727,14 @@ var catalog = map[Code]map[Lang]string{
 	MsgJournalsListed: {
 		ID: "daftar jurnal",
 		EN: "journals listed",
+	},
+	MsgCompoundJournalPosted: {
+		ID: "jurnal majemuk berhasil diposting",
+		EN: "compound journal posted successfully",
+	},
+	MsgCompoundJournalLinesRequired: {
+		ID: "jurnal majemuk memerlukan minimal dua baris",
+		EN: "compound journal requires at least two lines",
 	},
 	MsgAccountStatementListed: {
 		ID: "mutasi rekening",

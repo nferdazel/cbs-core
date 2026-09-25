@@ -205,6 +205,42 @@ func (h *LedgerHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusCreated, i18n.MsgTransferExecuted, entry)
 }
 
+// PostCompoundJournal handles POST /api/v1/transactions/journals
+//
+// Jurnal majemuk disusun operator, bukan hasil alur domain (setoran, kredit, EOD),
+// sehingga menulis langsung ke buku besar. Minimal dua baris dan setiap nominal harus
+// positif; keseimbangan debit-kredit tetap ditegakkan mesin posting. Identitas pencatat
+// selalu diambil dari JWT agar jurnal tidak dapat dibuat atas nama orang lain.
+func (h *LedgerHandler) PostCompoundJournal(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+
+	var req domain.CustomJournalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ErrorCodef(w, http.StatusBadRequest, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if len(req.Lines) < 2 {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgCompoundJournalLinesRequired)
+		return
+	}
+	req.CreatedBy = actor.DisplayName()
+
+	if idem := r.Header.Get("Idempotency-Key"); idem != "" && req.IdempotencyKey == "" {
+		req.IdempotencyKey = idem
+	}
+
+	entry, err := h.service.PostCompoundJournal(r.Context(), req)
+	if err != nil {
+		writeTransactionError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusCreated, i18n.MsgCompoundJournalPosted, entry)
+}
+
 func (h *LedgerHandler) GetJournalByRef(w http.ResponseWriter, r *http.Request) {
 	actor, ok := requireActor(w, r)
 	if !ok {
@@ -292,7 +328,9 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 
 	lines, total, err := h.service.GetAccountStatement(r.Context(), accNum, page, pageSize, actor)
 	if err != nil {
-		// Fail, bukan InternalError: penolakan lintas cabang harus menjadi 403.
+		// Fail, bukan InternalError: Fail memaksa batas keamanan (lintas cabang/buku)
+		// menjadi 403; argumen 500 hanya status default yang tidak pernah terpakai
+		// untuk penolakan itu.
 		Fail(w, r, http.StatusInternalServerError, err)
 		return
 	}
