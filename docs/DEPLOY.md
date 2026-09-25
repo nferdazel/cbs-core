@@ -195,3 +195,26 @@ bukan-nol bila ada masalah. Setiap pesan menyertakan cara memperbaiki.
 
 Semua kegagalan dilaporkan sekaligus (dikumpulkan), lalu skrip keluar dengan
 kode `1`. Jangan lanjutkan migrasi/deploy sebelum preflight lulus.
+
+## 7. Batas laju login dan jumlah instance API
+
+Endpoint `POST /api/v1/auth/login` dijaga pembatas percobaan gagal (per akun 5/15
+menit, per IP 20/15 menit) di `apps/api/internal/middleware/ratelimit.go`. Penghitungnya
+**di memori proses**, jadi ia berlaku per instance API.
+
+KEPUTUSAN untuk topologi sekarang: **satu instance API** di belakang Caddy
+(`cbs-api`), sehingga penghitung per proses sama dengan penghitung bank-wide dan
+pembatas ini sudah memadai. Tidak ada penyimpanan bersama yang ditambahkan, karena
+itu menambah ketergantungan (dan satu putaran DB pada setiap percobaan login) untuk
+masalah yang belum ada.
+
+WAJIB ditinjau ulang bila topologi berubah menjadi lebih dari satu instance API
+(mis. dua replika `cbs-api`, atau API di lebih dari satu host di belakang edge):
+penghitung per proses akan melipatgandakan ambang efektif (N instance = N kali
+percobaan yang diizinkan), sehingga perlindungan brute force melemah tanpa terlihat.
+Saat itu terjadi, pindahkan pembatas ke salah satu dari:
+- Caddy `limit_req` di edge (paling sederhana bila edge tetap satu titik), atau
+- penyimpanan bersama (mis. tabel `system_config`/tabel khusus atau Redis) yang
+  diakses pembatas, dengan kunci per akun dan per IP.
+
+Sampai salah satu dipilih, jangan menjalankan lebih dari satu instance API.
