@@ -11,8 +11,8 @@ import (
 )
 
 // Definisi langkah tutup hari (EOD) yang dikelola di database. Urutan langkah
-// sebelumnya di-hardcode di service; keputusan pemilik sistem (docs/BACKLOG.md item 7)
-// memindahkannya ke tabel agar bank dapat menyesuaikan tanpa rilis kode.
+// sebelumnya di-hardcode di service; keputusan pemilik sistem memindahkannya ke tabel
+// agar bank dapat menyesuaikan tanpa rilis kode.
 var (
 	// ErrEODCoreStepRequired: langkah inti tidak boleh hilang dari definisi.
 	ErrEODCoreStepRequired = errors.New("langkah inti EOD wajib ada dan tidak boleh dihapus")

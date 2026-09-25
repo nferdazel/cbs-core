@@ -350,10 +350,14 @@ Yang **belum** tersambung/tersedia:
 - **Cakupan buku**: KPMM mengikuti pola laporan keuangan — `book` kosong =
   konsolidasi seluruh bank, `book` terisi = satu lini; tidak ada aturan cakupan
   baru. Untuk pelaporan OJK gunakan konsolidasi (tanpa `book`).
-- **CKPN individual** (DCF/nilai realisasi agunan) belum ada (`domain/ckpn.go:146-152`).
+- **CKPN individual** (DCF/nilai realisasi agunan): tahap rancangan T1-T4 SUDAH dibangun
+  dan teruji (DCF, NRV agunan, aturan MAX, input signifikansi), bawaan mati lewat
+  `ckpn.individual.enabled`; tahap T5 belum tuntas. Rinciannya di
+  `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
 - **Perhitungan PD/LGD dari data historis** belum ada; bank mengisinya manual.
-- **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** belum tersedia di jalur
-  resmi.
+- **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** tersedia lewat saklar
+  `ckpn.aset_baik.bentuk_ckpn` (bawaan `false`, `ckpn_service.go:395`); untuk penempatan
+  pada bank lain lewat `ckpn.pabl.aset_baik_bentuk_ckpn`.
 - **Akun pemulihan CKPN tersendiri** (bila bank memilih pendapatan, bukan balik beban)
   belum ada.
 - **Pelepasan CKPN saat hapus buku**: akunnya kini mengikuti saklar (CKPN `10950`/`11950`
@@ -408,6 +412,6 @@ Contoh (sesuaikan host dan token):
       -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
       -d '{"ckpn_enabled":true}'
 
-Halaman web `Pengaturan -> Aktivasi CKPN` (menyusul) menyajikan form yang sama.
-Selama halaman itu belum ada, gunakan endpoint di atas; ia sudah terdaftar di
+Halaman web `Pengaturan -> Aktivasi CKPN` (izin `system:config`) menyajikan form yang
+sama. Endpoint di atas tetap berguna untuk otomasi; ia sudah terdaftar di
 `docs/openapi/openapi.yaml` dan dijaga uji `openapi_guard_test.go`.

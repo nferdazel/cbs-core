@@ -25,7 +25,7 @@ cbs-core/
 │   └── web/                    # Next.js 15 backoffice (package name: web)
 │       └── src/app/(dashboard)/  # rekening, transaksi, kredit, pembiayaan, deposito, ppap, laporan, ...
 ├── packages/
-│   ├── db-migrations/          # 52 up-only PostgreSQL migrations (*.up.sql)
+│   ├── db-migrations/          # 98 up-only PostgreSQL migrations (*.up.sql)
 │   └── shared-types/           # @cbs/shared-types — shared TypeScript contracts
 ├── deploy/                     # Podman Quadlet units (cbs-api, cbs-web) and Caddy config
 ├── scripts/                    # migrate.sh, preflight.sh, check-secrets.sh, deploy.sh

@@ -111,9 +111,12 @@ Bukan "bank harus memberi daftar"; dasar hukumnya dapat dibaca siapa pun:
 Lampiran II SEOJK 16/2024 (PDF). Itu bahan konkret untuk modul ekspor, bukan
 pertanyaan untuk bank.
 
-**Tambahan yang belum ada di sistem:** sejak 1 Januari 2025 BPR wajib membentuk
-**CKPN menurut standar akuntansi** (PSAK), di samping PPKA menurut POJK. Sistem
-baru punya PPKA; CKPN/PSAK belum.
+**CKPN menurut standar akuntansi:** sejak 1 Januari 2025 BPR wajib membentuk **CKPN
+menurut standar akuntansi** (PSAK), di samping PPKA menurut POJK. Mesin CKPN (kolektif
+`CKPN = EAD x PD x LGD`, individual DCF/NRV agunan) SUDAH dibangun, tetapi bawaan mati
+(`ckpn.enabled = false`, `ckpn.individual.enabled = false`) dan angkanya baru boleh
+dinyalakan setelah bank menetapkan parameter + ratifikasi. Lihat
+`docs/CKPN-SIAP-RILIS.md` dan `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
 
 ### 1.4 Cap restrukturisasi Pasal 31
 
@@ -393,8 +396,10 @@ dikerjakan bila bank punya penempatan pada bank lain yang dijamin LPS.
 
 **Kerugian restrukturisasi:** landasannya Pasal 32 beserta penjelasannya, dengan metode
 didelegasikan ke standar akuntansi (ditambah panduan akuntansi perbankan untuk BPR). Belum
-diakui di sistem karena tiga hal belum ada: penyimpanan suku bunga efektif orisinal, PPKA yang
-dihitung atas saldo setelah kerugian, dan pemetaan jurnal untuk beban kerugian penurunan nilai.
+diakui di sistem karena tiga hal belum ada: penyimpanan suku bunga efektif orisinal (catatan:
+kolom `loans.original_eir_*` kini SUDAH ada lewat migrasi `000094`; yang belum adalah pemakaiannya
+untuk kerugian restrukturisasi), PPKA yang dihitung atas saldo setelah kerugian, dan pemetaan
+jurnal untuk beban kerugian penurunan nilai.
 Tidak dibangun setengah-setengah karena memakai suku bunga kontraktual sebagai ganti suku bunga
 efektif orisinal akan menghasilkan angka yang salah.
 
@@ -447,8 +452,9 @@ up-only, tidak dapat dibatalkan), jadi ini keputusan pemilik sistem, bukan keput
 ## Butir teknis kecil yang menunggu keputusan
 - Kriteria aset baik CKPN huruf (a) dan (b) tidak dapat dinilai karena datanya tidak ada;
   saat ini diperlakukan konservatif.
-- CKPN individual (arus kas terdiskonto) belum dibangun karena menuntut estimasi arus kas per
-  debitur.
+- CKPN individual (arus kas terdiskonto) SUDAH dibangun sampai tahap T4 (DCF, NRV agunan,
+  aturan MAX, input signifikansi, integrasi EOD), bawaan mati; yang tetap menuntut kerja bank
+  adalah estimasi arus kas per debitur. Lihat `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
 - Kebijakan `as_of` penempatan: satu baris terkini per penempatan, tanpa deduplikasi histori.
 - Perlakuan cadangan PPAP/CKPN saat kredit lunas sudah diperbaiki; pola `slog.Warn` lalu jatuh
   ke buku konvensional saat produk tidak terbaca masih ada dan belum diputuskan.
@@ -583,6 +589,8 @@ di produksi atau **masih menunggu** persetujuan bank/DPS.
 - **Tarif final wajib mengikuti perjanjian kredit bank.** Bila perjanjian berbunyi "1% per
   bulan", nilai yang benar adalah **0,33‰/hari**.
 - Melengkapi §6.1.
+- **Rincian keputusan & alasannya** ada di `docs/KEPUTUSAN-PANEL-RISIKO-CKPN.md` §2; naskah
+  siap tanda tangan DPS di `docs/draft-surat-keputusan-dps-tazir.md`. Bagian ini ringkasan.
 
 ### 7.2 Denda syariah / ta'zir — berlaku sementara, menunggu DPS
 
@@ -596,9 +604,10 @@ di produksi atau **masih menunggu** persetujuan bank/DPS.
 
 - `ckpn.shadow_mode.enabled = true`, `ckpn.enabled = false` (nol jurnal).
 - **Satuan parameter adalah FRAKSI 0..1** (0.01 = 1%), bukan persen.
-- PD tiap golongan **disandera dari bobot PPKA** dibagi LGD 45%: `ckpn.pd_frac.gol_1 = 0.0111`,
-  `ckpn.pd_frac.gol_2 = 0.0667`, `ckpn.pd_frac.gol_3 = 0.2222`, `ckpn.pd_frac.gol_4 = 1.0`, `ckpn.pd_frac.gol_5 = 1.0`,
-  `ckpn.lgd_frac = 0.45`. Dasar bobot PPKA `ppap.rate_frac.gol_1..5 = 0.005 / 0.03 / 0.10 / 0.5 / 1.0`.
+- PD tiap golongan **disandera dari bobot PPKA** dibagi LGD 45% (`ckpn.pd_frac.gol_1..5`,
+  `ckpn.lgd_frac = 0.45`). **Nilai per golongan sengaja TIDAK diulang di sini**; satu sumber
+  kanoniknya `docs/KEPUTUSAN-PANEL-RISIKO-CKPN.md` §1.2. Dasar bobot PPKA
+  `ppap.rate_frac.gol_1..5 = 0.005 / 0.03 / 0.10 / 0.5 / 1.0`.
 - **Akibat:** untuk golongan 1–3 CKPN model **setara PPKA**; selisih hanya muncul di golongan
   4–5 (PPKA 50%/100% melebihi LGD 45%).
 - **Asumsi sementara** sampai ada data migrasi sendiri (target 12 bulan data untuk estimasi PD),

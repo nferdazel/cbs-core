@@ -1,9 +1,9 @@
 # CKPN Individual — Rancangan Teknis & Akuntansi
 
-Status: **rancangan, belum dibangun.** `ckpn.enabled = false`; sistem baru menghitung CKPN
-kolektif (`CKPN = EAD × PD × LGD`). Panel menilai **CKPN individual (impairment spesifik)
-belum ada** dan menyebutnya pekerjaan besar. Dokumen ini merancangnya agar siap dieksekusi
-programmer.
+Status: **sebagian sudah dibangun (per 25 Sep 2026).** Tahap T0-T4 SELESAI dan teruji, T5
+SELESAI SEBAGIAN (lihat tabel 7.2). Saklar bawaan tetap mati (`ckpn.enabled = false`,
+`ckpn.individual.enabled = false`), jadi tidak ada perubahan perilaku sampai bank
+menyalakannya. Dokumen ini merancangnya sekaligus mencatat apa yang sudah jadi.
 
 Rujukan teknis memakai `berkas:baris`. Rujukan hukum memakai pasal/butir. Teks OJK dibaca
 dari `/tmp/ojk/` (tidak ikut dirilis). Berkas yang benar-benar dipakai:
@@ -406,8 +406,7 @@ hanya membaca; langkah inti tetap satu.
 - Buku syariah memakai `15901`/`11950`; konvensional `50301`/`10950`; pemetaan produk
   menang lebih dulu.
 - EOD: `ppap` gagal → langkah CKPN menolak (perilaku sekarang tetap).
-- Regresi seluruh uji CKPN lama lulus; `gofmt` drift tetap 0 (baseline
-  `docs/BACKLOG.md`).
+- Regresi seluruh uji CKPN lama lulus; `gofmt` drift tetap 0.
 
 ---
 
@@ -431,9 +430,10 @@ Bukan karena perhitungannya (primitif `PresentValue`/EIR sudah ada), tetapi kare
 | **T4** | Integrasi EOD: individual di dalam langkah CKPN, anti-double-count, jurnal, pemulihan | `ckpn.enabled=true` aman termasuk individual | Tinggi | sedang–besar | **SELESAI** (`6d51046`: segel `ckpn_method` menentukan jalur, lantai 12.4.g.1.c, jurnal & `required_ckpn` satu mekanisme, jejak EOD) |
 | **T5** | Hapus buku pakai `required_ckpn`; pelaporan Form 05/06 (jenis CKPN) & KPMM | Konsistensi laporan & pelepasan | Sedang | sedang | **SELESAI SEBAGIAN** (`da5f781`: Form 06.00 sandi XXI hidup; hapus buku sudah melepas sebesar `required_ckpn` sejak `426cdd0`; gerbang syarat 100% TETAP mengukur `required_ppap` — keputusan `426cdd0` ditegakkan, lihat catatan di `writeOffTarget`) |
 
-**Sisa T5/KPMM (belum):** Form 05.00 kolom jenis CKPN untuk penempatan (penempatan
-belum memodelkan CKPN per baris), dan penyambungan pengurang modal inti KPMM dengan
-pemisahan jalur individual/kolektif bila kelak dibutuhkan laporannya.
+**Sisa T5/KPMM (belum):** penyambungan pengurang modal inti KPMM dengan pemisahan jalur
+individual/kolektif bila kelak laporannya dibutuhkan. Butir lama "Form 05.00 kolom jenis
+CKPN untuk penempatan" SUDAH selesai (P1 `d81c33d`, pemisahan per golongan kualitas
+`75235a8`), jadi tidak lagi menjadi sisa.
 
 **Saran rilis:** T0–T2 dahulu (menambah informasi tanpa mengubah akuntansi), lalu T3 di
 produksi sebagai alat kerja, baru T4 menyalakan. Jangan menyalakan `ckpn.enabled` untuk

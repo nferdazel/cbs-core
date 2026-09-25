@@ -215,4 +215,7 @@ T2 (NRV agunan + aturan MAX) SELESAI dan teruji:
   -> DCF 50rb; agunan taksasi 200rb haircut 50% -> bound 100rb; biaya 60rb -> NRV 40rb ->
   target agunan 110rb -> final 110rb (MAX memilih agunan).
 - Baca-saja terjaga: required_ckpn tidak berubah (dibuktikan dengan penanda pembanding).
-- Sisa T3 (input signifikansi + penanda kredit) dan T4/T5 belum dikerjakan.
+- T3 (input signifikansi + penanda kredit) dan T4 (integrasi EOD + anti-double-count)
+  SELESAI (`cc72a0c`, `6d51046`); T5 selesai sebagian. Rincian tahap di
+  `docs/CKPN-INDIVIDUAL-RANCANGAN.md` tabel 7.2. Yang tersisa hanya penyambungan
+  KPMM/pelaporan lanjutan.

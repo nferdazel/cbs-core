@@ -56,7 +56,7 @@ jobs:
       - name: gofmt (berkas yang berubah)
         working-directory: .
         run: |
-          # Drift gofmt lama di repo ini (lihat docs/BACKLOG.md) tidak digagalkan; yang
+          # Drift gofmt lama di repo ini tidak digagalkan; yang
           # digagalkan hanya berkas Go yang diubah pada perubahan ini, supaya drift tidak
           # bertambah tanpa memaksa membereskan puluhan berkas lama sekaligus.
           base="${{ github.event.pull_request.base.sha }}"
