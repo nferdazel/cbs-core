@@ -457,7 +457,9 @@ up-only, tidak dapat dibatalkan), jadi ini keputusan pemilik sistem, bukan keput
   adalah estimasi arus kas per debitur. Lihat `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
 - Kebijakan `as_of` penempatan: satu baris terkini per penempatan, tanpa deduplikasi histori.
 - Perlakuan cadangan PPAP/CKPN saat kredit lunas sudah diperbaiki; pola `slog.Warn` lalu jatuh
-  ke buku konvensional saat produk tidak terbaca masih ada dan belum diputuskan.
+  ke COA konvensional saat produk tidak terbaca masih ada (`ppap_service.go:338`,
+  `ckpn_service.go:703`). **Pemilik keputusan: pemilik sistem/bank** — pilih gagal keras atau
+  pertahankan fallback; belum diputuskan.
 
 ---
 

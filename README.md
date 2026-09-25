@@ -9,8 +9,9 @@ Indonesian banking regulation — notably **POJK No. 1/2024** (asset quality),
 and **POJK No. 23/2024** with **SEOJK No. 16/2024** (OJK reporting). The
 regulatory basis, product decisions, and open debt live in
 [`docs/KEPUTUSAN.md`](docs/KEPUTUSAN.md); deployment prerequisites live in
-[`docs/DEPLOY.md`](docs/DEPLOY.md). Where code and docs disagree, the code and
-migrations are the source of truth.
+[`docs/DEPLOY.md`](docs/DEPLOY.md). Not sure which document is authoritative for a
+topic? Start at [`docs/INDEX.md`](docs/INDEX.md) (one topic, one canonical place).
+Where code and docs disagree, the code and migrations are the source of truth.
 
 ## Repository layout
 
@@ -29,7 +30,7 @@ cbs-core/
 │   └── shared-types/           # @cbs/shared-types — shared TypeScript contracts
 ├── deploy/                     # Podman Quadlet units (cbs-api, cbs-web) and Caddy config
 ├── scripts/                    # migrate.sh, preflight.sh, check-secrets.sh, deploy.sh
-├── docs/                       # KEPUTUSAN.md, DEPLOY.md
+├── docs/                       # peta dokumen: docs/INDEX.md
 ├── docker-compose.yml          # local Postgres + Redis (see caveats below)
 ├── Makefile
 ├── go.work                     # Go workspace (use ./apps/api), Go 1.25.0

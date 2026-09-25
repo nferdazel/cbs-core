@@ -347,6 +347,10 @@ Yang **belum** tersambung/tersedia:
 - **Pemetaan COA → pos OJK** yang dipakai ATMR masih
   `DRAF-BELUM-TERVERIFIKASI` (`coa_mapping.go`); COA bersaldo yang belum
   terpetakan menandai ATMR belum lengkap dan rasio tidak disajikan.
+- **Invarian `lps_placements`**: satu baris per penempatan, `as_of` adalah keadaan
+  terkini (diperbarui bank saat barisnya diubah); histori asesmen CKPN tersimpan di
+  `pabl_ckpn_assessments`, bukan dengan menduplikasi baris. Aplikasi tidak punya jalur
+  `INSERT` ke tabel ini, jadi tidak ada de-duplikasi yang perlu dilakukan.
 - **Cakupan buku**: KPMM mengikuti pola laporan keuangan — `book` kosong =
   konsolidasi seluruh bank, `book` terisi = satu lini; tidak ada aturan cakupan
   baru. Untuk pelaporan OJK gunakan konsolidasi (tanpa `book`).
@@ -355,17 +359,19 @@ Yang **belum** tersambung/tersedia:
   `ckpn.individual.enabled`; tahap T5 belum tuntas. Rinciannya di
   `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
 - **Perhitungan PD/LGD dari data historis** belum ada; bank mengisinya manual.
+  **Pemilik keputusan: bank** (sistem tidak boleh menebak dari tarif PPKA untuk laporan resmi).
 - **Pilihan kebijakan "tetap membentuk CKPN atas aset baik"** tersedia lewat saklar
   `ckpn.aset_baik.bentuk_ckpn` (bawaan `false`, `ckpn_service.go:395`); untuk penempatan
   pada bank lain lewat `ckpn.pabl.aset_baik_bentuk_ckpn`.
 - **Akun pemulihan CKPN tersendiri** (bila bank memilih pendapatan, bukan balik beban)
-  belum ada.
+  belum ada. **Pemilik keputusan: bank/DPS** (12.5.b vs 12.9; kode kini mengikuti 12.5.b).
 - **Pelepasan CKPN saat hapus buku**: akunnya kini mengikuti saklar (CKPN `10950`/`11950`
   saat aktif; PPAP saat mati, `loan_service.go:1376-1419`), tetapi target `required_ckpn`
   baru dinolkan pada run CKPN berikutnya lewat `required_ckpn <> 0` (`ckpn_repo.go:56-58`).
   Ada jeda satu run; urutan pelepasan akun vs target belum menjadi kebijakan bank.
-- **Pemisahan CKPN per golongan kualitas (stage 1/2/3)** untuk pelaporan belum
+- **Pemisahan CKPN per golongan kualitas (stage 1/2/3)** untuk pelaporan Form 06.00 belum
   disimpan; `required_ckpn` hanya total per kredit (`ojkreport/form06.go:152-156`).
+  **Pemilik: pengembang** (utang teknis; Form 05.00 penempatan sudah memisah per golongan).
 
 ## (i) Mengisi parameter lewat API (tanpa SQL) — `ckpn-activation`
 
