@@ -362,3 +362,52 @@ Yang **belum** tersambung/tersedia:
   Ada jeda satu run; urutan pelepasan akun vs target belum menjadi kebijakan bank.
 - **Pemisahan CKPN per golongan kualitas (stage 1/2/3)** untuk pelaporan belum
   disimpan; `required_ckpn` hanya total per kredit (`ojkreport/form06.go:152-156`).
+
+## (i) Mengisi parameter lewat API (tanpa SQL) — `ckpn-activation`
+
+Kunci yang sebelumnya hanya bisa diisi SQL kini punya pintu berizin + teraudit:
+`GET /api/v1/system/ckpn-activation` (izin `system:config:read`) dan
+`PUT /api/v1/system/ckpn-activation` (izin `system:config`). Hanya bidang yang
+dikirim yang diubah; setiap perubahan tercatat di `audit_logs`
+(`UPDATE_CKPN_ACTIVATION`, nilai sebelum -> sesudah per kunci).
+
+Bidang yang diterima (semua opsional): `pd_frac_gol_1..5`, `lgd_frac`,
+`coa_expense_syariah`, `coa_reserve_syariah`, `parameters_status`
+(SEMENTARA/FINAL), `parameters_temporary_since`, `ratification_ba_number`,
+`ratification_ba_date`, `ratification_approved_by`, `ratification_pd_lgd_basis`,
+`ratification_pd_lgd_from_bank`, `shadow_mode_enabled`, `ckpn_enabled`.
+
+Penolakan (HTTP 422, pesan menyebut kunci):
+- fraksi di luar 0..1 atau bukan angka (satuan FRAKSI, bukan persen);
+- `parameters_status` selain SEMENTARA/FINAL;
+- tanggal bukan `YYYY-MM-DD` atau di masa depan;
+- `parameters_status=FINAL` tanpa bukti ratifikasi lengkap;
+- `ckpn_enabled=true` selama masih ada penahan (parameter belum FINAL, PD/LGD
+  belum sah, akun syariah belum dipetakan). Endpoint TIDAK pernah menyalakan
+  sendiri; menyalakan adalah keputusan manusia.
+
+Urutan aman untuk mengisi dalam SATU panggilan (atau bertahap): isi PD/LGD +
+akun syariah + bukti ratifikasi + setel FINAL, dan baru setelah `enablement_gaps`
+kosong setel `ckpn_enabled=true`. Penulisan `ckpn.parameters.status` selalu
+dilakukan terakhir dalam transaksi karena trigger `000095` membaca bukti dari
+tabel saat menulis FINAL.
+
+Contoh (sesuaikan host dan token):
+
+    curl -sS -X PUT https://<host>/api/v1/system/ckpn-activation \
+      -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+      -d '{"pd_frac_gol_1":"0.0100","pd_frac_gol_2":"0.0500","pd_frac_gol_3":"0.1000",
+           "pd_frac_gol_4":"0.5000","pd_frac_gol_5":"1.0000","lgd_frac":"0.4500",
+           "coa_expense_syariah":"15901","coa_reserve_syariah":"11950",
+           "ratification_ba_number":"BA-07/IX/2026","ratification_ba_date":"2026-08-01",
+           "ratification_approved_by":"Direktur Utama + Akuntan","ratification_pd_lgd_basis":"PA BPR 12.6/12.7 data historis 2024","ratification_pd_lgd_from_bank":true,
+           "parameters_status":"FINAL"}'
+
+    # Setelah enablement_gaps kosong:
+    curl -sS -X PUT https://<host>/api/v1/system/ckpn-activation \
+      -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+      -d '{"ckpn_enabled":true}'
+
+Halaman web `Pengaturan -> Aktivasi CKPN` (menyusul) menyajikan form yang sama.
+Selama halaman itu belum ada, gunakan endpoint di atas; ia sudah terdaftar di
+`docs/openapi/openapi.yaml` dan dijaga uji `openapi_guard_test.go`.
