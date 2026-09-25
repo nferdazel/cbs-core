@@ -369,9 +369,17 @@ Yang **belum** tersambung/tersedia:
   saat aktif; PPAP saat mati, `loan_service.go:1376-1419`), tetapi target `required_ckpn`
   baru dinolkan pada run CKPN berikutnya lewat `required_ckpn <> 0` (`ckpn_repo.go:56-58`).
   Ada jeda satu run; urutan pelepasan akun vs target belum menjadi kebijakan bank.
-- **Pemisahan CKPN per golongan kualitas (stage 1/2/3)** untuk pelaporan Form 06.00 belum
-  disimpan; `required_ckpn` hanya total per kredit (`ojkreport/form06.go:152-156`).
-  **Pemilik: pengembang** (utang teknis; Form 05.00 penempatan sudah memisah per golongan).
+- **Kolom "CKPN aset baik/kurang baik/tidak baik"** (Form 06.00 XLIV-XLVI; Form 05.00
+  XVII-XIX): OJK mendefinisikannya sebagai **stage 1/2/3** (Penjelasan Umum Kolom Bab II
+  huruf P), dan penggolongan itu ditujukan bagi BPR yang **melakukan penawaran umum efek
+  (SAK Indonesia)**. BPR dengan **SAK EP** menggolongkan CKPN atas **individual/kolektif**
+  (kolom Jenis CKPN; sudah hidup). Sistem ini mengikuti SAK EP dan **tidak menyimpan status
+  SICR/default**, jadi `required_ckpn` tidak dapat dipecah ke stage tanpa pemodelan baru
+  (`ojkreport/form06.go:154-156`; Form 05 XVII-XIX kini memakai proxy kualitas:
+  Baik=Lancar, Kurang Baik=Kurang Lancar, Tidak Baik=Macet).
+  **Pemilik keputusan: pemilik sistem + bank/akuntan.** Dua jalan: (a) biarkan kolom stage
+  belum tersedia karena tak berlaku untuk SAK EP, atau (b) ratifikasi proxy kualitas sebagai
+  kebijakan setelah memutuskan celah DPK/Diragukan. Jangan paksakan angka sebelum diputuskan.
 
 ## (i) Mengisi parameter lewat API (tanpa SQL) — `ckpn-activation`
 

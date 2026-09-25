@@ -455,6 +455,11 @@ up-only, tidak dapat dibatalkan), jadi ini keputusan pemilik sistem, bukan keput
 - CKPN individual (arus kas terdiskonto) SUDAH dibangun sampai tahap T4 (DCF, NRV agunan,
   aturan MAX, input signifikansi, integrasi EOD), bawaan mati; yang tetap menuntut kerja bank
   adalah estimasi arus kas per debitur. Lihat `docs/CKPN-INDIVIDUAL-RANCANGAN.md`.
+- **Kolom CKPN per stage (Form 06.00 XLIV-XLVI / Form 05.00 XVII-XIX):** OJK mendefinisikannya
+  sebagai stage 1/2/3 untuk BPR berpasar modal (SAK Indonesia); instalasi ini mengikuti SAK EP
+  (individual/kolektif), dan status SICR/default belum dimodelkan. Form 05 XVII-XIX kini memakai
+  proxy kualitas — perlu diratifikasi pemilik/bank, atau dibiarkan belum tersedia. Rincian di
+  `docs/CKPN-SIAP-RILIS.md` §(f).
 - Kebijakan `as_of` penempatan: satu baris terkini per penempatan, tanpa deduplikasi histori.
 - Perlakuan cadangan PPAP/CKPN saat kredit lunas sudah diperbaiki; pola `slog.Warn` lalu jatuh
   ke COA konvensional saat produk tidak terbaca masih ada (`ppap_service.go:338`,
