@@ -95,3 +95,116 @@ func TestPABLCKPNInputValidate(t *testing.T) {
 		})
 	}
 }
+
+// pablCollectivePlacement membangun penempatan sah untuk uji mesin kolektif.
+func pablCollectivePlacement(outstanding, guaranteed int64, k LPSPlacementCollectibility) LPSPlacement {
+	return LPSPlacement{
+		COACode:          "10200",
+		CounterpartyBank: "Bank Y",
+		PlacementType:    LPSPlacementDeposito,
+		Outstanding:      decimal.NewFromInt(outstanding),
+		LPSGuaranteed:    decimal.NewFromInt(guaranteed),
+		Collectibility:   k,
+	}
+}
+
+// pablParamsOK adalah parameter fraksi sah: PD 1%/10%/50%, LGD 50%.
+func pablParamsOK() PABLCKPNParams {
+	return PABLCKPNParams{
+		PDFracGol1: decimal.NewFromFloat(0.01),
+		PDFracGol3: decimal.NewFromFloat(0.10),
+		PDFracGol5: decimal.NewFromFloat(0.50),
+		LGDFrac:    decimal.NewFromFloat(0.5),
+	}
+}
+
+// PD dipilih menurut kualitas dan dasar dikurangi bagian yang dijamin LPS: 8 juta.
+func TestCalculatePABLCKPNCollective_PDDanPengurangLPS(t *testing.T) {
+	kasus := []struct {
+		nama string
+		kol  LPSPlacementCollectibility
+		want decimal.Decimal
+	}{
+		{"Lancar pakai golongan 1", LPSLancar, decimal.NewFromInt(40_000)},
+		{"Kurang Lancar pakai golongan 3", LPSKurangLancar, decimal.NewFromInt(400_000)},
+		{"Macet pakai golongan 5", LPSMacet, decimal.NewFromInt(2_000_000)},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			got, err := CalculatePABLCKPNCollective(
+				pablCollectivePlacement(10_000_000, 2_000_000, k.kol), pablParamsOK())
+			if err != nil {
+				t.Fatalf("CalculatePABLCKPNCollective: %v", err)
+			}
+			if !got.Equal(k.want) {
+				t.Fatalf("target %s, mau %s", got, k.want)
+			}
+		})
+	}
+}
+
+// AsetBaikBentukCKPN true memakai outstanding penuh tanpa mengurangi jaminan LPS.
+func TestCalculatePABLCKPNCollective_AsetBaikOutstandingPenuh(t *testing.T) {
+	params := pablParamsOK()
+	params.AsetBaikBentukCKPN = true
+	got, err := CalculatePABLCKPNCollective(
+		pablCollectivePlacement(10_000_000, 2_000_000, LPSLancar), params)
+	if err != nil {
+		t.Fatalf("CalculatePABLCKPNCollective: %v", err)
+	}
+	// 10 juta x 1% x 50% = 50.000 (bukan 40.000 yang dikurangi jaminan).
+	if !got.Equal(decimal.NewFromInt(50_000)) {
+		t.Fatalf("target %s, mau 50000", got)
+	}
+}
+
+// Fraksi yang kosong/nol/negatif/di atas 1 ditolak dengan ErrPABLCKPNParameterInvalid,
+// bukan dijadikan nol.
+func TestCalculatePABLCKPNCollective_MenolakFraksiTidakSah(t *testing.T) {
+	kasus := []struct {
+		nama string
+		ubah func(*PABLCKPNParams)
+	}{
+		{"PD golongan 1 nol", func(p *PABLCKPNParams) { p.PDFracGol1 = decimal.Zero }},
+		{"PD golongan 1 negatif", func(p *PABLCKPNParams) { p.PDFracGol1 = decimal.NewFromInt(-1) }},
+		{"PD golongan 1 di atas 1", func(p *PABLCKPNParams) { p.PDFracGol1 = decimal.NewFromInt(2) }},
+		{"LGD nol", func(p *PABLCKPNParams) { p.LGDFrac = decimal.Zero }},
+		{"LGD negatif", func(p *PABLCKPNParams) { p.LGDFrac = decimal.NewFromFloat(-0.1) }},
+		{"LGD di atas 1", func(p *PABLCKPNParams) { p.LGDFrac = decimal.NewFromFloat(1.5) }},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			params := pablParamsOK()
+			k.ubah(&params)
+			_, err := CalculatePABLCKPNCollective(
+				pablCollectivePlacement(10_000_000, 2_000_000, LPSLancar), params)
+			if !errors.Is(err, ErrPABLCKPNParameterInvalid) {
+				t.Fatalf("error %v, mau ErrPABLCKPNParameterInvalid", err)
+			}
+		})
+	}
+}
+
+// Penempatan tidak sah ditolak lebih dulu agar tidak dihitung dari data kosong.
+func TestCalculatePABLCKPNCollective_MenolakPenempatanTidakSah(t *testing.T) {
+	p := pablCollectivePlacement(1_000_000, 0, LPSLancar)
+	p.CounterpartyBank = ""
+	if _, err := CalculatePABLCKPNCollective(p, pablParamsOK()); !errors.Is(err, ErrLPSPlacementInvalid) {
+		t.Fatalf("error %v, mau ErrLPSPlacementInvalid", err)
+	}
+}
+
+// Pembulatan memakai RoundToRupiah (Banker's Rounding), sama seperti CalculateCKPN:
+// 100 x 33% x 50% = 16,5 dibulatkan ke bilangan genap 16.
+func TestCalculatePABLCKPNCollective_PembulatanRoundToRupiah(t *testing.T) {
+	params := pablParamsOK()
+	params.PDFracGol1 = decimal.NewFromFloat(0.33)
+	got, err := CalculatePABLCKPNCollective(
+		pablCollectivePlacement(100, 0, LPSLancar), params)
+	if err != nil {
+		t.Fatalf("CalculatePABLCKPNCollective: %v", err)
+	}
+	if !got.Equal(decimal.NewFromInt(16)) {
+		t.Fatalf("target %s, mau 16 (RoundToRupiah)", got)
+	}
+}

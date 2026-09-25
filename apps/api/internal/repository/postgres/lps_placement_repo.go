@@ -46,7 +46,10 @@ const listLPSPlacementsSelect = `
 		p.ckpn_objective_evidence,
 		p.required_ckpn,
 		COALESCE(p.ckpn_individual_target, 0),
-		p.ckpn_assessed_at
+		p.ckpn_assessed_at,
+		p.start_date,
+		p.maturity_date,
+		COALESCE(p.interest_rate_annual, 0)
 	FROM lps_placements p
 	LEFT JOIN branches b ON b.id = p.branch_id`
 
@@ -60,17 +63,27 @@ func scanLPSPlacement(row rowScanner) (*domain.LPSPlacement, error) {
 		ckpnSignificant, ckpnObjectiveEvidence    bool
 		requiredCKPN, individualTarget            decimal.Decimal
 		assessedAt                                sql.NullTime
+		startDate, maturityDate                   sql.NullTime
 	)
 	if err := row.Scan(
 		&p.ID, &p.COACode, &p.CounterpartyBank, &placementType,
 		&p.Outstanding, &p.LPSGuaranteed, &collectibility, &p.AsOf, &p.BranchCode,
 		&ckpnMethod, &ckpnSignificant, &ckpnObjectiveEvidence,
 		&requiredCKPN, &individualTarget, &assessedAt,
+		&startDate, &maturityDate, &p.InterestRateAnnual,
 	); err != nil {
 		return nil, err
 	}
 	p.PlacementType = domain.LPSPlacementType(placementType)
 	p.Collectibility = domain.LPSPlacementCollectibility(collectibility)
+	if startDate.Valid {
+		t := startDate.Time
+		p.StartDate = &t
+	}
+	if maturityDate.Valid {
+		t := maturityDate.Time
+		p.MaturityDate = &t
+	}
 	if assessedAt.Valid {
 		t := assessedAt.Time
 		p.CKPN = &domain.LPSPlacementCKPN{
@@ -172,6 +185,56 @@ func (r *LPSPlacementRepository) RecordCKPNTx(ctx context.Context, tx any, place
 		placementID, input.AsOf.UTC(), string(input.Method), input.Significant,
 		input.ObjectiveEvidence, carrying, input.RequiredCKPN, actorName); err != nil {
 		return fmt.Errorf("menulis jejak asesmen CKPN penempatan: %w", err)
+	}
+	return nil
+}
+
+// RecordCollectiveCKPNTx menyimpan hasil mesin kolektif satu penempatan. Berbeda dari
+// RecordCKPNTx, ckpn_method TIDAK diubah: metode yang tersimpan (dibaca dari baris
+// terkunci) yang dipakai untuk jejak asesmen, sedangkan carrying adalah outstanding
+// saat itu. Jurnal TIDAK diposting. Baris sudah dikunci pemanggil lewat LockPlacementTx
+// pada transaksi yang sama, sehingga bacaan ini konsisten.
+func (r *LPSPlacementRepository) RecordCollectiveCKPNTx(ctx context.Context, tx any, placementID uuid.UUID, asOf time.Time, target decimal.Decimal, basis []byte, actorName string) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("lps placement: transaksi tidak valid")
+	}
+	var (
+		method      string
+		outstanding decimal.Decimal
+	)
+	err := sqlTx.QueryRowContext(ctx, `
+		SELECT ckpn_method, outstanding
+		FROM lps_placements
+		WHERE id = $1
+		FOR UPDATE`, placementID).Scan(&method, &outstanding)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrLPSPlacementNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("membaca penempatan untuk CKPN kolektif: %w", err)
+	}
+
+	res, err := sqlTx.ExecContext(ctx, `
+		UPDATE lps_placements
+		SET required_ckpn = $2,
+		    ckpn_assessed_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1`,
+		placementID, target)
+	if err != nil {
+		return fmt.Errorf("menyimpan CKPN kolektif penempatan: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return domain.ErrLPSPlacementNotFound
+	}
+	if _, err := sqlTx.ExecContext(ctx, `
+		INSERT INTO pabl_ckpn_assessments
+			(placement_id, as_of, method, significant, objective_evidence,
+			 carrying, target, basis, decided_by)
+		VALUES ($1, $2, $3, FALSE, FALSE, $4, $5, $6, $7)`,
+		placementID, asOf.UTC(), method, outstanding, target, basis, actorName); err != nil {
+		return fmt.Errorf("menulis jejak CKPN kolektif penempatan: %w", err)
 	}
 	return nil
 }

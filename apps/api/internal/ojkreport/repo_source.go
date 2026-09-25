@@ -141,12 +141,15 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 	out := make([]PlacementRow, 0, len(items))
 	for _, p := range items {
 		row := PlacementRow{
-			BranchCode:       p.BranchCode,
-			CounterpartyBank: p.CounterpartyBank,
-			PlacementType:    string(p.PlacementType),
-			Outstanding:      p.Outstanding,
-			Collectibility:   string(p.Collectibility),
-			AsOf:             p.AsOf,
+			BranchCode:         p.BranchCode,
+			CounterpartyBank:   p.CounterpartyBank,
+			PlacementType:      string(p.PlacementType),
+			Outstanding:        p.Outstanding,
+			Collectibility:     string(p.Collectibility),
+			AsOf:               p.AsOf,
+			StartDate:          p.StartDate,
+			MaturityDate:       p.MaturityDate,
+			InterestRateAnnual: p.InterestRateAnnual,
 		}
 		if p.CKPN != nil {
 			row.CKPN = &PlacementCKPNRow{

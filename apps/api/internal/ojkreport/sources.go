@@ -120,7 +120,13 @@ type PlacementRow struct {
 	Outstanding      decimal.Decimal
 	Collectibility   string
 	AsOf             time.Time
-	CKPN             *PlacementCKPNRow
+	// StartDate dan MaturityDate adalah sumber kolom VI (Jangka Waktu) Form 05.00;
+	// StartDate nil berarti belum diisi. InterestRateAnnual adalah suku bunga TAHUNAN
+	// dalam persen, sumber kolom VIII (Suku Bunga).
+	StartDate          *time.Time
+	MaturityDate       *time.Time
+	InterestRateAnnual decimal.Decimal
+	CKPN               *PlacementCKPNRow
 }
 
 // PlacementCKPNRow adalah CKPN tersimpan satu penempatan: metode asesmen dan target yang

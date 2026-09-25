@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -208,6 +209,152 @@ func (s *lpsPlacementService) AssessCKPN(ctx context.Context, placementID uuid.U
 		return domain.LPSPlacement{}, err
 	}
 	return result, nil
+}
+
+// RunCollectiveCKPN menjalankan mesin kolektif PD/LGD untuk penempatan pada bank lain
+// dan menyimpan required_ckpn tiap penempatan ber-metode COLLECTIVE. Saklar
+// ckpn.pabl.enabled dan parameter PD/LGD diperiksa lebih dulu; keduanya gagal maka
+// tidak ada baris yang dibaca. Asesmen INDIVIDUAL_* DILEWATI agar tidak menimpa
+// keputusan manual bank; EXCLUDED_ASET_BAIK disimpan dengan target nol. Setiap
+// penempatan berjalan dalam transaksinya sendiri, sehingga satu kegagalan dicatat di
+// Failures tanpa menggagalkan seluruh run. Jurnal TIDAK diposting.
+func (s *lpsPlacementService) RunCollectiveCKPN(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.PABLCKPNRunSummary, error) {
+	asOf = asOf.UTC()
+	summary := domain.PABLCKPNRunSummary{AsOf: asOf}
+
+	if s.config == nil || !s.config.GetBool(ctx, domain.CKPNPABLEnabledKey, false) {
+		return summary, domain.ErrCKPNPABLDisabled
+	}
+
+	params, err := pablCKPNParams(ctx, s.config)
+	if err != nil {
+		return summary, err
+	}
+	if s.txRunner == nil {
+		return summary, fmt.Errorf("modul CKPN penempatan aktif tetapi transaction runner tidak dikonfigurasi")
+	}
+	if s.repo == nil {
+		return summary, fmt.Errorf("modul CKPN penempatan aktif tetapi repositori tidak tersedia")
+	}
+
+	placements, err := s.repo.ListPlacements(ctx, asOf, actor)
+	if err != nil {
+		return summary, fmt.Errorf("mengambil penempatan pada bank lain: %w", err)
+	}
+	summary.Total = len(placements)
+
+	basis, err := json.Marshal(map[string]any{
+		"as_of":                 asOf.Format("2006-01-02"),
+		"source":                "collective_run",
+		"pd_frac_gol_1":         params.PDFracGol1,
+		"pd_frac_gol_3":         params.PDFracGol3,
+		"pd_frac_gol_5":         params.PDFracGol5,
+		"lgd_frac":              params.LGDFrac,
+		"aset_baik_bentuk_ckpn": params.AsetBaikBentukCKPN,
+	})
+	if err != nil {
+		return summary, fmt.Errorf("menyusun basis CKPN kolektif: %w", err)
+	}
+
+	for _, p := range placements {
+		method := domain.PABLCKPNMethodCollective
+		if p.CKPN != nil {
+			method = p.CKPN.Method
+		}
+		if method != domain.PABLCKPNMethodCollective && method != domain.PABLCKPNMethodExcludedAsetBaik {
+			// INDIVIDUAL_* (atau metode tak dikenal): pertahankan asesmen manual.
+			summary.Skipped++
+			continue
+		}
+
+		target := decimal.Zero
+		if method != domain.PABLCKPNMethodExcludedAsetBaik {
+			target, err = domain.CalculatePABLCKPNCollective(p, params)
+			if err != nil {
+				summary.Failed++
+				summary.Failures = append(summary.Failures, domain.LPSPlacementFailure{
+					PlacementID:      p.ID,
+					CounterpartyBank: p.CounterpartyBank,
+					Error:            err.Error(),
+				})
+				continue
+			}
+		}
+
+		failErr := s.txRunner.Run(ctx, func(tx any) error {
+			placement, lockErr := s.repo.LockPlacementTx(ctx, tx, p.ID)
+			if lockErr != nil {
+				return lockErr
+			}
+			if !actor.CanAccessBranch(placement.BranchCode) {
+				return domain.ErrCrossBranchAccess
+			}
+			actorName := actor.Username
+			if actorName == "" {
+				actorName = actor.UserID.String()
+			}
+			return s.repo.RecordCollectiveCKPNTx(ctx, tx, placement.ID, asOf, target, basis, actorName)
+		})
+		if failErr != nil {
+			summary.Failed++
+			summary.Failures = append(summary.Failures, domain.LPSPlacementFailure{
+				PlacementID:      p.ID,
+				CounterpartyBank: p.CounterpartyBank,
+				Error:            failErr.Error(),
+			})
+			continue
+		}
+		summary.Processed++
+		summary.TotalTarget = summary.TotalTarget.Add(target)
+	}
+	return summary, nil
+}
+
+// pablCKPNParams membaca parameter mesin kolektif PABL dari konfigurasi. Setiap fraksi
+// wajib ada dan sah; parameter yang kosong, bukan angka, atau di luar (0,1] DITOLAK
+// dengan ErrPABLCKPNParameterInvalid, bukan dijatuhkan menjadi nol.
+func pablCKPNParams(ctx context.Context, config domain.SystemConfigService) (domain.PABLCKPNParams, error) {
+	pd1, err := pablFraction(ctx, config, domain.CKPNPABLPDFracGol1Key)
+	if err != nil {
+		return domain.PABLCKPNParams{}, err
+	}
+	pd3, err := pablFraction(ctx, config, domain.CKPNPABLPDFracGol3Key)
+	if err != nil {
+		return domain.PABLCKPNParams{}, err
+	}
+	pd5, err := pablFraction(ctx, config, domain.CKPNPABLPDFracGol5Key)
+	if err != nil {
+		return domain.PABLCKPNParams{}, err
+	}
+	lgd, err := pablFraction(ctx, config, domain.CKPNPABLLGDFracKey)
+	if err != nil {
+		return domain.PABLCKPNParams{}, err
+	}
+	return domain.PABLCKPNParams{
+		PDFracGol1:         pd1,
+		PDFracGol3:         pd3,
+		PDFracGol5:         pd5,
+		LGDFrac:            lgd,
+		AsetBaikBentukCKPN: config.GetBool(ctx, domain.CKPNPABLAsetBaikBentukCKPNKey, false),
+	}, nil
+}
+
+// pablFraction membaca satu fraksi parameter PABL dan menegakkan rentang (0,1].
+func pablFraction(ctx context.Context, config domain.SystemConfigService, key string) (decimal.Decimal, error) {
+	raw := strings.TrimSpace(config.GetString(ctx, key, ""))
+	if raw == "" {
+		return decimal.Zero, fmt.Errorf("%w: parameter %s belum diisi", domain.ErrPABLCKPNParameterInvalid, key)
+	}
+	d, err := decimal.NewFromString(raw)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("%w: parameter %s: nilai %q bukan angka desimal yang sah",
+			domain.ErrPABLCKPNParameterInvalid, key, raw)
+	}
+	if !d.IsPositive() || d.GreaterThan(decimal.NewFromInt(1)) {
+		return decimal.Zero, fmt.Errorf("%w: parameter %s harus lebih besar dari 0 dan paling tinggi 1 (nilai %s)",
+			domain.ErrPABLCKPNParameterInvalid, key, d)
+	}
+	return d, nil
 }
 
 // lpsGuaranteeCap membaca plafon penjaminan LPS per nasabah pada satu bank. Tiga keadaan

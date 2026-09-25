@@ -132,8 +132,17 @@ type LPSPlacement struct {
 	LPSGuaranteed  decimal.Decimal
 	Collectibility LPSPlacementCollectibility
 	AsOf           time.Time
-	BranchID       *uuid.UUID
-	BranchCode     string
+	// StartDate dan MaturityDate adalah tanggal mulai dan jatuh tempo penempatan,
+	// sumber kolom VI (Jangka Waktu) Form 05.00. StartDate nil berarti belum diisi
+	// (ditulis "-"); MaturityDate nil berarti penempatan tanpa jatuh tempo sehingga
+	// kolom VI hanya memuat tanggal mulai.
+	StartDate    *time.Time
+	MaturityDate *time.Time
+	// InterestRateAnnual adalah suku bunga TAHUNAN penempatan dalam persen (mis. 5.5
+	// berarti 5,5%), sumber kolom VIII (Suku Bunga) Form 05.00, sampai 2 digit desimal.
+	InterestRateAnnual decimal.Decimal
+	BranchID           *uuid.UUID
+	BranchCode         string
 	// CKPN adalah asesmen CKPN terakhir penempatan ini; nil berarti belum pernah
 	// diasesmen (kolom ckpn_assessed_at NULL). Form 05.00 kolom XII/XXI hanya tersedia
 	// bila minimal satu baris punya CKPN.
@@ -289,6 +298,21 @@ type LPSPlacementSummary struct {
 	TotalPPKA         decimal.Decimal       `json:"total_ppka"`
 }
 
+// PABLCKPNRunSummary adalah ringkasan satu kali jalan mesin kolektif CKPN PABL.
+// Processed adalah penempatan yang targetnya dihitung dan disimpan (termasuk
+// EXCLUDED_ASET_BAIK yang targetnya nol), Skipped adalah penempatan individual yang
+// asesmen manualnya dipertahankan, dan Failed adalah penempatan yang gagal diproses
+// (masuk Failures tanpa menggagalkan seluruh run).
+type PABLCKPNRunSummary struct {
+	AsOf        time.Time             `json:"as_of"`
+	Total       int                   `json:"total"`
+	Processed   int                   `json:"processed"`
+	Skipped     int                   `json:"skipped"`
+	Failed      int                   `json:"failed"`
+	TotalTarget decimal.Decimal       `json:"total_target"`
+	Failures    []LPSPlacementFailure `json:"failures"`
+}
+
 // LPSPlacementRepository membaca penempatan pada bank lain. Filter cabang diterapkan di
 // query memakai actor; aktor lintas cabang menerima seluruh bank.
 type LPSPlacementRepository interface {
@@ -300,6 +324,11 @@ type LPSPlacementRepository interface {
 	// RecordCKPNTx menyimpan asesmen CKPN penempatan: memperbarui kolom CKPN pada
 	// lps_placements dan menulis jejaknya ke pabl_ckpn_assessments.
 	RecordCKPNTx(ctx context.Context, tx any, placementID uuid.UUID, input PABLCKPNInput, carrying decimal.Decimal, actorName string) error
+	// RecordCollectiveCKPNTx menyimpan hasil mesin kolektif satu penempatan: hanya
+	// required_ckpn dan ckpn_assessed_at yang diperbarui (ckpn_method TIDAK diubah),
+	// lalu jejaknya ditulis ke pabl_ckpn_assessments memakai metode tersimpan dan
+	// carrying = outstanding baris terkunci.
+	RecordCollectiveCKPNTx(ctx context.Context, tx any, placementID uuid.UUID, asOf time.Time, target decimal.Decimal, basis []byte, actorName string) error
 }
 
 // LPSPlacementService menghitung PPKA penempatan yang dijamin LPS. Calculate baca-saja:
@@ -312,4 +341,10 @@ type LPSPlacementService interface {
 	// ErrCKPNPABLDisabled bila saklar ckpn.pabl.enabled mati, dan dengan
 	// ErrCrossBranchAccess bila penempatan berada di luar cakupan cabang aktor.
 	AssessCKPN(ctx context.Context, placementID uuid.UUID, input PABLCKPNInput, actor Actor) (LPSPlacement, error)
+	// RunCollectiveCKPN menjalankan mesin kolektif PD/LGD untuk penempatan
+	// ber-metode COLLECTIVE dan menyimpan required_ckpn-nya. Asesmen INDIVIDUAL_*
+	// dilewati agar tidak ditimpa; EXCLUDED_ASET_BAIK disimpan dengan target nol.
+	// Gagal dengan ErrCKPNPABLDisabled bila saklar mati dan
+	// ErrPABLCKPNParameterInvalid bila parameter PD/LGD belum diisi/tidak sah.
+	RunCollectiveCKPN(ctx context.Context, asOf time.Time, actor Actor) (PABLCKPNRunSummary, error)
 }

@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -177,4 +178,61 @@ func lpsItem(t *testing.T, summary domain.LPSPlacementSummary, placementID uuid.
 	}
 	t.Fatalf("penempatan %s tidak ada di ringkasan (failures: %+v)", placementID, summary.Failures)
 	return domain.LPSPlacementItem{}
+}
+
+// TestIntegrasiPABLCKPNRunCollective menjalankan mesin kolektif PABL terhadap PostgreSQL
+// sungguhan: parameter dibaca dari config, target = (outstanding - jaminan LPS) x PD x LGD,
+// required_ckpn + jejak (basis JSONB) tersimpan. Contoh: (1.000.000.000 - 200.000.000) x
+// 0,005 x 0,5 = 2.000.000 (saklar aset baik false -> jaminan LPS tidak membentuk CKPN).
+func TestIntegrasiPABLCKPNRunCollective(t *testing.T) {
+	e := newMoneyEnv(t)
+	setLPSConfig(t, e, domain.CKPNPABLEnabledKey, "true")
+	setLPSConfig(t, e, domain.CKPNPABLPDFracGol1Key, "0.005")
+	setLPSConfig(t, e, domain.CKPNPABLPDFracGol3Key, "0.10")
+	setLPSConfig(t, e, domain.CKPNPABLPDFracGol5Key, "0.50")
+	setLPSConfig(t, e, domain.CKPNPABLLGDFracKey, "0.5")
+	setLPSConfig(t, e, domain.CKPNPABLAsetBaikBentukCKPNKey, "false")
+
+	branchID := e.ensureBranch(t, ("PD" + uuid.New().String())[:8], "Cabang Uji PABL CKPN")
+	place := insertLPSPlacement(t, e, "10200", "Bank Uji PABL "+uuid.New().String(),
+		"DEPOSITO", "LANCAR", 1_000_000_000, 200_000_000, branchID)
+
+	svc := newLPSSvcForTest(e)
+	asOf := time.Now().UTC()
+	summary, err := svc.RunCollectiveCKPN(e.ctx, asOf, e.actor)
+	if err != nil {
+		t.Fatalf("RunCollectiveCKPN: %v", err)
+	}
+	if summary.Failed != 0 {
+		t.Fatalf("run gagal pada %d penempatan: %+v", summary.Failed, summary.Failures)
+	}
+
+	var required decimal.Decimal
+	var assessedAt *time.Time
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT required_ckpn, ckpn_assessed_at FROM lps_placements WHERE id=$1`, place).
+		Scan(&required, &assessedAt); err != nil {
+		t.Fatalf("membaca hasil run: %v", err)
+	}
+	if !required.Equal(decimal.NewFromInt(2_000_000)) {
+		t.Fatalf("required_ckpn %s, mau 2000000", required)
+	}
+	if assessedAt == nil {
+		t.Fatal("ckpn_assessed_at harus terisi setelah run")
+	}
+
+	// Jejak asesmen wajib ada dengan tanggal = tanggal RUN, bukan CURRENT_DATE.
+	var trailAsOf time.Time
+	var basis string
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT as_of, basis::text FROM pabl_ckpn_assessments WHERE placement_id=$1`, place).
+		Scan(&trailAsOf, &basis); err != nil {
+		t.Fatalf("membaca jejak asesmen: %v", err)
+	}
+	if trailAsOf.Format("2006-01-02") != asOf.Format("2006-01-02") {
+		t.Fatalf("as_of jejak %s, mau %s", trailAsOf.Format("2006-01-02"), asOf.Format("2006-01-02"))
+	}
+	if !strings.Contains(basis, "collective_run") {
+		t.Fatalf("basis jejak tidak memuat sumber run: %s", basis)
+	}
 }

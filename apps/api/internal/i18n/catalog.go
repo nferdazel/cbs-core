@@ -78,6 +78,7 @@ const (
 	MsgCKPNIndividualProjectionsSaved Code = "ckpn_individual_projections_saved"
 	MsgPPKAPlacementCalculated        Code = "p_p_k_a_placement_calculated"
 	MsgCKPNPABLAssessed               Code = "ckpn_pabl_assessed"
+	MsgPABLCKPNRunCompleted           Code = "pabl_ckpn_run_completed"
 	MsgReportTrialBalanceGenerated    Code = "report_trial_balance_generated"
 	MsgReportBalanceSheetGenerated    Code = "report_balance_sheet_generated"
 	MsgReportIncomeStatementGenerated Code = "report_income_statement_generated"
@@ -389,6 +390,7 @@ var codeList = []Code{
 	MsgCKPNIndividualProjectionsSaved,
 	MsgPPKAPlacementCalculated,
 	MsgCKPNPABLAssessed,
+	MsgPABLCKPNRunCompleted,
 	MsgReportTrialBalanceGenerated,
 	MsgReportBalanceSheetGenerated,
 	MsgReportIncomeStatementGenerated,
@@ -895,6 +897,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgCKPNPABLAssessed: {
 		ID: "asesmen CKPN per penempatan pada bank lain tersimpan",
 		EN: "CKPN assessment per placement at other banks saved",
+	},
+	MsgPABLCKPNRunCompleted: {
+		ID: "mesin kolektif CKPN per penempatan pada bank lain selesai",
+		EN: "collective CKPN run for placements at other banks completed",
 	},
 	MsgReportTrialBalanceGenerated: {
 		ID: "laporan Neraca Saldo dihasilkan",

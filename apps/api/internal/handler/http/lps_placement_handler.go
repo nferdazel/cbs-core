@@ -95,6 +95,41 @@ func (h *LPSPlacementHandler) failAssessCKPN(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// RunCollectiveCKPN handles POST /api/v1/lps-placements/ckpn/run.
+// Menjalankan mesin kolektif PD/LGD untuk penempatan ber-metode COLLECTIVE dan
+// menyimpan required_ckpn-nya. Tanggal proses opsional lewat query `as_of` (lihat
+// parseAsOf). Selama saklar ckpn.pabl.enabled mati, permintaan ditolak 409; parameter
+// PD/LGD yang belum diisi/tidak sah ditolak 422. Tidak memposting jurnal.
+func (h *LPSPlacementHandler) RunCollectiveCKPN(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	summary, err := h.lpsSvc.RunCollectiveCKPN(r.Context(), parseAsOf(r),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		h.failRunCollectiveCKPN(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPABLCKPNRunCompleted, summary)
+}
+
+// failRunCollectiveCKPN memetakan galat run kolektif: saklar mati 409, parameter
+// tidak sah 422, penolakan keamanan 403; sisanya kegagalan server.
+func (h *LPSPlacementHandler) failRunCollectiveCKPN(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrCrossBranchAccess), errors.Is(err, domain.ErrCrossBookAccess):
+		Fail(w, r, http.StatusForbidden, err)
+	case errors.Is(err, domain.ErrCKPNPABLDisabled):
+		Fail(w, r, http.StatusConflict, err)
+	case errors.Is(err, domain.ErrPABLCKPNParameterInvalid):
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	default:
+		InternalError(w, r, err)
+	}
+}
+
 // RegisterRoutes memasang rute pada router yang sudah berada di dalam grup
 // terautentikasi (AuthMiddleware). Baca cukup wewenang loans:read; asesmen CKPN menulis
 // state keuangan, jadi memakai loans:approve (bukan loans:read) mengikuti preseden
@@ -104,4 +139,6 @@ func (h *LPSPlacementHandler) RegisterRoutes(r chi.Router) {
 		Get("/lps-placements", h.Calculate)
 	r.With(middleware.RequirePermission(domain.PermLoansApprove)).
 		Post("/lps-placements/{id}/ckpn", h.AssessCKPN)
+	r.With(middleware.RequirePermission(domain.PermLoansApprove)).
+		Post("/lps-placements/ckpn/run", h.RunCollectiveCKPN)
 }

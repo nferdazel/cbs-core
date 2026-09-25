@@ -60,11 +60,25 @@ var form05Columns = []form05Column{
 		return sandiJenisPenempatan(p.PlacementType)
 	}},
 	{Sandi: form05SandiHubungan, Nama: "Hubungan dengan Bank", Reason: "hubungan pihak terkait dengan bank lawan belum dimodelkan"},
-	{Sandi: form05SandiJangkaWaktu, Nama: "Jangka Waktu", Reason: "tanggal mulai dan jatuh tempo penempatan belum disimpan pada lps_placements"},
+	{Sandi: form05SandiJangkaWaktu, Nama: "Jangka Waktu", Value: func(p PlacementRow) string {
+		if p.StartDate == nil {
+			return "-"
+		}
+		jangka := p.StartDate.Format("02-01-2006")
+		if p.MaturityDate != nil {
+			jangka += " s.d. " + p.MaturityDate.Format("02-01-2006")
+		}
+		return jangka
+	}},
 	{Sandi: form05SandiKualitas, Nama: "Kualitas", Value: func(p PlacementRow) string {
 		return sandiKualitasPenempatan(p.Collectibility)
 	}},
-	{Sandi: form05SandiSukuBunga, Nama: "Suku Bunga", Reason: "suku bunga penempatan belum disimpan pada lps_placements"},
+	{Sandi: form05SandiSukuBunga, Nama: "Suku Bunga", Value: func(p PlacementRow) string {
+		if !p.InterestRateAnnual.IsPositive() {
+			return "-"
+		}
+		return p.InterestRateAnnual.StringFixed(2)
+	}},
 	{Sandi: form05SandiJumlah, Nama: "Jumlah", Value: func(p PlacementRow) string {
 		return FormatRupiah(p.Outstanding)
 	}},
@@ -110,20 +124,40 @@ func buildForm05(rows []PlacementRow) TableSection {
 	}
 
 	adaCKPN := false
+	adaJangkaWaktu := false
+	adaSukuBunga := false
 	for _, p := range rows {
 		if p.CKPN != nil {
 			adaCKPN = true
+		}
+		if p.StartDate != nil {
+			adaJangkaWaktu = true
+		}
+		if p.InterestRateAnnual.IsPositive() {
+			adaSukuBunga = true
+		}
+		if adaCKPN && adaJangkaWaktu && adaSukuBunga {
 			break
 		}
 	}
 	cols := form05Columns
-	if !adaCKPN {
+	if !adaCKPN || !adaJangkaWaktu || !adaSukuBunga {
 		cols = make([]form05Column, len(form05Columns))
 		copy(cols, form05Columns)
 		for i := range cols {
 			switch cols[i].Sandi {
 			case form05SandiCKPN, form05SandiJenisCKPN:
-				cols[i].Reason = "CKPN per penempatan belum diasesmen (saklar ckpn.pabl.enabled + asesmen)"
+				if !adaCKPN {
+					cols[i].Reason = "CKPN per penempatan belum diasesmen (saklar ckpn.pabl.enabled + asesmen)"
+				}
+			case form05SandiJangkaWaktu:
+				if !adaJangkaWaktu {
+					cols[i].Reason = "tanggal mulai dan jatuh tempo penempatan belum disimpan pada lps_placements"
+				}
+			case form05SandiSukuBunga:
+				if !adaSukuBunga {
+					cols[i].Reason = "suku bunga tahunan penempatan belum disimpan pada lps_placements"
+				}
 			}
 		}
 	}

@@ -2350,6 +2350,40 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/lps-placements/ckpn/run:
+    post:
+      tags: [PPAP]
+      operationId: runPABLCKPNCollective
+      summary: Jalankan mesin kolektif CKPN per penempatan pada bank lain
+      description: |-
+        Izin: `loans:approve`. Menghitung dan menyimpan `required_ckpn` untuk penempatan
+        ber-metode `COLLECTIVE` (CKPN = EAD x PD x LGD, PA BPR Bab XII 12.4.g.2/12.6-12.9).
+        Menempatkan asesmen `INDIVIDUAL_*` dilewati; `EXCLUDED_ASET_BAIK` disimpan dengan
+        target nol. Selama saklar `ckpn.pabl.enabled` mati, permintaan ditolak `409`;
+        parameter PD/LGD yang belum diisi/tidak sah ditolak `422`. Tidak memposting jurnal.
+      parameters:
+        - name: as_of
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Tanggal proses; bawaan waktu sekarang (UTC).
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/integrations/slik/check:
     post:
       tags: [Integrasi]

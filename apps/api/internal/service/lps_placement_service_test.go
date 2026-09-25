@@ -70,6 +70,14 @@ type lpsRepoStub struct {
 	lockErr      error
 	recordErr    error
 	lockOverride *domain.LPSPlacement
+
+	// Jejak run kolektif CKPN (RunCollectiveCKPN).
+	collectiveCalled    bool
+	gotCollectiveID     uuid.UUID
+	gotCollectiveTarget decimal.Decimal
+	gotCollectiveBasis  []byte
+	gotCollectiveActor  string
+	collectiveErr       error
 }
 
 func (r *lpsRepoStub) ListPlacements(_ context.Context, asOf time.Time, actor domain.Actor) ([]domain.LPSPlacement, error) {
@@ -107,6 +115,15 @@ func (r *lpsRepoStub) RecordCKPNTx(_ context.Context, _ any, placementID uuid.UU
 	r.gotCarrying = carrying
 	r.gotActorName = actorName
 	return r.recordErr
+}
+
+func (r *lpsRepoStub) RecordCollectiveCKPNTx(_ context.Context, _ any, placementID uuid.UUID, _ time.Time, target decimal.Decimal, basis []byte, actorName string) error {
+	r.collectiveCalled = true
+	r.gotCollectiveID = placementID
+	r.gotCollectiveTarget = target
+	r.gotCollectiveBasis = basis
+	r.gotCollectiveActor = actorName
+	return r.collectiveErr
 }
 
 func lpsServicePlacement(outstanding, guaranteed int64, k domain.LPSPlacementCollectibility) domain.LPSPlacement {
@@ -494,5 +511,136 @@ func TestLPSPlacementAssessCKPN_TanpaTxRunnerDitolak(t *testing.T) {
 	svc := &lpsPlacementService{repo: &lpsRepoStub{}, config: cfg}
 	if _, err := svc.AssessCKPN(context.Background(), uuid.New(), lpsAssessmentInput(), domain.Actor{}); err == nil {
 		t.Fatal("transaction runner yang tidak dikonfigurasi harus menghasilkan error")
+	}
+}
+
+// pablParamsConfig adalah konfigurasi sah mesin kolektif: PD gol 1/3/5 = 1%/10%/50%,
+// LGD 50%, aset baik tidak membentuk CKPN.
+func pablParamsConfig() map[string]string {
+	return map[string]string{
+		domain.CKPNPABLEnabledKey:            "true",
+		domain.CKPNPABLPDFracGol1Key:         "0.01",
+		domain.CKPNPABLPDFracGol3Key:         "0.10",
+		domain.CKPNPABLPDFracGol5Key:         "0.50",
+		domain.CKPNPABLLGDFracKey:            "0.5",
+		domain.CKPNPABLAsetBaikBentukCKPNKey: "false",
+	}
+}
+
+// lpsPlacementWithMethod melengkapi penempatan stub dengan metode CKPN tersimpan.
+func lpsPlacementWithMethod(p domain.LPSPlacement, method domain.PABLCKPNMethod) domain.LPSPlacement {
+	p.CKPN = &domain.LPSPlacementCKPN{Method: method}
+	return p
+}
+
+// Saklar mati menolak run kolektif dan TIDAK membaca penempatan.
+func TestRunCollectiveCKPN_SaklarMatiMenolak(t *testing.T) {
+	repo := &lpsRepoStub{}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "false"}},
+		txRunner: stubTxRunner{},
+	}
+	_, err := svc.RunCollectiveCKPN(context.Background(), time.Now().UTC(), domain.Actor{})
+	if !errors.Is(err, domain.ErrCKPNPABLDisabled) {
+		t.Fatalf("error %v, mau ErrCKPNPABLDisabled", err)
+	}
+	if repo.listCalled {
+		t.Fatal("saklar mati tidak boleh membaca penempatan")
+	}
+}
+
+// Parameter kosong/tidak sah menolak seluruh run sebelum penempatan dibaca.
+func TestRunCollectiveCKPN_ParameterKosongMenolak(t *testing.T) {
+	repo := &lpsRepoStub{}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}},
+		txRunner: stubTxRunner{},
+	}
+	_, err := svc.RunCollectiveCKPN(context.Background(), time.Now().UTC(), domain.Actor{})
+	if !errors.Is(err, domain.ErrPABLCKPNParameterInvalid) {
+		t.Fatalf("error %v, mau ErrPABLCKPNParameterInvalid", err)
+	}
+	if repo.listCalled {
+		t.Fatal("parameter tidak sah harus ditolak sebelum membaca penempatan")
+	}
+}
+
+// EXCLUDED_ASET_BAIK disimpan dengan target nol (bukan dilewati): cadangan lama dilepas.
+func TestRunCollectiveCKPN_ExcludedDisimpanTargetNol(t *testing.T) {
+	p := lpsPlacementWithMethod(lpsServicePlacement(1_000_000, 0, domain.LPSLancar), domain.PABLCKPNMethodExcludedAsetBaik)
+	p.BranchCode = "001"
+	repo := &lpsRepoStub{placements: []domain.LPSPlacement{p}}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: pablParamsConfig()},
+		txRunner: stubTxRunner{},
+	}
+	actor := domain.Actor{Username: "ao.001", Role: domain.RoleAO, BranchCode: "001"}
+
+	summary, err := svc.RunCollectiveCKPN(context.Background(), time.Now().UTC(), actor)
+	if err != nil {
+		t.Fatalf("RunCollectiveCKPN: %v", err)
+	}
+	if summary.Total != 1 || summary.Processed != 1 || summary.Skipped != 0 || summary.Failed != 0 {
+		t.Fatalf("total=%d processed=%d skipped=%d failed=%d, mau 1/1/0/0",
+			summary.Total, summary.Processed, summary.Skipped, summary.Failed)
+	}
+	if !repo.collectiveCalled || !repo.gotCollectiveTarget.IsZero() {
+		t.Fatalf("target tersimpan %s, mau 0 dan tersimpan", repo.gotCollectiveTarget)
+	}
+	if !summary.TotalTarget.IsZero() {
+		t.Fatalf("total target %s, mau 0", summary.TotalTarget)
+	}
+}
+
+// Asesmen INDIVIDUAL_* dipertahankan: dilewati tanpa menulis apa pun.
+func TestRunCollectiveCKPN_IndividualDilewati(t *testing.T) {
+	p := lpsPlacementWithMethod(lpsServicePlacement(1_000_000, 0, domain.LPSLancar), domain.PABLCKPNMethodIndividualDCF)
+	repo := &lpsRepoStub{placements: []domain.LPSPlacement{p}}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: pablParamsConfig()},
+		txRunner: stubTxRunner{},
+	}
+	summary, err := svc.RunCollectiveCKPN(context.Background(), time.Now().UTC(), domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunCollectiveCKPN: %v", err)
+	}
+	if summary.Skipped != 1 || summary.Processed != 0 {
+		t.Fatalf("skipped=%d processed=%d, mau 1/0", summary.Skipped, summary.Processed)
+	}
+	if repo.collectiveCalled {
+		t.Fatal("penempatan individual tidak boleh ditimpa")
+	}
+}
+
+// Penempatan COLLECTIVE (termasuk yang belum pernah diasesmen) dihitung: dasar adalah
+// outstanding dikurangi bagian yang dijamin LPS.
+func TestRunCollectiveCKPN_CollectiveDihitung(t *testing.T) {
+	belum := lpsServicePlacement(10_000_000, 2_000_000, domain.LPSLancar)
+	repo := &lpsRepoStub{placements: []domain.LPSPlacement{belum}}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: pablParamsConfig()},
+		txRunner: stubTxRunner{},
+	}
+	summary, err := svc.RunCollectiveCKPN(context.Background(), time.Now().UTC(), domain.Actor{})
+	if err != nil {
+		t.Fatalf("RunCollectiveCKPN: %v", err)
+	}
+	if summary.Processed != 1 || summary.Skipped != 0 || summary.Failed != 0 {
+		t.Fatalf("processed=%d skipped=%d failed=%d, mau 1/0/0", summary.Processed, summary.Skipped, summary.Failed)
+	}
+	// (10 juta - 2 juta) x 1% x 50% = 40.000.
+	if !repo.gotCollectiveTarget.Equal(decimal.NewFromInt(40_000)) {
+		t.Fatalf("target tersimpan %s, mau 40000", repo.gotCollectiveTarget)
+	}
+	if !summary.TotalTarget.Equal(decimal.NewFromInt(40_000)) {
+		t.Fatalf("total target %s, mau 40000", summary.TotalTarget)
+	}
+	if len(repo.gotCollectiveBasis) == 0 || !strings.Contains(string(repo.gotCollectiveBasis), "collective_run") {
+		t.Fatalf("basis %q tidak memuat asal run", repo.gotCollectiveBasis)
 	}
 }
