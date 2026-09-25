@@ -94,9 +94,15 @@ var form05Columns = []form05Column{
 	{Sandi: form05SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
 	{Sandi: form05SandiBMPK, Nama: "Status BMPK Individu", Reason: "uji BMPK per bank lawan belum dihitung"},
 	{Sandi: form05SandiIDPihak, Nama: "ID Pihak Lawan", Reason: "sandi pihak lawan (Lampiran 02) belum dipetakan; baris memakai nama bank lawan sebagai kunci"},
-	{Sandi: form05SandiCKPNBaik, Nama: "Cadangan Kerugian Penurunan Nilai Aset Baik", Reason: "pemisahan CKPN per golongan kualitas belum ada"},
-	{Sandi: form05SandiCKPNKurang, Nama: "Cadangan Kerugian Penurunan Nilai Aset Kurang Baik", Reason: "pemisahan CKPN per golongan kualitas belum ada"},
-	{Sandi: form05SandiCKPNTidak, Nama: "Cadangan Kerugian Penurunan Nilai Aset Tidak Baik", Reason: "pemisahan CKPN per golongan kualitas belum ada"},
+	{Sandi: form05SandiCKPNBaik, Nama: "Cadangan Kerugian Penurunan Nilai Aset Baik", Value: func(p PlacementRow) string {
+		return ckpnGolonganKualitas(p, "LANCAR")
+	}},
+	{Sandi: form05SandiCKPNKurang, Nama: "Cadangan Kerugian Penurunan Nilai Aset Kurang Baik", Value: func(p PlacementRow) string {
+		return ckpnGolonganKualitas(p, "KURANG_LANCAR")
+	}},
+	{Sandi: form05SandiCKPNTidak, Nama: "Cadangan Kerugian Penurunan Nilai Aset Tidak Baik", Value: func(p PlacementRow) string {
+		return ckpnGolonganKualitas(p, "MACET")
+	}},
 	{Sandi: form05SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Reason: "klasifikasi SAK EP belum dipetakan per penempatan"},
 	{Sandi: form05SandiJenisCKPN, Nama: "Jenis CKPN", Value: func(p PlacementRow) string {
 		if p.CKPN == nil {
@@ -120,6 +126,7 @@ func buildForm05(rows []PlacementRow) TableSection {
 			"Dibangun dari penanda lps_placements (migrasi 000045), yaitu penempatan yang secara eksplisit ditandai untuk pengurang PPKA Pasal 23 POJK 1/2024. Tabel itu bukan register lengkap seluruh penempatan pada bank lain.",
 			"Jenis penempatan KREDIT dan LAINNYA ditempatkan sebagai '-' karena Form 05.00 – 2 hanya memberi sandi giro/tabungan/deposito/sertifikat deposito.",
 			"Kolom XII dan XXI hanya berisi CKPN penempatan yang sudah diasesmen (saklar ckpn.pabl.enabled dan asesmen tersimpan); penempatan lain ditulis '-'.",
+			"Kolom XVII-XIX memisahkan CKPN menurut golongan kualitas aset: Baik=Lancar, Kurang Baik=Kurang Lancar, Tidak Baik=Macet (PABL tidak mengenal kualitas Dalam Perhatian Khusus maupun Diragukan). CKPN satu penempatan hanya muncul pada kolom golongannya; kolom lain ditulis '-'.",
 		},
 	}
 
@@ -146,7 +153,7 @@ func buildForm05(rows []PlacementRow) TableSection {
 		copy(cols, form05Columns)
 		for i := range cols {
 			switch cols[i].Sandi {
-			case form05SandiCKPN, form05SandiJenisCKPN:
+			case form05SandiCKPN, form05SandiJenisCKPN, form05SandiCKPNBaik, form05SandiCKPNKurang, form05SandiCKPNTidak:
 				if !adaCKPN {
 					cols[i].Reason = "CKPN per penempatan belum diasesmen (saklar ckpn.pabl.enabled + asesmen)"
 				}
@@ -212,6 +219,16 @@ func sandiKualitasPenempatan(k string) string {
 	default:
 		return "-"
 	}
+}
+
+// ckpnGolonganKualitas mengisi kolom XVII-XIX: CKPN satu penempatan hanya muncul pada
+// kolom golongan kualitasnya sendiri. Penempatan tanpa asesmen atau di luar golongan
+// itu ditulis "-", bukan nol, agar tidak terbaca sebagai CKPN yang memang dibentuk.
+func ckpnGolonganKualitas(p PlacementRow, golongan string) string {
+	if p.CKPN == nil || normalizePlacementCollectibility(p.Collectibility) != golongan {
+		return "-"
+	}
+	return FormatRupiah(p.CKPN.RequiredCKPN)
 }
 
 func normalizePlacementType(t string) string {

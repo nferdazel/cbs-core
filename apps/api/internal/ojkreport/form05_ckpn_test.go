@@ -81,3 +81,57 @@ func TestBuildForm05JenisCKPNKolektifSandiDua(t *testing.T) {
 		t.Fatalf("jenis CKPN kolektif = %s, ingin 2", got)
 	}
 }
+
+// Kolom XVII-XIX memisahkan CKPN menurut golongan kualitas: Baik = Lancar, Kurang Baik
+// = Kurang Lancar, Tidak Baik = Macet. CKPN satu penempatan hanya muncul pada kolom
+// golongannya; kolom lain "-", dan tanpa asesmen ketiga kolom belum tersedia.
+func TestBuildForm05CKPNPerGolonganKualitas(t *testing.T) {
+	rows := []PlacementRow{
+		{
+			CounterpartyBank: "Bank Lancar", PlacementType: "GIRO", Collectibility: "LANCAR",
+			Outstanding: decimal.NewFromInt(1_000_000),
+			CKPN:        &PlacementCKPNRow{Method: "COLLECTIVE", RequiredCKPN: decimal.NewFromInt(11_000)},
+		},
+		{
+			CounterpartyBank: "Bank Kurang Lancar", PlacementType: "DEPOSITO", Collectibility: "KURANG_LANCAR",
+			Outstanding: decimal.NewFromInt(1_000_000),
+			CKPN:        &PlacementCKPNRow{Method: "COLLECTIVE", RequiredCKPN: decimal.NewFromInt(22_000)},
+		},
+		{
+			CounterpartyBank: "Bank Macet", PlacementType: "DEPOSITO", Collectibility: "MACET",
+			Outstanding: decimal.NewFromInt(1_000_000),
+			CKPN:        &PlacementCKPNRow{Method: "COLLECTIVE", RequiredCKPN: decimal.NewFromInt(33_000)},
+		},
+	}
+	sec := buildForm05(rows)
+
+	if got := findCell(t, sec, "Bank Lancar", form05SandiCKPNBaik).Value; got != "11000" {
+		t.Errorf("CKPN aset baik = %q, ingin 11000", got)
+	}
+	if got := findCell(t, sec, "Bank Lancar", form05SandiCKPNKurang).Value; got != "-" {
+		t.Errorf("bank lancar pada kolom kurang baik = %q, ingin -", got)
+	}
+	if got := findCell(t, sec, "Bank Kurang Lancar", form05SandiCKPNKurang).Value; got != "22000" {
+		t.Errorf("CKPN aset kurang baik = %q, ingin 22000", got)
+	}
+	if got := findCell(t, sec, "Bank Macet", form05SandiCKPNTidak).Value; got != "33000" {
+		t.Errorf("CKPN aset tidak baik = %q, ingin 33000", got)
+	}
+	if got := findCell(t, sec, "Bank Macet", form05SandiCKPNBaik).Value; got != "-" {
+		t.Errorf("bank macet pada kolom baik = %q, ingin -", got)
+	}
+}
+
+// Tanpa asesmen, kolom XVII-XIX belum tersedia dan beralasan seperti XII/XXI.
+func TestBuildForm05CKPNGolonganBelumTersediaTanpaAsesmen(t *testing.T) {
+	rows := []PlacementRow{
+		{CounterpartyBank: "Bank Uji", PlacementType: "GIRO", Collectibility: "LANCAR", Outstanding: decimal.NewFromInt(1_000_000)},
+	}
+	sec := buildForm05(rows)
+	for _, sandi := range []string{form05SandiCKPNBaik, form05SandiCKPNKurang, form05SandiCKPNTidak} {
+		u := unavailableColumn(t, sec, sandi)
+		if !strings.Contains(u.Reason, "ckpn.pabl.enabled") {
+			t.Errorf("alasan kolom %s = %q, harus menyebut ckpn.pabl.enabled", sandi, u.Reason)
+		}
+	}
+}
