@@ -69,6 +69,10 @@ type RouterParams struct {
 	// OJKProfileHandler mengelola identitas Form 00.00 yang disimpan sebagai kunci
 	// system_config ojk.* (baca & ubah), melengkapi BankProfileHandler.
 	OJKProfileHandler *OJKProfileHandler
+	// CKPNActivationHandler mengelola pengaturan aktivasi CKPN (parameter PD/LGD, akun
+	// syariah, status SEMENTARA/FINAL, bukti ratifikasi, saklar ckpn.enabled) agar bank
+	// mengisinya tanpa SQL. Menyalakan CKPN tetap keputusan manusia.
+	CKPNActivationHandler *CKPNActivationHandler
 	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
 	// pemetaan izin (lewat maker-checker, teraudit).
 	PermissionHandler *PermissionHandler
@@ -427,6 +431,13 @@ func NewRouter(p RouterParams) *chi.Mux {
 					Get("/system/ojk-profile", p.OJKProfileHandler.Get)
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Put("/system/ojk-profile", p.OJKProfileHandler.Update)
+			}
+			// ── Pengaturan aktivasi CKPN (parameter & ratifikasi) ──
+			// Menggantikan pengisian SQL untuk jalur CKPN. Baca dijaga
+			// system:config:read (auditor), ubah dijaga system:config, dengan validasi
+			// yang menolak penyalakan prematur dan audit satu transaksi.
+			if p.CKPNActivationHandler != nil {
+				p.CKPNActivationHandler.RegisterRoutes(r)
 			}
 			r.Route("/batch", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).

@@ -250,6 +250,18 @@ func ckpnEnablementGaps(ctx context.Context, cfg SystemConfigService) []string {
 	if cfg.GetBool(ctx, ConfigKeyCKPNEnabled, false) {
 		return nil
 	}
+	return CKPNEnablementGapsForCandidate(ctx, cfg)
+}
+
+// CKPNEnablementGapsForCandidate menilai penahan penyalakan ckpn.enabled atas SUATU
+// konfigurasi kandidat, tanpa memandang apakah saklar sedang menyala. Dipakai pintu
+// pengaturan aktivasi untuk menolak penyalakan prematur (CKPNEnablementGapsFromConfig
+// sengaja mengembalikan kosong bila saklar sudah menyala, karena saat itu tidak ada lagi
+// yang bisa ditahan). Urutan pemeriksaan mengikuti ckpnEnablementGaps yang lama.
+func CKPNEnablementGapsForCandidate(ctx context.Context, cfg SystemConfigService) []string {
+	if cfg == nil {
+		return []string{"konfigurasi tidak terbaca (SystemConfigService nil); penahan penyalakan CKPN tidak dapat diperiksa"}
+	}
 	var gaps []string
 
 	status := strings.ToUpper(strings.TrimSpace(cfg.GetString(ctx, ConfigKeyCKPNParametersStatus, CKPNParameterStatusSementara)))

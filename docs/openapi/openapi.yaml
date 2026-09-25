@@ -2862,6 +2862,54 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/system/ckpn-activation:
+    get:
+      tags: [Sistem]
+      operationId: getCKPNActivation
+      summary: Pengaturan aktivasi CKPN
+      description: >-
+        Izin: `system:config:read`. Menyajikan nilai parameter PD/LGD, akun CKPN
+        syariah, status SEMENTARA/FINAL, bukti ratifikasi, mode bayangan, dan
+        saklar `ckpn.enabled`, beserta sisa penahan penyalakan. Baca-saja.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Sistem]
+      operationId: updateCKPNActivation
+      summary: Ubah pengaturan aktivasi CKPN
+      description: >-
+        Izin: `system:config`. Hanya bidang yang dikirim yang diubah; teraudit satu
+        transaksi. Menolak 422 bila fraksi di luar 0..1, status selain
+        SEMENTARA/FINAL, tanggal tidak sah, FINAL tanpa bukti ratifikasi, atau
+        penyalakan `ckpn.enabled` prematur (masih ada penahan).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/audit-logs:
     get:
       tags: [Sistem]

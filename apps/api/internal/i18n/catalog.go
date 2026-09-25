@@ -172,81 +172,89 @@ const (
 	// Kode pesan galat domain (domain.LocalizedError). Setiap sentinel yang tampil ke
 	// pengguna menyatakan kode ini di dekat definisinya; handler menerjemahkan lewat
 	// satu jalur, sehingga tidak ada daftar pemetaan kedua yang rapuh.
-	MsgAccountNotFound                    Code = "account_not_found"
-	MsgAccountDormant                     Code = "account_dormant"
-	MsgAccountNotDormant                  Code = "account_not_dormant"
-	MsgAccountNotFreezable                Code = "account_not_freezable"
-	MsgAccountNotFrozen                   Code = "account_not_frozen"
-	MsgAccountUnfreezeSameActor           Code = "account_unfreeze_same_actor"
-	MsgAccountCloseBalance                Code = "account_close_balance"
-	MsgAccountNotClosable                 Code = "account_not_closable"
-	MsgInvalidBranchCode                  Code = "invalid_branch_code"
-	MsgCrossBranchAccess                  Code = "cross_branch_access"
-	MsgBankProfileNameRequired            Code = "bank_profile_name_required"
-	MsgBankProfileNameTooShort            Code = "bank_profile_name_too_short"
-	MsgBankProfileEmpty                   Code = "bank_profile_empty"
-	MsgBankProfileFieldTooLong            Code = "bank_profile_field_too_long"
-	MsgBankProfileNPWPInvalid             Code = "bank_profile_npwp_invalid"
-	MsgBankProfilePhoneInvalid            Code = "bank_profile_phone_invalid"
-	MsgOJKProfile                         Code = "ojk_profile"
-	MsgOJKProfileUpdated                  Code = "ojk_profile_updated"
-	MsgOJKProfilePayloadInvalid           Code = "ojk_profile_payload_invalid"
-	MsgOJKProfileEmpty                    Code = "ojk_profile_empty"
-	MsgOJKProfileFieldTooLong             Code = "ojk_profile_field_too_long"
-	MsgOJKProfileEmailInvalid             Code = "ojk_profile_email_invalid"
-	MsgOJKProfileWebsiteInvalid           Code = "ojk_profile_website_invalid"
-	MsgOJKProfilePhoneInvalid             Code = "ojk_profile_phone_invalid"
-	MsgOJKProfileAgentCountInvalid        Code = "ojk_profile_agent_count_invalid"
-	MsgBranchNotFound                     Code = "branch_not_found"
-	MsgBranchCodeExists                   Code = "branch_code_exists"
-	MsgBranchNameRequired                 Code = "branch_name_required"
-	MsgBranchHeadOfficeNotAllowed         Code = "branch_head_office_not_allowed"
-	MsgOrgUnitCodeTooLong                 Code = "org_unit_code_too_long"
-	MsgCustomerNotFound                   Code = "customer_not_found"
-	MsgDuplicateIDCard                    Code = "duplicate_id_card"
-	MsgDuplicateEmail                     Code = "duplicate_email"
-	MsgCipherNotConfigured                Code = "cipher_not_configured"
-	MsgLoanNotFound                       Code = "loan_not_found"
-	MsgLoanAlreadyApprovedDomain          Code = "loan_already_approved"
-	MsgWriteOffNotMacet                   Code = "write_off_not_macet"
-	MsgWriteOffReserveIncomplete          Code = "write_off_reserve_incomplete"
-	MsgWriteOffPartial                    Code = "write_off_partial"
-	MsgWriteOffReasonRequired             Code = "write_off_reason_required"
-	MsgWriteOffCollectionEffortsNeeded    Code = "write_off_collection_efforts_required"
-	MsgRecoveryExceedsWriteOff            Code = "recovery_exceeds_write_off"
-	MsgWriteOffAmountUnavailable          Code = "write_off_amount_unavailable"
-	MsgMakerCheckerNotFound               Code = "maker_checker_not_found"
-	MsgMakerCheckerNotPending             Code = "maker_checker_not_pending"
-	MsgCannotSelfApprove                  Code = "cannot_self_approve"
-	MsgNoExecutorForAction                Code = "no_executor_for_action"
-	MsgProductNotFound                    Code = "product_not_found"
-	MsgBagiHasilNisbahMissing             Code = "bagi_hasil_nisbah_missing"
-	MsgBagiHasilProjectionMissing         Code = "bagi_hasil_projection_missing"
-	MsgBagiHasilNisbahOutOfRange          Code = "bagi_hasil_nisbah_out_of_range"
-	MsgBagiHasilProjectionOutOfRange      Code = "bagi_hasil_projection_out_of_range"
-	MsgProductParamsEmpty                 Code = "product_params_empty"
-	MsgProductRateNegative                Code = "product_rate_negative"
-	MsgProductAdminFeeNegative            Code = "product_admin_fee_negative"
-	MsgProductTaxRateNegative             Code = "product_tax_rate_negative"
-	MsgProductPenaltyRateNegative         Code = "product_penalty_rate_negative"
-	MsgProductMinAmountNegative           Code = "product_min_amount_negative"
-	MsgProductMaxAmountNegative           Code = "product_max_amount_negative"
-	MsgProductAmountRange                 Code = "product_amount_range"
-	MsgProductAmountBelowMin              Code = "product_amount_below_min"
-	MsgProductTermNegative                Code = "product_term_negative"
-	MsgProductTermRange                   Code = "product_term_range"
-	MsgPasswordExpired                    Code = "password_expired"
-	MsgStaffRoleNotManageable             Code = "staff_role_not_manageable"
-	MsgStaffAlreadyExists                 Code = "staff_already_exists"
-	MsgStaffBranchRequired                Code = "staff_branch_required"
-	MsgStaffBranchUnknown                 Code = "staff_branch_unknown"
-	MsgLimitPerTransaction                Code = "limit_per_transaction"
-	MsgLimitDaily                         Code = "limit_daily"
-	MsgRequiresApproval                   Code = "requires_approval"
-	MsgCKPNStalePPAP                      Code = "ckpn_stale_ppap"
-	MsgCollateralWeightActivationRejected Code = "collateral_weight_activation_rejected"
-	MsgCollateralWeightAssessment         Code = "collateral_weight_assessment"
-	MsgCollateralWeightActivated          Code = "collateral_weight_activated"
+	MsgAccountNotFound                      Code = "account_not_found"
+	MsgAccountDormant                       Code = "account_dormant"
+	MsgAccountNotDormant                    Code = "account_not_dormant"
+	MsgAccountNotFreezable                  Code = "account_not_freezable"
+	MsgAccountNotFrozen                     Code = "account_not_frozen"
+	MsgAccountUnfreezeSameActor             Code = "account_unfreeze_same_actor"
+	MsgAccountCloseBalance                  Code = "account_close_balance"
+	MsgAccountNotClosable                   Code = "account_not_closable"
+	MsgInvalidBranchCode                    Code = "invalid_branch_code"
+	MsgCrossBranchAccess                    Code = "cross_branch_access"
+	MsgBankProfileNameRequired              Code = "bank_profile_name_required"
+	MsgBankProfileNameTooShort              Code = "bank_profile_name_too_short"
+	MsgBankProfileEmpty                     Code = "bank_profile_empty"
+	MsgBankProfileFieldTooLong              Code = "bank_profile_field_too_long"
+	MsgBankProfileNPWPInvalid               Code = "bank_profile_npwp_invalid"
+	MsgBankProfilePhoneInvalid              Code = "bank_profile_phone_invalid"
+	MsgOJKProfile                           Code = "ojk_profile"
+	MsgOJKProfileUpdated                    Code = "ojk_profile_updated"
+	MsgOJKProfilePayloadInvalid             Code = "ojk_profile_payload_invalid"
+	MsgOJKProfileEmpty                      Code = "ojk_profile_empty"
+	MsgOJKProfileFieldTooLong               Code = "ojk_profile_field_too_long"
+	MsgOJKProfileEmailInvalid               Code = "ojk_profile_email_invalid"
+	MsgOJKProfileWebsiteInvalid             Code = "ojk_profile_website_invalid"
+	MsgOJKProfilePhoneInvalid               Code = "ojk_profile_phone_invalid"
+	MsgOJKProfileAgentCountInvalid          Code = "ojk_profile_agent_count_invalid"
+	MsgCKPNActivation                       Code = "ckpn_activation"
+	MsgCKPNActivationUpdated                Code = "ckpn_activation_updated"
+	MsgCKPNActivationEmpty                  Code = "ckpn_activation_empty"
+	MsgCKPNActivationFractionInvalid        Code = "ckpn_activation_fraction_invalid"
+	MsgCKPNActivationStatusInvalid          Code = "ckpn_activation_status_invalid"
+	MsgCKPNActivationRatificationIncomplete Code = "ckpn_activation_ratification_incomplete"
+	MsgCKPNActivationNotReady               Code = "ckpn_activation_not_ready"
+	MsgCKPNActivationDateInvalid            Code = "ckpn_activation_date_invalid"
+	MsgBranchNotFound                       Code = "branch_not_found"
+	MsgBranchCodeExists                     Code = "branch_code_exists"
+	MsgBranchNameRequired                   Code = "branch_name_required"
+	MsgBranchHeadOfficeNotAllowed           Code = "branch_head_office_not_allowed"
+	MsgOrgUnitCodeTooLong                   Code = "org_unit_code_too_long"
+	MsgCustomerNotFound                     Code = "customer_not_found"
+	MsgDuplicateIDCard                      Code = "duplicate_id_card"
+	MsgDuplicateEmail                       Code = "duplicate_email"
+	MsgCipherNotConfigured                  Code = "cipher_not_configured"
+	MsgLoanNotFound                         Code = "loan_not_found"
+	MsgLoanAlreadyApprovedDomain            Code = "loan_already_approved"
+	MsgWriteOffNotMacet                     Code = "write_off_not_macet"
+	MsgWriteOffReserveIncomplete            Code = "write_off_reserve_incomplete"
+	MsgWriteOffPartial                      Code = "write_off_partial"
+	MsgWriteOffReasonRequired               Code = "write_off_reason_required"
+	MsgWriteOffCollectionEffortsNeeded      Code = "write_off_collection_efforts_required"
+	MsgRecoveryExceedsWriteOff              Code = "recovery_exceeds_write_off"
+	MsgWriteOffAmountUnavailable            Code = "write_off_amount_unavailable"
+	MsgMakerCheckerNotFound                 Code = "maker_checker_not_found"
+	MsgMakerCheckerNotPending               Code = "maker_checker_not_pending"
+	MsgCannotSelfApprove                    Code = "cannot_self_approve"
+	MsgNoExecutorForAction                  Code = "no_executor_for_action"
+	MsgProductNotFound                      Code = "product_not_found"
+	MsgBagiHasilNisbahMissing               Code = "bagi_hasil_nisbah_missing"
+	MsgBagiHasilProjectionMissing           Code = "bagi_hasil_projection_missing"
+	MsgBagiHasilNisbahOutOfRange            Code = "bagi_hasil_nisbah_out_of_range"
+	MsgBagiHasilProjectionOutOfRange        Code = "bagi_hasil_projection_out_of_range"
+	MsgProductParamsEmpty                   Code = "product_params_empty"
+	MsgProductRateNegative                  Code = "product_rate_negative"
+	MsgProductAdminFeeNegative              Code = "product_admin_fee_negative"
+	MsgProductTaxRateNegative               Code = "product_tax_rate_negative"
+	MsgProductPenaltyRateNegative           Code = "product_penalty_rate_negative"
+	MsgProductMinAmountNegative             Code = "product_min_amount_negative"
+	MsgProductMaxAmountNegative             Code = "product_max_amount_negative"
+	MsgProductAmountRange                   Code = "product_amount_range"
+	MsgProductAmountBelowMin                Code = "product_amount_below_min"
+	MsgProductTermNegative                  Code = "product_term_negative"
+	MsgProductTermRange                     Code = "product_term_range"
+	MsgPasswordExpired                      Code = "password_expired"
+	MsgStaffRoleNotManageable               Code = "staff_role_not_manageable"
+	MsgStaffAlreadyExists                   Code = "staff_already_exists"
+	MsgStaffBranchRequired                  Code = "staff_branch_required"
+	MsgStaffBranchUnknown                   Code = "staff_branch_unknown"
+	MsgLimitPerTransaction                  Code = "limit_per_transaction"
+	MsgLimitDaily                           Code = "limit_daily"
+	MsgRequiresApproval                     Code = "requires_approval"
+	MsgCKPNStalePPAP                        Code = "ckpn_stale_ppap"
+	MsgCollateralWeightActivationRejected   Code = "collateral_weight_activation_rejected"
+	MsgCollateralWeightAssessment           Code = "collateral_weight_assessment"
+	MsgCollateralWeightActivated            Code = "collateral_weight_activated"
 	// MsgCollateralWeightCategories menyertai daftar kategori bobot agunan yang dibaca
 	// dari basis data (bukan dari daftar di kode klien).
 	MsgCollateralWeightCategories       Code = "collateral_weight_categories"
@@ -503,6 +511,14 @@ var codeList = []Code{
 	MsgOJKProfileWebsiteInvalid,
 	MsgOJKProfilePhoneInvalid,
 	MsgOJKProfileAgentCountInvalid,
+	MsgCKPNActivation,
+	MsgCKPNActivationUpdated,
+	MsgCKPNActivationEmpty,
+	MsgCKPNActivationFractionInvalid,
+	MsgCKPNActivationStatusInvalid,
+	MsgCKPNActivationRatificationIncomplete,
+	MsgCKPNActivationNotReady,
+	MsgCKPNActivationDateInvalid,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1349,6 +1365,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgOJKProfileAgentCountInvalid: {
 		ID: "jumlah agen Laku Pandai harus berupa angka",
 		EN: "Laku Pandai agent count must be a number",
+	},
+	MsgCKPNActivation: {
+		ID: "pengaturan aktivasi CKPN",
+		EN: "CKPN activation settings",
+	},
+	MsgCKPNActivationUpdated: {
+		ID: "pengaturan aktivasi CKPN diperbarui",
+		EN: "CKPN activation settings updated",
+	},
+	MsgCKPNActivationEmpty: {
+		ID: "tidak ada bidang aktivasi CKPN yang dikirim",
+		EN: "no CKPN activation field was submitted",
+	},
+	MsgCKPNActivationFractionInvalid: {
+		ID: "fraksi PD/LGD harus angka 0..1 (satuan fraksi, bukan persen)",
+		EN: "PD/LGD fraction must be a number 0..1 (fraction, not percent)",
+	},
+	MsgCKPNActivationStatusInvalid: {
+		ID: "status parameter CKPN hanya boleh SEMENTARA atau FINAL",
+		EN: "CKPN parameter status must be SEMENTARA or FINAL",
+	},
+	MsgCKPNActivationRatificationIncomplete: {
+		ID: "status FINAL belum boleh disetel: bukti ratifikasi parameter CKPN belum lengkap",
+		EN: "status FINAL cannot be set yet: CKPN parameter ratification evidence is incomplete",
+	},
+	MsgCKPNActivationNotReady: {
+		ID: "CKPN belum boleh dinyalakan: masih ada penahan yang harus diselesaikan",
+		EN: "CKPN cannot be enabled yet: blocking items remain",
+	},
+	MsgCKPNActivationDateInvalid: {
+		ID: "tanggal harus format YYYY-MM-DD dan tidak boleh di masa depan",
+		EN: "date must be YYYY-MM-DD and must not be in the future",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

@@ -219,6 +219,7 @@ func main() {
 	bankProfileSvc := service.NewBankProfileService(db, bankProfileRepo, auditRepo)
 	// Identitas Form 00.00 di luar tabel bank_profile (kunci system_config ojk.*).
 	ojkProfileSvc := service.NewOJKProfileService(db, postgres.NewOJKProfileRepository(db), auditRepo)
+	ckpnActivationSvc := service.NewCKPNActivationService(db, postgres.NewCKPNActivationRepository(db), configSvc, auditRepo)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
@@ -277,6 +278,7 @@ func main() {
 	appInfoHandler := httpHandler.NewAppInfoHandler(appInfoSvc)
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	ojkProfileHandler := httpHandler.NewOJKProfileHandler(ojkProfileSvc)
+	ckpnActivationHandler := httpHandler.NewCKPNActivationHandler(ckpnActivationSvc)
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc, configSvc)
@@ -334,6 +336,7 @@ func main() {
 		AppInfoHandler:          appInfoHandler,
 		BankProfileHandler:      bankProfileHandler,
 		OJKProfileHandler:       ojkProfileHandler,
+		CKPNActivationHandler:   ckpnActivationHandler,
 		PermissionHandler:       permissionHandler,
 		MonitoringHandler:       monitoringHandler,
 		AuthService:             authSvc,
