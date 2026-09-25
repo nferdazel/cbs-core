@@ -4,6 +4,7 @@
  */
 
 import type { Account } from "@cbs/shared-types";
+import type { COABook } from "./operations-types";
 
 export interface StaffUser {
   id: string;
@@ -32,6 +33,41 @@ export interface StaffUser {
   password_changed_at: string;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * domain.StaffRole (staff.go): peran yang boleh diberikan lewat endpoint staf.
+ * SUPERADMIN dan SYSTEM sengaja tidak ada di sini karena API menolaknya
+ * (ErrStaffPrivilegedCreate / ErrStaffPrivilegedRole).
+ */
+export type StaffRole =
+  "ADMIN" | "SUPERVISOR" | "TELLER" | "CS" | "AO" | "AUDITOR";
+
+/**
+ * Payload POST /staff (domain.CreateStaffInput). `book` opsional: bila kosong,
+ * akun mengikuti buku pengelola. Nilai sah hanya CONVENTIONAL atau SYARIAH.
+ */
+export interface CreateStaffInput {
+  username: string;
+  full_name: string;
+  email: string;
+  password: string;
+  role: StaffRole;
+  branch_code: string;
+  book?: COABook;
+}
+
+/**
+ * Payload PUT /staff/{id} (domain.UpdateStaffInput). Hanya bidang yang dikirim yang
+ * diubah; `book` yang kosong berarti buku tidak diubah.
+ */
+export interface UpdateStaffInput {
+  full_name?: string;
+  email?: string;
+  role?: StaffRole;
+  branch_code?: string;
+  is_active?: boolean;
+  book?: COABook;
 }
 
 /**

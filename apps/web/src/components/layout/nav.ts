@@ -171,6 +171,15 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ScanSearch,
         menuKey: "pengaturan",
       },
+      {
+        // Pengelolaan akun pegawai dijaga users:read/users:create/users:update.
+        // Memakai kunci menu `pengaturan` yang sudah ada, bukan menu baru, agar
+        // tidak menuntut migrasi katalog menu hanya untuk satu layar.
+        href: "/pengaturan/staf",
+        labelKey: "staf",
+        icon: Users,
+        menuKey: "pengaturan",
+      },
     ],
   },
 ];
