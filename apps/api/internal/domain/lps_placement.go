@@ -134,6 +134,21 @@ type LPSPlacement struct {
 	AsOf           time.Time
 	BranchID       *uuid.UUID
 	BranchCode     string
+	// CKPN adalah asesmen CKPN terakhir penempatan ini; nil berarti belum pernah
+	// diasesmen (kolom ckpn_assessed_at NULL). Form 05.00 kolom XII/XXI hanya tersedia
+	// bila minimal satu baris punya CKPN.
+	CKPN *LPSPlacementCKPN
+}
+
+// LPSPlacementCKPN adalah asesmen CKPN tersimpan satu penempatan. RequiredCKPN adalah
+// target yang berlaku; IndividualTarget hanya bermakna untuk metode INDIVIDUAL_*.
+type LPSPlacementCKPN struct {
+	Method            PABLCKPNMethod
+	Significant       bool
+	ObjectiveEvidence bool
+	RequiredCKPN      decimal.Decimal
+	IndividualTarget  decimal.Decimal
+	AssessedAt        *time.Time
 }
 
 // Validate menegakkan syarat yang tidak dapat dijaga skema: bank lawan terisi, jenis dan
@@ -279,11 +294,22 @@ type LPSPlacementSummary struct {
 type LPSPlacementRepository interface {
 	// ListPlacements mengambil penempatan yang tanggal penilaiannya tidak melewati asOf.
 	ListPlacements(ctx context.Context, asOf time.Time, actor Actor) ([]LPSPlacement, error)
+	// LockPlacementTx membaca satu penempatan dengan SELECT ... FOR UPDATE di dalam
+	// transaksi pemanggil, agar asesmen CKPN tidak berlomba dengan penulisan lain.
+	LockPlacementTx(ctx context.Context, tx any, id uuid.UUID) (*LPSPlacement, error)
+	// RecordCKPNTx menyimpan asesmen CKPN penempatan: memperbarui kolom CKPN pada
+	// lps_placements dan menulis jejaknya ke pabl_ckpn_assessments.
+	RecordCKPNTx(ctx context.Context, tx any, placementID uuid.UUID, input PABLCKPNInput, carrying decimal.Decimal, actorName string) error
 }
 
-// LPSPlacementService menghitung PPKA penempatan yang dijamin LPS. Operasi baca-saja:
+// LPSPlacementService menghitung PPKA penempatan yang dijamin LPS. Calculate baca-saja:
 // belum ada keputusan bank tentang bagaimana PPKA penempatan dicatat, jadi modul ini
-// tidak memposting jurnal maupun menulis state.
+// tidak memposting jurnal. AssessCKPN menulis asesmen CKPN (kolom XII/XXI Form 05.00)
+// dan TIDAK memposting jurnal.
 type LPSPlacementService interface {
 	Calculate(ctx context.Context, asOf time.Time, actor Actor) (LPSPlacementSummary, error)
+	// AssessCKPN menyimpan asesmen CKPN satu penempatan. Gagal dengan
+	// ErrCKPNPABLDisabled bila saklar ckpn.pabl.enabled mati, dan dengan
+	// ErrCrossBranchAccess bila penempatan berada di luar cakupan cabang aktor.
+	AssessCKPN(ctx context.Context, placementID uuid.UUID, input PABLCKPNInput, actor Actor) (LPSPlacement, error)
 }

@@ -190,7 +190,7 @@ func main() {
 	// Pasal 23 POJK No. 1 Tahun 2024: pengurang PPKA umum dan khusus untuk bagian
 	// Penempatan pada Bank Lain yang dijamin LPS. Baca-saja; saklar ppap.lps.enabled
 	// bawaan false sehingga belum mengubah angka PPKA mana pun.
-	lpsPlacementSvc := service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(db), configSvc)
+	lpsPlacementSvc := service.NewLPSPlacementService(db, postgres.NewLPSPlacementRepository(db), configSvc)
 	// PPKA umum (POJK 1/2024 Pasal 19 ayat (2): minimum 0,5% aset produktif lancar)
 	// dihitung dari kredit lancar (evaluasi PPAP) dan penempatan pada bank lain;
 	// satu sumber dipakai laporan PPAP dan KPMM. Baca-saja.

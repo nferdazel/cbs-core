@@ -112,7 +112,7 @@ type BankProfileSource interface {
 
 // PlacementRow adalah satu penempatan pada bank lain. Sumbernya adalah penanda
 // lps_placements (migrasi 000045); kolom Form 05.00 yang tidak ditandai di sana
-// dinyatakan belum tersedia di form05.go.
+// dinyatakan belum tersedia di form05.go. CKPN nil berarti penempatan belum diasesmen.
 type PlacementRow struct {
 	BranchCode       string
 	CounterpartyBank string
@@ -120,6 +120,14 @@ type PlacementRow struct {
 	Outstanding      decimal.Decimal
 	Collectibility   string
 	AsOf             time.Time
+	CKPN             *PlacementCKPNRow
+}
+
+// PlacementCKPNRow adalah CKPN tersimpan satu penempatan: metode asesmen dan target yang
+// berlaku. Nilainya dibaca dari lps_placements (migrasi 000099).
+type PlacementCKPNRow struct {
+	Method       string
+	RequiredCKPN decimal.Decimal
 }
 
 // PlacementDataSource menyediakan penempatan pada bank lain bank-wide.

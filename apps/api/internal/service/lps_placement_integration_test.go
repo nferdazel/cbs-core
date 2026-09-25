@@ -48,7 +48,7 @@ func insertLPSPlacement(t *testing.T, e *moneyEnv, coa, counterparty, placementT
 }
 
 func newLPSSvcForTest(e *moneyEnv) domain.LPSPlacementService {
-	return service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(e.db), e.configSvc)
+	return service.NewLPSPlacementService(e.db, postgres.NewLPSPlacementRepository(e.db), e.configSvc)
 }
 
 // TestIntegrasiLPSPlacementPengurangPasal23 memverifikasi angka di database: pengurang

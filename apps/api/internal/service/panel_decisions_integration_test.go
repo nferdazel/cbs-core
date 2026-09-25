@@ -192,7 +192,7 @@ func TestIntegrasiPanelPPKAUmumTerhitung(t *testing.T) {
 		_, _ = e.db.ExecContext(e.ctx, `DELETE FROM lps_placements WHERE counterparty_bank='Bank Lawan Uji'`)
 	})
 
-	lpsSvc := service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(e.db), e.configSvc)
+	lpsSvc := service.NewLPSPlacementService(e.db, postgres.NewLPSPlacementRepository(e.db), e.configSvc)
 	ppkaSvc := service.NewPPKAUmumService(e.ppapSvc, lpsSvc, e.configSvc)
 
 	asOf := time.Now()
@@ -264,7 +264,7 @@ func TestIntegrasiPanelPPKAUmumTerhitung(t *testing.T) {
 func TestIntegrasiPanelKPMMPenandaKelengkapan(t *testing.T) {
 	e := newBookWriteEnv(t)
 	reportSvc := service.NewReportService(postgres.NewReportRepository(e.db))
-	lpsSvc := service.NewLPSPlacementService(postgres.NewLPSPlacementRepository(e.db), e.configSvc)
+	lpsSvc := service.NewLPSPlacementService(e.db, postgres.NewLPSPlacementRepository(e.db), e.configSvc)
 	ppkaSvc := service.NewPPKAUmumService(e.ppapSvc, lpsSvc, e.configSvc)
 	kpmmSvc := service.NewKPMMService(reportSvc, e.ckpnSvc, e.configSvc, ppkaSvc)
 

@@ -2,24 +2,49 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
-// lpsPlacementService menghitung PPKA penempatan pada bank lain yang dijamin LPS menurut
-// Pasal 23 POJK No. 1 Tahun 2024. Baca-saja: tidak memposting jurnal dan tidak menulis
-// state, karena bank belum memutuskan bagaimana PPKA penempatan dicatat di GL.
-type lpsPlacementService struct {
-	repo   domain.LPSPlacementRepository
-	config domain.SystemConfigService
+// lpsTxRunner membuka satu transaksi untuk operasi tulis modul ini. Service memegang
+// runner (bukan *sql.DB langsung) mengikuti pola ckpnTxRunner/ppapTxRunner di paket ini.
+type lpsTxRunner interface {
+	Run(ctx context.Context, fn func(tx any) error) error
 }
 
-func NewLPSPlacementService(repo domain.LPSPlacementRepository, config domain.SystemConfigService) domain.LPSPlacementService {
-	return &lpsPlacementService{repo: repo, config: config}
+type sqlLPSTxRunner struct{ db *sql.DB }
+
+func (r sqlLPSTxRunner) Run(ctx context.Context, fn func(tx any) error) error {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// lpsPlacementService menghitung PPKA penempatan pada bank lain yang dijamin LPS menurut
+// Pasal 23 POJK No. 1 Tahun 2024. Calculate baca-saja: tidak memposting jurnal dan tidak
+// menulis state, karena bank belum memutuskan bagaimana PPKA penempatan dicatat di GL.
+// AssessCKPN menulis asesmen CKPN per penempatan (kolom XII/XXI Form 05.00) dan juga
+// TIDAK memposting jurnal.
+type lpsPlacementService struct {
+	txRunner lpsTxRunner
+	repo     domain.LPSPlacementRepository
+	config   domain.SystemConfigService
+}
+
+func NewLPSPlacementService(db *sql.DB, repo domain.LPSPlacementRepository, config domain.SystemConfigService) domain.LPSPlacementService {
+	return &lpsPlacementService{txRunner: sqlLPSTxRunner{db: db}, repo: repo, config: config}
 }
 
 // Calculate menghitung PPKA umum dan khusus atas penempatan setelah dikurangi bagian
@@ -128,6 +153,61 @@ func (s *lpsPlacementService) Calculate(ctx context.Context, asOf time.Time, act
 		summary.TotalPPKA = summary.TotalPPKA.Add(item.PPKA)
 	}
 	return summary, nil
+}
+
+// AssessCKPN menyimpan asesmen CKPN satu penempatan pada bank lain. Saklar
+// ckpn.pabl.enabled diperiksa lebih dulu: selama mati permintaan DITOLAK dengan
+// ErrCKPNPABLDisabled, bukan diam-diam sukses tanpa menyimpan apa pun. Asesmen berjalan
+// dalam satu transaksi (kunci baris lalu tulis kolom + jejak) dan tidak memposting jurnal.
+func (s *lpsPlacementService) AssessCKPN(ctx context.Context, placementID uuid.UUID, input domain.PABLCKPNInput, actor domain.Actor) (domain.LPSPlacement, error) {
+	if s.config == nil || !s.config.GetBool(ctx, domain.CKPNPABLEnabledKey, false) {
+		return domain.LPSPlacement{}, domain.ErrCKPNPABLDisabled
+	}
+	if err := input.Validate(); err != nil {
+		return domain.LPSPlacement{}, err
+	}
+	// Saklar hidup tanpa transaction runner adalah perakitan yang salah; jangan
+	// diam-diam mengembalikan sukses.
+	if s.txRunner == nil {
+		return domain.LPSPlacement{}, fmt.Errorf("modul CKPN penempatan aktif tetapi transaction runner tidak dikonfigurasi")
+	}
+
+	var result domain.LPSPlacement
+	err := s.txRunner.Run(ctx, func(tx any) error {
+		placement, err := s.repo.LockPlacementTx(ctx, tx, placementID)
+		if err != nil {
+			return err
+		}
+		// Cakupan cabang ditegakkan SETELAH baris dikunci, seperti jalur tulis lain:
+		// penempatan di cabang lain ditolak ErrCrossBranchAccess.
+		if !actor.CanAccessBranch(placement.BranchCode) {
+			return domain.ErrCrossBranchAccess
+		}
+		actorName := actor.Username
+		if actorName == "" {
+			actorName = actor.UserID.String()
+		}
+		// Carrying asesmen adalah outstanding penempatan saat ini; target adalah CKPN
+		// yang dipilih bank.
+		if err := s.repo.RecordCKPNTx(ctx, tx, placement.ID, input, placement.Outstanding, actorName); err != nil {
+			return err
+		}
+		assessedAt := time.Now().UTC()
+		result = *placement
+		result.CKPN = &domain.LPSPlacementCKPN{
+			Method:            input.Method,
+			Significant:       input.Significant,
+			ObjectiveEvidence: input.ObjectiveEvidence,
+			RequiredCKPN:      input.RequiredCKPN,
+			IndividualTarget:  input.IndividualTarget,
+			AssessedAt:        &assessedAt,
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.LPSPlacement{}, err
+	}
+	return result, nil
 }
 
 // lpsGuaranteeCap membaca plafon penjaminan LPS per nasabah pada satu bank. Tiga keadaan

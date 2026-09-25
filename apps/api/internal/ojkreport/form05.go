@@ -1,6 +1,10 @@
 package ojkreport
 
-import "strings"
+import (
+	"strings"
+
+	"cbs-core/apps/core-api/internal/domain"
+)
 
 // form05.go membangun Form 05.00 DAFTAR PENEMPATAN PADA BANK LAIN dari penanda
 // lps_placements (migrasi 000045).
@@ -66,7 +70,12 @@ var form05Columns = []form05Column{
 	}},
 	{Sandi: form05SandiDiblokir, Nama: "Nominal yang Diblokir/Dijaminkan", Reason: "nominal diblokir/dijaminkan belum disimpan"},
 	{Sandi: form05SandiAlasan, Nama: "Alasan Diblokir", Reason: "alasan diblokir belum disimpan"},
-	{Sandi: form05SandiCKPN, Nama: "CKPN", Reason: "CKPN per penempatan belum dihitung pada lps_placements"},
+	{Sandi: form05SandiCKPN, Nama: "CKPN", Value: func(p PlacementRow) string {
+		if p.CKPN == nil {
+			return "-"
+		}
+		return FormatRupiah(p.CKPN.RequiredCKPN)
+	}},
 	{Sandi: form05SandiBungaAkan, Nama: "Pendapatan Bunga yang Akan Diterima", Reason: "piutang bunga penempatan belum dimodelkan"},
 	{Sandi: form05SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
 	{Sandi: form05SandiBMPK, Nama: "Status BMPK Individu", Reason: "uji BMPK per bank lawan belum dihitung"},
@@ -75,11 +84,19 @@ var form05Columns = []form05Column{
 	{Sandi: form05SandiCKPNKurang, Nama: "Cadangan Kerugian Penurunan Nilai Aset Kurang Baik", Reason: "pemisahan CKPN per golongan kualitas belum ada"},
 	{Sandi: form05SandiCKPNTidak, Nama: "Cadangan Kerugian Penurunan Nilai Aset Tidak Baik", Reason: "pemisahan CKPN per golongan kualitas belum ada"},
 	{Sandi: form05SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Reason: "klasifikasi SAK EP belum dipetakan per penempatan"},
-	{Sandi: form05SandiJenisCKPN, Nama: "Jenis CKPN", Reason: "jenis CKPN individual/kolektif belum disimpan"},
+	{Sandi: form05SandiJenisCKPN, Nama: "Jenis CKPN", Value: func(p PlacementRow) string {
+		if p.CKPN == nil {
+			return "-"
+		}
+		return domain.SandiJenisCKPNPABL(domain.PABLCKPNMethod(p.CKPN.Method))
+	}},
 }
 
 // buildForm05 menyusun Form 05.00. Bila tidak ada baris penempatan, bagian Rows
-// kosong tetapi daftar kolom yang belum tersedia tetap dibawa.
+// kosong tetapi daftar kolom yang belum tersedia tetap dibawa. Kolom XII (CKPN) dan
+// XXI (Jenis CKPN) hanya tersedia bila minimal satu baris sudah diasesmen; selama
+// belum ada, keduanya dinyatakan belum tersedia dengan alasan yang menyebut saklar
+// ckpn.pabl.enabled dan asesmen.
 func buildForm05(rows []PlacementRow) TableSection {
 	sec := TableSection{
 		Form:     "05.00",
@@ -88,9 +105,30 @@ func buildForm05(rows []PlacementRow) TableSection {
 		Notes: []string{
 			"Dibangun dari penanda lps_placements (migrasi 000045), yaitu penempatan yang secara eksplisit ditandai untuk pengurang PPKA Pasal 23 POJK 1/2024. Tabel itu bukan register lengkap seluruh penempatan pada bank lain.",
 			"Jenis penempatan KREDIT dan LAINNYA ditempatkan sebagai '-' karena Form 05.00 – 2 hanya memberi sandi giro/tabungan/deposito/sertifikat deposito.",
+			"Kolom XII dan XXI hanya berisi CKPN penempatan yang sudah diasesmen (saklar ckpn.pabl.enabled dan asesmen tersimpan); penempatan lain ditulis '-'.",
 		},
 	}
-	for _, c := range form05Columns {
+
+	adaCKPN := false
+	for _, p := range rows {
+		if p.CKPN != nil {
+			adaCKPN = true
+			break
+		}
+	}
+	cols := form05Columns
+	if !adaCKPN {
+		cols = make([]form05Column, len(form05Columns))
+		copy(cols, form05Columns)
+		for i := range cols {
+			switch cols[i].Sandi {
+			case form05SandiCKPN, form05SandiJenisCKPN:
+				cols[i].Reason = "CKPN per penempatan belum diasesmen (saklar ckpn.pabl.enabled + asesmen)"
+			}
+		}
+	}
+
+	for _, c := range cols {
 		if c.Reason != "" {
 			sec.Unavailable = append(sec.Unavailable, ColumnUnavailable{Sandi: c.Sandi, Nama: c.Nama, Reason: c.Reason})
 			continue
@@ -99,7 +137,7 @@ func buildForm05(rows []PlacementRow) TableSection {
 	}
 	for _, p := range rows {
 		row := TableRow{Key: dashIfEmpty(p.CounterpartyBank)}
-		for _, c := range form05Columns {
+		for _, c := range cols {
 			if c.Reason != "" || c.Value == nil {
 				continue
 			}

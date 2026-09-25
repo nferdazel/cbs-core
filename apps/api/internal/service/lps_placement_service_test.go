@@ -58,6 +58,18 @@ type lpsRepoStub struct {
 	gotActor   domain.Actor
 	gotAsOf    time.Time
 	err        error
+
+	// Jejak asesmen CKPN (AssessCKPN).
+	lockCalled   bool
+	recordCalled bool
+	gotLockID    uuid.UUID
+	gotRecordID  uuid.UUID
+	gotInput     domain.PABLCKPNInput
+	gotCarrying  decimal.Decimal
+	gotActorName string
+	lockErr      error
+	recordErr    error
+	lockOverride *domain.LPSPlacement
 }
 
 func (r *lpsRepoStub) ListPlacements(_ context.Context, asOf time.Time, actor domain.Actor) ([]domain.LPSPlacement, error) {
@@ -68,6 +80,33 @@ func (r *lpsRepoStub) ListPlacements(_ context.Context, asOf time.Time, actor do
 		return nil, r.err
 	}
 	return r.placements, nil
+}
+
+func (r *lpsRepoStub) LockPlacementTx(_ context.Context, _ any, id uuid.UUID) (*domain.LPSPlacement, error) {
+	r.lockCalled = true
+	r.gotLockID = id
+	if r.lockErr != nil {
+		return nil, r.lockErr
+	}
+	if r.lockOverride != nil {
+		return r.lockOverride, nil
+	}
+	for i := range r.placements {
+		if r.placements[i].ID == id {
+			p := r.placements[i]
+			return &p, nil
+		}
+	}
+	return nil, domain.ErrLPSPlacementNotFound
+}
+
+func (r *lpsRepoStub) RecordCKPNTx(_ context.Context, _ any, placementID uuid.UUID, input domain.PABLCKPNInput, carrying decimal.Decimal, actorName string) error {
+	r.recordCalled = true
+	r.gotRecordID = placementID
+	r.gotInput = input
+	r.gotCarrying = carrying
+	r.gotActorName = actorName
+	return r.recordErr
 }
 
 func lpsServicePlacement(outstanding, guaranteed int64, k domain.LPSPlacementCollectibility) domain.LPSPlacement {
@@ -328,5 +367,132 @@ func TestLPSPlacementCalculate_BarisTidakSahDicatatGagal(t *testing.T) {
 	}
 	if len(summary.Failures) != 1 || !strings.Contains(summary.Failures[0].Error, domain.ErrLPSPlacementInvalid.Error()) {
 		t.Fatalf("kegagalan %+v, mau memuat %q", summary.Failures, domain.ErrLPSPlacementInvalid)
+	}
+}
+
+// lpsAssessmentInput adalah masukan asesmen yang sah; BranchCode/Outstanding diisi
+// pemanggil lewat penempatan stub.
+func lpsAssessmentInput() domain.PABLCKPNInput {
+	return domain.PABLCKPNInput{
+		Method:            domain.PABLCKPNMethodIndividualDCF,
+		Significant:       true,
+		ObjectiveEvidence: true,
+		RequiredCKPN:      decimal.NewFromInt(250_000),
+		IndividualTarget:  decimal.NewFromInt(250_000),
+		AsOf:              time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+// Saklar mati menolak asesmen dengan ErrCKPNPABLDisabled dan TIDAK menyentuh repositori:
+// permintaan tidak boleh diam-diam sukses tanpa menyimpan apa pun.
+func TestLPSPlacementAssessCKPN_SaklarMatiMenolak(t *testing.T) {
+	repo := &lpsRepoStub{}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "false"}},
+		txRunner: stubTxRunner{},
+	}
+	_, err := svc.AssessCKPN(context.Background(), uuid.New(), lpsAssessmentInput(), domain.Actor{})
+	if !errors.Is(err, domain.ErrCKPNPABLDisabled) {
+		t.Fatalf("error %v, mau ErrCKPNPABLDisabled", err)
+	}
+	if repo.lockCalled || repo.recordCalled {
+		t.Fatal("saklar mati tidak boleh menyentuh repositori")
+	}
+}
+
+// Masukan tidak sah ditolak sebelum kunci baris dibuka.
+func TestLPSPlacementAssessCKPN_MasukanTidakSahDitolak(t *testing.T) {
+	repo := &lpsRepoStub{}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}},
+		txRunner: stubTxRunner{},
+	}
+	input := lpsAssessmentInput()
+	input.Method = "TIDAK_DIKENAL"
+	_, err := svc.AssessCKPN(context.Background(), uuid.New(), input, domain.Actor{})
+	if !errors.Is(err, domain.ErrCKPNPABLInputInvalid) {
+		t.Fatalf("error %v, mau ErrCKPNPABLInputInvalid", err)
+	}
+	if repo.lockCalled {
+		t.Fatal("masukan tidak sah harus ditolak sebelum mengunci baris")
+	}
+}
+
+// Penempatan di luar cakupan cabang aktor ditolak ErrCrossBranchAccess, bukan disimpan.
+func TestLPSPlacementAssessCKPN_LintasCabangDitolak(t *testing.T) {
+	placement := lpsServicePlacement(1_000_000, 0, domain.LPSLancar)
+	placement.BranchCode = "001"
+	repo := &lpsRepoStub{placements: []domain.LPSPlacement{placement}}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}},
+		txRunner: stubTxRunner{},
+	}
+	actor := domain.Actor{Username: "ao.002", Role: domain.RoleAO, BranchCode: "002"}
+	_, err := svc.AssessCKPN(context.Background(), placement.ID, lpsAssessmentInput(), actor)
+	if !errors.Is(err, domain.ErrCrossBranchAccess) {
+		t.Fatalf("error %v, mau ErrCrossBranchAccess", err)
+	}
+	if repo.recordCalled {
+		t.Fatal("penempatan lintas cabang tidak boleh disimpan")
+	}
+}
+
+// Asesmen sah menyimpan carrying = outstanding, meneruskan aktor, dan mengembalikan
+// penempatan dengan CKPN terisi.
+func TestLPSPlacementAssessCKPN_MenyimpanCarryingDanCKPN(t *testing.T) {
+	placement := lpsServicePlacement(1_000_000, 0, domain.LPSLancar)
+	placement.BranchCode = "001"
+	repo := &lpsRepoStub{placements: []domain.LPSPlacement{placement}}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}},
+		txRunner: stubTxRunner{},
+	}
+	actor := domain.Actor{Username: "ao.001", Role: domain.RoleAO, BranchCode: "001"}
+
+	got, err := svc.AssessCKPN(context.Background(), placement.ID, lpsAssessmentInput(), actor)
+	if err != nil {
+		t.Fatalf("AssessCKPN: %v", err)
+	}
+	if !repo.lockCalled || !repo.recordCalled {
+		t.Fatal("asesmen harus mengunci lalu menulis")
+	}
+	if !repo.gotCarrying.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("carrying %s, mau 1000000", repo.gotCarrying)
+	}
+	if repo.gotActorName != "ao.001" {
+		t.Fatalf("aktor %q, mau ao.001", repo.gotActorName)
+	}
+	if got.CKPN == nil || got.CKPN.Method != domain.PABLCKPNMethodIndividualDCF {
+		t.Fatalf("CKPN hasil %+v, mau metode INDIVIDUAL_DCF", got.CKPN)
+	}
+	if !got.CKPN.RequiredCKPN.Equal(decimal.NewFromInt(250_000)) {
+		t.Fatalf("required CKPN %s, mau 250000", got.CKPN.RequiredCKPN)
+	}
+}
+
+// Penempatan tidak ditemukan dikembalikan apa adanya agar handler memetakan 404.
+func TestLPSPlacementAssessCKPN_TidakDitemukan(t *testing.T) {
+	repo := &lpsRepoStub{}
+	svc := &lpsPlacementService{
+		repo:     repo,
+		config:   &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}},
+		txRunner: stubTxRunner{},
+	}
+	_, err := svc.AssessCKPN(context.Background(), uuid.New(), lpsAssessmentInput(), domain.Actor{})
+	if !errors.Is(err, domain.ErrLPSPlacementNotFound) {
+		t.Fatalf("error %v, mau ErrLPSPlacementNotFound", err)
+	}
+}
+
+// Transaction runner yang tidak dikonfigurasi adalah kesalahan perakitan saat saklar hidup.
+func TestLPSPlacementAssessCKPN_TanpaTxRunnerDitolak(t *testing.T) {
+	cfg := &lpsConfigStub{values: map[string]string{domain.CKPNPABLEnabledKey: "true"}}
+	svc := &lpsPlacementService{repo: &lpsRepoStub{}, config: cfg}
+	if _, err := svc.AssessCKPN(context.Background(), uuid.New(), lpsAssessmentInput(), domain.Actor{}); err == nil {
+		t.Fatal("transaction runner yang tidak dikonfigurasi harus menghasilkan error")
 	}
 }

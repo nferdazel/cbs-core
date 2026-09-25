@@ -2292,6 +2292,64 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/lps-placements/{id}/ckpn:
+    post:
+      tags: [PPAP]
+      operationId: assessPABLCKPN
+      summary: Simpan asesmen CKPN per penempatan pada bank lain
+      description: |-
+        Izin: `loans:approve` (menulis state keuangan; baca memakai `loans:read`).
+        Menyimpan target CKPN, metode, penanda, dan tanggal asesmen satu penempatan
+        (kolom XII/XXI Form 05.00). Selama saklar `ckpn.pabl.enabled` mati, permintaan
+        ditolak `409`. Tidak memposting jurnal.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, required_ckpn, as_of]
+              properties:
+                method:
+                  type: string
+                  enum: [COLLECTIVE, INDIVIDUAL_DCF, INDIVIDUAL_COLLATERAL, INDIVIDUAL_MAX, EXCLUDED_ASET_BAIK]
+                significant:
+                  type: boolean
+                objective_evidence:
+                  type: boolean
+                required_ckpn:
+                  type: string
+                  description: Target CKPN yang berlaku (desimal).
+                individual_target:
+                  type: string
+                  description: Target perhitungan individual; hanya bermakna untuk metode INDIVIDUAL_*.
+                as_of:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/integrations/slik/check:
     post:
       tags: [Integrasi]
