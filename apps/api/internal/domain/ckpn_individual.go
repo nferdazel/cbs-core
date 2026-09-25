@@ -40,19 +40,19 @@ func (m CKPNIndividualMethod) Valid() bool {
 // dari system_config; tidak ada ambang yang ditanam di kode. Selama Enabled=false,
 // tidak ada kredit yang dihitung individual.
 type CKPNIndividualPolicy struct {
-	Enabled            bool
-	SignificanceAmount decimal.Decimal
-	SignificanceTopN   int
-	Method             CKPNIndividualMethod
+	Enabled            bool                 `json:"enabled"`
+	SignificanceAmount decimal.Decimal      `json:"significance_amount"`
+	SignificanceTopN   int                  `json:"significance_top_n"`
+	Method             CKPNIndividualMethod `json:"method"`
 	// DiscountRateAnnualPct adalah override tingkat diskonto (% per tahun) HANYA bila
 	// EIR orisinal kredit belum tersimpan. Kosong berarti wajib EIR orisinal.
-	DiscountRateAnnualPct string
+	DiscountRateAnnualPct string `json:"discount_rate_annual_pct"`
 	// Pemicu non-nominal wajib (PA BPR 12.2.b/12.3.c), tanpa memandang nominal.
-	MandatoryOnMacet             bool
-	MandatoryOnRestructured      bool
-	MandatoryDPDDays             int
-	MandatoryOnCollateralDrop    bool
-	MandatoryOnObjectiveEvidence bool
+	MandatoryOnMacet             bool `json:"mandatory_on_macet"`
+	MandatoryOnRestructured      bool `json:"mandatory_on_restructured"`
+	MandatoryDPDDays             int  `json:"mandatory_dpd_days"`
+	MandatoryOnCollateralDrop    bool `json:"mandatory_on_collateral_drop"`
+	MandatoryOnObjectiveEvidence bool `json:"mandatory_on_objective_evidence"`
 }
 
 // CKPNIndividualDiscountRateMonthly memilih tingkat diskonto bulanan untuk perhitungan

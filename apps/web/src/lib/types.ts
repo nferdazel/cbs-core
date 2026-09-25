@@ -418,6 +418,74 @@ export interface EOYSummaryResult {
 }
 
 /**
+ * Satu pemicu pintu masuk CKPN individual (domain.CKPNEntryTrigger,
+ * ckpn_individual_t3.go). `reason` adalah teks dari server; UI menampilkannya apa
+ * adanya, bukan menyusun ulang. `mandatory` membedakan pemicu wajib (PA BPR 12.3.c)
+ * dari kebijakan signifikansi bank.
+ */
+export interface CKPNEntryTrigger {
+  code: string;
+  reason: string;
+  mandatory: boolean;
+}
+
+/** domain.CKPNIndividualEntry: hasil penilaian pintu masuk satu kredit. */
+export interface CKPNIndividualEntry {
+  individual: boolean;
+  significance: boolean;
+  triggers: CKPNEntryTrigger[];
+  suggested_method: string;
+  excluded_aset_baik: boolean;
+}
+
+/** domain.CKPNIndividualCandidate: satu kredit yang wajib dinilai individual. */
+export interface CKPNIndividualCandidate {
+  loan_id: string;
+  loan_number: string;
+  branch_code?: string;
+  outstanding: string;
+  rank: number;
+  entry: CKPNIndividualEntry;
+}
+
+/**
+ * domain.CKPNIndividualPolicy (ckpn_individual.go). Struct Go memakai tag json
+ * snake_case, sejalan dengan bidang lain pada respons scan. Nilai desimal
+ * (significance_amount) dikirim sebagai string agar presisi tidak hilang.
+ */
+export interface CKPNIndividualPolicy {
+  enabled: boolean;
+  significance_amount: string;
+  significance_top_n: number;
+  method: string;
+  discount_rate_annual_pct: string;
+  mandatory_on_macet: boolean;
+  mandatory_on_restructured: boolean;
+  mandatory_dpd_days: number;
+  mandatory_on_collateral_drop: boolean;
+  mandatory_on_objective_evidence: boolean;
+}
+
+/** domain.CKPNIndividualScanResult: hasil GET /ckpn/individual/scan. */
+export interface CKPNIndividualScanResult {
+  individual: CKPNIndividualCandidate[];
+  excluded_aset_baik?: string[];
+  scanned: number;
+  policy: CKPNIndividualPolicy;
+}
+
+/** Metode perhitungan individual yang sah pada penandaan (domain.CKPNIndividualMethod). */
+export type CKPNIndividualMethod = "DCF" | "COLLATERAL" | "MAX";
+
+/** Payload POST /ckpn/individual/{loanNumber}/entry. */
+export interface CKPNIndividualEntryMarkInput {
+  method: CKPNIndividualMethod;
+  significant: boolean;
+  objective_evidence: boolean;
+  excluded_aset_baik: boolean;
+}
+
+/**
  * Shim kompatibilitas: sebagian modul operasional mengimpor tipe ini dari
  * "@/lib/types", padahal definisinya ada di "@/lib/operations-types".
  * Re-export agar build tetap jalan tanpa mengubah modul tersebut.

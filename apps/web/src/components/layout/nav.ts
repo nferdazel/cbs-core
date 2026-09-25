@@ -14,6 +14,7 @@ import {
   ListChecks,
   Package,
   PiggyBank,
+  ScanSearch,
   Settings,
   ShieldCheck,
   Users,
@@ -159,6 +160,15 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/pengaturan",
         labelKey: "pengaturan",
         icon: Settings,
+        menuKey: "pengaturan",
+      },
+      {
+        // Pintu masuk jalur CKPN individual (dipindai dengan loans:read, ditandai
+        // dengan loans:approve). Ikon ScanSearch dipilih karena pekerjaan halaman
+        // ini memang memindai kandidat, bukan sekadar membuka daftar.
+        href: "/pengaturan/ckpn-individual",
+        labelKey: "ckpnIndividual",
+        icon: ScanSearch,
         menuKey: "pengaturan",
       },
     ],

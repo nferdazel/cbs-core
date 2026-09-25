@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -172,5 +173,32 @@ func TestIntegrasiT3KebijakanPemicuDimatikan(t *testing.T) {
 	}, p)
 	if entry.Individual {
 		t.Fatalf("pemicu agunan-turun sudah dimatikan tetapi tetap memicu: %+v", entry.Triggers)
+	}
+}
+
+// Kontrak JSON kebijakan T3: seluruh kunci snake_case, sejalan dengan bidang lain pada
+// respons scan. Uji ini mengunci kontrak agar konsumen (web) tidak diam-diam rusak bila
+// tag json dihapus atau diganti.
+func TestIntegrasiT3KebijakanSerialisasiSnakeCase(t *testing.T) {
+	raw, err := json.Marshal(policyT3())
+	if err != nil {
+		t.Fatalf("marshal kebijakan: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal kebijakan: %v", err)
+	}
+	wajib := []string{
+		"enabled", "significance_amount", "significance_top_n", "method",
+		"discount_rate_annual_pct", "mandatory_on_macet", "mandatory_on_restructured",
+		"mandatory_dpd_days", "mandatory_on_collateral_drop", "mandatory_on_objective_evidence",
+	}
+	for _, k := range wajib {
+		if _, ok := m[k]; !ok {
+			t.Fatalf("kunci snake_case %q tidak ada pada JSON kebijakan: %v", k, m)
+		}
+	}
+	if _, adaPascal := m["SignificanceAmount"]; adaPascal {
+		t.Fatalf("kebijakan masih memakai nama field PascalCase di JSON")
 	}
 }

@@ -56,6 +56,7 @@ export const dictionaryID = {
     laporan: "Laporan",
     pemetaanOjk: "Pemetaan OJK",
     pengaturan: "Pengaturan",
+    ckpnIndividual: "CKPN Individual",
     mainNavigation: "Navigasi utama",
   },
   login: {
@@ -1254,6 +1255,89 @@ export const dictionaryID = {
       "Peran Anda hanya dapat menilai. Mengajukan aktivasi memerlukan izin pengaturan sistem.",
     statusActive: "Aktif",
     statusNotActive: "Belum aktif",
+  },
+  ckpnIndividual: {
+    title: "CKPN Individual",
+    description:
+      "Pindai kredit yang wajib dinilai individual beserta pemicunya, lalu catat keputusan pengelola per kredit. Pemindaian bersifat baca-saja.",
+    scanNote:
+      "Daftar ini usulan pemindaian portofolio. Penandaan tidak mengubah required_ckpn dan tidak menulis jurnal; keputusan hanya tercatat pada jejak audit.",
+    refresh: "Pindai ulang",
+    loadError: "Gagal memindai kandidat CKPN individual.",
+    forbidden: "Anda tidak memiliki izin membaca data kredit (403).",
+    scanned: "Kredit dipindai",
+    candidatesTitle: "Kandidat wajib dinilai individual",
+    candidatesEmpty:
+      "Tidak ada kredit yang memenuhi pemicu wajib maupun signifikansi saat ini.",
+    triggerLegend:
+      "Pemicu WAJIB berasal dari ketentuan penurunan nilai. SIGNIFIKANSI berasal dari praktik bank (ambang nominal atau jumlah terbesar). Keduanya membuat kredit masuk jalur individual.",
+    excludedTitle: "Kredit dikecualikan sebagai aset baik",
+    excludedEmpty: "Belum ada kredit yang dikecualikan sebagai aset baik.",
+    excludedHint:
+      "Kredit ini sudah dikeluarkan bank dari jalur individual, sehingga tidak dinilai individual berapa pun nominalnya.",
+    policyTitle: "Kebijakan pemindaian",
+    policyEnabled: "Penilaian individual",
+    policyEnabledOn: "Aktif",
+    policyEnabledOff: "Belum aktif",
+    policySignificanceAmount: "Ambang signifikansi",
+    policySignificanceTopN: "Jumlah eksposur terbesar",
+    policyMethod: "Metode bawaan",
+    policyDiscountRate: "Override diskonto tahunan",
+    policyMandatoryOn: "Pemicu wajib yang menyala",
+    policyMandatoryNone: "Tidak ada pemicu wajib yang menyala.",
+    policyNotSet: "Belum diisi",
+    colLoan: "Kredit",
+    colRank: "Peringkat",
+    colOutstanding: "Sisa pokok",
+    colTriggers: "Pemicu dan alasan",
+    colMethod: "Saran metode",
+    colAction: "Aksi",
+    markButton: "Tandai",
+    markReadOnly:
+      "Peran Anda hanya dapat melihat. Menandai keputusan memerlukan izin persetujuan kredit.",
+    triggerMandatory: "WAJIB",
+    triggerOptional: "SIGNIFIKANSI",
+    methodDcf: "DCF (arus kas)",
+    methodCollateral: "COLLATERAL (agunan)",
+    methodMax: "MAX (yang lebih konservatif)",
+    methodIgnored: "Diabaikan karena pengecualian",
+    dialogTitle: "Tandai keputusan individual",
+    dialogLoan: "Kredit",
+    dialogOutstanding: "Sisa pokok",
+    dialogSuggested: "Saran server",
+    formMethod: "Metode perhitungan",
+    formMethodHint:
+      "Metode menentukan angka cadangan saat penilaian nanti. Saran server boleh ditimpa.",
+    formSignificant: "Tandai sebagai signifikan",
+    formSignificantHint:
+      "Signifikansi adalah praktik bank (ambang nominal atau jumlah terbesar), bukan pemicu wajib.",
+    formObjectiveEvidence: "Ada bukti objektif penurunan nilai",
+    formObjectiveEvidenceHint:
+      "Centang bila pengelola menemukan bukti objektif di luar pemicu otomatis, mis. sumber pembayaran utama debitur hilang.",
+    formExcluded: "Kecualikan sebagai aset baik",
+    excludedWarningTitle: "Pengecualian aset baik",
+    excludedWarningBody:
+      "Kredit dikeluarkan dari jalur individual dan tidak dinilai individual berapa pun nominalnya. Metode, signifikansi, dan bukti objektif diabaikan. Pastikan kredit ini memang gugur kriteria penurunan nilai.",
+    reviewTitle: "Tinjau keputusan",
+    reviewWhat: "Yang akan dicatat",
+    reviewMethod: "Metode",
+    reviewSignificant: "Signifikan",
+    reviewObjectiveEvidence: "Bukti objektif",
+    reviewExcluded: "Pengecualian aset baik",
+    yes: "Ya",
+    no: "Tidak",
+    reviewConsequence:
+      "required_ckpn tidak berubah dan tidak ada jurnal. Keputusan ini tercatat pada jejak audit atas nama akun Anda dan dapat ditinjau ulang.",
+    reviewConsequenceExcluded:
+      "Kredit keluar dari jalur individual. required_ckpn tidak berubah dan tidak ada jurnal. Keputusan ini tercatat pada jejak audit atas nama akun Anda dan dapat ditinjau ulang.",
+    reviewButton: "Tinjau keputusan",
+    back: "Kembali",
+    submitButton: "Tandai keputusan",
+    submitting: "Menyimpan...",
+    submitError: "Penandaan keputusan gagal.",
+    markedTitle: "Keputusan tercatat",
+    markedBody:
+      "Keputusan pengelola tersimpan pada jejak audit. required_ckpn tidak berubah dan tidak ada jurnal.",
   },
 };
 
