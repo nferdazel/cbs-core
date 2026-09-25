@@ -222,8 +222,8 @@ func CKPNRatificationReadiness(ctx context.Context, cfg SystemConfigService, now
 	}
 
 	rawDate := strings.TrimSpace(cfg.GetString(ctx, ConfigKeyCKPNRatificationBADate, ""))
-	switch {
-	case rawDate == "":
+	switch rawDate {
+	case "":
 		missing = append(missing, ConfigKeyCKPNRatificationBADate+" (tanggal berita acara ratifikasi, YYYY-MM-DD)")
 	default:
 		t, err := time.Parse("2006-01-02", rawDate)

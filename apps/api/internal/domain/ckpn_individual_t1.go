@@ -117,7 +117,7 @@ func CKPNIndividualDCF(carrying, eirMonthly decimal.Decimal, projs []CKPNCashflo
 	}
 	flows := make([]LoanCashFlow, 0, len(projs))
 	for _, p := range projs {
-		flows = append(flows, LoanCashFlow{Period: p.Period, Amount: p.Amount})
+		flows = append(flows, LoanCashFlow(p))
 	}
 	pv, err := PresentValue(eirMonthly, flows)
 	if err != nil {

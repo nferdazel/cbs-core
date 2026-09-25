@@ -99,7 +99,7 @@ func (r *CollateralWeightRepository) ListCategories(ctx context.Context) ([]doma
 	if err != nil {
 		return nil, fmt.Errorf("membaca daftar kategori bobot agunan: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]domain.CollateralWeightCategory, 0)
 	for rows.Next() {
