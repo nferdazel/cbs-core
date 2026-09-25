@@ -186,9 +186,7 @@ export function TransactionLimits() {
             {unconfiguredCount > 0 ? (
               <Alert variant="warning">{t.limits.unconfiguredNotice}</Alert>
             ) : (
-              <p className="text-body text-credit-700" role="status">
-                {t.limits.allConfigured}
-              </p>
+              <Alert variant="success">{t.limits.allConfigured}</Alert>
             )}
 
             <div className="flex flex-wrap items-end gap-4">

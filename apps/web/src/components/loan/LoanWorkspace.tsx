@@ -598,11 +598,7 @@ function LoanDetailPanel({
       </CardHeader>
       <CardContent>
         {feedback && <ActionFeedback feedback={feedback} />}
-        {actionError && (
-          <p className="text-body text-debit-700" role="alert">
-            {actionError}
-          </p>
-        )}
+        {actionError && <Alert variant="error">{actionError}</Alert>}
 
         <DefinitionList
           items={[

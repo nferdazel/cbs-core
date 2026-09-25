@@ -527,11 +527,7 @@ function DepositDetailPanel({
           </Alert>
         )}
 
-        {actionError && (
-          <p className="text-body text-debit-700" role="alert">
-            {actionError}
-          </p>
-        )}
+        {actionError && <Alert variant="error">{actionError}</Alert>}
 
         {early && (
           <Alert variant="warning">

@@ -206,16 +206,8 @@ export function BankProfileCard() {
                 />
               </div>
 
-              {feedback && (
-                <p className="text-body text-credit-700" role="status">
-                  {feedback}
-                </p>
-              )}
-              {saveError && (
-                <p className="text-body text-debit-700" role="alert">
-                  {saveError}
-                </p>
-              )}
+              {feedback && <Alert variant="success">{feedback}</Alert>}
+              {saveError && <Alert variant="error">{saveError}</Alert>}
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-meta text-ink-600">

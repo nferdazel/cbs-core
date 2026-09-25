@@ -164,7 +164,7 @@ export default function PPAPPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-body text-credit-700">{t.ppap.runSuccess}</p>
+            <Alert variant="success">{t.ppap.runSuccess}</Alert>
             <DefinitionList
               items={[
                 {

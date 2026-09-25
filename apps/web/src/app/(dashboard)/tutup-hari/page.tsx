@@ -399,9 +399,7 @@ export default function TutupHariPage() {
             </CardHeader>
             <CardContent>
               {(!eod.warnings || eod.warnings.length === 0) && (
-                <p className="text-body text-credit-700">
-                  {t.dayClose.eodNoWarnings}
-                </p>
+                <Alert variant="success">{t.dayClose.eodNoWarnings}</Alert>
               )}
               <DefinitionList
                 items={[
@@ -523,7 +521,7 @@ export default function TutupHariPage() {
             </span>
           </CardHeader>
           <CardContent>
-            <p className="text-body text-credit-700">{t.dayClose.eomDone}</p>
+            <Alert variant="success">{t.dayClose.eomDone}</Alert>
             <DefinitionList
               items={[
                 {
@@ -574,10 +572,10 @@ export default function TutupHariPage() {
             </span>
           </CardHeader>
           <CardContent>
-            <p className="text-body text-credit-700">
+            <Alert variant="success">
               {t.dayClose.eoyDonePrefix} {eoy.fiscal_year}{" "}
               {t.dayClose.eoyDoneSuffix}
-            </p>
+            </Alert>
             <DefinitionList
               items={[
                 {

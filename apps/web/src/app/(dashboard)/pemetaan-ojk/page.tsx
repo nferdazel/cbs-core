@@ -271,9 +271,7 @@ export default function PemetaanOJKPage() {
             </p>
           )}
           {data?.source_unbalanced && (
-            <p className="text-body text-debit-700" role="alert">
-              {t.ojkMapping.unbalancedWarning}
-            </p>
+            <Alert variant="error">{t.ojkMapping.unbalancedWarning}</Alert>
           )}
         </CardContent>
       </Card>
@@ -496,11 +494,7 @@ export default function PemetaanOJKPage() {
                   disabled={submitting}
                 />
               )}
-              {actionError && (
-                <p className="text-body text-debit-700" role="alert">
-                  {actionError}
-                </p>
-              )}
+              {actionError && <Alert variant="error">{actionError}</Alert>}
             </>
           )
         }
