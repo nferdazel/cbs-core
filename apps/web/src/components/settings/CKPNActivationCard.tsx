@@ -220,10 +220,13 @@ export function CKPNActivationCard() {
     setSaveError(null);
     setEnabling(true);
     try {
-      const response = await request<CKPNActivation>("/system/ckpn-activation", {
-        method: "PUT",
-        body: { ckpn_enabled: true },
-      });
+      const response = await request<CKPNActivation>(
+        "/system/ckpn-activation",
+        {
+          method: "PUT",
+          body: { ckpn_enabled: true },
+        },
+      );
       const data = response.data ?? null;
       setActivation(data);
       setForm(toForm(data));
@@ -354,7 +357,10 @@ export function CKPNActivationCard() {
               </h4>
               <div className="mt-3">
                 {status?.sementara ? (
-                  <Alert variant="warning" title={t.ckpnActivation.statusSementara}>
+                  <Alert
+                    variant="warning"
+                    title={t.ckpnActivation.statusSementara}
+                  >
                     {t.ckpnActivation.statusSementaraBody}
                   </Alert>
                 ) : (
@@ -407,7 +413,10 @@ export function CKPNActivationCard() {
               </div>
               {warnings.length > 0 && (
                 <div className="mt-3">
-                  <Alert variant="warning" title={t.ckpnActivation.warningsTitle}>
+                  <Alert
+                    variant="warning"
+                    title={t.ckpnActivation.warningsTitle}
+                  >
                     <ul className="list-disc space-y-1 pl-5">
                       {warnings.map((warning) => (
                         <li key={warning}>{warning}</li>
@@ -425,9 +434,7 @@ export function CKPNActivationCard() {
               </h4>
               <div className="mt-3">
                 {activation?.enablement_ready ? (
-                  <Alert variant="success">
-                    {t.ckpnActivation.gapsReady}
-                  </Alert>
+                  <Alert variant="success">{t.ckpnActivation.gapsReady}</Alert>
                 ) : (
                   <Alert variant="warning">
                     <ul className="list-disc space-y-1 pl-5">
@@ -523,9 +530,7 @@ export function CKPNActivationCard() {
                         key={field.key}
                         type={field.isDate ? "date" : "text"}
                         label={field.label}
-                        isMono={
-                          field.isDate ? true : field.isMono
-                        }
+                        isMono={field.isDate ? true : field.isMono}
                         placeholder={t.common.notAvailable}
                         value={form[field.key]}
                         onChange={(event) =>
