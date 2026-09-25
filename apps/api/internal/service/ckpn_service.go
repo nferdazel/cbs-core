@@ -512,6 +512,7 @@ func loanFresh(s domain.CKPNLoanSnapshot) *domain.Loan {
 		IsRestructured:         s.IsRestructured,
 		RequiredPPAP:           s.RequiredPPAP,
 		RequiredCKPN:           s.RequiredCKPN,
+		CKPNIndividualTarget:   s.CKPNIndividualTarget,
 		RestructureLossBalance: s.RestructureLoss,
 		CKPNMethod:             s.CKPNMethod,
 		OriginalEIRMonthly:     s.OriginalEIRMonthly,
@@ -560,7 +561,7 @@ func (s *ckpnService) ckpnIndividualSnapshotCalc(ctx context.Context, snap domai
 	}
 	target, err := domain.CKPNIndividualTargetForEOD(domain.CKPNIndividualEODInput{
 		Assessment:               assessment,
-		PreviousIndividualTarget: snap.RequiredCKPN,
+		PreviousIndividualTarget: snap.CKPNIndividualTarget,
 	}, domain.CKPNIndividualMethod(strings.TrimSpace(snap.CKPNMethod)))
 	if err != nil {
 		return assessment, decimal.Zero, err
@@ -650,20 +651,21 @@ func (s *ckpnService) apply(ctx context.Context, snap domain.CKPNLoanSnapshot, p
 // benar-benar tersimpan, bukan dari nilai yang dibaca di luar transaksi.
 func ckpnSnapshotFromLoan(l *domain.Loan) domain.CKPNLoanSnapshot {
 	return domain.CKPNLoanSnapshot{
-		LoanID:             l.ID,
-		LoanNumber:         l.LoanNumber,
-		ProductID:          l.ProductID,
-		BranchCode:         l.BranchCode,
-		Status:             l.Status,
-		Outstanding:        l.OutstandingPrincipal,
-		Collectibility:     domain.CollectibilityFromOJK(l.Collectibility),
-		DPD:                l.DPD,
-		IsRestructured:     l.IsRestructured,
-		RequiredPPAP:       l.RequiredPPAP,
-		RestructureLoss:    l.RestructureLossBalance,
-		RequiredCKPN:       l.RequiredCKPN,
-		CKPNMethod:         l.CKPNMethod,
-		OriginalEIRMonthly: l.OriginalEIRMonthly,
+		LoanID:               l.ID,
+		LoanNumber:           l.LoanNumber,
+		ProductID:            l.ProductID,
+		BranchCode:           l.BranchCode,
+		Status:               l.Status,
+		Outstanding:          l.OutstandingPrincipal,
+		Collectibility:       domain.CollectibilityFromOJK(l.Collectibility),
+		DPD:                  l.DPD,
+		IsRestructured:       l.IsRestructured,
+		RequiredPPAP:         l.RequiredPPAP,
+		RestructureLoss:      l.RestructureLossBalance,
+		RequiredCKPN:         l.RequiredCKPN,
+		CKPNIndividualTarget: l.CKPNIndividualTarget,
+		CKPNMethod:           l.CKPNMethod,
+		OriginalEIRMonthly:   l.OriginalEIRMonthly,
 	}
 }
 
@@ -901,9 +903,11 @@ var _ domain.CKPNService = (*ckpnService)(nil)
 // CKPN individual yang sudah dibentuk sebelumnya. actor dipakai hanya untuk cakupan
 // baca; perhitungan memakai data kredit yang DIKUNCI (bukan snapshot basi).
 //
-// Lantai memakai required_ckpn snapshot hanya bila kredit memang sebelumnya
-// individual — dijamin pemanggil (yang membaca segel lama dan baru). required_ckpn
-// hasil kolektif tidak boleh menjadi lantai individual (dua basis berbeda).
+// Lantai 12.4.g.1.c memakai ckpn_individual_target (target individual terakhir yang
+// pernah diakui), BUKAN required_ckpn: required_ckpn juga memuat angka kolektif,
+// sehingga kredit yang baru disegel individual dari kolektif akan tertahan di angka
+// kolektif dan pengurang modal inti KPMM mengecil. ckpn_individual_target nol/NULL
+// berarti kredit belum pernah dinilai individual — lantainya nol.
 func (s *ckpnService) ckpnIndividualCalc(ctx context.Context, loan *domain.Loan, asOf time.Time) (domain.CKPNIndividualAssessment, decimal.Decimal, error) {
 	if s.individual == nil {
 		return domain.CKPNIndividualAssessment{}, decimal.Zero,
@@ -919,7 +923,7 @@ func (s *ckpnService) ckpnIndividualCalc(ctx context.Context, loan *domain.Loan,
 	method := domain.CKPNIndividualMethod(strings.TrimSpace(loan.CKPNMethod))
 	target, err := domain.CKPNIndividualTargetForEOD(domain.CKPNIndividualEODInput{
 		Assessment:               assessment,
-		PreviousIndividualTarget: loan.RequiredCKPN,
+		PreviousIndividualTarget: loan.CKPNIndividualTarget,
 	}, method)
 	if err != nil {
 		return assessment, decimal.Zero, err

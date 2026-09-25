@@ -196,6 +196,12 @@ type Loan struct {
 	// RequiredCKPN adalah target CKPN terakhir yang diakui untuk kredit ini. Dibaca
 	// jalur CKPN sebagai nilai otoritatif dari baris yang sudah dikunci.
 	RequiredCKPN decimal.Decimal `json:"required_ckpn"`
+	// CKPNIndividualTarget adalah target CKPN individual terakhir yang pernah diakui
+	// (loans.ckpn_individual_target; nol berarti belum pernah dinilai individual).
+	// Ini sumber lantai 12.4.g.1.c, BUKAN RequiredCKPN: RequiredCKPN juga memuat angka
+	// kolektif, sehingga memakainya sebagai lantai akan menahan target individual di
+	// angka kolektif.
+	CKPNIndividualTarget decimal.Decimal `json:"ckpn_individual_target"`
 
 	// OriginalEIRMonthly adalah suku bunga efektif orisinal per bulan (fraksi, mis.
 	// 0.01713), dihitung saat pencairan dari arus kas nyata dan dipakai sebagai tingkat

@@ -6,6 +6,8 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/repository/postgres"
 	"cbs-core/apps/core-api/internal/service"
+
+	"github.com/shopspring/decimal"
 )
 
 // TAHAP T4 CKPN individual: integrasi ke langkah CKPN EOD (rancangan §6.2).
@@ -225,5 +227,103 @@ func TestIntegrasiCKPNIndividualT4AntiDobelHitungDanPengecualian(t *testing.T) {
 	// required_ckpn tidak boleh terlanjur ditulis kolektif.
 	if got := e.loanDecimal(t, loan.ID, "required_ckpn"); !got.IsZero() {
 		t.Fatalf("kegagalan jalur individual tidak boleh menulis required_ckpn, tertulis %s", got)
+	}
+}
+
+// Lantai 12.4.g.1.c harus memakai target INDIVIDUAL sebelumnya
+// (ckpn_individual_target), BUKAN required_ckpn yang juga memuat angka kolektif.
+// Skenario: kredit lebih dulu kolektif (cadangan 60.000), lalu disegel individual
+// dengan target DCF 30.000. Bila lantai keliru memakai required_ckpn kolektif,
+// target tertahan 60.000 dan pengurang modal inti KPMM mengecil.
+func TestIntegrasiCKPNIndividualT4LantaiDariTargetIndividualBukanKolektif(t *testing.T) {
+	e := newMoneyEnv(t)
+	simpanPulihkanConfigCKPN(t, e)
+	setCKPNConfig(t, e, "ckpn.enabled", "true")
+	setCKPNConfig(t, e, "ckpn.shadow_mode.enabled", "false")
+	setCKPNConfig(t, e, "ckpn.individual.enabled", "true")
+	setCKPNConfig(t, e, "ckpn.individual.discount_rate_annual_pct", "")
+	setCKPNConfig(t, e, "ckpn.individual.significance_top_n", "0")
+	// Parameter kolektif: 150.000 x 0,50 x 0,80 = 60.000.
+	setCKPNConfig(t, e, "ckpn.pd_frac.gol_4", "0.50")
+	setCKPNConfig(t, e, "ckpn.lgd_frac", "0.80")
+	t.Cleanup(func() {
+		setCKPNConfig(t, e, "ckpn.individual.enabled", "false")
+		setCKPNConfig(t, e, "ckpn.pd_frac.gol_4", "")
+		setCKPNConfig(t, e, "ckpn.lgd_frac", "")
+	})
+
+	branchCode := ckpnTestBranchCode("T4L")
+	branchID := e.ensureBranch(t, branchCode, "Cabang Uji T4L")
+	actor := domain.Actor{UserID: e.actor.UserID, Username: "admin.ujit4l", Role: domain.RoleAdmin, BranchCode: branchCode}
+	cust := e.newCustomer(t, "Nasabah T4L", "t4l-"+branchCode+"@uji.local")
+	acc := e.newAccountInBranch(t, cust.ID, branchID)
+	loan := e.disburseAs(t, actor, cust.ID, acc, idr(10_000_000), 12)
+	if _, err := e.db.ExecContext(e.ctx, `
+		UPDATE loans SET outstanding_principal=$2, restructure_loss_balance=0,
+		                  collectibility='4_DIRAGUKAN', dpd=120, required_ppap=$3,
+		                  original_eir_monthly=0.10
+		WHERE id=$1`, loan.ID, idr(150_000), idr(1_000_000)); err != nil {
+		t.Fatalf("menyiapkan state kredit T4L: %v", err)
+	}
+
+	ckpnSvc := newCKPNSvcForTest(e)
+	asOf := ckpnTestAsOf()
+	e.recordPPAPRun(t, asOf)
+
+	// (1) Fase kolektif (belum disegel): required_ckpn = 60.000, target individual kosong.
+	if _, err := ckpnSvc.Run(e.ctx, asOf, actor); err != nil {
+		t.Fatalf("Run kolektif T4L: %v", err)
+	}
+	if got := e.loanDecimal(t, loan.ID, "required_ckpn"); !got.Equal(idr(60_000)) {
+		t.Fatalf("required_ckpn kolektif %s, mau 60000", got)
+	}
+	var targetIndividual decimal.Decimal
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT COALESCE(ckpn_individual_target, 0) FROM loans WHERE id=$1`, loan.ID).Scan(&targetIndividual); err != nil {
+		t.Fatalf("membaca ckpn_individual_target: %v", err)
+	}
+	if !targetIndividual.IsZero() {
+		t.Fatalf("kredit kolektif tidak boleh punya target individual, dapat %s", targetIndividual)
+	}
+
+	// (2) Disegel individual, target DCF 30.000: PV = 132.000/1,1 = 120.000.
+	indSvc := service.NewCKPNIndividualService(e.loanRepo, postgres.NewCKPNIndividualRepository(e.db), e.configSvc)
+	if err := indSvc.ReplaceProjections(e.ctx, loan.LoanNumber, asOf,
+		[]domain.CKPNCashflowProjection{{Period: 1, Amount: idr(132_000)}}, actor); err != nil {
+		t.Fatalf("menyimpan proyeksi T4L: %v", err)
+	}
+	if _, err := indSvc.MarkLoanEntry(e.ctx, loan.LoanNumber, domain.CKPNIndividualMethodMax,
+		false, false, false, actor); err != nil {
+		t.Fatalf("menandai jalur individual T4L: %v", err)
+	}
+	summary, err := ckpnSvc.Run(e.ctx, asOf, actor)
+	if err != nil {
+		t.Fatalf("Run individual T4L: %v", err)
+	}
+	item := ckpnItem(t, summary, loan.ID)
+	// 150.000 - 120.000 = 30.000. Lantai keliru (angka kolektif) akan memberi 60.000.
+	if !item.CKPN.Equal(idr(30_000)) {
+		t.Fatalf("target individual %s, mau 30000 (bukan angka kolektif 60000)", item.CKPN)
+	}
+	if got := e.loanDecimal(t, loan.ID, "required_ckpn"); !got.Equal(idr(30_000)) {
+		t.Fatalf("required_ckpn setelah segel %s, mau 30000", got)
+	}
+	if got := e.loanDecimal(t, loan.ID, "ckpn_individual_target"); !got.Equal(idr(30_000)) {
+		t.Fatalf("ckpn_individual_target %s, mau 30000", got)
+	}
+
+	// (3) Lantai tetap berlaku terhadap target INDIVIDUAL: proyeksi dibesarkan
+	// (PV 200.000) menekan DCF ke nol, lantai menahan di 30.000.
+	if err := indSvc.ReplaceProjections(e.ctx, loan.LoanNumber, asOf,
+		[]domain.CKPNCashflowProjection{{Period: 1, Amount: idr(220_000)}}, actor); err != nil {
+		t.Fatalf("mengganti proyeksi T4L: %v", err)
+	}
+	summary2, err := ckpnSvc.Run(e.ctx, asOf, actor)
+	if err != nil {
+		t.Fatalf("Run individual T4L kedua: %v", err)
+	}
+	item2 := ckpnItem(t, summary2, loan.ID)
+	if !item2.CKPN.Equal(idr(30_000)) {
+		t.Fatalf("lantai target individual gagal: %s, mau tetap 30000", item2.CKPN)
 	}
 }

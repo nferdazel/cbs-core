@@ -19,9 +19,10 @@ import (
 //   - SATU SUMBER KEBENARAN (§5.4): target individual ditulis ke loans.required_ckpn
 //     lewat mekanisme apply/postAdjustment yang sama dengan kolektif; yang berbeda
 //     hanya cara memperoleh target. ckpn_individual_target hanyalah jejak.
-//   - LANTAI 12.4.g.1.c: target individual tidak boleh turun di bawah CKPN individual
-//     yang sudah dibentuk sebelumnya (required_ckpn yang pernah diakui saat metode
-//     masih individual).
+//   - LANTAI 12.4.g.1.c: target individual tidak boleh turun di bawah target individual
+//     yang sudah dibentuk sebelumnya. Sumbernya ckpn_individual_target (target
+//     individual terakhir), BUKAN required_ckpn — required_ckpn juga memuat angka
+//     kolektif sehingga tidak boleh menjadi lantai jalur individual.
 
 // CKPNIndividualSealed memutuskan perlakuan EOD satu kredit dari segel metodenya:
 // "" atau COLLECTIVE berarti jalur kolektif biasa; INDIVIDUAL_* berarti jalur
@@ -45,10 +46,11 @@ func CKPNIndividualSealed(method string) (individual bool, excluded bool, err er
 // penilaian T1/T2 kredit ini dan lantai dari target yang sudah dibentuk sebelumnya.
 type CKPNIndividualEODInput struct {
 	Assessment CKPNIndividualAssessment
-	// PreviousIndividualTarget adalah required_ckpn yang pernah diakui saat kredit
-	// masih tersegel individual. Lantai 12.4.g.1.c memakai nilai ini, BUKAN
-	// required_ckpn hasil kolektif: lantai melindungi cadangan individual yang sudah
-	// terbentuk, bukan menggabungkan dua basis angka.
+	// PreviousIndividualTarget adalah target individual terakhir yang pernah diakui
+	// (loans.ckpn_individual_target; nol bila belum pernah dinilai individual). Lantai
+	// 12.4.g.1.c memakai nilai ini, BUKAN required_ckpn: required_ckpn juga memuat
+	// angka kolektif, dan memakainya sebagai lantai akan menahan target individual di
+	// angka kolektif (dua basis angka tercampur).
 	PreviousIndividualTarget decimal.Decimal
 }
 

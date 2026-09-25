@@ -136,6 +136,10 @@ type CKPNLoanSnapshot struct {
 	RestructureLoss decimal.Decimal
 	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
 	RequiredCKPN decimal.Decimal
+	// CKPNIndividualTarget adalah target individual terakhir yang pernah diakui
+	// (loans.ckpn_individual_target); nol berarti belum pernah dinilai individual.
+	// Sumber lantai 12.4.g.1.c, bukan RequiredCKPN yang juga memuat angka kolektif.
+	CKPNIndividualTarget decimal.Decimal
 	// OriginalEIRMonthly adalah EIR orisinal kredit (fraksi bulanan) untuk jalur
 	// individual (T4): tingkat diskonto DCF wajib EIR orisinal atau override kebijakan.
 	OriginalEIRMonthly decimal.Decimal
