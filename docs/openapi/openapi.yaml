@@ -1,0 +1,3416 @@
+openapi: 3.1.0
+info:
+  title: CBS Core API
+  version: 1.0.0
+  summary: Kontrak HTTP inti CBS Core (BPR/BMT).
+  description: |
+    Spesifikasi kontrak API `/api/v1` untuk core banking CBS Core.
+
+    ## Autentikasi
+    Dua mekanisme dipakai bersamaan oleh klien resmi:
+
+    - **Bearer JWT** (`Authorization: Bearer <access_token>`) — untuk integrasi
+      non-browser dan pengujian.
+    - **Cookie sesi httpOnly** (`cbs_access_token`) — dipakai web. Cookie
+      `cbs_refresh_token` dipakai untuk memperbarui sesi.
+
+    Endpoint publik (`/healthz`, `/api/v1/app-info`, `/api/v1/auth/login`,
+    `/api/v1/auth/refresh`) tidak memerlukan autentikasi.
+
+    Semua endpoint di belakang autentikasi juga melewati cakupan buku
+    (`institution.book_scope`) dan cakupan unit organisasi (cabang/area/wilayah);
+    data di luar cakupan aktor ditolak 403 atau disamarkan 404 pada pembacaan.
+
+    ## CSRF
+    Permintaan yang mengubah state (POST/PUT/DELETE) dari klien berbasis cookie
+    wajib menyertakan header `X-CSRF-Token` yang nilainya sama dengan cookie
+    `csrf_token` (pola double-submit). Klien Bearer murni dapat mengabaikannya.
+
+    ## Amplop respons
+    Semua respons sukses memakai amplop
+    `{"success": true, "message": "...", "data": ..., "meta": ...}`.
+    Respons galat memakai `{"success": false, "error": "..."}`.
+
+    `data` daftar kosong selalu diserialkan sebagai `[]`/`{}`, tidak pernah `null`.
+  contact:
+    name: Tim CBS Core
+servers:
+  - url: http://localhost:8080
+    description: Pengembangan lokal
+  - url: https://api.contoh-bank.id
+    description: Produksi (contoh)
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+tags:
+  - name: Kesehatan
+    description: Health check proses.
+  - name: Aplikasi
+    description: Identitas aplikasi publik sebelum sesi ada.
+  - name: Auth
+    description: Sesi, login, refresh, dan logout.
+  - name: Staff
+    description: Manajemen pegawai (pengguna) dan kata sandi.
+  - name: Cabang
+    description: Master data cabang dan hierarki unit organisasi.
+  - name: Produk
+    description: Data referensi produk dan parameter suku bunga/biaya.
+  - name: Nasabah
+    description: Data CIF/nasabah.
+  - name: Rekening
+    description: Pembukaan, pembekuan, penutupan, dan mutasi rekening.
+  - name: Transaksi
+    description: Setoran, penarikan, transfer, pembatalan, dan jurnal.
+  - name: Kredit
+    description: Pengajuan, persetujuan, pencairan, dan pemeliharaan kredit.
+  - name: Agunan
+    description: Agunan kredit dan gerbang bobot agunan.
+  - name: Koleksi
+    description: Penagihan lapangan (jemput bola).
+  - name: Deposito
+    description: Deposito berjangka (penempatan, akrual, perpanjangan, pencairan).
+  - name: Laporan
+    description: Laporan keuangan, operasional, OJK, dan KPMM.
+  - name: PPAP
+    description: Penyisihan penghapusan aset produktif.
+  - name: CKPN
+    description: CKPN SAK EP, termasuk penilaian individual.
+  - name: Integrasi
+    description: Gerbang integrasi pihak ketiga (SLIK OJK, Dukcapil).
+  - name: Sistem
+    description: Tanggal bisnis, setelan instalasi, batas, dan audit.
+  - name: Batch
+    description: Proses akhir hari/bulan/tahun (EOD/EOM/EOY).
+  - name: Izin
+    description: Katalog dan pengajuan perubahan izin.
+  - name: Maker-Checker
+    description: Antrean persetujuan berlapis.
+  - name: Dokumen
+    description: Berkas cetak (slip, perjanjian kredit, tanda terima).
+paths:
+  /healthz:
+    get:
+      tags: [Kesehatan]
+      operationId: healthz
+      summary: Health check proses
+      description: |-
+        Publik, tanpa autentikasi (izin: —). Mengembalikan `{"status":"UP"}`.
+      security: []
+      responses:
+        "200":
+          description: Proses hidup.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+  /api/v1/app-info:
+    get:
+      tags: [Aplikasi]
+      operationId: getAppInfo
+      summary: Identitas aplikasi publik
+      description: |-
+        Publik, tanpa autentikasi (izin: —). Dipakai halaman login dan metadata tab web.
+        Respons di-cache `Cache-Control: public, max-age=60`.
+      security: []
+      responses:
+        "200":
+          description: Identitas aplikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: authLogin
+      summary: Masuk dan buat sesi
+      description: |-
+        Publik (izin: —). `username` dan `password` wajib. Token ditulis sebagai cookie
+        httpOnly; body hanya memuat `expires_in`, `refresh_expires_in`,
+        `password_expired`, dan profil `user`. Percobaan dibatasi per akun dan
+        per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login berhasil.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: authRefresh
+      summary: Perbarui sesi
+      description: |-
+        Publik (izin: —). Memprioritaskan cookie refresh; untuk klien non-browser boleh
+        mengirim `refresh_token` di body. Cookie sesi dan token CSRF dirotasi.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Sesi diperbarui.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: authLogout
+      summary: Akhiri sesi
+      description: |-
+        Tidak di belakang autentikasi agar cookie tetap terhapus walau access
+        token kedaluwarsa, tetapi WAJIB lolos CSRF. Pencabutan sesi best-effort
+        bila token masih sah. Izin: — (CSRF wajib).
+      responses:
+        "200":
+          description: Sesi diakhiri.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      operationId: authMe
+      summary: Profil pengguna aktif
+      description: |-
+        Autentikasi wajib. Mengembalikan identitas, cakupan buku, `active_books`,
+        daftar izin efektif, dan menu yang berasal dari database. Izin: —.
+      responses:
+        "200":
+          description: Profil pengguna.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/staff/:
+    get:
+      tags: [Staff]
+      operationId: listStaff
+      summary: Daftar pegawai
+      description: "Izin: `users:read`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Daftar pegawai.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Staff]
+      operationId: createStaff
+      summary: Buat pegawai
+      description: "Izin: `users:create`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStaffRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/staff/me/change-password:
+    post:
+      tags: [Staff]
+      operationId: changeOwnPassword
+      summary: Ganti kata sandi sendiri
+      description: "Izin: — (setiap pengguna terautentikasi)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/staff/{id}:
+    parameters:
+      - $ref: "#/components/parameters/StaffID"
+    get:
+      tags: [Staff]
+      operationId: getStaff
+      summary: Detail pegawai
+      description: "Izin: `users:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Staff]
+      operationId: updateStaff
+      summary: Ubah pegawai
+      description: "Izin: `users:update`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStaffRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/staff/{id}/reset-password:
+    parameters:
+      - $ref: "#/components/parameters/StaffID"
+    post:
+      tags: [Staff]
+      operationId: resetStaffPassword
+      summary: Setel ulang kata sandi pegawai
+      description: "Izin: `users:update`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                new_password:
+                  type: string
+                  format: password
+              required: [new_password]
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/customers/:
+    get:
+      tags: [Nasabah]
+      operationId: listCustomers
+      summary: Daftar nasabah
+      description: "Izin: `customers:read`. Mendukung pencarian `q`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/SearchQ"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Nasabah]
+      operationId: registerCustomer
+      summary: Daftarkan nasabah (CIF)
+      description: "Izin: `customers:create`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/customers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    get:
+      tags: [Nasabah]
+      operationId: getCustomer
+      summary: Detail nasabah
+      description: "Izin: `customers:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Nasabah]
+      operationId: updateCustomer
+      summary: Ubah data nasabah
+      description: "Izin: `customers:update`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/branches/:
+    get:
+      tags: [Cabang]
+      operationId: listBranches
+      summary: Daftar cabang
+      description: "Izin: `users:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Cabang]
+      operationId: createBranch
+      summary: Buat cabang
+      description: "Izin: `branches:create`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+                parent_code:
+                  type: string
+              required: [code, name]
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/branches/org-units:
+    get:
+      tags: [Cabang]
+      operationId: listOrgUnits
+      summary: Daftar unit organisasi
+      description: "Izin: `users:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Cabang]
+      operationId: createOrgUnit
+      summary: Buat unit organisasi
+      description: "Izin: `branches:create`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+                type:
+                  type: string
+                  description: Jenis unit (mis. AREA, WILAYAH).
+                parent_code:
+                  type: string
+              required: [code, name, type]
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/branches/org-units/{code}/parent:
+    parameters:
+      - $ref: "#/components/parameters/OrgCode"
+    put:
+      tags: [Cabang]
+      operationId: setOrgUnitParent
+      summary: Ubah induk unit organisasi
+      description: "Izin: `branches:create`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_code:
+                  type: string
+              required: [parent_code]
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/products/:
+    get:
+      tags: [Produk]
+      operationId: listProducts
+      summary: Daftar produk
+      description: "Izin: `products:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/products/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    get:
+      tags: [Produk]
+      operationId: getProduct
+      summary: Detail produk
+      description: "Izin: `products:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/products/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: Kode produk.
+        schema:
+          type: string
+    put:
+      tags: [Produk]
+      operationId: updateProductParams
+      summary: Ubah parameter produk
+      description: |-
+        Izin: `coa:manage`. Mengubah suku bunga, nisbah, proyeksi pendapatan,
+        batas plafon/tenor, dan biaya. Identitas produk tidak diubah.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/:
+    get:
+      tags: [Rekening]
+      operationId: listAccounts
+      summary: Daftar rekening
+      description: "Izin: `accounts:read`. Mendukung pencarian `q`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/SearchQ"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/open:
+    post:
+      tags: [Rekening]
+      operationId: openAccount
+      summary: Buka rekening
+      description: "Izin: `accounts:open`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                product_code:
+                  type: string
+                currency:
+                  type: string
+                initial_deposit:
+                  $ref: "#/components/schemas/Money"
+              required: [customer_id, product_code]
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    get:
+      tags: [Rekening]
+      operationId: getAccount
+      summary: Detail rekening
+      description: "Izin: `accounts:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}/statements:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    get:
+      tags: [Rekening]
+      operationId: getAccountStatement
+      summary: Mutasi rekening
+      description: "Izin: `ledger:read`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Mutasi rekening beserta `meta` paginasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}/freeze:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    post:
+      tags: [Rekening]
+      operationId: freezeAccount
+      summary: Bekukan rekening
+      description: |-
+        Izin: `accounts:freeze`. Hanya rekening `ACTIVE` yang boleh dibekukan.
+        Pelaksana dicatat agar `unfreeze` oleh orang yang sama ditolak.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}/unfreeze:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    post:
+      tags: [Rekening]
+      operationId: unfreezeAccount
+      summary: Buka pembekuan rekening
+      description: "Izin: `accounts:freeze`. FROZEN → ACTIVE; pelaksana tidak boleh sama dengan yang membekukan."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}/reactivate:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    post:
+      tags: [Rekening]
+      operationId: reactivateAccount
+      summary: Aktifkan kembali rekening
+      description: "Izin: `accounts:freeze`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/accounts/{accountNumber}/close:
+    parameters:
+      - $ref: "#/components/parameters/AccountNumber"
+    post:
+      tags: [Rekening]
+      operationId: closeAccount
+      summary: Tutup rekening
+      description: "Izin: `accounts:close`. Saldo dan status harus memenuhi syarat penutupan."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/deposit:
+    post:
+      tags: [Transaksi]
+      operationId: deposit
+      summary: Setoran tunai
+      description: |-
+        Izin: `transactions:deposit`. Identitas pencatat diambil dari JWT, bukan
+        body. Transaksi di atas ambang persetujuan dibalas `202` dengan
+        `status: PENDING_APPROVAL`. `Idempotency-Key` opsional.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "202":
+          $ref: "#/components/responses/AcceptedPendingApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/withdraw:
+    post:
+      tags: [Transaksi]
+      operationId: withdraw
+      summary: Penarikan tunai
+      description: |-
+        Izin: `transactions:withdraw`. Aturan idempotensi dan ambang persetujuan
+        sama dengan setoran.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "202":
+          $ref: "#/components/responses/AcceptedPendingApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/transfer:
+    post:
+      tags: [Transaksi]
+      operationId: transfer
+      summary: Transfer antar rekening
+      description: |-
+        Izin: `transactions:transfer`. Aturan idempotensi dan ambang persetujuan
+        sama dengan setoran.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "202":
+          $ref: "#/components/responses/AcceptedPendingApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/{reference}/reverse:
+    parameters:
+      - $ref: "#/components/parameters/Reference"
+    post:
+      tags: [Transaksi]
+      operationId: reverseTransaction
+      summary: Batalkan transaksi
+      description: |-
+        Izin: `transactions:reverse`. Hanya untuk transaksi yang tidak menyalakan
+        state domain. Nominal diambil dari jurnal asal; body hanya memuat alasan.
+        Pencatat transaksi asal tidak boleh membatalkannya sendiri.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReversalRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/journals:
+    get:
+      tags: [Transaksi]
+      operationId: listJournals
+      summary: Daftar jurnal
+      description: "Izin: `ledger:read`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Daftar jurnal beserta `meta` paginasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Transaksi]
+      operationId: postCompoundJournal
+      summary: Posting jurnal majemuk manual
+      description: |-
+        Izin: `coa:manage`. Minimal dua baris, setiap nominal positif, dan
+        debit-kredit harus seimbang. Identitas pencatat dari JWT.
+        `Idempotency-Key` opsional.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomJournalRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "202":
+          $ref: "#/components/responses/AcceptedPendingApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/transactions/journals/{reference}:
+    parameters:
+      - $ref: "#/components/parameters/Reference"
+    get:
+      tags: [Transaksi]
+      operationId: getJournal
+      summary: Detail jurnal
+      description: "Izin: `ledger:read`. Jurnal lintas cabang/buku ditolak 403."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/chart-of-accounts:
+    get:
+      tags: [Transaksi]
+      operationId: listChartOfAccounts
+      summary: Bagan akun
+      description: "Izin: `coa:manage`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/:
+    get:
+      tags: [Kredit]
+      operationId: listLoans
+      summary: Daftar kredit
+      description: "Izin: `loans:read`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/apply:
+    post:
+      tags: [Kredit]
+      operationId: applyLoan
+      summary: Ajukan kredit
+      description: "Izin: `loans:apply`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    get:
+      tags: [Kredit]
+      operationId: getLoan
+      summary: Detail kredit
+      description: "Izin: `loans:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: approveLoan
+      summary: Setujui kredit
+      description: "Izin: `loans:approve`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: rejectLoan
+      summary: Tolak kredit
+      description: "Izin: `loans:approve`."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/disburse:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: disburseLoan
+      summary: Cairkan kredit
+      description: "Izin: `loans:approve`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/cancel-disbursement:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: cancelLoanDisbursement
+      summary: Batalkan pencairan kredit
+      description: "Izin: `loans:cancel` (hanya peran tertinggi)."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/correct-amount:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: correctLoanAmount
+      summary: Koreksi nominal pokok kredit
+      description: "Izin: `loans:correct` (hanya peran tertinggi)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: "#/components/schemas/Money"
+                reason:
+                  type: string
+              required: [amount]
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/pay-installment:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: payLoanInstallment
+      summary: Bayar angsuran kredit
+      description: "Izin: `collections:input`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: "#/components/schemas/Money"
+                idempotency_key:
+                  type: string
+              required: [amount]
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/restructure:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: restructureLoan
+      summary: Restrukturisasi kredit
+      description: "Izin: `loans:approve`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/write-off:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: writeOffLoan
+      summary: Hapus buku kredit
+      description: |-
+        Izin: `loans:write_off`. Wajib memenuhi syarat macet, cadangan lengkap,
+        alasan, dan upaya penagihan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                collection_efforts:
+                  type: string
+              required: [reason, collection_efforts]
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{id}/recover:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Kredit]
+      operationId: recoverLoan
+      summary: Pemulihan hapus buku
+      description: |-
+        Izin: `loans:recover`. Nominal pemulihan tidak boleh melebihi nilai hapus
+        buku dikurangi akumulasi pemulihan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  $ref: "#/components/schemas/Money"
+              required: [amount]
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/loans/{loanId}/collaterals:
+    parameters:
+      - $ref: "#/components/parameters/LoanID"
+    get:
+      tags: [Agunan]
+      operationId: listLoanCollaterals
+      summary: Daftar agunan kredit
+      description: "Izin: `collateral:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Agunan]
+      operationId: createLoanCollateral
+      summary: Catat agunan kredit
+      description: "Izin: `collateral:manage`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collateral/summary:
+    get:
+      tags: [Agunan]
+      operationId: collateralSummary
+      summary: Ringkasan agunan
+      description: "Izin: `collateral:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collaterals/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    get:
+      tags: [Agunan]
+      operationId: getCollateral
+      summary: Detail agunan
+      description: "Izin: `collateral:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collateral/weights:
+    get:
+      tags: [Agunan]
+      operationId: listCollateralWeights
+      summary: Daftar bobot agunan
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collateral/weights/{categoryCode}:
+    parameters:
+      - $ref: "#/components/parameters/CategoryCode"
+    get:
+      tags: [Agunan]
+      operationId: assessCollateralWeight
+      summary: Penilaian bobot agunan satu kategori
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collateral/weights/{categoryCode}/activate:
+    parameters:
+      - $ref: "#/components/parameters/CategoryCode"
+    post:
+      tags: [Agunan]
+      operationId: activateCollateralWeight
+      summary: Aktifkan bobot agunan
+      description: "Izin: `system:config`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/collections/mobile-collect:
+    post:
+      tags: [Koleksi]
+      operationId: processMobileCollection
+      summary: Proses penagihan lapangan
+      description: |-
+        Izin: `collections:input`. Identitas petugas dari JWT. Transaksi yang
+        melewati ambang persetujuan dibalas `202`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "202":
+          $ref: "#/components/responses/AcceptedPendingApproval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/:
+    get:
+      tags: [Deposito]
+      operationId: listDeposits
+      summary: Daftar deposito
+      description: "Izin: `accounts:read`."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/place:
+    post:
+      tags: [Deposito]
+      operationId: placeDeposit
+      summary: Buka deposito berjangka
+      description: "Izin: `accounts:open`. Membuka rekening dan jurnal penempatan."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/preview:
+    post:
+      tags: [Deposito]
+      operationId: previewDeposit
+      summary: Pratinjau bunga deposito
+      description: "Izin: `accounts:open`. Tidak menyimpan apa pun."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/run-aro:
+    post:
+      tags: [Deposito]
+      operationId: runDepositAro
+      summary: Perpanjangan otomatis (ARO)
+      description: "Izin: `transactions:deposit`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    get:
+      tags: [Deposito]
+      operationId: getDeposit
+      summary: Detail kontrak deposito
+      description: "Izin: `accounts:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/{id}/accrue:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Deposito]
+      operationId: accrueDeposit
+      summary: Akrual imbal hasil deposito
+      description: "Izin: `transactions:deposit`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/deposits/{id}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Deposito]
+      operationId: withdrawDeposit
+      summary: Cairkan deposito
+      description: "Izin: `transactions:withdraw`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/trial-balance:
+    get:
+      tags: [Laporan]
+      operationId: reportTrialBalance
+      summary: Neraca saldo
+      description: "Izin: `reports:financial:read`. Bank-wide."
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/balance-sheet:
+    get:
+      tags: [Laporan]
+      operationId: reportBalanceSheet
+      summary: Neraca
+      description: "Izin: `reports:financial:read`. Bank-wide."
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/income-statement:
+    get:
+      tags: [Laporan]
+      operationId: reportIncomeStatement
+      summary: Laba rugi
+      description: "Izin: `reports:financial:read`. Bank-wide."
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/cash-flow:
+    get:
+      tags: [Laporan]
+      operationId: reportCashFlow
+      summary: Arus kas
+      description: "Izin: `reports:financial:read`. Bank-wide."
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/due-obligations:
+    get:
+      tags: [Laporan]
+      operationId: reportDueObligations
+      summary: Jatuh tempo angsuran dan deposito
+      description: "Izin: `ledger:read`. Terbatas cabang aktor."
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Jendela hari ke depan.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/kpmm:
+    get:
+      tags: [Laporan]
+      operationId: reportKPMM
+      summary: Laporan KPMM/ATMR
+      description: "Izin: `reports:financial:read`. Bank-wide."
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/definitions:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportDefinitions
+      summary: Definisi laporan OJK (APOLO)
+      description: "Izin: `reports:export`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/monthly:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportMonthly
+      summary: Berkas teks laporan OJK bulanan
+      description: "Izin: `reports:export`."
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+        - $ref: "#/components/parameters/Book"
+      responses:
+        "200":
+          description: Bundel berkas teks laporan OJK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/mapping:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportMapping
+      summary: Pemetaan bagan akun ke laporan OJK
+      description: "Izin: `reports:export`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/mapping/decision:
+    post:
+      tags: [Laporan]
+      operationId: ojkReportMappingDecision
+      summary: Simpan keputusan pemetaan OJK
+      description: "Izin: `coa:manage`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ppap/run-daily:
+    post:
+      tags: [PPAP]
+      operationId: runPPAPDaily
+      summary: Hitung kolektibilitas dan penyisihan PPAP
+      description: |-
+        Izin: `loans:approve`. Tanggal proses opsional lewat query `as_of`
+        (YYYY-MM-DD atau RFC3339).
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ppap/preview:
+    get:
+      tags: [PPAP]
+      operationId: previewPPAP
+      summary: Pratinjau PPAP
+      description: "Izin: `loans:read`."
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ppap/ppka-umum:
+    get:
+      tags: [PPAP]
+      operationId: ppkaUmum
+      summary: PPKA umum (0,5% aset produktif lancar)
+      description: "Izin: `loans:read`. Hanya terpasang bila layanan tersedia."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/run:
+    post:
+      tags: [CKPN]
+      operationId: runCKPN
+      summary: Hitung dan posting CKPN
+      description: |-
+        Izin: `loans:approve`. Boleh bank-wide untuk aktor lintas cabang;
+        perhitungan memposting jurnal. Tanggal proses opsional lewat query `as_of`.
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/comparison:
+    get:
+      tags: [CKPN]
+      operationId: compareCKPN
+      summary: Bandingkan CKPN dengan PPKA
+      description: |-
+        Izin: `loans:read`. Tanggal proses opsional lewat query `as_of`. PPKA
+        dengan tanggal bisnis berbeda dibalas `409` (basi).
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/status:
+    get:
+      tags: [CKPN]
+      operationId: ckpnStatus
+      summary: Status parameter CKPN
+      description: |-
+        Izin: `loans:read`. Menyajikan status SEMENTARA/FINAL, batas ratifikasi,
+        lantai PPKA, dan status blokir ekspor OJK tanpa menjalankan EOD.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/individual/scan:
+    get:
+      tags: [CKPN]
+      operationId: ckpnIndividualScan
+      summary: Pindai portofolio jalur individual
+      description: |-
+        Izin: `loans:read`. Baca-saja: melaporkan kredit yang memenuhi jalur
+        individual beserta alasannya (usulan, bukan penandaan). Hanya terpasang
+        bila layanan CKPN individual tersedia.
+      responses:
+        "200":
+          description: Hasil pemindaian.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CKPNIndividualScanResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/individual/{loanNumber}/entry:
+    parameters:
+      - $ref: "#/components/parameters/LoanNumber"
+    post:
+      tags: [CKPN]
+      operationId: ckpnIndividualMarkEntry
+      summary: Tandai pintu masuk individual satu kredit
+      description: |-
+        Izin: `loans:approve`. Mencatat keputusan pengelola atas pintu masuk
+        individual. `required_ckpn` tidak disentuh (bayangan sampai T4).
+        `method` wajib salah satu `DCF`, `COLLATERAL`, `MAX`, atau
+        `EXCLUDED_ASET_BAIK`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CKPNEntryMarkRequest"
+      responses:
+        "200":
+          description: Penandaan tersimpan.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CKPNIndividualEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/individual/{loanNumber}/assessment:
+    parameters:
+      - $ref: "#/components/parameters/LoanNumber"
+    get:
+      tags: [CKPN]
+      operationId: ckpnIndividualAssessment
+      summary: Penilaian DCF satu kredit
+      description: |-
+        Izin: `loans:read`. Menghitung DCF dengan EIR orisinal dan proyeksi arus
+        kas manual. Tanggal proses opsional lewat query `as_of`.
+      parameters:
+        - $ref: "#/components/parameters/AsOfDate"
+      responses:
+        "200":
+          description: Hasil penilaian individual.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CKPNIndividualAssessment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/individual/{loanNumber}/projections:
+    parameters:
+      - $ref: "#/components/parameters/LoanNumber"
+    put:
+      tags: [CKPN]
+      operationId: ckpnIndividualReplaceProjections
+      summary: Ganti proyeksi arus kas kredit
+      description: |-
+        Izin: `loans:approve`. Proyeksi divalidasi sebelum disimpan; proyeksi
+        tidak sah ditolak `422`, bukan disimpan diam-diam.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CKPNProjectionsRequest"
+      responses:
+        "200":
+          description: Proyeksi tersimpan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/ckpn/individual/{loanNumber}/collaterals/{collateralID}/disposal-cost:
+    parameters:
+      - $ref: "#/components/parameters/LoanNumber"
+      - name: collateralID
+        in: path
+        required: true
+        description: UUID agunan.
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [CKPN]
+      operationId: ckpnIndividualSetDisposalCost
+      summary: Simpan estimasi biaya pelepasan agunan
+      description: |-
+        Izin: `loans:approve`. `disposal_cost` `null` mengosongkan nilai (NRV
+        memakai `bound_amount` penuh).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CKPNDisposalCostRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/lps-placements:
+    get:
+      tags: [PPAP]
+      operationId: listLPSPlacements
+      summary: PPKA penempatan dijamin LPS
+      description: "Izin: `loans:read`. Baca-saja (Pasal 23 POJK 1/2024)."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/integrations/slik/check:
+    post:
+      tags: [Integrasi]
+      operationId: checkSLIK
+      summary: Cek SLIK OJK
+      description: "Izin: `loans:read`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/integrations/dukcapil/verify:
+    post:
+      tags: [Integrasi]
+      operationId: verifyDukcapil
+      summary: Verifikasi Dukcapil
+      description: "Izin: `customers:read`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/documents/deposit-slip/{refNo}:
+    parameters:
+      - $ref: "#/components/parameters/RefNo"
+    get:
+      tags: [Dokumen]
+      operationId: documentDepositSlip
+      summary: Slip setoran
+      description: "Izin: `transactions:deposit`."
+      responses:
+        "200":
+          description: Berkas PDF slip setoran.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/documents/withdrawal-slip/{refNo}:
+    parameters:
+      - $ref: "#/components/parameters/RefNo"
+    get:
+      tags: [Dokumen]
+      operationId: documentWithdrawalSlip
+      summary: Slip penarikan
+      description: "Izin: `transactions:deposit`."
+      responses:
+        "200":
+          description: Berkas PDF slip penarikan.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/documents/loan-agreement/{loanId}:
+    parameters:
+      - $ref: "#/components/parameters/LoanID"
+    get:
+      tags: [Dokumen]
+      operationId: documentLoanAgreement
+      summary: Perjanjian kredit
+      description: "Izin: `loans:read`."
+      responses:
+        "200":
+          description: Berkas PDF perjanjian kredit.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/documents/thermal-receipt/{receiptNo}:
+    parameters:
+      - name: receiptNo
+        in: path
+        required: true
+        description: Nomor tanda terima.
+        schema:
+          type: string
+    get:
+      tags: [Dokumen]
+      operationId: documentThermalReceipt
+      summary: Tanda terima termal
+      description: "Izin: `collections:input`."
+      responses:
+        "200":
+          description: Berkas tanda terima.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/maker-checker/pending:
+    get:
+      tags: [Maker-Checker]
+      operationId: listPendingApprovals
+      summary: Antrean persetujuan
+      description: "Izin: `maker_checker:approve`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/maker-checker/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Maker-Checker]
+      operationId: approvePending
+      summary: Setujui permintaan
+      description: "Izin: `maker_checker:approve`. Pembuat tidak boleh menyetujui pengajuannya sendiri."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/maker-checker/{id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/ResourceID"
+    post:
+      tags: [Maker-Checker]
+      operationId: rejectPending
+      summary: Tolak permintaan
+      description: "Izin: `maker_checker:reject`."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/permissions/catalog:
+    get:
+      tags: [Izin]
+      operationId: permissionCatalog
+      summary: Katalog grup, izin, dan menu
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/permissions/requests:
+    post:
+      tags: [Izin]
+      operationId: requestPermissionChange
+      summary: Ajukan perubahan pemetaan izin
+      description: |-
+        Izin: `permissions:manage`. Perubahan berlaku setelah disetujui pemeriksa
+        lain lewat maker-checker dan teraudit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/business-date:
+    get:
+      tags: [Sistem]
+      operationId: getBusinessDate
+      summary: Tanggal bisnis aktif
+      description: "Izin: — (setiap pengguna terautentikasi)."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/monitoring:
+    get:
+      tags: [Sistem]
+      operationId: getOperationalMonitoring
+      summary: Temuan kesehatan operasional
+      description: >-
+        Izin: `system:config:read`. Baca-saja; kegagalan membaca satu sumber data
+        dilaporkan sebagai temuan, bukan galat endpoint, sehingga status tetap 200
+        selama permintaan terautentikasi.
+      responses:
+        "200":
+          description: Potret kesehatan operasional beserta cacah temuan.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/MonitoringSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/limits:
+    get:
+      tags: [Sistem]
+      operationId: listTransactionLimits
+      summary: Batas transaksi per peran
+      description: "Izin: `system:config:read`."
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Jumlah maksimum data.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/eod-definitions:
+    get:
+      tags: [Sistem]
+      operationId: listEODDefinitions
+      summary: Definisi urutan langkah EOD
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Sistem]
+      operationId: updateEODDefinitions
+      summary: Ubah definisi urutan langkah EOD
+      description: "Izin: `system:config`. Teraudit."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/eod-runs:
+    get:
+      tags: [Sistem]
+      operationId: listEODRuns
+      summary: Riwayat langkah EOD
+      description: "Izin: `system:config:read`. Menyaring opsional dengan `date`."
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: Tanggal bisnis (YYYY-MM-DD).
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/bank-profile:
+    get:
+      tags: [Sistem]
+      operationId: getBankProfile
+      summary: Profil bank
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Sistem]
+      operationId: updateBankProfile
+      summary: Ubah profil bank
+      description: "Izin: `system:config`. Teraudit."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/system/ojk-profile:
+    get:
+      tags: [Sistem]
+      operationId: getOJKProfile
+      summary: Profil Form 00.00 OJK
+      description: "Izin: `system:config:read`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Sistem]
+      operationId: updateOJKProfile
+      summary: Ubah profil Form 00.00 OJK
+      description: "Izin: `system:config`. Teraudit."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/audit-logs:
+    get:
+      tags: [Sistem]
+      operationId: listAuditLogs
+      summary: Jejak audit
+      description: "Izin: `audit_logs:read`. Baca-saja; log tetap append-only."
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Jumlah maksimum data.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/batch/eod:
+    post:
+      tags: [Batch]
+      operationId: runEOD
+      summary: Jalankan akhir hari (EOD)
+      description: "Izin: `system:config`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/batch/eom:
+    post:
+      tags: [Batch]
+      operationId: runEOM
+      summary: Jalankan akhir bulan (EOM)
+      description: "Izin: `system:config`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/batch/eoy:
+    post:
+      tags: [Batch]
+      operationId: runEOY
+      summary: Jalankan akhir tahun (EOY)
+      description: "Izin: `system:config`."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token JWT dari `/api/v1/auth/login`.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: cbs_access_token
+      description: |-
+        Cookie sesi httpOnly. Nama dapat diubah lewat `CBS_ACCESS_COOKIE`.
+        Permintaan yang mengubah state wajib menyertakan `X-CSRF-Token`.
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Halaman (mulai 1).
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      description: Jumlah data per halaman.
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+    SearchQ:
+      name: q
+      in: query
+      required: false
+      description: Kata kunci pencarian.
+      schema:
+        type: string
+    FromDate:
+      name: from
+      in: query
+      required: false
+      description: Tanggal awal (YYYY-MM-DD).
+      schema:
+        type: string
+        format: date
+    ToDate:
+      name: to
+      in: query
+      required: false
+      description: Tanggal akhir (YYYY-MM-DD).
+      schema:
+        type: string
+        format: date
+    AsOfDate:
+      name: as_of
+      in: query
+      required: false
+      description: Tanggal proses (YYYY-MM-DD atau RFC3339).
+      schema:
+        type: string
+    Book:
+      name: book
+      in: query
+      required: false
+      description: Filter buku lini usaha (mis. CONVENTIONAL, SYARIAH).
+      schema:
+        type: string
+    OJKPeriod:
+      name: period
+      in: query
+      required: true
+      description: Periode laporan OJK (YYYY-MM atau YYYYMM).
+      schema:
+        type: string
+    AccountNumber:
+      name: accountNumber
+      in: path
+      required: true
+      description: Nomor rekening.
+      schema:
+        type: string
+    StaffID:
+      name: id
+      in: path
+      required: true
+      description: UUID pegawai.
+      schema:
+        type: string
+        format: uuid
+    ResourceID:
+      name: id
+      in: path
+      required: true
+      description: UUID sumber daya.
+      schema:
+        type: string
+        format: uuid
+    LoanID:
+      name: loanId
+      in: path
+      required: true
+      description: UUID kredit.
+      schema:
+        type: string
+        format: uuid
+    LoanNumber:
+      name: loanNumber
+      in: path
+      required: true
+      description: Nomor kredit.
+      schema:
+        type: string
+    Reference:
+      name: reference
+      in: path
+      required: true
+      description: Nomor referensi jurnal atau transaksi.
+      schema:
+        type: string
+    RefNo:
+      name: refNo
+      in: path
+      required: true
+      description: Nomor referensi transaksi.
+      schema:
+        type: string
+    OrgCode:
+      name: code
+      in: path
+      required: true
+      description: Kode unit organisasi.
+      schema:
+        type: string
+    CategoryCode:
+      name: categoryCode
+      in: path
+      required: true
+      description: Kode kategori agunan.
+      schema:
+        type: string
+  responses:
+    OK:
+      description: Berhasil.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    Created:
+      description: Sumber daya dibuat.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    AcceptedPendingApproval:
+      description: |-
+        Diterima untuk ditinjau maker-checker (`status: PENDING_APPROVAL`),
+        bukan kegagalan.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+    BadRequest:
+      description: Permintaan tidak dapat dibaca atau bidang wajib kosong.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Token hilang, kedaluwarsa, atau tidak sah.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: |-
+        Izin tidak cukup, kata sandi kedaluwarsa, atau data di luar cakupan
+        cabang/buku aktor.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Sumber daya tidak ditemukan (atau disamarkan pada pembacaan lintas cakupan).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Konflik keadaan (duplikat, transaksi sudah dibatalkan, tanggal bisnis bentrok).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Permintaan terbaca tetapi gagal validasi/aturan bisnis.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Terlalu banyak percobaan (pembatasan login/akun terkunci).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: |-
+        Kegagalan internal. Detail hanya tercatat di log; klien menerima pesan
+        generik.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Envelope:
+      type: object
+      description: Amplop respons standar.
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data: {}
+        error:
+          type: string
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: string
+      required: [success, error]
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+    Money:
+      type: string
+      description: |-
+        Nominal desimal sebagai string (mis. `"1000000"`), mengikuti
+        `shopspring/decimal`. Hindari float agar presisi rupiah tidak hilang.
+      examples: ["1000000"]
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+      required: [username, password]
+    LoginResponse:
+      type: object
+      description: Token TIDAK diserialisasi ke body; dikirim lewat cookie httpOnly.
+      properties:
+        expires_in:
+          type: integer
+          description: Masa berlaku access token (detik).
+        refresh_expires_in:
+          type: integer
+          description: Masa berlaku refresh token (detik).
+        password_expired:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/StaffUser"
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+    StaffUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+        username:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        branch_code:
+          type: string
+        book:
+          type: string
+        is_active:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+        password_changed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateStaffRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          type: string
+        branch_code:
+          type: string
+      required: [username, full_name, role]
+    ChangePasswordRequest:
+      type: object
+      properties:
+        old_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+      required: [old_password, new_password]
+    CustomerRequest:
+      type: object
+      additionalProperties: true
+      description: |-
+        Data CIF. Bidang inti: `full_name`, `id_card_number`, `phone`,
+        `email`, `address`. Validasi duplikat NIK/surel dibalas `409`.
+      properties:
+        full_name:
+          type: string
+        id_card_number:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+    DepositRequest:
+      type: object
+      properties:
+        account_number:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          default: IDR
+        description:
+          type: string
+        idempotency_key:
+          type: string
+      required: [account_number, amount]
+    WithdrawRequest:
+      type: object
+      properties:
+        account_number:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          default: IDR
+        description:
+          type: string
+        idempotency_key:
+          type: string
+      required: [account_number, amount]
+    TransferRequest:
+      type: object
+      properties:
+        source_account_number:
+          type: string
+        destination_account_number:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          default: IDR
+        description:
+          type: string
+        idempotency_key:
+          type: string
+      required: [source_account_number, destination_account_number, amount]
+    ReversalRequest:
+      type: object
+      description: Nominal diambil dari jurnal asal; hanya alasan yang dikirim.
+      properties:
+        reason:
+          type: string
+      required: [reason]
+    CustomJournalLine:
+      type: object
+      properties:
+        account_number:
+          type: string
+        direction:
+          type: string
+          enum: [D, K]
+          description: "`D` = debit, `K` = kredit."
+        amount:
+          $ref: "#/components/schemas/Money"
+        description:
+          type: string
+      required: [account_number, direction, amount]
+    CustomJournalRequest:
+      type: object
+      properties:
+        transaction_type:
+          type: string
+        description:
+          type: string
+        idempotency_key:
+          type: string
+        created_by:
+          type: string
+          description: Diabaikan; identitas pencatat selalu dari JWT.
+        lines:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/CustomJournalLine"
+      required: [lines]
+    CKPNEntryMarkRequest:
+      type: object
+      description: Penandaan pintu masuk CKPN individual satu kredit (T3).
+      properties:
+        method:
+          type: string
+          enum: [DCF, COLLATERAL, MAX, EXCLUDED_ASET_BAIK]
+        significant:
+          type: boolean
+        objective_evidence:
+          type: boolean
+        excluded_aset_baik:
+          type: boolean
+      required: [method]
+    CKPNCashflowProjection:
+      type: object
+      properties:
+        period:
+          type: integer
+          minimum: 1
+          description: Periode ke-n dalam bulan.
+        amount:
+          $ref: "#/components/schemas/Money"
+      required: [period, amount]
+    CKPNProjectionsRequest:
+      type: object
+      properties:
+        projections:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CKPNCashflowProjection"
+      required: [projections]
+    CKPNDisposalCostRequest:
+      type: object
+      properties:
+        disposal_cost:
+          description: Nominal biaya pelepasan, atau `null` untuk mengosongkan.
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+    CKPNIndividualScanResult:
+      type: object
+      description: |-
+        Hasil pemindaian jalur individual. Bentuk rinci dikelola domain
+        `CKPNIndividualScanResult`; di sini hanya kontrak amplop yang dijamin.
+      additionalProperties: true
+    CKPNIndividualEntry:
+      type: object
+      properties:
+        individual:
+          type: boolean
+        significance:
+          type: boolean
+        triggers:
+          type: array
+          items:
+            type: string
+        suggested_method:
+          type: string
+          enum: [DCF, COLLATERAL, MAX, EXCLUDED_ASET_BAIK]
+        excluded_aset_baik:
+          type: boolean
+    CKPNIndividualAssessment:
+      type: object
+      properties:
+        loan_id:
+          type: string
+          format: uuid
+        loan_number:
+          type: string
+        as_of:
+          type: string
+          format: date-time
+        carrying_amount:
+          $ref: "#/components/schemas/Money"
+        present_value:
+          $ref: "#/components/schemas/Money"
+        target:
+          $ref: "#/components/schemas/Money"
+    MonitoringSnapshot:
+      type: object
+      description: Potret kesehatan operasional pada satu waktu.
+      properties:
+        evaluated_at:
+          type: string
+          format: date-time
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                description: Kode temuan yang stabil untuk filter/otomasi klien.
+              severity:
+                type: string
+                enum: [WARNING, CRITICAL]
+              message:
+                type: string
+        summary:
+          type: object
+          properties:
+            critical:
+              type: integer
+            warning:
+              type: integer
