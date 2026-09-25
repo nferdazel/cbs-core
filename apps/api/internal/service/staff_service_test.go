@@ -181,3 +181,69 @@ func TestChangePassword_AllowsOwnerAndAudits(t *testing.T) {
 		t.Fatalf("audit ubah kata sandi tidak tercatat: %+v", audit.events)
 	}
 }
+
+// targetAO menyisipkan satu akun AO yang dapat dikelola ADMIN, lalu mengembalikan id-nya.
+func targetAO(t *testing.T, repo *stubStaffRepo) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	repo.users[id] = &domain.StaffUser{
+		ID: id, Username: "ao.uji", Role: domain.RoleAO, BranchCode: "001",
+		IsActive: true, Book: domain.BookConventional,
+	}
+	return id
+}
+
+// Pengelola terikat satu buku tidak boleh menugaskan staf ke buku lain (instalasi DUAL).
+func TestUpdateStaff_TolakBukuLintasBuku(t *testing.T) {
+	svc, repo, _, adminID, _ := staffFixture(t)
+	target := targetAO(t, repo)
+	actor := adminActor(adminID)
+	actor.Book = domain.BookConventional
+
+	syar := domain.BookSyariah
+	if _, err := svc.UpdateStaff(context.Background(), target, domain.UpdateStaffInput{Book: &syar}, actor); !errors.Is(err, domain.ErrStaffBookInvalid) {
+		t.Fatalf("err = %v, ingin ErrStaffBookInvalid", err)
+	}
+	if repo.users[target].Book != domain.BookConventional {
+		t.Fatalf("buku berubah padahal ditolak: %s", repo.users[target].Book)
+	}
+}
+
+// Nilai buku asing ditolak sebelum tersimpan.
+func TestUpdateStaff_TolakBukuTidakDikenal(t *testing.T) {
+	svc, repo, _, adminID, _ := staffFixture(t)
+	target := targetAO(t, repo)
+	asing := domain.COABook("CAMPURAN")
+	if _, err := svc.UpdateStaff(context.Background(), target, domain.UpdateStaffInput{Book: &asing}, adminActor(adminID)); !errors.Is(err, domain.ErrStaffBookInvalid) {
+		t.Fatalf("err = %v, ingin ErrStaffBookInvalid", err)
+	}
+}
+
+// Cakupan buku instalasi satu buku menolak buku lain, walau pengelola lintas buku.
+func TestUpdateStaff_TolakBukuDiLuarCakupanInstalasi(t *testing.T) {
+	svc, repo, _, adminID, _ := staffFixture(t)
+	target := targetAO(t, repo)
+	actor := adminActor(adminID)
+	actor.BookScope = domain.ScopeSyariah
+
+	conv := domain.BookConventional
+	if _, err := svc.UpdateStaff(context.Background(), target, domain.UpdateStaffInput{Book: &conv}, actor); !errors.Is(err, domain.ErrStaffBookInvalid) {
+		t.Fatalf("err = %v, ingin ErrStaffBookInvalid", err)
+	}
+}
+
+// SUPERADMIN (lintas buku) boleh menugaskan buku mana pun yang dilayani instalasi.
+func TestUpdateStaff_SuperadminBebasBuku(t *testing.T) {
+	svc, repo, _, _, superID := staffFixture(t)
+	target := targetAO(t, repo)
+	actor := domain.Actor{UserID: superID, Username: "super.uji", Role: domain.RoleSuperAdmin}
+
+	syar := domain.BookSyariah
+	updated, err := svc.UpdateStaff(context.Background(), target, domain.UpdateStaffInput{Book: &syar}, actor)
+	if err != nil {
+		t.Fatalf("UpdateStaff: %v", err)
+	}
+	if updated.Book != domain.BookSyariah {
+		t.Fatalf("buku = %s, ingin SYARIAH", updated.Book)
+	}
+}

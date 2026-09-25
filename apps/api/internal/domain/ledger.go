@@ -238,7 +238,7 @@ type ReversalRequest struct {
 }
 
 type LedgerRepository interface {
-	GetCOAList(ctx context.Context) ([]ChartOfAccount, error)
+	GetCOAList(ctx context.Context, actor Actor) ([]ChartOfAccount, error)
 	GetCOAByCode(ctx context.Context, code string) (*ChartOfAccount, error)
 	GetJournalByRef(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, limit, offset int, actor Actor) ([]JournalEntry, int, error)
@@ -265,5 +265,8 @@ type LedgerService interface {
 	GetJournalByReference(ctx context.Context, ref string) (*JournalEntry, error)
 	ListJournals(ctx context.Context, page, pageSize int, actor Actor) ([]JournalEntry, int, error)
 	GetAccountStatement(ctx context.Context, accountNumber string, page, pageSize int, actor Actor) ([]JournalLine, int, error)
-	GetChartOfAccounts(ctx context.Context) ([]ChartOfAccount, error)
+	// GetChartOfAccounts mengembalikan bagan akun yang boleh dilihat aktor: aktor
+	// terikat satu buku hanya melihat buku itu (dan akun tanpa buku), aktor lintas
+	// buku melihat semuanya. Menjaga konsistensi dengan penyaringan jurnal.
+	GetChartOfAccounts(ctx context.Context, actor Actor) ([]ChartOfAccount, error)
 }

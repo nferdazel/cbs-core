@@ -346,7 +346,11 @@ func (h *LedgerHandler) GetStatement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LedgerHandler) ListCOA(w http.ResponseWriter, r *http.Request) {
-	list, err := h.service.GetChartOfAccounts(r.Context())
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.service.GetChartOfAccounts(r.Context(), actor)
 	if err != nil {
 		InternalError(w, r, err)
 		return

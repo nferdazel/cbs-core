@@ -194,7 +194,7 @@ type stubCOALister struct {
 	list []domain.ChartOfAccount
 }
 
-func (s stubCOALister) GetCOAList(_ context.Context) ([]domain.ChartOfAccount, error) {
+func (s stubCOALister) GetCOAList(_ context.Context, _ domain.Actor) ([]domain.ChartOfAccount, error) {
 	return s.list, nil
 }
 

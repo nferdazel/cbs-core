@@ -931,8 +931,8 @@ func (s *ledgerService) GetAccountStatement(ctx context.Context, accountNumber s
 	return s.ledgerRepo.ListAccountStatements(ctx, acc.ID, pageSize, offset, actor)
 }
 
-func (s *ledgerService) GetChartOfAccounts(ctx context.Context) ([]domain.ChartOfAccount, error) {
-	return s.ledgerRepo.GetCOAList(ctx)
+func (s *ledgerService) GetChartOfAccounts(ctx context.Context, actor domain.Actor) ([]domain.ChartOfAccount, error) {
+	return s.ledgerRepo.GetCOAList(ctx, actor)
 }
 
 func defaultDescription(desc, fallback string) string {

@@ -30,6 +30,10 @@ var (
 	// cakupan kosong dan "tidak melihat apa pun" secara senyap.
 	ErrStaffBranchRequired = NewLocalizedError("staff_branch_required", "kode cabang wajib diisi untuk staf operasional")
 	ErrStaffBranchUnknown  = NewLocalizedError("staff_branch_unknown", "kode cabang staf tidak terdaftar; pilih unit organisasi yang ada")
+	// ErrStaffBookInvalid menolak penugasan buku staf yang bukan CONVENTIONAL/SYARIAH,
+	// tidak sesuai cakupan buku instalasi, atau di luar buku pengelola. Tanpa ini nilai
+	// asing bisa tersimpan dan cakupan akses staf menjadi tak terdefinisi.
+	ErrStaffBookInvalid = NewLocalizedError("staff_book_invalid", "buku staf harus CONVENTIONAL atau SYARIAH dan sesuai cakupan buku instalasi serta buku pengelola")
 )
 
 // --- Staff Role & Permissions ---
@@ -466,6 +470,10 @@ type CreateStaffInput struct {
 	Password   string    `json:"password"`
 	Role       StaffRole `json:"role"`
 	BranchCode string    `json:"branch_code"`
+	// Book opsional: buku COA akun baru. Bila kosong, akun mengikuti buku pembuat
+	// (atau buku tunggal instalasi) seperti sebelumnya. Nilai wajib dikenal dan
+	// sesuai cakupan buku instalasi serta buku pengelola.
+	Book *COABook `json:"book,omitempty"`
 }
 
 type UpdateStaffInput struct {
@@ -474,6 +482,9 @@ type UpdateStaffInput struct {
 	Role       *StaffRole `json:"role,omitempty"`
 	BranchCode *string    `json:"branch_code,omitempty"`
 	IsActive   *bool      `json:"is_active,omitempty"`
+	// Book opsional: ubah buku COA akun. Kosong berarti tidak diubah. Nilai wajib
+	// dikenal dan sesuai cakupan buku instalasi serta buku pengelola.
+	Book *COABook `json:"book,omitempty"`
 }
 
 type ChangePasswordInput struct {

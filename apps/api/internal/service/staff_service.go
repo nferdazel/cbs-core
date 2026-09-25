@@ -115,6 +115,37 @@ func hashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
+// resolveStaffBook menentukan buku akun staf dari permintaan yang eksplisit. requested
+// nil berarti memakai pengambilan bawaan (buku pembuat, buku tunggal instalasi, atau
+// konvensional). Permintaan eksplisit wajib: (a) nilainya dikenal, (b) sesuai cakupan
+// buku instalasi, dan (c) pada instalasi DUAL, tidak keluar dari buku pengelola kecuali
+// pengelola lintas buku. Ini menutup celah penugasan buku lintas lini usaha oleh
+// pengelola yang sendiri terikat satu buku.
+func (s *staffService) resolveStaffBook(actor domain.Actor, requested *domain.COABook) (domain.COABook, error) {
+	if requested == nil {
+		book := actor.Book
+		if single := actor.BookScope.SingleBook(); single != "" {
+			book = single
+		} else if book == "" || actor.IsCrossBook() {
+			book = domain.BookConventional
+		}
+		return book, nil
+	}
+	if !domain.ValidCOABook(*requested) {
+		return "", domain.ErrStaffBookInvalid
+	}
+	if single := actor.BookScope.SingleBook(); single != "" {
+		if *requested != single {
+			return "", domain.ErrStaffBookInvalid
+		}
+		return *requested, nil
+	}
+	if !actor.IsCrossBook() && actor.Book != "" && *requested != actor.Book {
+		return "", domain.ErrStaffBookInvalid
+	}
+	return *requested, nil
+}
+
 func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaffInput, actor domain.Actor) (*domain.StaffUser, error) {
 	if !actor.CanManageStaff(input.Role) {
 		return nil, errStaffRoleNotManageable
@@ -154,11 +185,9 @@ func (s *staffService) CreateStaff(ctx context.Context, input domain.CreateStaff
 	// staf baru tidak lahir di lini usaha yang tidak dilayani. Tanpa ini kolom book
 	// akan NULL dan akun baru justru melihat kedua buku — kebocoran yang justru ingin
 	// ditutup.
-	book := actor.Book
-	if single := actor.BookScope.SingleBook(); single != "" {
-		book = single
-	} else if book == "" || actor.IsCrossBook() {
-		book = domain.BookConventional
+	book, err := s.resolveStaffBook(actor, input.Book)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -255,16 +284,29 @@ func (s *staffService) UpdateStaff(ctx context.Context, id uuid.UUID, input doma
 	if input.IsActive != nil {
 		user.IsActive = *input.IsActive
 	}
+	bookBefore := user.Book
+	if input.Book != nil {
+		next, err := s.resolveStaffBook(actor, input.Book)
+		if err != nil {
+			return nil, err
+		}
+		user.Book = next
+	}
 
 	if err := s.staffRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}
-	if err := writeAudit(ctx, s.auditRepo, nil, actor, "UPDATE_STAFF", "staff", user.ID.String(), map[string]any{
+	auditChanges := map[string]any{
 		"username":    user.Username,
 		"role":        string(user.Role),
 		"is_active":   user.IsActive,
 		"branch_code": user.BranchCode,
-	}); err != nil {
+		"book":        string(user.Book),
+	}
+	if user.Book != bookBefore {
+		auditChanges["book_before"] = string(bookBefore)
+	}
+	if err := writeAudit(ctx, s.auditRepo, nil, actor, "UPDATE_STAFF", "staff", user.ID.String(), auditChanges); err != nil {
 		return nil, fmt.Errorf("audit perubahan staf: %w", err)
 	}
 	return user, nil

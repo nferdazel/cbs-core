@@ -166,3 +166,59 @@ func (e *moneyEnv) insertDeposit(t *testing.T, accountNumber string, customerID 
 	}
 	return id
 }
+
+// TestIntegrasiFilterBukuBaganAkun membuktikan bagan akun disaring buku dengan semantik
+// yang sama seperti kredit/rekening/deposito: aktor terikat satu buku tidak melihat bagan
+// akun lini usaha lain, aktor lintas buku dan aktor lama tanpa buku melihat keduanya.
+func TestIntegrasiFilterBukuBaganAkun(t *testing.T) {
+	e := newMoneyEnv(t)
+	repo := postgres.NewLedgerRepository(e.db)
+
+	var syrCode, convCode string
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT code FROM chart_of_accounts WHERE book = 'SYARIAH' ORDER BY code LIMIT 1`).Scan(&syrCode); err != nil {
+		t.Fatalf("membaca COA syariah: %v", err)
+	}
+	if err := e.db.QueryRowContext(e.ctx,
+		`SELECT code FROM chart_of_accounts WHERE book = 'CONVENTIONAL' ORDER BY code LIMIT 1`).Scan(&convCode); err != nil {
+		t.Fatalf("membaca COA konvensional: %v", err)
+	}
+
+	codesFor := func(actor domain.Actor) map[string]bool {
+		list, err := repo.GetCOAList(e.ctx, actor)
+		if err != nil {
+			t.Fatalf("GetCOAList: %v", err)
+		}
+		codes := make(map[string]bool, len(list))
+		for _, c := range list {
+			codes[c.Code] = true
+		}
+		return codes
+	}
+
+	syr := codesFor(domain.Actor{UserID: e.actor.UserID, Role: domain.RoleAO, Book: domain.BookSyariah})
+	if !syr[syrCode] {
+		t.Errorf("aktor syariah tidak melihat COA syariah %s", syrCode)
+	}
+	if syr[convCode] {
+		t.Errorf("aktor syariah melihat COA konvensional %s", convCode)
+	}
+
+	conv := codesFor(domain.Actor{UserID: e.actor.UserID, Role: domain.RoleAO, Book: domain.BookConventional})
+	if !conv[convCode] {
+		t.Errorf("aktor konvensional tidak melihat COA konvensional %s", convCode)
+	}
+	if conv[syrCode] {
+		t.Errorf("aktor konvensional melihat COA syariah %s", syrCode)
+	}
+
+	cross := codesFor(domain.Actor{UserID: e.actor.UserID, Role: domain.RoleAuditor, Book: domain.BookConventional})
+	if !cross[syrCode] || !cross[convCode] {
+		t.Errorf("aktor lintas buku harus melihat kedua buku (syr=%v conv=%v)", cross[syrCode], cross[convCode])
+	}
+
+	legacy := codesFor(domain.Actor{UserID: e.actor.UserID, Role: domain.RoleAO})
+	if !legacy[syrCode] || !legacy[convCode] {
+		t.Errorf("aktor tanpa buku harus melihat kedua buku (syr=%v conv=%v)", legacy[syrCode], legacy[convCode])
+	}
+}

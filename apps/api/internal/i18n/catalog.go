@@ -248,6 +248,7 @@ const (
 	MsgStaffAlreadyExists                   Code = "staff_already_exists"
 	MsgStaffBranchRequired                  Code = "staff_branch_required"
 	MsgStaffBranchUnknown                   Code = "staff_branch_unknown"
+	MsgStaffBookInvalid                     Code = "staff_book_invalid"
 	MsgLimitPerTransaction                  Code = "limit_per_transaction"
 	MsgLimitDaily                           Code = "limit_daily"
 	MsgRequiresApproval                     Code = "requires_approval"
@@ -562,6 +563,7 @@ var codeList = []Code{
 	MsgStaffAlreadyExists,
 	MsgStaffBranchRequired,
 	MsgStaffBranchUnknown,
+	MsgStaffBookInvalid,
 	MsgLimitPerTransaction,
 	MsgLimitDaily,
 	MsgRequiresApproval,
@@ -1569,6 +1571,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgStaffBranchUnknown: {
 		ID: "kode cabang staf tidak terdaftar; pilih unit organisasi yang ada",
 		EN: "the staff branch code is not registered; choose an existing organization unit",
+	},
+	MsgStaffBookInvalid: {
+		ID: "buku staf harus CONVENTIONAL atau SYARIAH dan sesuai cakupan buku instalasi serta buku pengelola",
+		EN: "staff book must be CONVENTIONAL or SYARIAH and match the installation book scope and the manager's book",
 	},
 	MsgLimitPerTransaction: {
 		ID: "nominal melebihi batas per transaksi",

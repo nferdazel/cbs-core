@@ -21,7 +21,9 @@ import (
 // OJKCOALister membaca bagan akun untuk melengkapi peninjauan pemetaan dengan nama akun.
 // Kontraknya sengaja sempit agar handler tidak bergantung pada layanan ledger penuh.
 type OJKCOALister interface {
-	GetCOAList(ctx context.Context) ([]domain.ChartOfAccount, error)
+	// GetCOAList menerima aktor karena bagan akun disaring buku. Peninjauan pemetaan
+	// bersifat bank-wide, jadi pemanggil memakai aktor lintas buku (RoleSystem).
+	GetCOAList(ctx context.Context, actor domain.Actor) ([]domain.ChartOfAccount, error)
 }
 
 // OJKReportHandler melayani fondasi ekspor laporan OJK (APOLO). Angka diambil
@@ -100,7 +102,7 @@ func (h *OJKReportHandler) Mapping(w http.ResponseWriter, r *http.Request) {
 
 	coaNames := make(map[string]string)
 	if h.coa != nil {
-		list, err := h.coa.GetCOAList(r.Context())
+		list, err := h.coa.GetCOAList(r.Context(), domain.Actor{Role: domain.RoleSystem})
 		if err != nil {
 			InternalError(w, r, fmt.Errorf("membaca bagan akun: %w", err))
 			return

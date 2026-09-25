@@ -135,6 +135,12 @@ const (
 	BookSyariah      COABook = "SYARIAH"
 )
 
+// ValidCOABook melaporkan apakah nilai buku dikenal. Dipakai penugasan buku staf agar
+// nilai asing tidak pernah tersimpan menjadi cakupan akses yang tak terdefinisi.
+func ValidCOABook(b COABook) bool {
+	return b == BookConventional || b == BookSyariah
+}
+
 type ProductFamily string
 
 const (

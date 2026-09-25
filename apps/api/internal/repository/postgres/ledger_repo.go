@@ -22,9 +22,19 @@ func (r *LedgerRepository) GetDB() *sql.DB {
 	return r.db
 }
 
-func (r *LedgerRepository) GetCOAList(ctx context.Context) ([]domain.ChartOfAccount, error) {
-	query := `SELECT id, code, name, type, normal_balance, is_active FROM chart_of_accounts ORDER BY code ASC`
-	rows, err := r.db.QueryContext(ctx, query)
+// GetCOAList mengembalikan bagan akun yang boleh dibaca aktor. Penyaringan memakai
+// bookReadClause yang sama dengan pembacaan akun/jurnal, sehingga aktor terikat satu
+// buku tidak melihat bagan akun lini usaha lain (aktor lintas buku tidak difilter).
+func (r *LedgerRepository) GetCOAList(ctx context.Context, actor domain.Actor) ([]domain.ChartOfAccount, error) {
+	query := `SELECT coa.id, coa.code, coa.name, coa.type, coa.normal_balance, coa.is_active
+		FROM chart_of_accounts coa`
+	var args []any
+	if clause, bookArgs := bookReadClause("coa.book", actor, 1); clause != "" {
+		query += " WHERE " + clause
+		args = append(args, bookArgs...)
+	}
+	query += " ORDER BY coa.code ASC"
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
