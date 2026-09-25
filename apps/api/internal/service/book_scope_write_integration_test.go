@@ -787,11 +787,11 @@ func TestIntegrasiBukuDepositoAROLintasBukuTidakDiproses(t *testing.T) {
 	dep := e.placeDeposit(t, "DEP-SYAR", e.auditorActor(), idr(1_000_000))
 
 	if _, err := e.db.ExecContext(e.ctx,
-		`UPDATE deposits SET aro = TRUE, status = 'MATURED', maturity_date = CURRENT_DATE - 1 WHERE id = $1`, dep.ID); err != nil {
+		`UPDATE time_deposits SET aro = TRUE, status = 'MATURED', maturity_date = CURRENT_DATE - 1 WHERE id = $1`, dep.ID); err != nil {
 		t.Fatalf("menyiapkan ARO: %v", err)
 	}
 	var maturityBefore time.Time
-	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM deposits WHERE id = $1`, dep.ID).Scan(&maturityBefore); err != nil {
+	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM time_deposits WHERE id = $1`, dep.ID).Scan(&maturityBefore); err != nil {
 		t.Fatalf("membaca maturity: %v", err)
 	}
 
@@ -799,7 +799,7 @@ func TestIntegrasiBukuDepositoAROLintasBukuTidakDiproses(t *testing.T) {
 		t.Fatalf("RunARO aktor konvensional: %v", err)
 	}
 	var maturityAfter time.Time
-	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM deposits WHERE id = $1`, dep.ID).Scan(&maturityAfter); err != nil {
+	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM time_deposits WHERE id = $1`, dep.ID).Scan(&maturityAfter); err != nil {
 		t.Fatalf("membaca maturity setelah: %v", err)
 	}
 	if !maturityAfter.Equal(maturityBefore) {
@@ -810,7 +810,7 @@ func TestIntegrasiBukuDepositoAROLintasBukuTidakDiproses(t *testing.T) {
 		t.Fatalf("RunARO aktor lintas buku: %v", err)
 	}
 	var maturityCross time.Time
-	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM deposits WHERE id = $1`, dep.ID).Scan(&maturityCross); err != nil {
+	if err := e.db.QueryRowContext(e.ctx, `SELECT maturity_date FROM time_deposits WHERE id = $1`, dep.ID).Scan(&maturityCross); err != nil {
 		t.Fatalf("membaca maturity pasca lintas buku: %v", err)
 	}
 	if maturityCross.Equal(maturityBefore) {

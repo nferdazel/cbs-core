@@ -1,0 +1,15 @@
+-- 000101_rename_deposits_to_time_deposits.up.sql
+-- Run after: 000100_pabl_register_ckpn_params.up.sql
+--
+-- KEPUTUSAN PENAMAAN: tabel `deposits` menyimpan DEPOSITO BERJANGKA (time deposit),
+-- bukan seluruh simpanan (giro dan tabungan tersimpan di `accounts`). Nama lama
+-- ambigu dan pernah menyesatkan; kamus penamaan (docs/PENAMAAN-TABEL.md) menetapkan
+-- `time_deposits`. Ini rename NAMA saja: tanpa perubahan kolom, data, indeks, grant,
+-- maupun perilaku. Indeks lama (idx_deposits_*) dipertahankan apa adanya supaya
+-- rename tidak menyentuh lebih banyak objek daripada yang perlu; nama indeks bukan
+-- kontrak aplikasi.
+--
+-- Sifat migrasi: IDEMPOTENT. Bila `deposits` sudah tidak ada (sudah pernah dijalankan),
+-- ALTER TABLE IF EXISTS tidak melakukan apa pun. Grant tetap melekat pada tabel karena
+-- Postgres menyimpan grant pada OID tabel, bukan pada namanya.
+ALTER TABLE IF EXISTS deposits RENAME TO time_deposits;

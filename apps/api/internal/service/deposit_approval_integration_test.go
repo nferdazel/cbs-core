@@ -87,7 +87,7 @@ func (e *depositApprovalEnv) depositCount(t *testing.T, customerID uuid.UUID) in
 	t.Helper()
 	var n int
 	if err := e.money.db.QueryRowContext(e.money.ctx,
-		`SELECT COUNT(*) FROM deposits WHERE customer_id = $1`, customerID).Scan(&n); err != nil {
+		`SELECT COUNT(*) FROM time_deposits WHERE customer_id = $1`, customerID).Scan(&n); err != nil {
 		t.Fatalf("menghitung deposito: %v", err)
 	}
 	return n
@@ -132,7 +132,7 @@ func TestIntegrasiPenempatanDepositoLewatAmbangButuhPersetujuan(t *testing.T) {
 	var createdBy string
 	if err := e.money.db.QueryRowContext(e.money.ctx, `
 		SELECT d.id, d.placement_amount, d.status, j.created_by
-		FROM deposits d
+		FROM time_deposits d
 		JOIN journal_entries j ON j.idempotency_key = 'DEP-PLACE-' || d.id::text
 		WHERE d.customer_id = $1`, cust.ID).Scan(&depID, &amount, &status, &createdBy); err != nil {
 		t.Fatalf("membaca deposito hasil persetujuan: %v", err)

@@ -77,13 +77,13 @@ prefix `ckpn_` tingkat modul.
 
 | Tabel | Dipakai untuk |
 |---|---|
-| `deposits` | deposito berjangka (penempatan, ARO, jatuh tempo) |
+| `time_deposits` | deposito berjangka (penempatan, ARO, jatuh tempo). Sebelumnya bernama `deposits`; di-rename migrasi 000101 karena nama lama ambigu (giro dan tabungan tersimpan di `accounts`). Indeks lama `idx_deposits_*` dipertahankan. |
 | `interest_accruals` | penanda & jejak akrual bunga/bagi hasil per rekening per periode |
 | `admin_fee_charges` | penanda & jejak potongan biaya administrasi per rekening per periode |
 | `account_number_sequences` | penomoran rekening per produk/cabang |
 
 Pola baru: prefix domain tidak dipakai bila entitasnya sudah khas
-(`deposits`). Tabel bantu penomoran memakai sufiks `_sequences`.
+(`time_deposits`). Tabel bantu penomoran memakai sufiks `_sequences`.
 
 ### Akuntansi
 

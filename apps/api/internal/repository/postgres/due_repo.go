@@ -92,7 +92,7 @@ func (r *DueRepository) ListDueDeposits(ctx context.Context, asOf, until time.Ti
 
 	q := fmt.Sprintf(`SELECT d.account_number, d.customer_id, d.maturity_date,
 		d.placement_amount, d.accrued_profit, d.accrued_tax, d.status::text
-		FROM deposits d
+		FROM time_deposits d
 		WHERE d.status IN ('PLACED', 'MATURED')
 		AND d.maturity_date <= $%d`, untilIdx)
 	if where != "" {

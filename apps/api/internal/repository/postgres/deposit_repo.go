@@ -28,7 +28,7 @@ const depositColumns = `id, account_number, customer_id, product_id, branch_id,
 	profit_rate, yield_rate, profit_type, tax_rate, aro, aro_instruction,
 	status::text, accrued_profit, accrued_tax, paid_profit, paid_tax,
 	early_withdrawal_penalty, maturity_proceeds, last_accrual_date, closed_at, created_at, updated_at,
-	COALESCE((SELECT b.code FROM branches b WHERE b.id = deposits.branch_id), '')`
+	COALESCE((SELECT b.code FROM branches b WHERE b.id = time_deposits.branch_id), '')`
 
 func scanDeposit(row interface{ Scan(...any) error }) (*domain.Deposit, error) {
 	var d domain.Deposit
@@ -65,7 +65,7 @@ func (r *DepositRepository) Create(ctx context.Context, tx any, d *domain.Deposi
 	}
 
 	query := `
-		INSERT INTO deposits (
+		INSERT INTO time_deposits (
 			id, account_number, customer_id, product_id, branch_id,
 			placement_amount, currency, term_months, start_date, maturity_date,
 			profit_rate, yield_rate, profit_type, tax_rate, aro, aro_instruction,
@@ -89,7 +89,7 @@ func (r *DepositRepository) Create(ctx context.Context, tx any, d *domain.Deposi
 }
 
 func (r *DepositRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Deposit, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM deposits WHERE id = $1`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM time_deposits WHERE id = $1`, id)
 	return scanDeposit(row)
 }
 
@@ -98,21 +98,21 @@ func (r *DepositRepository) GetByIDForUpdate(ctx context.Context, tx any, id uui
 	if !ok {
 		return nil, errors.New("lock deposit: transaksi tidak valid")
 	}
-	row := sqlTx.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM deposits WHERE id = $1 FOR UPDATE`, id)
+	row := sqlTx.QueryRowContext(ctx, `SELECT `+depositColumns+` FROM time_deposits WHERE id = $1 FOR UPDATE`, id)
 	return scanDeposit(row)
 }
 
 func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor domain.Actor) ([]domain.Deposit, int, error) {
-	where, whereArgs := branchReadClause("deposits.branch_id", actor)
+	where, whereArgs := branchReadClause("time_deposits.branch_id", actor)
 	// Buku deposito dibaca dari produk (subquery, bukan join) agar kolom
 	// depositColumns tidak ambigu; deposito lama tanpa produk tetap terlihat.
-	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = deposits.product_id)"
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = time_deposits.product_id)"
 	if clause, args := bookReadClause(bookColumn, actor, len(whereArgs)+1); clause != "" {
 		whereArgs = append(whereArgs, args...)
 		where = andCondition(where, clause)
 	}
 
-	countQuery := "SELECT COUNT(*) FROM deposits"
+	countQuery := "SELECT COUNT(*) FROM time_deposits"
 	if where != "" {
 		countQuery += " WHERE " + where
 	}
@@ -121,7 +121,7 @@ func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor d
 		return nil, 0, err
 	}
 
-	query := `SELECT ` + depositColumns + ` FROM deposits`
+	query := `SELECT ` + depositColumns + ` FROM time_deposits`
 	if where != "" {
 		query += " WHERE " + where
 	}
@@ -150,8 +150,8 @@ func (r *DepositRepository) List(ctx context.Context, limit, offset int, actor d
 // difilter, deposito tanpa cabang/produk (NULL) tetap terlihat. Filter di query
 // (bukan per baris di service) menghindari lookup produk per deposito saat tutup hari.
 func (r *DepositRepository) ListMaturedARO(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.Deposit, error) {
-	where, args := branchReadClause("deposits.branch_id", actor)
-	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = deposits.product_id)"
+	where, args := branchReadClause("time_deposits.branch_id", actor)
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = time_deposits.product_id)"
 	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
 		args = append(args, bargs...)
 		where = andCondition(where, clause)
@@ -160,7 +160,7 @@ func (r *DepositRepository) ListMaturedARO(ctx context.Context, asOf time.Time, 
 	args = append(args, asOf)
 
 	query := `SELECT ` + depositColumns + `
-		FROM deposits
+		FROM time_deposits
 		WHERE aro = TRUE AND status IN ('PLACED', 'MATURED') AND maturity_date <= $` + fmt.Sprintf("%d", maturityArg)
 	if where != "" {
 		query += " AND " + where
@@ -190,7 +190,7 @@ func (r *DepositRepository) AddAccrual(ctx context.Context, tx any, id uuid.UUID
 		return errors.New("akrual deposit: transaksi tidak valid")
 	}
 	_, err := sqlTx.ExecContext(ctx, `
-		UPDATE deposits
+		UPDATE time_deposits
 		SET accrued_profit = accrued_profit + $2,
 		    accrued_tax = accrued_tax + $3,
 		    last_accrual_date = $4,
@@ -208,7 +208,7 @@ func (r *DepositRepository) UpdateStatus(ctx context.Context, tx any, id uuid.UU
 		return errors.New("update status deposit: transaksi tidak valid")
 	}
 	_, err := sqlTx.ExecContext(ctx, `
-		UPDATE deposits
+		UPDATE time_deposits
 		SET status = $2::deposit_status,
 		    maturity_proceeds = $3,
 		    paid_profit = $4,
@@ -231,7 +231,7 @@ func (r *DepositRepository) Rollover(ctx context.Context, tx any, id uuid.UUID, 
 		return errors.New("rollover deposit: transaksi tidak valid")
 	}
 	_, err := sqlTx.ExecContext(ctx, `
-		UPDATE deposits
+		UPDATE time_deposits
 		SET placement_amount = $2,
 		    paid_profit = paid_profit + $3,
 		    paid_tax = paid_tax + $4,

@@ -156,7 +156,7 @@ func (e *moneyEnv) insertDeposit(t *testing.T, accountNumber string, customerID 
 	t.Helper()
 	var id uuid.UUID
 	err := e.db.QueryRowContext(e.ctx, `
-		INSERT INTO deposits (account_number, customer_id, product_id, branch_id,
+		INSERT INTO time_deposits (account_number, customer_id, product_id, branch_id,
 			placement_amount, term_months, start_date, maturity_date)
 		VALUES ($1, $2, (SELECT id FROM banking_products WHERE code = $3),
 			(SELECT id FROM branches WHERE code = '001'), 1000000, 3, CURRENT_DATE, CURRENT_DATE + 90)
