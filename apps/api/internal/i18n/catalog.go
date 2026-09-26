@@ -182,6 +182,8 @@ const (
 	MsgAccountNotClosable                   Code = "account_not_closable"
 	MsgInvalidBranchCode                    Code = "invalid_branch_code"
 	MsgCrossBranchAccess                    Code = "cross_branch_access"
+	MsgBMPKBankWide                         Code = "bmpk_bank_wide"
+	MsgBMPKInputInvalid                     Code = "bmpk_input_invalid"
 	MsgBankProfileNameRequired              Code = "bank_profile_name_required"
 	MsgBankProfileNameTooShort              Code = "bank_profile_name_too_short"
 	MsgBankProfileEmpty                     Code = "bank_profile_empty"
@@ -497,6 +499,8 @@ var codeList = []Code{
 	MsgAccountNotClosable,
 	MsgInvalidBranchCode,
 	MsgCrossBranchAccess,
+	MsgBMPKBankWide,
+	MsgBMPKInputInvalid,
 	MsgBankProfileNameRequired,
 	MsgBankProfileNameTooShort,
 	MsgBankProfileEmpty,
@@ -1307,6 +1311,14 @@ var catalog = map[Code]map[Lang]string{
 	MsgCrossBranchAccess: {
 		ID: "akses lintas cabang ditolak: data berada di cabang lain",
 		EN: "cross-branch access denied: the data belongs to another branch",
+	},
+	MsgBMPKBankWide: {
+		ID: "laporan BMPK bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the BMPK report is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgBMPKInputInvalid: {
+		ID: "data pihak terkait/batas BMPK tidak valid",
+		EN: "BMPK related party/limit data is invalid",
 	},
 	MsgBankProfileNameRequired: {
 		ID: "nama bank wajib diisi",
