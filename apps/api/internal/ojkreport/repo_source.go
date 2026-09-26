@@ -90,10 +90,10 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 	return out, nil
 }
 
-// lengkapiSandiReferensiCustomer mengisi sandi pihak lawan (kolom XVIII) dan sektor
-// ekonomi (kolom XX) tiap baris kredit dari SATU panggilan GetByIDs untuk seluruh
-// nasabah yang berbeda, bukan satu query per kredit. Baris tanpa nasabah terbaca
-// atau tanpa sandi dibiarkan kosong; form terkait menulis "-".
+// lengkapiSandiReferensiCustomer mengisi sandi pihak lawan (kolom XVIII), sektor
+// ekonomi (kolom XX), dan hubungan dengan bank (kolom IX) tiap baris kredit dari SATU
+// panggilan GetByIDs untuk seluruh nasabah yang berbeda, bukan satu query per kredit.
+// Baris tanpa nasabah terbaca atau tanpa sandi dibiarkan kosong; form terkait menulis "-".
 func (s RepoSource) lengkapiSandiReferensiCustomer(ctx context.Context, rows []LoanRow) error {
 	if s.Customers == nil || len(rows) == 0 {
 		return nil
@@ -126,6 +126,7 @@ func (s RepoSource) lengkapiSandiReferensiCustomer(ctx context.Context, rows []L
 		}
 		rows[i].OJKPihakLawanCode = rec.OJKPihakLawanCode
 		rows[i].OJKSektorEkonomiCode = rec.OJKSektorEkonomiCode
+		rows[i].OJKHubunganBankCode = rec.OJKHubunganBankCode
 	}
 	return nil
 }
@@ -251,5 +252,10 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		PrincipalAmount:    l.PrincipalAmount,
 		AkadDate:           l.AkadDate,
 		FinalDueDate:       l.FinalDueDate,
+		// Sandi inline/field sederhana Form 06.00 (VIII, XI, XXII) yang diisi bank
+		// lewat SQL/seed; dibiarkan kosong bila belum ada, form menulis "-".
+		OJKJenisPenggunaanCode:   l.OJKJenisPenggunaanCode,
+		OJKPeriodePembayaranCode: l.OJKPeriodePembayaranCode,
+		OJKKabupatenCode:         l.OJKKabupatenCode,
 	}
 }

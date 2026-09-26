@@ -85,6 +85,20 @@ type LoanRow struct {
 	// 16/2024), sumber kolom XX "Sektor Ekonomi" Form 06.00. Kosong berarti bank
 	// belum mengisi sandinya; laporan menulis "-".
 	OJKSektorEkonomiCode string
+	// OJKHubunganBankCode adalah sandi inline Hubungan dengan Bank (11/12/20,
+	// Lampiran II Form 06.00-2), sumber kolom IX Form 06.00. Kosong berarti bank
+	// belum mengisi sandinya; laporan menulis "-".
+	OJKHubunganBankCode string
+	// OJKJenisPenggunaanCode adalah sandi inline Jenis Penggunaan (10/20/31/32/35/39),
+	// sumber kolom VIII Form 06.00. Kosong berarti bank belum mengisi sandinya.
+	OJKJenisPenggunaanCode string
+	// OJKPeriodePembayaranCode adalah sandi inline Periode Pembayaran Pokok dan Bunga
+	// (1-8), sumber kolom XI Form 06.00. Kosong berarti bank belum mengisi sandinya.
+	OJKPeriodePembayaranCode string
+	// OJKKabupatenCode adalah sandi Kabupaten/Kota lokasi penggunaan kredit (Lampiran 03
+	// SEOJK 16/2024), sumber kolom XXII "Lokasi Penggunaan" Form 06.00. Kosong berarti
+	// bank belum mengisi sandinya; laporan menulis "-".
+	OJKKabupatenCode string
 }
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk

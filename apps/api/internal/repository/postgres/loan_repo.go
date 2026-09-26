@@ -34,7 +34,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	COALESCE((SELECT b.code FROM branches b WHERE b.id = loans.branch_id), ''),
 	(SELECT MAX(sf.due_date) FROM loan_schedules sf WHERE sf.loan_id = loans.id),
 	original_eir_monthly, original_eir_method, original_eir_basis, original_eir_calculated_at, restructure_loss_balance, rejection_reason,
-	written_off_amount`
+	written_off_amount,
+	ojk_jenis_penggunaan_code, ojk_periode_pembayaran_code, ojk_kabupaten_code`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -45,6 +46,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var finalDue, eirCalculatedAt sql.NullTime
 	var eirMethod, eirBasis sql.NullString
 	var rejectionReason sql.NullString
+	var ojkJenisPenggunaan, ojkPeriodePembayaran, ojkKabupaten sql.NullString
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -62,6 +64,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&l.OriginalEIRMonthly, &eirMethod, &eirBasis, &eirCalculatedAt, &l.RestructureLossBalance,
 		&rejectionReason,
 		&l.WrittenOffAmount,
+		&ojkJenisPenggunaan, &ojkPeriodePembayaran, &ojkKabupaten,
 	)
 	if err != nil {
 		return nil, err
@@ -113,6 +116,9 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	if rejectionReason.Valid {
 		l.RejectionReason = rejectionReason.String
 	}
+	l.OJKJenisPenggunaanCode = ojkJenisPenggunaan.String
+	l.OJKPeriodePembayaranCode = ojkPeriodePembayaran.String
+	l.OJKKabupatenCode = ojkKabupaten.String
 	return &l, nil
 }
 

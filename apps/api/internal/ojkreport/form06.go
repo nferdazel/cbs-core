@@ -82,7 +82,7 @@ var form06Columns = []form06Column{
 	}},
 	{Sandi: form06SandiIDPihakLawan, Nama: "ID Pihak Lawan", Reason: "sandi pihak lawan mengacu Lampiran 02 yang belum dipetakan; sistem hanya menyimpan UUID nasabah internal"},
 	{Sandi: form06SandiNoIdentitas, Nama: "No. Identitas", Reason: "NIK/NPWP nasabah tersimpan terenkripsi untuk dokumen dan tidak dibuka sebagai keluaran laporan"},
-	{Sandi: form06SandiKelompok, Nama: "Kode Kelompok Kredit", Reason: "kelompok peminjam pihak tidak terkait belum dimodelkan"},
+	{Sandi: form06SandiKelompok, Nama: "Kode Kelompok Kredit", Reason: "kelompok peminjam pihak tidak terkait butuh daftar sandi OJK yang belum ada rujukannya di repo"},
 	{Sandi: form06SandiNoRekening, Nama: "No. Rekening", Value: func(r LoanRow) string {
 		return dashIfEmpty(r.LoanNumber)
 	}},
@@ -90,10 +90,24 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiRestruktur, Nama: "Status Restrukturisasi", Value: func(r LoanRow) string {
 		return sandiStatusRestrukturisasi(r)
 	}},
-	{Sandi: form06SandiPenggunaan, Nama: "Jenis Penggunaan", Reason: "tujuan kredit berupa teks bebas tanpa pemetaan ke sandi Lampiran II"},
-	{Sandi: form06SandiHubungan, Nama: "Hubungan dengan Bank", Reason: "hubungan pihak terkait dengan bank belum dimodelkan"},
-	{Sandi: form06SandiSumberDana, Nama: "Sumber Dana Pelunasan", Reason: "sumber dana pelunasan debitur belum dimodelkan"},
-	{Sandi: form06SandiPeriodeBayar, Nama: "Periode Pembayaran Pokok dan Bunga", Reason: "periode pembayaran angsuran belum disimpan sebagai sandi OJK"},
+	{Sandi: form06SandiPenggunaan, Nama: "Jenis Penggunaan", Value: func(r LoanRow) string {
+		// Sandi inline Lampiran II Form 06.00-2 (docs/LAMPIRAN-OJK.md): 10/20/31/32/35/39.
+		// Nilai diisi bank lewat SQL/seed (loans.ojk_jenis_penggunaan_code); loans.purpose
+		// tetap teks bebas dan tidak dipetakan agar tidak menebak sandi.
+		return dashIfEmpty(r.OJKJenisPenggunaanCode)
+	}},
+	{Sandi: form06SandiHubungan, Nama: "Hubungan dengan Bank", Value: func(r LoanRow) string {
+		// Sandi inline Lampiran II Form 06.00-2 (docs/LAMPIRAN-OJK.md): 11/12/20. Diisi
+		// bank per nasabah lewat SQL/seed (customers.ojk_hubungan_bank_code).
+		return dashIfEmpty(r.OJKHubunganBankCode)
+	}},
+	{Sandi: form06SandiSumberDana, Nama: "Sumber Dana Pelunasan", Reason: "sandi sumber dana pelunasan butuh daftar sandi OJK yang belum ada rujukannya di repo"},
+	{Sandi: form06SandiPeriodeBayar, Nama: "Periode Pembayaran Pokok dan Bunga", Value: func(r LoanRow) string {
+		// Sandi inline Lampiran II Form 06.00-2 (docs/LAMPIRAN-OJK.md): 1 s.d. 8. Nilai
+		// diisi bank lewat SQL/seed (loans.ojk_periode_pembayaran_code); jadwal angsuran
+		// internal tidak dipetakan karena sandi periodenya tidak tersurat di repo.
+		return dashIfEmpty(r.OJKPeriodePembayaranCode)
+	}},
 	{Sandi: form06SandiJangkaWaktu, Nama: "Jangka Waktu", Value: func(r LoanRow) string {
 		// Hanya jatuh tempo akhir yang tersimpan; tanggal mulai kredit tidak dimuat.
 		if r.FinalDueDate == nil {
@@ -126,8 +140,12 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiSektor, Nama: "Sektor Ekonomi", Value: func(r LoanRow) string {
 		return dashIfEmpty(r.OJKSektorEkonomiCode)
 	}},
-	{Sandi: form06SandiKategori, Nama: "Kategori Usaha", Reason: "kategori usaha mikro/kecil/menengah belum dimodelkan"},
-	{Sandi: form06SandiLokasi, Nama: "Lokasi Penggunaan", Reason: "lokasi penggunaan kredit belum dimodelkan"},
+	{Sandi: form06SandiKategori, Nama: "Kategori Usaha", Reason: "kategori usaha mikro/kecil/menengah butuh daftar sandi OJK yang belum ada rujukannya di repo"},
+	{Sandi: form06SandiLokasi, Nama: "Lokasi Penggunaan", Value: func(r LoanRow) string {
+		// Lampiran 03 SEOJK 16/2024 (sandi 4 digit, FK ke ojk_kabupaten). Nilai diisi
+		// bank lewat SQL/seed (loans.ojk_kabupaten_code); baris tanpa sandi ditulis "-".
+		return dashIfEmpty(r.OJKKabupatenCode)
+	}},
 	{Sandi: form06SandiSukuBunga, Nama: "Suku Bunga", Value: func(r LoanRow) string {
 		// Lampiran II Form 06.00 – 2 butir XXIII: persentase suku bunga tahunan
 		// sampai 2 digit desimal. Kolom basis data sudah dalam persen.
@@ -157,7 +175,7 @@ var form06Columns = []form06Column{
 	}},
 	{Sandi: form06SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
 	{Sandi: form06SandiBMPK, Nama: "Status BMPK", Reason: "uji BMPK per pihak terkait belum dihitung"},
-	{Sandi: form06SandiSifatKredit, Nama: "Sifat Kredit", Reason: "sifat kredit (pengalihan piutang/lainnya) belum dimodelkan"},
+	{Sandi: form06SandiSifatKredit, Nama: "Sifat Kredit", Reason: "sifat kredit (pengalihan piutang/lainnya) butuh daftar sandi OJK yang belum ada rujukannya di repo"},
 	{Sandi: form06SandiProgram, Nama: "Kredit Program Pemerintah", Reason: "program pemerintah (KUR dan lainnya) belum dimodelkan"},
 	{Sandi: form06SandiSektorKUR, Nama: "Sektor Kredit Usaha Rakyat", Reason: "sektor KUR belum dimodelkan"},
 	{Sandi: form06SandiAkadAwal, Nama: "Tanggal Akad Awal", Value: func(r LoanRow) string {

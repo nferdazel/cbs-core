@@ -272,6 +272,15 @@ type Loan struct {
 	AkadNumber string     `json:"akad_number,omitempty"`
 	AkadDate   *time.Time `json:"akad_date,omitempty"`
 	Purpose    string     `json:"purpose,omitempty"`
+	// OJKJenisPenggunaanCode, OJKPeriodePembayaranCode, dan OJKKabupatenCode adalah sandi
+	// inline/field sederhana Form 06.00 per kredit (Lampiran II SEOJK 16/2024):
+	// VIII Jenis Penggunaan (10/20/31/32/35/39), XI Periode Pembayaran Pokok dan Bunga
+	// (1-8), dan XXII Lokasi Penggunaan (Lampiran 03). Kosong berarti bank belum mengisi
+	// sandinya lewat SQL/seed; laporan menulis "-", bukan menebak dari loans.purpose atau
+	// nama cabang.
+	OJKJenisPenggunaanCode   string `json:"ojk_jenis_penggunaan_code,omitempty"`
+	OJKPeriodePembayaranCode string `json:"ojk_periode_pembayaran_code,omitempty"`
+	OJKKabupatenCode         string `json:"ojk_kabupaten_code,omitempty"`
 	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
 	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
 	RejectionReason string `json:"rejection_reason,omitempty"`

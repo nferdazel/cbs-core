@@ -75,10 +75,14 @@ type Customer struct {
 	// nasabah (Lampiran 02/05 SEOJK 16/2024), sumber Form 06.00 kolom XVIII/XX.
 	// Kosong berarti belum diisi; nilai diisi bank lewat SQL/seed (belum ada
 	// endpoint API), dan laporan menulis "-", bukan menebak dari nama/alamat.
-	OJKPihakLawanCode    string    `json:"ojk_pihak_lawan_code,omitempty"`
-	OJKSektorEkonomiCode string    `json:"ojk_sektor_ekonomi_code,omitempty"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	OJKPihakLawanCode    string `json:"ojk_pihak_lawan_code,omitempty"`
+	OJKSektorEkonomiCode string `json:"ojk_sektor_ekonomi_code,omitempty"`
+	// OJKHubunganBankCode adalah sandi inline Hubungan dengan Bank (Lampiran II Form 06.00-2:
+	// 11/12/20), sumber Form 06.00 kolom IX. Kosong berarti belum diisi; nilai diisi bank
+	// lewat SQL/seed (belum ada endpoint API), dan laporan menulis "-".
+	OJKHubunganBankCode string    `json:"ojk_hubungan_bank_code,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // CustomerRecord adalah representasi penyimpanan: nilai pribadi dalam bentuk
@@ -112,8 +116,12 @@ type CustomerRecord struct {
 	// diisi; laporan menulis "-".
 	OJKPihakLawanCode    string
 	OJKSektorEkonomiCode string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	// OJKHubunganBankCode adalah sandi inline Hubungan dengan Bank (11/12/20) per
+	// nasabah, sumber Form 06.00 kolom IX. Bukan data pribadi terenkripsi; kosong
+	// berarti belum diisi dan laporan menulis "-".
+	OJKHubunganBankCode string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type CreateCustomerInput struct {

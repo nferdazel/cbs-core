@@ -60,19 +60,15 @@ bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang R
 | XVIII | Jenis Debitur | Lampiran 02 Daftar Sandi Pihak Lawan (`docs/LAMPIRAN-OJK.md`) |
 | XX | Sektor Ekonomi | Lampiran 05 Daftar Sandi Sektor Ekonomi |
 
-### 2b. Bisa dimodelkan, perubahan kecil (12)
+### 2b. Bisa dimodelkan, perubahan kecil (8)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
 | II | ID Pihak Lawan | Bukan sandi lampiran: CIF internal (harus sama dengan SLIK), tinggal disingkapkan |
-| VIII | Jenis Penggunaan | Sandi inline 10/20/31/32/35/39; `loans.purpose` masih teks bebas, perlu pemetaan |
-| IX | Hubungan dengan Bank | Sandi inline 11/12/20 |
-| XI | Periode Pembayaran Pokok dan Bunga | Sandi inline 1–8 |
 | IV | Kode Kelompok Kredit | Kelompok peminjam pihak tidak terkait |
 | X | Sumber Dana Pelunasan | Kolom sandi sumber dana |
 | XV | Tanggal Mulai Macet | Bisa diturunkan dari tunggakan/jadwal, bukan hanya DPD |
 | XXI | Kategori Usaha | Mikro/kecil/menengah |
-| XXII | Lokasi Penggunaan | Kolom lokasi pemakaian kredit |
 | XXIV | Penjamin | Perlu data penjamin + bagian yang dijamin |
 | XXXVIII | Sifat Kredit | Pengalihan piutang/lainnya |
 | XLII | Tanggal Akad Akhir | Tanggal addendum terakhir |
@@ -111,7 +107,7 @@ bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang R
 | XLVI | CKPN Aset Tidak Baik | idem |
 | XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
-### 2f. Sudah dikerjakan (5)
+### 2f. Sudah dikerjakan (9)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
@@ -120,6 +116,10 @@ bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang R
 | XVIII | Jenis Debitur (Pihak Lawan) | migrasi 000104: `customers.ojk_pihak_lawan_code`; `-` bila kosong |
 | XX | Sektor Ekonomi | migrasi 000104: `customers.ojk_sektor_ekonomi_code`; `-` bila kosong |
 | XXXV | Pendapatan Bunga yang Akan Diterima | SUM(`profit_accrued_amount`) = sisa akruan/piutang bunga 10400 per kredit |
+| VIII | Jenis Penggunaan | migrasi 000105: `loans.ojk_jenis_penggunaan_code` (inline 10/20/31/32/35/39); `-` bila kosong |
+| IX | Hubungan dengan Bank | migrasi 000105: `customers.ojk_hubungan_bank_code` (inline 11/12/20) |
+| XI | Periode Pembayaran Pokok dan Bunga | migrasi 000105: `loans.ojk_periode_pembayaran_code` (inline 1–8) |
+| XXII | Lokasi Penggunaan | migrasi 000105: `loans.ojk_kabupaten_code` (FK `ojk_kabupaten` Lampiran 03) |
 
 ## 3. Laporan/berkas di luar form bulanan (14)
 
@@ -142,18 +142,18 @@ bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang R
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **6 sudah dikerjakan** (§1 III dan
-§2f), sisa 40. Laporan/berkas: **14**. Total sisa **54**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **10 sudah dikerjakan** (§1 III dan
+§2f), sisa 36. Laporan/berkas: **14**. Total sisa **50**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 18 | 2 | 20 |
+| K1 — bisa, kecil | 14 | 2 | 16 |
 | K2 — butuh modul | 11 | 5 | 16 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 0 | 0 | 0 |
 | DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **40** | **14** | **54** |
+| **Total sisa** | **36** | **14** | **50** |
 
 ## 5. Urutan yang disarankan
 

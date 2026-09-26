@@ -25,6 +25,7 @@ func NewCustomerRepository(db *sql.DB) *CustomerRepository {
 const customerColumns = `id, cif_number, full_name_enc, id_card_number_enc, email_enc,
 	phone_number_enc, address_enc, id_card_index, email_index, index_key_version,
 	status, branch_id, metadata, ojk_pihak_lawan_code, ojk_sektor_ekonomi_code,
+	ojk_hubungan_bank_code,
 	created_at, updated_at`
 
 func (r *CustomerRepository) Create(ctx context.Context, c *domain.CustomerRecord) error {
@@ -242,11 +243,12 @@ func scanCustomer(row rowScanner) (*domain.CustomerRecord, error) {
 	var metaBytes []byte
 	var fullName, idCard, email, phone, address, idCardIdx, emailIdx sql.NullString
 	var ojkPihakLawan, ojkSektorEkonomi sql.NullString
+	var ojkHubunganBank sql.NullString
 
 	if err := row.Scan(
 		&c.ID, &c.CIFNumber, &fullName, &idCard, &email, &phone, &address,
 		&idCardIdx, &emailIdx, &c.IndexKeyVersion, &c.Status, &c.BranchID, &metaBytes,
-		&ojkPihakLawan, &ojkSektorEkonomi, &c.CreatedAt, &c.UpdatedAt,
+		&ojkPihakLawan, &ojkSektorEkonomi, &ojkHubunganBank, &c.CreatedAt, &c.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -260,6 +262,7 @@ func scanCustomer(row rowScanner) (*domain.CustomerRecord, error) {
 	c.EmailIndex = emailIdx.String
 	c.OJKPihakLawanCode = ojkPihakLawan.String
 	c.OJKSektorEkonomiCode = ojkSektorEkonomi.String
+	c.OJKHubunganBankCode = ojkHubunganBank.String
 
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &c.Metadata)
