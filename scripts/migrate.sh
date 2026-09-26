@@ -4,6 +4,9 @@
 # Karakteristik yang penting untuk perbankan:
 #   - ON_ERROR_STOP=1: satu error menggagalkan seluruh file, tidak ada migrasi separuh jadi.
 #   - Satu transaksi per file (-1): file yang gagal di-rollback utuh.
+#   - Rekam ikut transaksi: baris schema_migrations ditulis di transaksi yang SAMA dengan
+#     isi file, sehingga tidak ada state "ter-apply tetapi tidak tercatat" bila proses mati
+#     di tengah. Sebelum 26 Sep 2026 apply dan rekam memakai dua koneksi terpisah.
 #   - Dijalankan sebagai owner tabel (default: qouver), karena DDL mengubah objek milik owner.
 #
 # Pemakaian:
@@ -102,9 +105,14 @@ for file in "$MIGRATIONS_DIR"/*.up.sql; do
   fi
 
   echo "menerapkan: $name"
-  # Satu transaksi per file: gagal berarti rollback utuh, tidak menyisakan migrasi separuh.
-  psql_exec -q -1 -f - < "$file"
-  psql_query "INSERT INTO schema_migrations (filename) VALUES ('$name') ON CONFLICT DO NOTHING" -q >/dev/null
+  # Isi file DAN baris pencatat dikirim dalam satu transaksi (-1): gagal berarti rollback
+  # utuh, termasuk baris schema_migrations, sehingga tidak ada "ter-apply tanpa tercatat".
+  # Baris baru dimulai lebih dulu agar berkas yang tidak diakhiri newline tidak melumat
+  # pernyataan INSERT ke baris terakhirnya.
+  {
+    cat "$file"
+    printf "\nINSERT INTO schema_migrations (filename) VALUES ('%s') ON CONFLICT DO NOTHING;\n" "$name"
+  } | psql_exec -q -1 -f -
   applied=$((applied + 1))
 done
 

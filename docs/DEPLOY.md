@@ -149,8 +149,11 @@ Gejala: `preflight` melaporkan migrasi tertinggal padahal skema sudah sesuai; at
 `UPDATE ... kolom_lama` padahal kolom itu sudah tidak ada.
 
 Sebab: migrasi pernah dijalankan (atau dampaknya sudah ada karena perbaikan manual),
-tetapi barisnya tidak masuk `schema_migrations`. Karena `migrate.sh` memakai
-`ON_ERROR_STOP=1`, kegagalan itu memblokir migrasi sesudahnya.
+tetapi barisnya tidak masuk `schema_migrations`. Sebelum 26 Sep 2026 ini bisa terjadi karena
+apply dan rekam di `migrate.sh` memakai dua koneksi terpisah — proses yang mati di antaranya
+meninggalkan state "ter-apply tetapi tidak tercatat". Sejak 26 Sep 2026 keduanya satu
+transaksi, jadi penyebab itu tidak lagi ada; bagian ini dipertahankan untuk DB lama. Karena
+`migrate.sh` memakai `ON_ERROR_STOP=1`, migrasi yang gagal memblokir migrasi sesudahnya.
 
 Tindakan, SETELAH memastikan skema memang sudah sesuai:
 1. Bandingkan berkas repo dengan catatan DB:
