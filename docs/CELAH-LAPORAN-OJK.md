@@ -50,7 +50,7 @@ keputusan pemilik sistem.
 | XVIII | Jenis Debitur | Lampiran 02 Daftar Sandi Pihak Lawan (`docs/LAMPIRAN-OJK.md`) |
 | XX | Sektor Ekonomi | Lampiran 05 Daftar Sandi Sektor Ekonomi |
 
-### 2b. Bisa dimodelkan, perubahan kecil (15)
+### 2b. Bisa dimodelkan, perubahan kecil (12)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
@@ -64,17 +64,15 @@ keputusan pemilik sistem.
 | XXI | Kategori Usaha | Mikro/kecil/menengah |
 | XXII | Lokasi Penggunaan | Kolom lokasi pemakaian kredit |
 | XXIV | Penjamin | Perlu data penjamin + bagian yang dijamin |
-| XXV | Nilai Agunan Diperhitungkan untuk PPKA | Sudah dihitung modul PPAP; perlu disingkapkan ke baris kredit |
-| XXXV | Pendapatan Bunga yang Akan Diterima | Piutang bunga sudah per angsuran; dimuat ke daftar kredit |
-| XXXVI | Pendapatan Bunga Dalam Penyelesaian | Bunga kredit menunggak |
 | XXXVIII | Sifat Kredit | Pengalihan piutang/lainnya |
 | XLII | Tanggal Akad Akhir | Tanggal addendum terakhir |
 
-### 2c. Perlu register/modul baru (8)
+### 2c. Perlu register/modul baru (9)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
 | XIX | Sandi Bank | Butuh daftar sandi bank 6 digit dari APOLO/SPOJK (tidak terbit di SEOJK) |
+| XXV | Nilai Agunan Diperhitungkan untuk PPKA | Nilai ini hanya hasil runtime modul PPAP, tidak tersimpan per kredit; butuh kolom persisten + keputusan kebijakan |
 | XXVI | Kelonggaran Tarik | Perlu pemodelan fasilitas komitmen |
 | XXIX | Provisi Belum Diamortisasi | Perlu amortisasi provisi per kredit |
 | XXX | Biaya Transaksi Belum Diamortisasi | Perlu amortisasi biaya transaksi per kredit |
@@ -92,22 +90,24 @@ keputusan pemilik sistem.
 | XL | Sektor Kredit Usaha Rakyat | Hanya bila bank menyalurkan KUR |
 | XLIII | Sandi LPBBTI | Hanya bila bank bekerja sama dengan LPBBTI |
 
-### 2e. Butuh keputusan (5)
+### 2e. Butuh keputusan (6)
 
 | Kolom | Nama | Keputusan yang ditunggu |
 |---|---|---|
 | III | No. Identitas (NIK/NPWP) | Tersimpan terenkripsi; membukanya sebagai keluaran laporan adalah keputusan privasi, bukan celah teknis |
+| XXXVI | Pendapatan Bunga Dalam Penyelesaian | Sistem memakai basis kas untuk NPL (`accrual_status = CASH_BASIS_NPL`), bukan reklasifikasi bunga terakru ke akun "dalam penyelesaian". Butuh keputusan kebijakan + pemodelan, jangan diturunkan dari kolektibilitas (akan menggandakan XXXV) |
 | XLIV | CKPN Aset Baik | Stage 1/2/3 hanya untuk bank pasar modal (SAK Indonesia); instalasi ini SAK EP. Lihat `CKPN-SIAP-RILIS.md` §(f) |
 | XLV | CKPN Aset Kurang Baik | idem |
 | XLVI | CKPN Aset Tidak Baik | idem |
 | XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
-### 2f. Sudah dikerjakan (2)
+### 2f. Sudah dikerjakan (3)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
 | XIII | Angsuran Pokok Pertama | `f6f6a60`: MIN(due_date) jadwal angsuran; `-` bila tanpa jadwal |
 | XVII | Nominal Tunggakan Pokok dan Bunga | `f6f6a60`: sisa pokok+bunga untuk angsuran jatuh tempo sebelum `as_of` |
+| XXXV | Pendapatan Bunga yang Akan Diterima | SUM(`profit_accrued_amount`) = sisa akruan/piutang bunga 10400 per kredit |
 
 ## 3. Laporan/berkas di luar form bulanan (14)
 
@@ -130,18 +130,18 @@ keputusan pemilik sistem.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **2 sudah dikerjakan** (§2f), sisa 44.
-Laporan/berkas: **14**. Total sisa **58**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **3 sudah dikerjakan** (§2f), sisa 43.
+Laporan/berkas: **14**. Total sisa **57**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 21 | 2 | 23 |
-| K2 — butuh modul | 10 | 5 | 15 |
+| K1 — bisa, kecil | 18 | 2 | 20 |
+| K2 — butuh modul | 11 | 5 | 16 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 3 | 0 | 3 |
-| DK — butuh keputusan | 6 | 0 | 6 |
+| DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **44** | **14** | **58** |
+| **Total sisa** | **43** | **14** | **57** |
 
 ## 5. Urutan yang disarankan
 
