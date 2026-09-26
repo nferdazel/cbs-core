@@ -42,6 +42,12 @@ func (s *stubLoanRepo) List(ctx context.Context, limit, offset int, actor domain
 	return []domain.Loan{*s.loan}, 1, nil
 }
 
+// ListLoanScheduleAggregates memenuhi kontrak repo; uji yang benar-benar menguji
+// agregat jadwal mengisi hasilnya lewat loanAggStub di paket ojkreport.
+func (s *stubLoanRepo) ListLoanScheduleAggregates(context.Context, time.Time, domain.Actor) ([]domain.LoanScheduleAggregate, error) {
+	return nil, nil
+}
+
 func (s *stubLoanRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
 	if s.loan != nil {
 		s.loan.Status = status

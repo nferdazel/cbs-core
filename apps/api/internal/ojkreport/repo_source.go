@@ -37,13 +37,27 @@ const maxHalamanKredit = 1000
 
 // ListLoansForOJK membaca seluruh kredit bank-wide. Kebijakan bank-wide ditegakkan
 // di lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
-func (s RepoSource) ListLoansForOJK(ctx context.Context, _ time.Time, actor domain.Actor) ([]LoanRow, error) {
+//
+// asOf dipakai menghitung tunggakan: angsuran yang jatuh tempo sebelum asOf dan
+// belum lunas. Agregat jadwal diambil dengan SATU query per kredit (GROUP BY
+// loan_id, lihat ListLoanScheduleAggregates), lalu dipetakan lewat nomor kredit
+// yang unik; bukan satu query per kredit.
+func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]LoanRow, error) {
 	if err := pastikanLintasCabang(actor); err != nil {
 		return nil, err
 	}
 	if s.Loans == nil {
 		return nil, nil
 	}
+	aggregates, err := s.Loans.ListLoanScheduleAggregates(ctx, asOf, actor)
+	if err != nil {
+		return nil, err
+	}
+	agregat := make(map[string]domain.LoanScheduleAggregate, len(aggregates))
+	for _, a := range aggregates {
+		agregat[a.LoanNumber] = a
+	}
+
 	var out []LoanRow
 	offset := 0
 	for page := 0; page < maxHalamanKredit; page++ {
@@ -52,7 +66,12 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, _ time.Time, actor doma
 			return nil, err
 		}
 		for i := range items {
-			out = append(out, loanRowDariDomain(items[i]))
+			row := loanRowDariDomain(items[i])
+			if a, ok := agregat[row.LoanNumber]; ok {
+				row.FirstInstallmentDate = a.FirstInstallmentDate
+				row.OverdueUnpaid = a.OverdueUnpaid
+			}
+			out = append(out, row)
 		}
 		offset += len(items)
 		if len(items) == 0 || offset >= total {

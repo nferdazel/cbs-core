@@ -250,6 +250,76 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor doma
 	return list, total, nil
 }
 
+// listLoanScheduleAggregatesQuery merangkum jadwal angsuran per kredit dalam satu
+// query: tanggal angsuran pertama (MIN due_date) dan nominal tunggakan pokok+bunga
+// yang sudah jatuh tempo sebelum asOf dan belum lunas. Enum installment_status
+// hanya mengenal PENDING, PAID, OVERDUE, PARTIAL: tidak ada nilai batal, dan hanya
+// PAID yang berarti lunas, sehingga tiga status sisanya dihitung sebagai tunggakan.
+// Nominal tunggakan per baris jadwal adalah (principal_amount - paid_principal) +
+// (profit_amount - paid_profit); baris yang hasilnya <= 0 (mis. lebih bayar) tidak
+// dijumlahkan.
+//
+// %s menerima filter cabang/buku aktor supaya cakupan data sama dengan List.
+const listLoanScheduleAggregatesQuery = `
+	SELECT
+		l.loan_number,
+		MIN(s.due_date) AS first_installment_date,
+		COALESCE(SUM(
+			CASE
+				WHEN s.due_date < $%d
+					AND s.status <> 'PAID'
+					AND (s.principal_amount - s.paid_principal) + (s.profit_amount - s.paid_profit) > 0
+				THEN (s.principal_amount - s.paid_principal) + (s.profit_amount - s.paid_profit)
+				ELSE 0
+			END
+		), 0) AS overdue_unpaid
+	FROM loans l
+	JOIN loan_schedules s ON s.loan_id = l.id
+	WHERE TRUE%s
+	GROUP BY l.id
+	ORDER BY l.loan_number`
+
+// ListLoanScheduleAggregates mengambil agregat jadwal seluruh kredit dalam satu
+// query GROUP BY loan_id. Filter cabang dan buku diterapkan seperti List agar aktor
+// tidak melihat agregat kredit di luar kewenangannya.
+func (r *LoanRepository) ListLoanScheduleAggregates(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LoanScheduleAggregate, error) {
+	var args []any
+	filter := ""
+	// branchReadClause memakai placeholder $1, jadi klausa cabang harus lebih dulu.
+	if clause, bargs := branchReadClause("l.branch_id", actor); clause != "" {
+		filter += " AND " + clause
+		args = append(args, bargs...)
+	}
+	bookColumn := "(SELECT p.book FROM banking_products p WHERE p.id = l.product_id)"
+	if clause, bargs := bookReadClause(bookColumn, actor, len(args)+1); clause != "" {
+		filter += " AND " + clause
+		args = append(args, bargs...)
+	}
+	asOfArg := len(args) + 1
+	args = append(args, asOf)
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(listLoanScheduleAggregatesQuery, asOfArg, filter), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var list []domain.LoanScheduleAggregate
+	for rows.Next() {
+		var a domain.LoanScheduleAggregate
+		var firstInstallment sql.NullTime
+		if err := rows.Scan(&a.LoanNumber, &firstInstallment, &a.OverdueUnpaid); err != nil {
+			return nil, err
+		}
+		if firstInstallment.Valid {
+			t := firstInstallment.Time
+			a.FirstInstallmentDate = &t
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
+}
+
 func (r *LoanRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.LoanStatus, approvedBy *uuid.UUID) error {
 	return updateLoanStatus(ctx, r.db, id, status, approvedBy)
 }

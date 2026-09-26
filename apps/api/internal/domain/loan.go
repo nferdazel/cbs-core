@@ -318,6 +318,17 @@ type LoanSchedule struct {
 	RestructureLossAmortizedAmount decimal.Decimal `json:"restructure_loss_amortized_amount"`
 }
 
+// LoanScheduleAggregate merangkum jadwal angsuran satu kredit dalam satu baris:
+// tanggal angsuran pertama dan nominal tunggakan pokok+bunga yang jatuh tempo
+// sebelum asOf dan belum lunas. Dipakai laporan OJK (Form 06.00 kolom XIII/XVII).
+// Kredit tanpa jadwal tidak muncul; pemanggil memperlakukannya sebagai tidak punya
+// angsuran, bukan nol.
+type LoanScheduleAggregate struct {
+	LoanNumber           string
+	FirstInstallmentDate *time.Time
+	OverdueUnpaid        decimal.Decimal
+}
+
 type ApplyLoanInput struct {
 	CustomerID            uuid.UUID       `json:"customer_id"`
 	ProductID             uuid.UUID       `json:"product_id"`
@@ -421,6 +432,11 @@ type LoanRepository interface {
 	// List mengembalikan daftar kredit yang boleh dibaca aktor. Filter cabang
 	// diterapkan di query agar pagination dan total tetap benar.
 	List(ctx context.Context, limit, offset int, actor Actor) ([]Loan, int, error)
+	// ListLoanScheduleAggregates mengembalikan agregat jadwal angsuran per kredit
+	// (tanggal angsuran pertama dan nominal tunggakan pokok+bunga per asOf) dalam
+	// SATU query, bukan satu query per kredit. Filter cabang/buku aktor diterapkan
+	// sama seperti List; kredit tanpa jadwal tidak muncul.
+	ListLoanScheduleAggregates(ctx context.Context, asOf time.Time, actor Actor) ([]LoanScheduleAggregate, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	UpdateStatusTx(ctx context.Context, tx any, id uuid.UUID, status LoanStatus, approvedBy *uuid.UUID) error
 	// RejectLoanTx menandai kredit REJECTED sekaligus menyimpan alasan penolakan di

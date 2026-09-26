@@ -63,6 +63,15 @@ type LoanRow struct {
 	PrincipalAmount    decimal.Decimal
 	AkadDate           *time.Time
 	FinalDueDate       *time.Time
+	// FirstInstallmentDate adalah jatuh tempo angsuran pertama (MIN due_date)
+	// menurut jadwal kredit; sumber kolom XIII "Angsuran Pokok Pertama" Form 06.00.
+	// Nil berarti kredit tidak punya jadwal angsuran.
+	FirstInstallmentDate *time.Time
+	// OverdueUnpaid adalah nominal tunggakan pokok dan bunga: jumlah sisa
+	// (principal - paid_principal) + (profit - paid_profit) untuk angsuran yang
+	// jatuh tempo sebelum asOf dan belum lunas. Sumber kolom XVII "Nominal
+	// Tunggakan Pokok dan Bunga" Form 06.00. Nol berarti tidak menunggak.
+	OverdueUnpaid decimal.Decimal
 }
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk

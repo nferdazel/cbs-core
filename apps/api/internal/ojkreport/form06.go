@@ -101,7 +101,13 @@ var form06Columns = []form06Column{
 		}
 		return r.FinalDueDate.Format("2006-01-02")
 	}},
-	{Sandi: form06SandiAngsuranRetni, Nama: "Angsuran Pokok Pertama", Reason: "tanggal angsuran pertama tidak dimuat pada baris kredit (hanya jatuh tempo akhir)"},
+	{Sandi: form06SandiAngsuranRetni, Nama: "Angsuran Pokok Pertama", Value: func(r LoanRow) string {
+		// Sumber: MIN(due_date) jadwal kredit. Tanpa jadwal ditulis "-".
+		if r.FirstInstallmentDate == nil {
+			return "-"
+		}
+		return r.FirstInstallmentDate.Format("2006-01-02")
+	}},
 	{Sandi: form06SandiKualitas, Nama: "Kualitas", Value: func(r LoanRow) string {
 		return sandiKualitasKredit(r.Collectibility)
 	}},
@@ -109,7 +115,10 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiHariTunggakan, Nama: "Jumlah Hari Tunggakan Pokok dan/atau Bunga", Value: func(r LoanRow) string {
 		return fmt.Sprintf("%d", r.DPD)
 	}},
-	{Sandi: form06SandiNominalTungg, Nama: "Nominal Tunggakan Pokok dan Bunga", Reason: "nominal tunggakan per kredit tidak disimpan pada baris kredit"},
+	{Sandi: form06SandiNominalTungg, Nama: "Nominal Tunggakan Pokok dan Bunga", Value: func(r LoanRow) string {
+		// Nol tetap ditulis "0" (FormatRupiah), bukan dikosongkan.
+		return FormatRupiah(r.OverdueUnpaid)
+	}},
 	{Sandi: form06SandiJenisDebitur, Nama: "Jenis Debitur", Reason: "jenis debitur (perorangan/badan usaha) belum dipetakan ke sandi Lampiran 02"},
 	{Sandi: form06SandiSandiBank, Nama: "Sandi Bank", Reason: "sandi bank lawan tidak dimodelkan pada baris kredit"},
 	{Sandi: form06SandiSektor, Nama: "Sektor Ekonomi", Reason: "sektor ekonomi debitur belum dimodelkan"},
