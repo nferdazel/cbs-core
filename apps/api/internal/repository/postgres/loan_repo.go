@@ -251,13 +251,19 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor doma
 }
 
 // listLoanScheduleAggregatesQuery merangkum jadwal angsuran per kredit dalam satu
-// query: tanggal angsuran pertama (MIN due_date) dan nominal tunggakan pokok+bunga
-// yang sudah jatuh tempo sebelum asOf dan belum lunas. Enum installment_status
-// hanya mengenal PENDING, PAID, OVERDUE, PARTIAL: tidak ada nilai batal, dan hanya
-// PAID yang berarti lunas, sehingga tiga status sisanya dihitung sebagai tunggakan.
-// Nominal tunggakan per baris jadwal adalah (principal_amount - paid_principal) +
-// (profit_amount - paid_profit); baris yang hasilnya <= 0 (mis. lebih bayar) tidak
-// dijumlahkan.
+// query: tanggal angsuran pertama (MIN due_date), nominal tunggakan pokok+bunga
+// yang sudah jatuh tempo sebelum asOf dan belum lunas, serta piutang bunga yang
+// masih tercatat. Enum installment_status hanya mengenal PENDING, PAID, OVERDUE,
+// PARTIAL: tidak ada nilai batal, dan hanya PAID yang berarti lunas, sehingga tiga
+// status sisanya dihitung sebagai tunggakan. Nominal tunggakan per baris jadwal
+// adalah (principal_amount - paid_principal) + (profit_amount - paid_profit);
+// baris yang hasilnya <= 0 (mis. lebih bayar) tidak dijumlahkan.
+//
+// AccruedProfit menjumlahkan profit_accrued_amount (sisa akruan yang belum
+// diselesaikan pembayaran) seluruh angsuran, yaitu piutang bunga 10400 yang masih
+// tercatat. Tidak difilter asOf: akruan hanya terbentuk untuk angsuran yang sudah
+// jatuh tempo pada saat EOD berjalan, dan sisa yang belum dibayar memang masih
+// menjadi piutang bunga pada tanggal laporan.
 //
 // %s menerima filter cabang/buku aktor supaya cakupan data sama dengan List.
 const listLoanScheduleAggregatesQuery = `
@@ -272,7 +278,8 @@ const listLoanScheduleAggregatesQuery = `
 				THEN (s.principal_amount - s.paid_principal) + (s.profit_amount - s.paid_profit)
 				ELSE 0
 			END
-		), 0) AS overdue_unpaid
+		), 0) AS overdue_unpaid,
+		COALESCE(SUM(s.profit_accrued_amount), 0) AS accrued_profit
 	FROM loans l
 	JOIN loan_schedules s ON s.loan_id = l.id
 	WHERE TRUE%s
@@ -308,7 +315,7 @@ func (r *LoanRepository) ListLoanScheduleAggregates(ctx context.Context, asOf ti
 	for rows.Next() {
 		var a domain.LoanScheduleAggregate
 		var firstInstallment sql.NullTime
-		if err := rows.Scan(&a.LoanNumber, &firstInstallment, &a.OverdueUnpaid); err != nil {
+		if err := rows.Scan(&a.LoanNumber, &firstInstallment, &a.OverdueUnpaid, &a.AccruedProfit); err != nil {
 			return nil, err
 		}
 		if firstInstallment.Valid {

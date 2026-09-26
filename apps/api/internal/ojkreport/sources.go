@@ -72,6 +72,11 @@ type LoanRow struct {
 	// jatuh tempo sebelum asOf dan belum lunas. Sumber kolom XVII "Nominal
 	// Tunggakan Pokok dan Bunga" Form 06.00. Nol berarti tidak menunggak.
 	OverdueUnpaid decimal.Decimal
+	// AccruedProfit adalah piutang bunga yang masih tercatat: jumlah sisa akruan
+	// (loan_schedules.profit_accrued_amount) seluruh angsuran. Sumber kolom XXXV
+	// "Pendapatan Bunga yang Akan Diterima" Form 06.00. Nol berarti tidak ada
+	// bunga yang diakru dan belum diselesaikan pembayarannya.
+	AccruedProfit decimal.Decimal
 }
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk

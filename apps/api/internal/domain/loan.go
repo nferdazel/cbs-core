@@ -319,14 +319,20 @@ type LoanSchedule struct {
 }
 
 // LoanScheduleAggregate merangkum jadwal angsuran satu kredit dalam satu baris:
-// tanggal angsuran pertama dan nominal tunggakan pokok+bunga yang jatuh tempo
-// sebelum asOf dan belum lunas. Dipakai laporan OJK (Form 06.00 kolom XIII/XVII).
+// tanggal angsuran pertama, nominal tunggakan pokok+bunga yang jatuh tempo sebelum
+// asOf dan belum lunas, serta piutang bunga yang masih tercatat (sisa akruan yang
+// belum diselesaikan pembayaran). Dipakai laporan OJK (Form 06.00 kolom XIII/XVII/XXXV).
 // Kredit tanpa jadwal tidak muncul; pemanggil memperlakukannya sebagai tidak punya
 // angsuran, bukan nol.
 type LoanScheduleAggregate struct {
 	LoanNumber           string
 	FirstInstallmentDate *time.Time
 	OverdueUnpaid        decimal.Decimal
+	// AccruedProfit adalah jumlah sisa akruan bunga (loan_schedules.profit_accrued_amount)
+	// seluruh angsuran kredit ini: piutang bunga 10400 yang sudah diakui dan belum
+	// diselesaikan pembayaran. Sumber kolom XXXV "Pendapatan Bunga yang Akan Diterima"
+	// Form 06.00. Nol berarti tidak ada piutang bunga yang tersisa.
+	AccruedProfit decimal.Decimal
 }
 
 type ApplyLoanInput struct {

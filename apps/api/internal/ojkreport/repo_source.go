@@ -70,6 +70,7 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 			if a, ok := agregat[row.LoanNumber]; ok {
 				row.FirstInstallmentDate = a.FirstInstallmentDate
 				row.OverdueUnpaid = a.OverdueUnpaid
+				row.AccruedProfit = a.AccruedProfit
 			}
 			out = append(out, row)
 		}

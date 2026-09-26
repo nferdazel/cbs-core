@@ -146,7 +146,11 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiCKPN, Nama: "CKPN Yang Telah Dibentuk", Value: func(r LoanRow) string {
 		return FormatRupiah(r.RequiredCKPN)
 	}},
-	{Sandi: form06SandiBungaAkanTer, Nama: "Pendapatan Bunga yang Akan Diterima", Reason: "piutang bunga tersimpan per angsuran, tidak dimuat pada daftar kredit OJK"},
+	{Sandi: form06SandiBungaAkanTer, Nama: "Pendapatan Bunga yang Akan Diterima", Value: func(r LoanRow) string {
+		// Piutang bunga yang masih tercatat: jumlah sisa akruan (10400) yang belum
+		// diselesaikan pembayaran. Nol tetap ditulis "0" (FormatRupiah).
+		return FormatRupiah(r.AccruedProfit)
+	}},
 	{Sandi: form06SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
 	{Sandi: form06SandiBMPK, Nama: "Status BMPK", Reason: "uji BMPK per pihak terkait belum dihitung"},
 	{Sandi: form06SandiSifatKredit, Nama: "Sifat Kredit", Reason: "sifat kredit (pengalihan piutang/lainnya) belum dimodelkan"},

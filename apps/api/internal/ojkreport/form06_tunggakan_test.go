@@ -62,9 +62,9 @@ func (s *loanAggStub) ListLoanScheduleAggregates(_ context.Context, asOf time.Ti
 }
 
 // TestListLoansForOJKMengisiAgregatJadwal menutup rantai adaptor: asOf diteruskan
-// ke agregat jadwal, dan hasilnya dipetakan ke LoanRow lewat nomor kredit. Kredit
-// tanpa agregat (tidak punya jadwal) dibiarkan nil/nol, bukan diberi angka kredit
-// lain.
+// ke agregat jadwal, dan hasilnya dipetakan ke LoanRow lewat nomor kredit (tanggal
+// angsuran pertama, tunggakan, dan piutang bunga). Kredit tanpa agregat (tidak punya
+// jadwal) dibiarkan nil/nol, bukan diberi angka kredit lain.
 func TestListLoansForOJKMengisiAgregatJadwal(t *testing.T) {
 	asOf := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC)
 	pertama := time.Date(2025, time.April, 10, 0, 0, 0, 0, time.UTC)
@@ -74,7 +74,7 @@ func TestListLoansForOJKMengisiAgregatJadwal(t *testing.T) {
 			{LoanNumber: "LN-002", Status: domain.LoanStatusDisbursed},
 		},
 		aggregates: []domain.LoanScheduleAggregate{
-			{LoanNumber: "LN-001", FirstInstallmentDate: &pertama, OverdueUnpaid: decimal.NewFromInt(150_000)},
+			{LoanNumber: "LN-001", FirstInstallmentDate: &pertama, OverdueUnpaid: decimal.NewFromInt(150_000), AccruedProfit: decimal.NewFromInt(75_000)},
 		},
 	}
 	src := RepoSource{Loans: repo}
@@ -95,8 +95,12 @@ func TestListLoansForOJKMengisiAgregatJadwal(t *testing.T) {
 	if !rows[0].OverdueUnpaid.Equal(decimal.NewFromInt(150_000)) {
 		t.Errorf("tunggakan LN-001 = %s, ingin 150000", rows[0].OverdueUnpaid)
 	}
-	if rows[1].FirstInstallmentDate != nil || !rows[1].OverdueUnpaid.IsZero() {
-		t.Errorf("LN-002 tanpa jadwal harus nil/0, dapat %v/%s", rows[1].FirstInstallmentDate, rows[1].OverdueUnpaid)
+	if !rows[0].AccruedProfit.Equal(decimal.NewFromInt(75_000)) {
+		t.Errorf("piutang bunga LN-001 = %s, ingin 75000", rows[0].AccruedProfit)
+	}
+	if rows[1].FirstInstallmentDate != nil || !rows[1].OverdueUnpaid.IsZero() || !rows[1].AccruedProfit.IsZero() {
+		t.Errorf("LN-002 tanpa jadwal harus nil/0, dapat %v/%s/%s",
+			rows[1].FirstInstallmentDate, rows[1].OverdueUnpaid, rows[1].AccruedProfit)
 	}
 }
 
