@@ -142,6 +142,30 @@ Selain itu `preflight.sh` memeriksa baris `system.business_date`:
 
 ---
 
+### 4.1 Bila migrasi sudah "ter-apply" tetapi tidak tercatat
+
+Gejala: `preflight` melaporkan migrasi tertinggal padahal skema sudah sesuai; atau
+`migrate.sh` gagal di tengah pada migrasi yang menyentuh kolom lama, mis.
+`UPDATE ... kolom_lama` padahal kolom itu sudah tidak ada.
+
+Sebab: migrasi pernah dijalankan (atau dampaknya sudah ada karena perbaikan manual),
+tetapi barisnya tidak masuk `schema_migrations`. Karena `migrate.sh` memakai
+`ON_ERROR_STOP=1`, kegagalan itu memblokir migrasi sesudahnya.
+
+Tindakan, SETELAH memastikan skema memang sudah sesuai:
+1. Bandingkan berkas repo dengan catatan DB:
+   `comm -3 <(ls packages/db-migrations/*.up.sql | xargs -n1 basename | sort) <(psql ... "SELECT filename FROM schema_migrations ORDER BY filename")`
+2. Verifikasi objek yang ditargetkan migrasi itu (kolom/constraint/index) memang sudah
+   dalam keadaan akhir yang diinginkan.
+3. Rekam barisnya tanpa mengubah skema:
+   `INSERT INTO schema_migrations (filename) VALUES ('<nama>.up.sql') ON CONFLICT DO NOTHING;`
+4. Jalankan `preflight` ulang; jumlah baris harus sama dengan jumlah `*.up.sql`.
+
+Catatan: pola ini dipakai 26 Sep 2026 untuk
+`000098_consolidate_collateral_cost_columns` — skema produksi sudah sesuai
+(`disposal_cost_amount` + CHECK ada, `selling_cost_amount` tidak ada), hanya barisnya
+yang hilang.
+
 ## 5. Rotasi password superadmin
 
 Akun `superadmin` di-seed dengan hash placeholder yang **tidak bisa dipakai
