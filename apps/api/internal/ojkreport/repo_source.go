@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -23,6 +24,10 @@ type RepoSource struct {
 	Profile    domain.BankProfileRepository
 	Config     domain.SystemConfigRepository
 	Placements domain.LPSPlacementRepository
+	// Customers memasok sandi referensi OJK per nasabah (Form 06.00 kolom XVIII
+	// dan XX). Dibaca sekaligus lewat GetByIDs untuk menghindari N+1; bila nil,
+	// kode dibiarkan kosong dan laporan menulis "-".
+	Customers domain.CustomerRepository
 	// KPMM mengisi baris KPMM Form 00.08. Bila nil, Form 00.08 menulis baris KPMM
 	// sebagai tidak tersedia (bukan nol).
 	KPMM domain.KPMMService
@@ -79,7 +84,50 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 			break
 		}
 	}
+	if err := s.lengkapiSandiReferensiCustomer(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// lengkapiSandiReferensiCustomer mengisi sandi pihak lawan (kolom XVIII) dan sektor
+// ekonomi (kolom XX) tiap baris kredit dari SATU panggilan GetByIDs untuk seluruh
+// nasabah yang berbeda, bukan satu query per kredit. Baris tanpa nasabah terbaca
+// atau tanpa sandi dibiarkan kosong; form terkait menulis "-".
+func (s RepoSource) lengkapiSandiReferensiCustomer(ctx context.Context, rows []LoanRow) error {
+	if s.Customers == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	terlihat := make(map[uuid.UUID]struct{}, len(rows))
+	for _, r := range rows {
+		id, err := uuid.Parse(r.CustomerID)
+		if err != nil {
+			continue
+		}
+		if _, ok := terlihat[id]; ok {
+			continue
+		}
+		terlihat[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	records, err := s.Customers.GetByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		id, err := uuid.Parse(rows[i].CustomerID)
+		if err != nil {
+			continue
+		}
+		rec, ok := records[id]
+		if !ok {
+			continue
+		}
+		rows[i].OJKPihakLawanCode = rec.OJKPihakLawanCode
+		rows[i].OJKSektorEkonomiCode = rec.OJKSektorEkonomiCode
+	}
+	return nil
 }
 
 // GetBankProfileConfig membaca identitas bank dari bank_profile dan kunci ojk.*.
@@ -170,6 +218,7 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 			StartDate:          p.StartDate,
 			MaturityDate:       p.MaturityDate,
 			InterestRateAnnual: p.InterestRateAnnual,
+			OJKKabupatenCode:   p.OJKKabupatenCode,
 		}
 		if p.CKPN != nil {
 			row.CKPN = &PlacementCKPNRow{

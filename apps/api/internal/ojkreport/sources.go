@@ -77,6 +77,14 @@ type LoanRow struct {
 	// "Pendapatan Bunga yang Akan Diterima" Form 06.00. Nol berarti tidak ada
 	// bunga yang diakru dan belum diselesaikan pembayarannya.
 	AccruedProfit decimal.Decimal
+	// OJKPihakLawanCode adalah sandi pihak lawan nasabah (Lampiran 02 SEOJK
+	// 16/2024), sumber kolom XVIII "Jenis Debitur" Form 06.00. Kosong berarti
+	// bank belum mengisi sandinya; laporan menulis "-".
+	OJKPihakLawanCode string
+	// OJKSektorEkonomiCode adalah sandi sektor ekonomi nasabah (Lampiran 05 SEOJK
+	// 16/2024), sumber kolom XX "Sektor Ekonomi" Form 06.00. Kosong berarti bank
+	// belum mengisi sandinya; laporan menulis "-".
+	OJKSektorEkonomiCode string
 }
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk
@@ -140,7 +148,11 @@ type PlacementRow struct {
 	StartDate          *time.Time
 	MaturityDate       *time.Time
 	InterestRateAnnual decimal.Decimal
-	CKPN               *PlacementCKPNRow
+	// OJKKabupatenCode adalah sandi Kabupaten/Kota bank lawan (Lampiran 03 SEOJK
+	// 16/2024), sumber kolom III "Lokasi Bank" Form 05.00. Kosong berarti bank
+	// belum mengisi sandinya; laporan menulis "-".
+	OJKKabupatenCode string
+	CKPN             *PlacementCKPNRow
 }
 
 // PlacementCKPNRow adalah CKPN tersimpan satu penempatan: metode asesmen dan target yang

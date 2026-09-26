@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -71,5 +72,64 @@ func TestBuilderMengisiKPMMLewatRepoSource(t *testing.T) {
 	}
 	if !line.Amount.Equal(decimal.NewFromInt(12)) {
 		t.Fatalf("baris KPMM = %s, ingin 12", line.Amount)
+	}
+}
+
+// customerBatchStub menangkap pemanggilan GetByIDs agar uji dapat memastikan sandi
+// referensi OJK dibaca sebagai SATU query agregat, bukan per kredit.
+type customerBatchStub struct {
+	domain.CustomerRepository
+	records map[uuid.UUID]*domain.CustomerRecord
+	gotIDs  []uuid.UUID
+	calls   int
+}
+
+func (s *customerBatchStub) GetByIDs(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]*domain.CustomerRecord, error) {
+	s.calls++
+	s.gotIDs = ids
+	return s.records, nil
+}
+
+// TestListLoansForOJKMengisiSandiReferensiDariCustomer menutup rantai adaptor:
+// sandi pihak lawan (kolom XVIII) dan sektor ekonomi (kolom XX) per nasabah dimuat
+// lewat satu GetByIDs untuk seluruh nasabah berbeda. Nasabah tanpa sandi dibiarkan
+// kosong (form menulis "-"), dan nasabah yang sama tidak diduplikasi.
+func TestListLoansForOJKMengisiSandiReferensiDariCustomer(t *testing.T) {
+	nasabahA := uuid.New()
+	nasabahB := uuid.New()
+	repo := &loanAggStub{
+		loans: []domain.Loan{
+			{LoanNumber: "LN-A", Status: domain.LoanStatusDisbursed, CustomerID: nasabahA},
+			{LoanNumber: "LN-B", Status: domain.LoanStatusDisbursed, CustomerID: nasabahA}, // nasabah sama
+			{LoanNumber: "LN-C", Status: domain.LoanStatusDisbursed, CustomerID: nasabahB},
+		},
+	}
+	customers := &customerBatchStub{records: map[uuid.UUID]*domain.CustomerRecord{
+		nasabahA: {ID: nasabahA, OJKPihakLawanCode: "860", OJKSektorEkonomiCode: "G00000"},
+		nasabahB: {ID: nasabahB}, // belum diisi
+	}}
+	src := RepoSource{Loans: repo, Customers: customers}
+
+	rows, err := src.ListLoansForOJK(context.Background(), time.Now().UTC(), domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("ListLoansForOJK: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("jumlah baris = %d, ingin 3", len(rows))
+	}
+	if customers.calls != 1 {
+		t.Errorf("GetByIDs dipanggil %d kali, ingin 1 (agregat)", customers.calls)
+	}
+	if len(customers.gotIDs) != 2 {
+		t.Errorf("GetByIDs menerima %d id, ingin 2 unik", len(customers.gotIDs))
+	}
+	if rows[0].OJKPihakLawanCode != "860" || rows[0].OJKSektorEkonomiCode != "G00000" {
+		t.Errorf("sandi nasabah A = %q/%q, ingin 860/G00000", rows[0].OJKPihakLawanCode, rows[0].OJKSektorEkonomiCode)
+	}
+	if rows[1].OJKPihakLawanCode != "860" {
+		t.Errorf("baris kedua nasabah A = %q, ingin 860", rows[1].OJKPihakLawanCode)
+	}
+	if rows[2].OJKPihakLawanCode != "" || rows[2].OJKSektorEkonomiCode != "" {
+		t.Errorf("sandi nasabah B belum diisi, ingin kosong, dapat %q/%q", rows[2].OJKPihakLawanCode, rows[2].OJKSektorEkonomiCode)
 	}
 }

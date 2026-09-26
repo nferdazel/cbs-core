@@ -571,17 +571,19 @@ func (s *customerService) decryptRecord(ctx context.Context, record *domain.Cust
 	}
 
 	return &domain.Customer{
-		ID:           record.ID,
-		CIFNumber:    record.CIFNumber,
-		FullName:     fullName,
-		IDCardNumber: idCard,
-		Email:        email,
-		PhoneNumber:  phone,
-		Address:      address,
-		Status:       record.Status,
-		BranchID:     record.BranchID,
-		Metadata:     record.Metadata,
-		CreatedAt:    record.CreatedAt,
-		UpdatedAt:    record.UpdatedAt,
+		ID:                   record.ID,
+		CIFNumber:            record.CIFNumber,
+		FullName:             fullName,
+		IDCardNumber:         idCard,
+		Email:                email,
+		PhoneNumber:          phone,
+		Address:              address,
+		Status:               record.Status,
+		BranchID:             record.BranchID,
+		Metadata:             record.Metadata,
+		OJKPihakLawanCode:    record.OJKPihakLawanCode,
+		OJKSektorEkonomiCode: record.OJKSektorEkonomiCode,
+		CreatedAt:            record.CreatedAt,
+		UpdatedAt:            record.UpdatedAt,
 	}, nil
 }

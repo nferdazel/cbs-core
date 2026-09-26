@@ -119,9 +119,13 @@ var form06Columns = []form06Column{
 		// Nol tetap ditulis "0" (FormatRupiah), bukan dikosongkan.
 		return FormatRupiah(r.OverdueUnpaid)
 	}},
-	{Sandi: form06SandiJenisDebitur, Nama: "Jenis Debitur", Reason: "jenis debitur (perorangan/badan usaha) belum dipetakan ke sandi Lampiran 02"},
+	{Sandi: form06SandiJenisDebitur, Nama: "Jenis Debitur", Value: func(r LoanRow) string {
+		return dashIfEmpty(r.OJKPihakLawanCode)
+	}},
 	{Sandi: form06SandiSandiBank, Nama: "Sandi Bank", Reason: "sandi bank lawan tidak dimodelkan pada baris kredit"},
-	{Sandi: form06SandiSektor, Nama: "Sektor Ekonomi", Reason: "sektor ekonomi debitur belum dimodelkan"},
+	{Sandi: form06SandiSektor, Nama: "Sektor Ekonomi", Value: func(r LoanRow) string {
+		return dashIfEmpty(r.OJKSektorEkonomiCode)
+	}},
 	{Sandi: form06SandiKategori, Nama: "Kategori Usaha", Reason: "kategori usaha mikro/kecil/menengah belum dimodelkan"},
 	{Sandi: form06SandiLokasi, Nama: "Lokasi Penggunaan", Reason: "lokasi penggunaan kredit belum dimodelkan"},
 	{Sandi: form06SandiSukuBunga, Nama: "Suku Bunga", Value: func(r LoanRow) string {

@@ -71,8 +71,14 @@ type Customer struct {
 	Status       CustomerStatus `json:"status"`
 	BranchID     *uuid.UUID     `json:"branch_id,omitempty"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	// OJKPihakLawanCode dan OJKSektorEkonomiCode adalah sandi referensi OJK per
+	// nasabah (Lampiran 02/05 SEOJK 16/2024), sumber Form 06.00 kolom XVIII/XX.
+	// Kosong berarti belum diisi; nilai diisi bank lewat SQL/seed (belum ada
+	// endpoint API), dan laporan menulis "-", bukan menebak dari nama/alamat.
+	OJKPihakLawanCode    string    `json:"ojk_pihak_lawan_code,omitempty"`
+	OJKSektorEkonomiCode string    `json:"ojk_sektor_ekonomi_code,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // CustomerRecord adalah representasi penyimpanan: nilai pribadi dalam bentuk
@@ -100,8 +106,14 @@ type CustomerRecord struct {
 	Status           CustomerStatus
 	BranchID         *uuid.UUID
 	Metadata         map[string]any
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// OJKPihakLawanCode dan OJKSektorEkonomiCode adalah sandi referensi OJK per
+	// nasabah (Lampiran 02/05 SEOJK 16/2024), sumber Form 06.00 kolom XVIII/XX.
+	// Bukan data pribadi terenkripsi: disimpan apa adanya. Kosong berarti belum
+	// diisi; laporan menulis "-".
+	OJKPihakLawanCode    string
+	OJKSektorEkonomiCode string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type CreateCustomerInput struct {

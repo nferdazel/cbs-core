@@ -49,7 +49,8 @@ const listLPSPlacementsSelect = `
 		p.ckpn_assessed_at,
 		p.start_date,
 		p.maturity_date,
-		COALESCE(p.interest_rate_annual, 0)
+		COALESCE(p.interest_rate_annual, 0),
+		COALESCE(p.ojk_kabupaten_code, '')
 	FROM lps_placements p
 	LEFT JOIN branches b ON b.id = p.branch_id`
 
@@ -70,7 +71,7 @@ func scanLPSPlacement(row rowScanner) (*domain.LPSPlacement, error) {
 		&p.Outstanding, &p.LPSGuaranteed, &collectibility, &p.AsOf, &p.BranchCode,
 		&ckpnMethod, &ckpnSignificant, &ckpnObjectiveEvidence,
 		&requiredCKPN, &individualTarget, &assessedAt,
-		&startDate, &maturityDate, &p.InterestRateAnnual,
+		&startDate, &maturityDate, &p.InterestRateAnnual, &p.OJKKabupatenCode,
 	); err != nil {
 		return nil, err
 	}

@@ -143,6 +143,10 @@ type LPSPlacement struct {
 	InterestRateAnnual decimal.Decimal
 	BranchID           *uuid.UUID
 	BranchCode         string
+	// OJKKabupatenCode adalah sandi Kabupaten/Kota bank lawan (Lampiran 03 SEOJK
+	// 16/2024, 4 digit), sumber Form 05.00 kolom III Lokasi Bank. Kosong berarti
+	// belum diisi; laporan menulis "-". Nilainya diisi bank lewat SQL/seed.
+	OJKKabupatenCode string
 	// CKPN adalah asesmen CKPN terakhir penempatan ini; nil berarti belum pernah
 	// diasesmen (kolom ckpn_assessed_at NULL). Form 05.00 kolom XII/XXI hanya tersedia
 	// bila minimal satu baris punya CKPN.

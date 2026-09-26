@@ -55,7 +55,9 @@ var form05Columns = []form05Column{
 		return dashIfEmpty(p.BranchCode)
 	}},
 	{Sandi: form05SandiBank, Nama: "Sandi Bank", Reason: "sandi bank lawan menurut Sistem Pelaporan OJK belum dipetakan; yang tersimpan hanya nama bank lawan"},
-	{Sandi: form05SandiLokasi, Nama: "Lokasi Bank", Reason: "sandi Kabupaten/Kota bank lawan (Lampiran 03) belum dimodelkan"},
+	{Sandi: form05SandiLokasi, Nama: "Lokasi Bank", Value: func(p PlacementRow) string {
+		return dashIfEmpty(p.OJKKabupatenCode)
+	}},
 	{Sandi: form05SandiJenis, Nama: "Jenis", Value: func(p PlacementRow) string {
 		return sandiJenisPenempatan(p.PlacementType)
 	}},

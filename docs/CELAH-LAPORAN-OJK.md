@@ -14,6 +14,12 @@ keputusan pemilik sistem.
 > (`docs/LAMPIRAN-OJK.md`) diverifikasi ke PDF resmi 528 hlm. Ternyata hanya **3** kolom yang
 > benar-benar butuh lampiran; sebagian "RO" aslinya sandi **inline** (sudah tersurat di PDF)
 > atau **CIF internal**, dan "Sandi Bank" butuh APOLO/SPOJK. Rinciannya di §1, §2a–2c.
+>
+> **Revisi 27 Sep 2026:** ketiga kolom RO **tersambung** lewat migrasi `000104` ke tabel
+> referensi `000102` (`customers.ojk_pihak_lawan_code`, `customers.ojk_sektor_ekonomi_code`,
+> `lps_placements.ojk_kabupaten_code`, semuanya FK + nullable). Nilainya belum diisi
+> aplikasi: bank mengisinya lewat SQL/seed sampai ada rute API. Baris tanpa sandi ditulis
+> `-`. Rinciannya di §1, §2a, §2f.
 
 ## Kategori
 
@@ -31,7 +37,7 @@ keputusan pemilik sistem.
 | Kolom | Nama | Kategori | Catatan |
 |---|---|---|---|
 | II | Sandi Bank | K2 | Bukan Lampiran 02: sandi bank 6 digit dari Sistem Pelaporan OJK (APOLO/SPOJK), belum ada sumber publik |
-| III | Lokasi Bank | RO | Sandi Kabupaten/Kota per Lampiran 03 (`docs/LAMPIRAN-OJK.md`) |
+| III | Lokasi Bank | ✓ | Tersambung `lps_placements.ojk_kabupaten_code` (migrasi 000104, FK ke `ojk_kabupaten` Lampiran 03); `-` bila bank belum mengisi sandi |
 | V | Hubungan dengan Bank | K1 | Sandi inline: 12 terkait, 20 tidak terkait |
 | X | Nominal yang Diblokir/Dijaminkan | K1 | Tambah kolom nominal pada `lps_placements` |
 | XI | Alasan Diblokir | K1 | Tambah kolom sandi alasan (butuh daftar sandi) |
@@ -43,7 +49,11 @@ keputusan pemilik sistem.
 
 ## 2. Form 06.00 — Daftar Kredit yang Diberikan (36 kolom)
 
-### 2a. Butuh referensi OJK — sandi Lampiran II (2)
+### 2a. Sandi referensi OJK — tersambung (2, migrasi 000104)
+
+Kolom XVIII dan XX kini tersambung: `customers.ojk_pihak_lawan_code` /
+`customers.ojk_sektor_ekonomi_code` (FK ke tabel `ojk_*` migrasi 000102). Nilai diisi
+bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang RO.
 
 | Kolom | Nama | Sumber |
 |---|---|---|
@@ -101,12 +111,14 @@ keputusan pemilik sistem.
 | XLVI | CKPN Aset Tidak Baik | idem |
 | XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
-### 2f. Sudah dikerjakan (3)
+### 2f. Sudah dikerjakan (5)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
 | XIII | Angsuran Pokok Pertama | `f6f6a60`: MIN(due_date) jadwal angsuran; `-` bila tanpa jadwal |
 | XVII | Nominal Tunggakan Pokok dan Bunga | `f6f6a60`: sisa pokok+bunga untuk angsuran jatuh tempo sebelum `as_of` |
+| XVIII | Jenis Debitur (Pihak Lawan) | migrasi 000104: `customers.ojk_pihak_lawan_code`; `-` bila kosong |
+| XX | Sektor Ekonomi | migrasi 000104: `customers.ojk_sektor_ekonomi_code`; `-` bila kosong |
 | XXXV | Pendapatan Bunga yang Akan Diterima | SUM(`profit_accrued_amount`) = sisa akruan/piutang bunga 10400 per kredit |
 
 ## 3. Laporan/berkas di luar form bulanan (14)
@@ -130,26 +142,27 @@ keputusan pemilik sistem.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **3 sudah dikerjakan** (§2f), sisa 43.
-Laporan/berkas: **14**. Total sisa **57**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **6 sudah dikerjakan** (§1 III dan
+§2f), sisa 40. Laporan/berkas: **14**. Total sisa **54**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
 | K1 — bisa, kecil | 18 | 2 | 20 |
 | K2 — butuh modul | 11 | 5 | 16 |
 | KB — kondisional bank | 4 | 2 | 6 |
-| RO — butuh referensi OJK | 3 | 0 | 3 |
+| RO — butuh referensi OJK | 0 | 0 | 0 |
 | DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **43** | **14** | **57** |
+| **Total sisa** | **40** | **14** | **54** |
 
 ## 5. Urutan yang disarankan
 
 1. **Sandi inline (K1, +4 kolom)** — V/IX Hubungan dengan Bank, VIII Jenis Penggunaan,
    XI Periode Pembayaran: sandinya sudah tersurat di PDF, cukup enum/konstanta di
    `apps/api/internal/ojkreport`. Tidak perlu tabel referensi.
-2. **Lampiran 02/03/05** — kini hanya membuka **3 kolom** (Form 05 III Lokasi Bank, Form 06
-   XVIII Jenis Debitur, Form 06 XX Sektor Ekonomi). Bangun tabel referensi `ojk_*` (migrasi).
+2. **Lampiran 02/03/05** — SUDAH tersambung (migrasi 000104) ke Form 05 III, Form 06
+   XVIII, dan Form 06 XX lewat tabel referensi `ojk_*` (migrasi 000102). Kolom terisi
+   begitu bank mengisi sandinya lewat SQL/seed; baris tanpa sandi ditulis `-`.
 3. **K1 yang datanya sudah ada** — Angsuran Pokok Pertama & Nominal Tunggakan Form 06.00
    SUDAH dikerjakan; sisanya (Kode Kelompok Kredit, Kategori Usaha, dst.) menyusul.
 4. **Tanya partisipasi bank** (KB, 6 kolom) — kalau bank bukan peserta KUR/LPBBTI/Laku Pandai,

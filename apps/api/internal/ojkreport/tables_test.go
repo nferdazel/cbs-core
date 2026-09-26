@@ -92,6 +92,9 @@ func TestBuildForm06MengisiKolomTersediaDanMenandaiYangTidak(t *testing.T) {
 		{form06SandiAkadAwal, "2025-01-15"},
 		{form06SandiJangkaWaktu, "2027-01-15"},
 		{form06SandiPlafon, "8000000"},
+		// Sandi referensi OJK kosong ditulis "-", bukan dikosongkan atau ditebak.
+		{form06SandiJenisDebitur, "-"},
+		{form06SandiSektor, "-"},
 	}
 	for _, c := range cases {
 		got := findCell(t, sec, "LN-001", c.sandi)
@@ -101,7 +104,7 @@ func TestBuildForm06MengisiKolomTersediaDanMenandaiYangTidak(t *testing.T) {
 	}
 
 	// Kolom tanpa sumber wajib terdaftar beserta alasan, bukan tampil sebagai nol.
-	for _, sandi := range []string{form06SandiIDPihakLawan, form06SandiNoIdentitas, form06SandiSektor, form06SandiBMPK, form06SandiBakiNeto} {
+	for _, sandi := range []string{form06SandiIDPihakLawan, form06SandiNoIdentitas, form06SandiBMPK, form06SandiBakiNeto} {
 		u := unavailableColumn(t, sec, sandi)
 		if strings.TrimSpace(u.Reason) == "" {
 			t.Errorf("kolom %s tanpa alasan", sandi)

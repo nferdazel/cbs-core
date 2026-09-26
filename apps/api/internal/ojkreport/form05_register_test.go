@@ -90,3 +90,37 @@ func TestBuildForm05RegisterTanpaJatuhTempoHanyaMulai(t *testing.T) {
 		t.Fatalf("jangka waktu = %q, ingin 31-03-2026", got)
 	}
 }
+
+// Kolom III (Lokasi Bank) kini terisi sandi Kabupaten/Kota Lampiran 03 bila bank
+// mengisinya, dan "-" bila kosong. Kolom ini tidak lagi terdaftar sebagai belum
+// tersedia; sandi tidak pernah ditebak dari nama bank lawan.
+func TestBuildForm05RegisterLokasiBank(t *testing.T) {
+	rows := []PlacementRow{
+		{
+			CounterpartyBank: "Bank Uji Berisi",
+			PlacementType:    "DEPOSITO",
+			Collectibility:   "LANCAR",
+			Outstanding:      decimal.NewFromInt(1_000_000),
+			OJKKabupatenCode: "0197",
+		},
+		{
+			CounterpartyBank: "Bank Uji Kosong",
+			PlacementType:    "GIRO",
+			Collectibility:   "LANCAR",
+			Outstanding:      decimal.NewFromInt(500_000),
+		},
+	}
+	sec := buildForm05(rows)
+
+	if got := findCell(t, sec, "Bank Uji Berisi", form05SandiLokasi).Value; got != "0197" {
+		t.Errorf("lokasi berisi = %q, ingin 0197", got)
+	}
+	if got := findCell(t, sec, "Bank Uji Kosong", form05SandiLokasi).Value; got != "-" {
+		t.Errorf("lokasi kosong = %q, ingin -", got)
+	}
+	for _, u := range sec.Unavailable {
+		if u.Sandi == form05SandiLokasi {
+			t.Errorf("kolom III masih terdaftar tidak tersedia: %s", u.Reason)
+		}
+	}
+}

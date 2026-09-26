@@ -268,6 +268,7 @@ func main() {
 		Profile:    bankProfileRepo,
 		Config:     configRepo,
 		Placements: postgres.NewLPSPlacementRepository(db),
+		Customers:  customerRepo,
 		KPMM:       kpmmSvc,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
