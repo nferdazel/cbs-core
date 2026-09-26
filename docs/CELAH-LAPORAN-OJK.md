@@ -50,7 +50,7 @@ keputusan pemilik sistem.
 | XVIII | Jenis Debitur | Lampiran 02 Daftar Sandi Pihak Lawan (`docs/LAMPIRAN-OJK.md`) |
 | XX | Sektor Ekonomi | Lampiran 05 Daftar Sandi Sektor Ekonomi |
 
-### 2b. Bisa dimodelkan, perubahan kecil (17)
+### 2b. Bisa dimodelkan, perubahan kecil (15)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
@@ -60,9 +60,7 @@ keputusan pemilik sistem.
 | XI | Periode Pembayaran Pokok dan Bunga | Sandi inline 1–8 |
 | IV | Kode Kelompok Kredit | Kelompok peminjam pihak tidak terkait |
 | X | Sumber Dana Pelunasan | Kolom sandi sumber dana |
-| XIII | Angsuran Pokok Pertama | Jadwal angsuran sudah ada (migrasi `000006`), tinggal dimuat ke baris laporan |
 | XV | Tanggal Mulai Macet | Bisa diturunkan dari tunggakan/jadwal, bukan hanya DPD |
-| XVII | Nominal Tunggakan Pokok dan Bunga | Diambil dari jadwal/tunggakan per kredit |
 | XXI | Kategori Usaha | Mikro/kecil/menengah |
 | XXII | Lokasi Penggunaan | Kolom lokasi pemakaian kredit |
 | XXIV | Penjamin | Perlu data penjamin + bagian yang dijamin |
@@ -104,6 +102,13 @@ keputusan pemilik sistem.
 | XLVI | CKPN Aset Tidak Baik | idem |
 | XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
+### 2f. Sudah dikerjakan (2)
+
+| Kolom | Nama | Bukti |
+|---|---|---|
+| XIII | Angsuran Pokok Pertama | `f6f6a60`: MIN(due_date) jadwal angsuran; `-` bila tanpa jadwal |
+| XVII | Nominal Tunggakan Pokok dan Bunga | `f6f6a60`: sisa pokok+bunga untuk angsuran jatuh tempo sebelum `as_of` |
+
 ## 3. Laporan/berkas di luar form bulanan (14)
 
 | Kode | Nama | Kategori | Catatan |
@@ -125,17 +130,18 @@ keputusan pemilik sistem.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36). Laporan/berkas: **14**. Total **60**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **2 sudah dikerjakan** (§2f), sisa 44.
+Laporan/berkas: **14**. Total sisa **58**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 23 | 2 | 25 |
+| K1 — bisa, kecil | 21 | 2 | 23 |
 | K2 — butuh modul | 10 | 5 | 15 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 3 | 0 | 3 |
 | DK — butuh keputusan | 6 | 0 | 6 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total** | **46** | **14** | **60** |
+| **Total sisa** | **44** | **14** | **58** |
 
 ## 5. Urutan yang disarankan
 
