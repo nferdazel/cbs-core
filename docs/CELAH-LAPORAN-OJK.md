@@ -10,6 +10,11 @@ Status: penilaian awal per 26 Sep 2026, berbasis pembacaan kode (`form05.go`, `f
 bukan dari ingatan. Urutan pengerjaan dan kelayakan adalah penilaian pengembang, bukan
 keputusan pemilik sistem.
 
+> **Revisi 26 Sep 2026:** keranjang **RO diperbaiki** setelah riset lampiran
+> (`docs/LAMPIRAN-OJK.md`) diverifikasi ke PDF resmi 528 hlm. Ternyata hanya **3** kolom yang
+> benar-benar butuh lampiran; sebagian "RO" aslinya sandi **inline** (sudah tersurat di PDF)
+> atau **CIF internal**, dan "Sandi Bank" butuh APOLO/SPOJK. Rinciannya di §1, §2a–2c.
+
 ## Kategori
 
 | Kode | Arti | Tindak lanjut |
@@ -25,35 +30,34 @@ keputusan pemilik sistem.
 
 | Kolom | Nama | Kategori | Catatan |
 |---|---|---|---|
-| II | Sandi Bank | RO | Sandi bank lawan per Lampiran 02; kini hanya nama bank |
-| III | Lokasi Bank | RO | Sandi Kabupaten/Kota per Lampiran 03 |
-| V | Hubungan dengan Bank | RO | Sandi relasi pihak terkait; butuh daftar sandi OJK |
+| II | Sandi Bank | K2 | Bukan Lampiran 02: sandi bank 6 digit dari Sistem Pelaporan OJK (APOLO/SPOJK), belum ada sumber publik |
+| III | Lokasi Bank | RO | Sandi Kabupaten/Kota per Lampiran 03 (`docs/LAMPIRAN-OJK.md`) |
+| V | Hubungan dengan Bank | K1 | Sandi inline: 12 terkait, 20 tidak terkait |
 | X | Nominal yang Diblokir/Dijaminkan | K1 | Tambah kolom nominal pada `lps_placements` |
 | XI | Alasan Diblokir | K1 | Tambah kolom sandi alasan (butuh daftar sandi) |
 | XIII | Pendapatan Bunga yang Akan Diterima | K1 | Akrual bunga penempatan |
 | XIV | Pendapatan Bunga Dalam Penyelesaian | K1 | Bunga penempatan menunggak |
 | XV | Status BMPK Individu | K2 | Perlu uji BMPK per bank lawan |
-| XVI | ID Pihak Lawan | RO | Kunci internal belum = sandi Lampiran 02 |
+| XVI | ID Pihak Lawan | K1 | Sebenarnya CIF internal (SLIK), bukan sandi lampiran |
 | XX | Klasifikasi Aset Keuangan | DK | Klasifikasi SAK EP per penempatan |
 
 ## 2. Form 06.00 — Daftar Kredit yang Diberikan (36 kolom)
 
-### 2a. Butuh referensi OJK — sandi Lampiran II (7)
+### 2a. Butuh referensi OJK — sandi Lampiran II (2)
+
+| Kolom | Nama | Sumber |
+|---|---|---|
+| XVIII | Jenis Debitur | Lampiran 02 Daftar Sandi Pihak Lawan (`docs/LAMPIRAN-OJK.md`) |
+| XX | Sektor Ekonomi | Lampiran 05 Daftar Sandi Sektor Ekonomi |
+
+### 2b. Bisa dimodelkan, perubahan kecil (17)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
-| II | ID Pihak Lawan | Sistem menyimpan UUID internal, bukan sandi Lampiran 02 |
-| VIII | Jenis Penggunaan | Tujuan kredit tersimpan sebagai teks bebas (`loans.purpose`), belum dipetakan |
-| IX | Hubungan dengan Bank | Perlu sandi relasi pihak terkait |
-| XI | Periode Pembayaran Pokok dan Bunga | Perlu sandi periode OJK |
-| XVIII | Jenis Debitur | Perlu sandi perorangan/badan usaha (datanya pun belum ada — lihat 2b) |
-| XIX | Sandi Bank | Hanya relevan bila kredit diteruskan ke bank lain |
-| XX | Sektor Ekonomi | Perlu sandi sektor Lapangan Usaha |
-
-### 2b. Bisa dimodelkan, perubahan kecil (13)
-
-| Kolom | Nama | Catatan |
-|---|---|---|
+| II | ID Pihak Lawan | Bukan sandi lampiran: CIF internal (harus sama dengan SLIK), tinggal disingkapkan |
+| VIII | Jenis Penggunaan | Sandi inline 10/20/31/32/35/39; `loans.purpose` masih teks bebas, perlu pemetaan |
+| IX | Hubungan dengan Bank | Sandi inline 11/12/20 |
+| XI | Periode Pembayaran Pokok dan Bunga | Sandi inline 1–8 |
 | IV | Kode Kelompok Kredit | Kelompok peminjam pihak tidak terkait |
 | X | Sumber Dana Pelunasan | Kolom sandi sumber dana |
 | XIII | Angsuran Pokok Pertama | Jadwal angsuran sudah ada (migrasi `000006`), tinggal dimuat ke baris laporan |
@@ -68,10 +72,11 @@ keputusan pemilik sistem.
 | XXXVIII | Sifat Kredit | Pengalihan piutang/lainnya |
 | XLII | Tanggal Akad Akhir | Tanggal addendum terakhir |
 
-### 2c. Perlu register/modul baru (7)
+### 2c. Perlu register/modul baru (8)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
+| XIX | Sandi Bank | Butuh daftar sandi bank 6 digit dari APOLO/SPOJK (tidak terbit di SEOJK) |
 | XXVI | Kelonggaran Tarik | Perlu pemodelan fasilitas komitmen |
 | XXIX | Provisi Belum Diamortisasi | Perlu amortisasi provisi per kredit |
 | XXX | Biaya Transaksi Belum Diamortisasi | Perlu amortisasi biaya transaksi per kredit |
@@ -124,24 +129,27 @@ Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36). Laporan/berkas: **14**. T
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 17 | 2 | 19 |
-| K2 — butuh modul | 8 | 5 | 13 |
+| K1 — bisa, kecil | 23 | 2 | 25 |
+| K2 — butuh modul | 10 | 5 | 15 |
 | KB — kondisional bank | 4 | 2 | 6 |
-| RO — butuh referensi OJK | 11 | 0 | 11 |
+| RO — butuh referensi OJK | 3 | 0 | 3 |
 | DK — butuh keputusan | 6 | 0 | 6 |
 | LX — di luar cakupan | 0 | 5 | 5 |
 | **Total** | **46** | **14** | **60** |
 
 ## 5. Urutan yang disarankan
 
-1. **Unduh Lampiran 02/03 SEOJK 16/2024** — memblokir 11 kolom (RO) sekaligus menutup banyak
-   pemetaan sandi. Prasyarat termurah dengan dampak terbesar.
-2. **K1 yang datanya sudah ada** — Angsuran Pokok Pertama, Nominal Tunggakan, Agunan PPKA,
-   piutang bunga (5–6 kolom): tinggal menyambungkan modul yang sudah ada.
-3. **Tanya partisipasi bank** (KB, 6 kolom) — kalau bank bukan peserta KUR/LPBBTI/Laku Pandai,
+1. **Sandi inline (K1, +4 kolom)** — V/IX Hubungan dengan Bank, VIII Jenis Penggunaan,
+   XI Periode Pembayaran: sandinya sudah tersurat di PDF, cukup enum/konstanta di
+   `apps/api/internal/ojkreport`. Tidak perlu tabel referensi.
+2. **Lampiran 02/03/05** — kini hanya membuka **3 kolom** (Form 05 III Lokasi Bank, Form 06
+   XVIII Jenis Debitur, Form 06 XX Sektor Ekonomi). Bangun tabel referensi `ojk_*` (migrasi).
+3. **K1 yang datanya sudah ada** — Angsuran Pokok Pertama & Nominal Tunggakan Form 06.00
+   SUDAH dikerjakan; sisanya (Kode Kelompok Kredit, Kategori Usaha, dst.) menyusul.
+4. **Tanya partisipasi bank** (KB, 6 kolom) — kalau bank bukan peserta KUR/LPBBTI/Laku Pandai,
    kolom itu sah dikosongkan, bukan utang.
-4. **K2** (BMPK, amortisasi, off-balance, kelembagaan) — pekerjaan modul, rencanakan terpisah.
-5. **DK** — bawa ke panel/pemilik bersama bank/akuntan.
+5. **K2** (BMPK, amortisasi, off-balance, kelembagaan, Sandi Bank APOLO) — pekerjaan modul.
+6. **DK** — bawa ke panel/pemilik bersama bank/akuntan.
 
 ## 6. Catatan
 
