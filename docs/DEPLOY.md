@@ -164,7 +164,9 @@ Tindakan, SETELAH memastikan skema memang sudah sesuai:
 Catatan: pola ini dipakai 26 Sep 2026 untuk
 `000098_consolidate_collateral_cost_columns` — skema produksi sudah sesuai
 (`disposal_cost_amount` + CHECK ada, `selling_cost_amount` tidak ada), hanya barisnya
-yang hilang.
+yang hilang. Sejak 26 Sep 2026 `000098` juga diberi **penjaga keberadaan kolom**, sehingga
+menjalankannya ulang aman (tidak lagi gagal `column does not exist`). Pola di atas tetap
+berlaku untuk migrasi lain yang menyentuh kolom lama.
 
 ## 5. Rotasi password superadmin
 
