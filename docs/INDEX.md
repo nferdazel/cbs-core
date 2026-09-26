@@ -15,6 +15,7 @@ dokumen lain hanya meringkas atau merujuk balik ke sini.
 | Galat dinamis & kamus i18n | [`galat-dinamis-i18n.md`](galat-dinamis-i18n.md) | Template pesan & uji keselarasan |
 | Konvensi penamaan tabel & retensi | [`PENAMAAN-TABEL.md`](PENAMAAN-TABEL.md) | Termasuk riwayat rename `deposits` → `time_deposits` |
 | Laporan satu kali (jangan dianggap kebijakan) | [`LAPORAN_PEMULIHAN_CADANGAN_2026-09-21.md`](LAPORAN_PEMULIHAN_CADANGAN_2026-09-21.md) | Snapshot tanggal; bukan pedoman |
+| Celah kelengkapan laporan OJK (triase) | [`CELAH-LAPORAN-OJK.md`](CELAH-LAPORAN-OJK.md) | 46 kolom + 14 laporan; memisah 'akan dimodelkan' vs 'di luar cakupan' |
 | Kontrak API | [`openapi/openapi.yaml`](openapi/openapi.yaml) | Dijaga `openapi_guard_test.go` |
 | Arah desain UI | `../DESIGN.md` | **Lokal (gitignored)** |
 | Catatan kerja & backlog harian | `BACKLOG.md` | **Lokal (gitignored)**; berisi snapshot per putaran |
