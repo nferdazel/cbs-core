@@ -38,13 +38,13 @@ keputusan pemilik sistem.
 |---|---|---|---|
 | II | Sandi Bank | K2 | Bukan Lampiran 02: sandi bank 6 digit dari Sistem Pelaporan OJK (APOLO/SPOJK), belum ada sumber publik |
 | III | Lokasi Bank | ✓ | Tersambung `lps_placements.ojk_kabupaten_code` (migrasi 000104, FK ke `ojk_kabupaten` Lampiran 03); `-` bila bank belum mengisi sandi |
-| V | Hubungan dengan Bank | K1 | Sandi inline: 12 terkait, 20 tidak terkait |
-| X | Nominal yang Diblokir/Dijaminkan | K1 | Tambah kolom nominal pada `lps_placements` |
-| XI | Alasan Diblokir | K1 | Tambah kolom sandi alasan (butuh daftar sandi) |
-| XIII | Pendapatan Bunga yang Akan Diterima | K1 | Akrual bunga penempatan |
-| XIV | Pendapatan Bunga Dalam Penyelesaian | K1 | Bunga penempatan menunggak |
-| XV | Status BMPK Individu | K2 | Perlu uji BMPK per bank lawan |
-| XVI | ID Pihak Lawan | K1 | Sebenarnya CIF internal (SLIK), bukan sandi lampiran |
+| V | Hubungan dengan Bank | ✓ | `lps_placements.ojk_hubungan_bank_code` (migrasi 000106, inline 12/20); `-` bila kosong |
+| X | Nominal yang Diblokir/Dijaminkan | ✓ | `lps_placements.blocked_amount` (migrasi 000106); `-` bila kosong |
+| XI | Alasan Diblokir | ✓ | `lps_placements.ojk_alasan_diblokir_code` (migrasi 000106) — disimpan, belum dipetakan (daftar sandi alasan belum ada di repo) |
+| XIII | Pendapatan Bunga yang Akan Diterima | ✓ | `lps_placements.accrued_interest_receivable` (migrasi 000106) |
+| XIV | Pendapatan Bunga Dalam Penyelesaian | ✓ | `lps_placements.accrued_interest_pending` (migrasi 000106) |
+| XV | Status BMPK Individu | K2 | Perlu uji BMPK per bank lawan (fondasi BMPK sudah ada, wiring menyusul) |
+| XVI | ID Pihak Lawan | ✓ | `lps_placements.counterparty_cif` (migrasi 000106, CIF internal) |
 | XX | Klasifikasi Aset Keuangan | DK | Klasifikasi SAK EP per penempatan |
 
 ## 2. Form 06.00 — Daftar Kredit yang Diberikan (36 kolom)
@@ -53,7 +53,9 @@ keputusan pemilik sistem.
 
 Kolom XVIII dan XX kini tersambung: `customers.ojk_pihak_lawan_code` /
 `customers.ojk_sektor_ekonomi_code` (FK ke tabel `ojk_*` migrasi 000102). Nilai diisi
-bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang RO.
+bank (kini juga lewat API: `PUT /api/v1/ojk/loan-codes/{loanId}` untuk kredit dan
+`PUT /customers/{id}` untuk nasabah); baris tanpa sandi ditulis `-`. Tidak lagi masuk
+keranjang RO.
 
 | Kolom | Nama | Sumber |
 |---|---|---|
@@ -142,18 +144,18 @@ bank lewat SQL/seed; baris tanpa sandi ditulis `-`. Tidak lagi masuk keranjang R
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **10 sudah dikerjakan** (§1 III dan
-§2f), sisa 36. Laporan/berkas: **14**. Total sisa **50**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **16 sudah dikerjakan** (§1 dan
+§2f), sisa 30. Laporan/berkas: **14**. Total sisa **44**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 14 | 2 | 16 |
+| K1 — bisa, kecil | 8 | 2 | 10 |
 | K2 — butuh modul | 11 | 5 | 16 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 0 | 0 | 0 |
 | DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **36** | **14** | **50** |
+| **Total sisa** | **30** | **14** | **44** |
 
 ## 5. Urutan yang disarankan
 
