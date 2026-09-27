@@ -244,6 +244,34 @@ func (s *customerService) UpdateCustomer(ctx context.Context, id uuid.UUID, inpu
 	record.Status = existing.Status
 	record.BranchID = existing.BranchID
 	record.Metadata = input.Metadata
+	// Sandi OJK nasabah: bidang yang tidak dikirim dipertahankan, bidang kosong
+	// berarti "kosongkan" (belum diisi). Sandi referensi diperiksa terhadap tabel
+	// ojk_* agar pesannya jelas sebelum foreign key menolaknya.
+	record.OJKPihakLawanCode = existing.OJKPihakLawanCode
+	record.OJKSektorEkonomiCode = existing.OJKSektorEkonomiCode
+	record.OJKHubunganBankCode = existing.OJKHubunganBankCode
+	if input.OJKPihakLawanCode != nil {
+		record.OJKPihakLawanCode = strings.TrimSpace(*input.OJKPihakLawanCode)
+	}
+	if input.OJKSektorEkonomiCode != nil {
+		record.OJKSektorEkonomiCode = strings.TrimSpace(*input.OJKSektorEkonomiCode)
+	}
+	if input.OJKHubunganBankCode != nil {
+		if err := domain.ValidateOJKHubunganBankCode(*input.OJKHubunganBankCode); err != nil {
+			return nil, err
+		}
+		record.OJKHubunganBankCode = strings.TrimSpace(*input.OJKHubunganBankCode)
+	}
+	if input.OJKPihakLawanCode != nil && record.OJKPihakLawanCode != "" {
+		if err := requireOJKReference(ctx, s.db, domain.OJKRefPihakLawan, record.OJKPihakLawanCode, domain.OJKPihakLawanField); err != nil {
+			return nil, err
+		}
+	}
+	if input.OJKSektorEkonomiCode != nil && record.OJKSektorEkonomiCode != "" {
+		if err := requireOJKReference(ctx, s.db, domain.OJKRefSektorEkonomi, record.OJKSektorEkonomiCode, domain.OJKSektorEkonomiField); err != nil {
+			return nil, err
+		}
+	}
 	record.CreatedAt = existing.CreatedAt
 	record.UpdatedAt = time.Now().UTC()
 
@@ -583,6 +611,7 @@ func (s *customerService) decryptRecord(ctx context.Context, record *domain.Cust
 		Metadata:             record.Metadata,
 		OJKPihakLawanCode:    record.OJKPihakLawanCode,
 		OJKSektorEkonomiCode: record.OJKSektorEkonomiCode,
+		OJKHubunganBankCode:  record.OJKHubunganBankCode,
 		CreatedAt:            record.CreatedAt,
 		UpdatedAt:            record.UpdatedAt,
 	}, nil

@@ -151,6 +151,10 @@ export interface Loan {
   approved_by?: string;
   approved_at?: string;
   disbursed_at?: string;
+  /** Sandi referensi/inline OJK per kredit (Form 06.00 VIII/XI/XXII). */
+  ojk_jenis_penggunaan_code?: string;
+  ojk_periode_pembayaran_code?: string;
+  ojk_kabupaten_code?: string;
   created_at: string;
   updated_at: string;
   schedules?: LoanSchedule[];

@@ -2910,6 +2910,58 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/ojk/loan-codes/{loanId}:
+    parameters:
+      - name: loanId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Sistem]
+      operationId: updateOJKLoanCodes
+      summary: Ubah sandi OJK kredit
+      description: >-
+        Izin: `system:config`. Mengisi sandi referensi/inline OJK Form 06.00 per
+        kredit tanpa SQL: `ojk_jenis_penggunaan_code` (VIII, inline 10/20/31/32/35/39),
+        `ojk_periode_pembayaran_code` (XI, inline 1..8), dan `ojk_kabupaten_code`
+        (XXII, FK ke tabel `ojk_kabupaten`). Hanya bidang yang dikirim yang diubah;
+        teraudit satu transaksi. Menolak 422 bila sandi inline di luar himpunan atau
+        sandi referensi tidak ada di tabel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ojk_jenis_penggunaan_code:
+                  type: string
+                  nullable: true
+                ojk_periode_pembayaran_code:
+                  type: string
+                  nullable: true
+                ojk_kabupaten_code:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/audit-logs:
     get:
       tags: [Sistem]
@@ -3349,6 +3401,11 @@ components:
       description: |-
         Data CIF. Bidang inti: `full_name`, `id_card_number`, `phone`,
         `email`, `address`. Validasi duplikat NIK/surel dibalas `409`.
+        `PUT` juga menerima sandi referensi/inline OJK opsional (Form 06.00):
+        `ojk_pihak_lawan_code` (XVIII, FK `ojk_pihak_lawan`),
+        `ojk_sektor_ekonomi_code` (XX, FK `ojk_sektor_ekonomi`), dan
+        `ojk_hubungan_bank_code` (IX, inline 11/12/20). Bidang yang tidak dikirim
+        dipertahankan; string kosong mengosongkan (belum diisi).
       properties:
         full_name:
           type: string
@@ -3361,6 +3418,15 @@ components:
           format: email
         address:
           type: string
+        ojk_pihak_lawan_code:
+          type: string
+          nullable: true
+        ojk_sektor_ekonomi_code:
+          type: string
+          nullable: true
+        ojk_hubungan_bank_code:
+          type: string
+          nullable: true
     DepositRequest:
       type: object
       properties:

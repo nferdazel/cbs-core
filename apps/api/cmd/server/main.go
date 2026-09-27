@@ -280,6 +280,10 @@ func main() {
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	ojkProfileHandler := httpHandler.NewOJKProfileHandler(ojkProfileSvc)
 	ckpnActivationHandler := httpHandler.NewCKPNActivationHandler(ckpnActivationSvc)
+	// Sandi referensi/inline OJK per kredit (Form 06.00 VIII/XI/XXII) kini dapat
+	// diisi bank tanpa SQL; layanan sempit ini hanya menyentuh atribut laporan.
+	ojkLoanCodesHandler := httpHandler.NewOJKLoanCodesHandler(
+		service.NewOJKLoanCodesService(db, loanRepo, auditRepo))
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc, configSvc)
@@ -338,6 +342,7 @@ func main() {
 		BankProfileHandler:      bankProfileHandler,
 		OJKProfileHandler:       ojkProfileHandler,
 		CKPNActivationHandler:   ckpnActivationHandler,
+		OJKLoanCodesHandler:     ojkLoanCodesHandler,
 		PermissionHandler:       permissionHandler,
 		MonitoringHandler:       monitoringHandler,
 		AuthService:             authSvc,

@@ -119,6 +119,7 @@ func routerRoutes(t *testing.T) map[string]bool {
 		BankProfileHandler:      &httpHandler.BankProfileHandler{},
 		OJKProfileHandler:       &httpHandler.OJKProfileHandler{},
 		CKPNActivationHandler:   &httpHandler.CKPNActivationHandler{},
+		OJKLoanCodesHandler:     &httpHandler.OJKLoanCodesHandler{},
 		PermissionHandler:       &httpHandler.PermissionHandler{},
 		MonitoringHandler:       &httpHandler.MonitoringHandler{},
 	})

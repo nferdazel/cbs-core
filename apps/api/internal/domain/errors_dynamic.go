@@ -139,3 +139,18 @@ var (
 	ErrCollectionTypeUnknown = NewLocalizedError("collection_type_unknown", "jenis penagihan tidak dikenal")
 	ErrCollectionLoanRefs    = NewLocalizedError("collection_loan_refs_required", "loan_id dan installment_no wajib diisi untuk penagihan angsuran kredit")
 )
+
+// Validasi sandi referensi/inline OJK (memberi bank jalur pengisian tanpa SQL).
+// Sandi inline ditolak bila bukan salah satu himpunan Lampiran II Form 06.00-2;
+// sandi referensi ditolak bila tidak ada di tabel ojk_*. Nama kolom berada di TENGAH
+// pesan, jadi memakai placeholder supaya bunyi Indonesia tidak berubah sekaligus
+// memberi tahu sandi mana yang bermasalah.
+var ErrOJKLoanCodesEmpty = NewLocalizedError("ojk_loan_codes_empty", "tidak ada sandi OJK kredit yang dikirim")
+
+func OJKInlineCodeInvalid(field string) *LocalizedError {
+	return NewLocalizedErrorf("ojk_inline_code_invalid", "sandi inline %s tidak termasuk daftar yang diizinkan", field)
+}
+
+func OJKReferenceCodeInvalid(field string) *LocalizedError {
+	return NewLocalizedErrorf("ojk_reference_code_invalid", "sandi referensi %s tidak ditemukan pada tabel referensi", field)
+}

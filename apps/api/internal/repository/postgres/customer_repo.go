@@ -130,15 +130,24 @@ func (r *CustomerRepository) UpdateTx(ctx context.Context, tx *sql.Tx, c *domain
 		indexKeyVersion = "k1"
 	}
 
+	// Sandi OJK kosong disimpan sebagai NULL, bukan string kosong: kolom referensi
+	// ber-foreign key tidak mengenal sandi "", dan laporan membaca NULL sebagai
+	// "belum diisi". Sandi inline juga mengikuti aturan yang sama agar konsisten.
+	ojkPihakLawan := sql.NullString{String: c.OJKPihakLawanCode, Valid: c.OJKPihakLawanCode != ""}
+	ojkSektorEkonomi := sql.NullString{String: c.OJKSektorEkonomiCode, Valid: c.OJKSektorEkonomiCode != ""}
+	ojkHubunganBank := sql.NullString{String: c.OJKHubunganBankCode, Valid: c.OJKHubunganBankCode != ""}
+
 	_, err = tx.ExecContext(ctx, `
 		UPDATE customers
 		SET full_name_enc = $2, id_card_number_enc = $3, email_enc = $4,
 		    phone_number_enc = $5, address_enc = $6, id_card_index = $7,
-		    email_index = $8, index_key_version = $9, metadata = $10, updated_at = $11
+		    email_index = $8, index_key_version = $9, metadata = $10, updated_at = $11,
+		    ojk_pihak_lawan_code = $12, ojk_sektor_ekonomi_code = $13, ojk_hubungan_bank_code = $14
 		WHERE id = $1`,
 		c.ID, c.FullNameEnc, c.IDCardNumberEnc, c.EmailEnc,
 		c.PhoneNumberEnc, c.AddressEnc, idCardIndex, emailIndex, indexKeyVersion,
 		metaJSON, c.UpdatedAt,
+		ojkPihakLawan, ojkSektorEkonomi, ojkHubunganBank,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update customer: %w", err)

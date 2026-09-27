@@ -3,6 +3,7 @@
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { OJKProfileCard } from "@/components/settings/OJKProfileCard";
+import { OJKReferenceCodesCard } from "@/components/settings/OJKReferenceCodesCard";
 
 /**
  * Halaman identitas Form 00.00. Penjagaan sebenarnya ada di API
@@ -19,6 +20,7 @@ export default function OjkIdentityPage() {
         description={t.ojkProfile.description}
       />
       <OJKProfileCard />
+      <OJKReferenceCodesCard />
     </>
   );
 }

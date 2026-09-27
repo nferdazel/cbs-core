@@ -145,6 +145,13 @@ type UpdateCustomerInput struct {
 	PhoneNumber  string         `json:"phone_number"`
 	Address      string         `json:"address"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
+	// Sandi referensi/inline OJK per nasabah (Form 06.00 kolom XVIII/XX/IX).
+	// Pointer nil berarti "jangan ubah"; string kosong berarti "kosongkan" (belum
+	// diisi). Sandi referensi divalidasi terhadap tabel ojk_*; sandi inline terhadap
+	// himpunan yang diizinkan (lihat ojk_reference_codes.go).
+	OJKPihakLawanCode    *string `json:"ojk_pihak_lawan_code,omitempty"`
+	OJKSektorEkonomiCode *string `json:"ojk_sektor_ekonomi_code,omitempty"`
+	OJKHubunganBankCode  *string `json:"ojk_hubungan_bank_code,omitempty"`
 }
 
 // IDCardDigits adalah panjang NIK yang sah.

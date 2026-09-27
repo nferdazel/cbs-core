@@ -73,6 +73,9 @@ type RouterParams struct {
 	// syariah, status SEMENTARA/FINAL, bukti ratifikasi, saklar ckpn.enabled) agar bank
 	// mengisinya tanpa SQL. Menyalakan CKPN tetap keputusan manusia.
 	CKPNActivationHandler *CKPNActivationHandler
+	// OJKLoanCodesHandler mengelola sandi referensi/inline OJK per kredit (Form 06.00
+	// kolom VIII/XI/XXII) agar bank mengisinya tanpa SQL. Rutenya tidak dipasang bila nil.
+	OJKLoanCodesHandler *OJKLoanCodesHandler
 	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
 	// pemetaan izin (lewat maker-checker, teraudit).
 	PermissionHandler *PermissionHandler
@@ -438,6 +441,13 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// yang menolak penyalakan prematur dan audit satu transaksi.
 			if p.CKPNActivationHandler != nil {
 				p.CKPNActivationHandler.RegisterRoutes(r)
+			}
+			// ── Sandi referensi/inline OJK per kredit ──
+			// Melengkapi jalur pengisian sandi OJK nasabah (lewat PUT /customers/{id})
+			// dengan atribut Form 06.00 per kredit. Dijaga system:config, izin yang sama
+			// dengan setelan OJK lain, dan diaudit di service.
+			if p.OJKLoanCodesHandler != nil {
+				p.OJKLoanCodesHandler.RegisterRoutes(r)
 			}
 			r.Route("/batch", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).

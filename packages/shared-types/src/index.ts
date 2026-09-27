@@ -1,4 +1,4 @@
-export type CustomerStatus = 'PENDING_KYC' | 'ACTIVE' | 'BLOCKED' | 'CLOSED';
+export type CustomerStatus = "PENDING_KYC" | "ACTIVE" | "BLOCKED" | "CLOSED";
 
 export interface Customer {
   id: string;
@@ -10,12 +10,16 @@ export interface Customer {
   address: string;
   status: CustomerStatus;
   metadata?: Record<string, any>;
+  /** Sandi referensi/inline OJK per nasabah (Form 06.00 XVIII/XX/IX). */
+  ojk_pihak_lawan_code?: string;
+  ojk_sektor_ekonomi_code?: string;
+  ojk_hubungan_bank_code?: string;
   created_at: string;
   updated_at: string;
 }
 
-export type AccountType = 'SAVINGS' | 'CHECKING' | 'LOAN' | 'INTERNAL_GL';
-export type AccountStatus = 'ACTIVE' | 'DORMANT' | 'FROZEN' | 'CLOSED';
+export type AccountType = "SAVINGS" | "CHECKING" | "LOAN" | "INTERNAL_GL";
+export type AccountStatus = "ACTIVE" | "DORMANT" | "FROZEN" | "CLOSED";
 
 export interface Account {
   id: string;
@@ -36,16 +40,17 @@ export interface Account {
 }
 
 export type TransactionType =
-  | 'DEPOSIT'
-  | 'WITHDRAWAL'
-  | 'TRANSFER_INTERNAL'
-  | 'FEE_CHARGE'
-  | 'INTEREST_ACCRUAL'
-  | 'REVERSAL'
-  | 'ADJUSTMENT';
+  | "DEPOSIT"
+  | "WITHDRAWAL"
+  | "TRANSFER_INTERNAL"
+  | "FEE_CHARGE"
+  | "INTEREST_ACCRUAL"
+  | "REVERSAL"
+  | "ADJUSTMENT";
 
-export type JournalStatus = 'POSTED' | 'REVERSED' | 'FAILED' | 'PENDING_APPROVAL';
-export type EntryDirection = 'DEBIT' | 'CREDIT';
+export type JournalStatus =
+  "POSTED" | "REVERSED" | "FAILED" | "PENDING_APPROVAL";
+export type EntryDirection = "DEBIT" | "CREDIT";
 
 export interface JournalLine {
   id: string;

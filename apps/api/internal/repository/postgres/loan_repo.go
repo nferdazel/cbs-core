@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -654,6 +655,41 @@ func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID,
 	q := `UPDATE loans SET collectibility=$1, dpd=$2, accrual_status=$3, required_ppap=$4, updated_at=NOW() WHERE id=$5`
 	_, err := r.db.ExecContext(ctx, q, col, dpd, accrual, ppap, id)
 	return err
+}
+
+// UpdateOJKLoanCodesTx menyimpan sandi referensi/inline OJK satu kredit di dalam
+// transaksi pemanggil. Hanya kolom yang dikirim (pointer non-nil) yang masuk SET;
+// nilai kosong disimpan sebagai NULL agar laporan membacanya "belum diisi" dan
+// kolom referensi ber-foreign key tidak menerima sandi "".
+func (r *LoanRepository) UpdateOJKLoanCodesTx(ctx context.Context, tx any, id uuid.UUID, input domain.UpdateOJKLoanCodesInput) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("loan: transaksi tidak valid")
+	}
+
+	args := []any{id}
+	set := make([]string, 0, 3)
+	appendCode := func(column string, value *string) {
+		if value == nil {
+			return
+		}
+		trimmed := strings.TrimSpace(*value)
+		args = append(args, sql.NullString{String: trimmed, Valid: trimmed != ""})
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	appendCode("ojk_jenis_penggunaan_code", input.OJKJenisPenggunaanCode)
+	appendCode("ojk_periode_pembayaran_code", input.OJKPeriodePembayaranCode)
+	appendCode("ojk_kabupaten_code", input.OJKKabupatenCode)
+	if len(set) == 0 {
+		return nil
+	}
+	set = append(set, "updated_at = NOW()")
+
+	query := "UPDATE loans SET " + strings.Join(set, ", ") + " WHERE id = $1"
+	if _, err := sqlTx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to update loan OJK codes: %w", err)
+	}
+	return nil
 }
 
 func (r *LoanRepository) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {
