@@ -50,7 +50,13 @@ const listLPSPlacementsSelect = `
 		p.start_date,
 		p.maturity_date,
 		COALESCE(p.interest_rate_annual, 0),
-		COALESCE(p.ojk_kabupaten_code, '')
+		COALESCE(p.ojk_kabupaten_code, ''),
+		COALESCE(p.ojk_hubungan_bank_code, ''),
+		p.blocked_amount,
+		COALESCE(p.ojk_alasan_diblokir_code, ''),
+		p.accrued_interest_receivable,
+		p.accrued_interest_pending,
+		COALESCE(p.counterparty_cif, '')
 	FROM lps_placements p
 	LEFT JOIN branches b ON b.id = p.branch_id`
 
@@ -65,6 +71,8 @@ func scanLPSPlacement(row rowScanner) (*domain.LPSPlacement, error) {
 		requiredCKPN, individualTarget            decimal.Decimal
 		assessedAt                                sql.NullTime
 		startDate, maturityDate                   sql.NullTime
+		blockedAmount                             decimal.NullDecimal
+		accruedInterest, accruedInterestPending   decimal.NullDecimal
 	)
 	if err := row.Scan(
 		&p.ID, &p.COACode, &p.CounterpartyBank, &placementType,
@@ -72,8 +80,22 @@ func scanLPSPlacement(row rowScanner) (*domain.LPSPlacement, error) {
 		&ckpnMethod, &ckpnSignificant, &ckpnObjectiveEvidence,
 		&requiredCKPN, &individualTarget, &assessedAt,
 		&startDate, &maturityDate, &p.InterestRateAnnual, &p.OJKKabupatenCode,
+		&p.OJKHubunganBankCode, &blockedAmount, &p.OJKAlasanDiblokirCode,
+		&accruedInterest, &accruedInterestPending, &p.CounterpartyCIF,
 	); err != nil {
 		return nil, err
+	}
+	if blockedAmount.Valid {
+		v := blockedAmount.Decimal
+		p.BlockedAmount = &v
+	}
+	if accruedInterest.Valid {
+		v := accruedInterest.Decimal
+		p.AccruedInterestReceivable = &v
+	}
+	if accruedInterestPending.Valid {
+		v := accruedInterestPending.Decimal
+		p.AccruedInterestPending = &v
 	}
 	p.PlacementType = domain.LPSPlacementType(placementType)
 	p.Collectibility = domain.LPSPlacementCollectibility(collectibility)

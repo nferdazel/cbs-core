@@ -61,7 +61,11 @@ var form05Columns = []form05Column{
 	{Sandi: form05SandiJenis, Nama: "Jenis", Value: func(p PlacementRow) string {
 		return sandiJenisPenempatan(p.PlacementType)
 	}},
-	{Sandi: form05SandiHubungan, Nama: "Hubungan dengan Bank", Reason: "hubungan pihak terkait dengan bank lawan belum dimodelkan"},
+	{Sandi: form05SandiHubungan, Nama: "Hubungan dengan Bank", Value: func(p PlacementRow) string {
+		// Sandi inline Lampiran II Form 05.00-2 (docs/LAMPIRAN-OJK.md): 12 terkait,
+		// 20 tidak terkait. Diisi bank lewat SQL/seed (lps_placements.ojk_hubungan_bank_code).
+		return dashIfEmpty(p.OJKHubunganBankCode)
+	}},
 	{Sandi: form05SandiJangkaWaktu, Nama: "Jangka Waktu", Value: func(p PlacementRow) string {
 		if p.StartDate == nil {
 			return "-"
@@ -84,18 +88,41 @@ var form05Columns = []form05Column{
 	{Sandi: form05SandiJumlah, Nama: "Jumlah", Value: func(p PlacementRow) string {
 		return FormatRupiah(p.Outstanding)
 	}},
-	{Sandi: form05SandiDiblokir, Nama: "Nominal yang Diblokir/Dijaminkan", Reason: "nominal diblokir/dijaminkan belum disimpan"},
-	{Sandi: form05SandiAlasan, Nama: "Alasan Diblokir", Reason: "alasan diblokir belum disimpan"},
+	{Sandi: form05SandiDiblokir, Nama: "Nominal yang Diblokir/Dijaminkan", Value: func(p PlacementRow) string {
+		if p.BlockedAmount == nil {
+			return "-"
+		}
+		return FormatRupiah(*p.BlockedAmount)
+	}},
+	{Sandi: form05SandiAlasan, Nama: "Alasan Diblokir", Value: func(p PlacementRow) string {
+		// Daftar sandi alasan diblokir tidak tersurat di repo; nilainya disimpan apa
+		// adanya dan baris tanpa isian ditulis "-", bukan ditebak dari nominal.
+		return dashIfEmpty(p.OJKAlasanDiblokirCode)
+	}},
 	{Sandi: form05SandiCKPN, Nama: "CKPN", Value: func(p PlacementRow) string {
 		if p.CKPN == nil {
 			return "-"
 		}
 		return FormatRupiah(p.CKPN.RequiredCKPN)
 	}},
-	{Sandi: form05SandiBungaAkan, Nama: "Pendapatan Bunga yang Akan Diterima", Reason: "piutang bunga penempatan belum dimodelkan"},
-	{Sandi: form05SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
+	{Sandi: form05SandiBungaAkan, Nama: "Pendapatan Bunga yang Akan Diterima", Value: func(p PlacementRow) string {
+		if p.AccruedInterestReceivable == nil {
+			return "-"
+		}
+		return FormatRupiah(*p.AccruedInterestReceivable)
+	}},
+	{Sandi: form05SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Value: func(p PlacementRow) string {
+		if p.AccruedInterestPending == nil {
+			return "-"
+		}
+		return FormatRupiah(*p.AccruedInterestPending)
+	}},
 	{Sandi: form05SandiBMPK, Nama: "Status BMPK Individu", Reason: "uji BMPK per bank lawan belum dihitung"},
-	{Sandi: form05SandiIDPihak, Nama: "ID Pihak Lawan", Reason: "sandi pihak lawan (Lampiran 02) belum dipetakan; baris memakai nama bank lawan sebagai kunci"},
+	{Sandi: form05SandiIDPihak, Nama: "ID Pihak Lawan", Value: func(p PlacementRow) string {
+		// ID Pihak Lawan = CIF internal bank lawan (BAB II Lampiran II), bukan sandi
+		// OJK; harus sama dengan CIF pada SLIK. Diisi bank lewat SQL/seed.
+		return dashIfEmpty(p.CounterpartyCIF)
+	}},
 	{Sandi: form05SandiCKPNBaik, Nama: "Cadangan Kerugian Penurunan Nilai Aset Baik", Value: func(p PlacementRow) string {
 		return ckpnGolonganKualitas(p, "LANCAR")
 	}},

@@ -166,7 +166,26 @@ type PlacementRow struct {
 	// 16/2024), sumber kolom III "Lokasi Bank" Form 05.00. Kosong berarti bank
 	// belum mengisi sandinya; laporan menulis "-".
 	OJKKabupatenCode string
-	CKPN             *PlacementCKPNRow
+	// Kolom Form 05.00 lain yang diisi bank lewat SQL/seed (migrasi 000106). Semua
+	// nullable; kosong/nil berarti bank belum mengisi dan laporan menulis "-".
+	//
+	// OJKHubunganBankCode adalah sandi inline Hubungan dengan Bank (12/20), sumber
+	// kolom V.
+	OJKHubunganBankCode string
+	// BlockedAmount adalah nominal yang diblokir/dijaminkan, sumber kolom X.
+	BlockedAmount *decimal.Decimal
+	// OJKAlasanDiblokirCode adalah sandi alasan diblokir, sumber kolom XI.
+	OJKAlasanDiblokirCode string
+	// AccruedInterestReceivable adalah pendapatan bunga yang akan diterima (akrual
+	// bunga penempatan), sumber kolom XIII.
+	AccruedInterestReceivable *decimal.Decimal
+	// AccruedInterestPending adalah pendapatan bunga dalam penyelesaian, sumber
+	// kolom XIV.
+	AccruedInterestPending *decimal.Decimal
+	// CounterpartyCIF adalah ID Pihak Lawan kolom XVI: nomor CIF internal bank
+	// lawan (sama dengan SLIK), bukan sandi OJK.
+	CounterpartyCIF string
+	CKPN            *PlacementCKPNRow
 }
 
 // PlacementCKPNRow adalah CKPN tersimpan satu penempatan: metode asesmen dan target yang

@@ -147,6 +147,29 @@ type LPSPlacement struct {
 	// 16/2024, 4 digit), sumber Form 05.00 kolom III Lokasi Bank. Kosong berarti
 	// belum diisi; laporan menulis "-". Nilainya diisi bank lewat SQL/seed.
 	OJKKabupatenCode string
+	// Kolom Form 05.00 yang datanya disediakan bank lewat SQL/seed (migrasi 000106).
+	// Semuanya nullable; kosong berarti belum diisi dan laporan menulis "-", bukan nol.
+	//
+	// OJKHubunganBankCode adalah sandi inline Hubungan dengan Bank (12 terkait,
+	// 20 tidak terkait; Lampiran II Form 05.00-2), sumber kolom V.
+	OJKHubunganBankCode string
+	// BlockedAmount adalah nominal penempatan yang diblokir/dijaminkan, sumber
+	// kolom X. Nilai yang berbeda dari nol tetap ditulis apa adanya; nil berarti
+	// belum diisi sehingga laporan menulis "-".
+	BlockedAmount *decimal.Decimal
+	// OJKAlasanDiblokirCode adalah sandi alasan diblokir, sumber kolom XI. Daftar
+	// sandinya tidak tersurat di repo sehingga hanya disimpan, tidak ditebak/dipetakan.
+	OJKAlasanDiblokirCode string
+	// AccruedInterestReceivable adalah pendapatan bunga yang akan diterima atas
+	// penempatan (akrual/piutang bunga), sumber kolom XIII. Nil berarti belum diisi.
+	AccruedInterestReceivable *decimal.Decimal
+	// AccruedInterestPending adalah pendapatan bunga dalam penyelesaian atas
+	// penempatan, sumber kolom XIV. Nil berarti belum diisi.
+	AccruedInterestPending *decimal.Decimal
+	// CounterpartyCIF adalah ID Pihak Lawan kolom XVI: nomor CIF internal bank
+	// lawan (harus sama dengan CIF pada SLIK), bukan sandi OJK. Kosong berarti
+	// belum diisi dan laporan menulis "-".
+	CounterpartyCIF string
 	// CKPN adalah asesmen CKPN terakhir penempatan ini; nil berarti belum pernah
 	// diasesmen (kolom ckpn_assessed_at NULL). Form 05.00 kolom XII/XXI hanya tersedia
 	// bila minimal satu baris punya CKPN.

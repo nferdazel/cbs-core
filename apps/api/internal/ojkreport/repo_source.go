@@ -220,6 +220,13 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 			MaturityDate:       p.MaturityDate,
 			InterestRateAnnual: p.InterestRateAnnual,
 			OJKKabupatenCode:   p.OJKKabupatenCode,
+			// Kolom Form 05.00 K1 lain (migrasi 000106); kosong/nil ditulis "-".
+			OJKHubunganBankCode:       p.OJKHubunganBankCode,
+			BlockedAmount:             p.BlockedAmount,
+			OJKAlasanDiblokirCode:     p.OJKAlasanDiblokirCode,
+			AccruedInterestReceivable: p.AccruedInterestReceivable,
+			AccruedInterestPending:    p.AccruedInterestPending,
+			CounterpartyCIF:           p.CounterpartyCIF,
 		}
 		if p.CKPN != nil {
 			row.CKPN = &PlacementCKPNRow{
