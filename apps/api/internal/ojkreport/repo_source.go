@@ -39,6 +39,10 @@ type RepoSource struct {
 	// (rekening tabungan/giro dan deposito berjangka). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada angka yang dikarang.
 	Savings domain.SavingsCustomerRepository
+	// BankDeposits menyediakan agregasi Form 13.00 simpanan dari bank lain (rekening
+	// tabungan/giro dan deposito berjangka milik nasabah bergolongan bank). Bila nil,
+	// form dinyatakan belum tersedia; tidak ada angka yang dikarang.
+	BankDeposits domain.BankDepositRepository
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -276,6 +280,37 @@ func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, actor domain.A
 			CustomerTypeCode: a.CustomerTypeCode,
 			AccountCount:     a.AccountCount,
 			TotalAmount:      a.TotalAmount,
+		})
+	}
+	return out, nil
+}
+
+// ListBankDepositsForOJK membaca agregasi Form 13.00 bank-wide dan memetakannya ke
+// baris ekspor. Kebijakan bank-wide ditegakkan di lapisan data: aktor non-lintas
+// cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, actor domain.Actor) ([]BankDepositRow, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.BankDeposits == nil {
+		return nil, nil
+	}
+	aggregates, err := s.BankDeposits.ListBankDeposits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BankDepositRow, 0, len(aggregates))
+	for _, a := range aggregates {
+		out = append(out, BankDepositRow{
+			BranchCode:       a.BranchCode,
+			CounterpartyCIF:  a.CounterpartyCIF,
+			JenisBankCode:    a.JenisBankCode,
+			HubunganBankCode: a.HubunganBankCode,
+			LocationCode:     a.LocationCode,
+			Jenis:            a.Jenis,
+			AccountCount:     a.AccountCount,
+			TotalNominal:     a.TotalNominal,
+			TotalBlocked:     a.TotalBlocked,
 		})
 	}
 	return out, nil

@@ -339,6 +339,25 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber rekening simpanan/deposito belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 13.00 Daftar Simpanan dari Bank Lain: agregasi simpanan (tabungan/giro) dan
+	// deposito milik nasabah bergolongan bank (sandi Lampiran 02). Bila tidak ada
+	// nasabah bank yang dapat dikenali, form dinyatakan belum tersedia, bukan kosong.
+	if bs, ok := b.source.(BankDepositSource); ok {
+		rows, err := bs.ListBankDepositsForOJK(ctx, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "13.00", Name: formName("13.00"),
+				UnavailableReason: "belum ada simpanan/deposito berstatus berjalan milik nasabah bergolongan bank (customers.ojk_pihak_lawan_code 001/600/601/700/701/901)"})
+		} else {
+			tables = append(tables, buildForm13(rows))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "13.00", Name: formName("13.00"),
+			UnavailableReason: "sumber simpanan/deposito bank lawan belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

@@ -269,15 +269,16 @@ func main() {
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
-		Source:     reportSvc,
-		Loans:      loanRepo,
-		Profile:    bankProfileRepo,
-		Config:     configRepo,
-		Placements: postgres.NewLPSPlacementRepository(db),
-		Customers:  customerRepo,
-		KPMM:       kpmmSvc,
-		BMPK:       bmpkSvc,
-		Savings:    postgres.NewSavingsCustomerRepository(db),
+		Source:       reportSvc,
+		Loans:        loanRepo,
+		Profile:      bankProfileRepo,
+		Config:       configRepo,
+		Placements:   postgres.NewLPSPlacementRepository(db),
+		Customers:    customerRepo,
+		KPMM:         kpmmSvc,
+		BMPK:         bmpkSvc,
+		Savings:      postgres.NewSavingsCustomerRepository(db),
+		BankDeposits: postgres.NewBankDepositRepository(db),
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

@@ -307,6 +307,46 @@ type SavingsCustomerTypeSource interface {
 	ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error)
 }
 
+// BankDepositRow adalah satu baris agregasi Form 13.00 "Daftar Simpanan dari Bank
+// Lain": simpanan (tabungan/giro) dan deposito berjangka milik nasabah bergolongan
+// bank, dikelompokkan per bank lawan, kantor, dan jenis simpanan.
+//
+// Bank lawan dikenali dari sandi Lampiran 02 (customers.ojk_pihak_lawan_code):
+// 001 Bank Indonesia, 600 BPR, 601 BPRS, 700 Bank Umum, 701 Bank Umum Syariah, dan
+// 901 Unit Usaha Syariah. Nasabah tanpa sandi bank tidak dapat dikenali.
+type BankDepositRow struct {
+	// BranchCode adalah sandi kantor BPR (branches.code), sumber kolom I.
+	BranchCode string
+	// CounterpartyCIF adalah ID Pihak Lawan kolom II: nomor CIF internal bank lawan
+	// (sama dengan SLIK), bukan sandi OJK. Kosong berarti nasabah tak terbaca.
+	CounterpartyCIF string
+	// JenisBankCode adalah sandi Lampiran 02 kategori bank lawan, sumber kolom IV.
+	JenisBankCode string
+	// HubunganBankCode adalah sandi inline Hubungan dengan Bank (12/20), sumber
+	// kolom VIII. Kosong berarti bank belum mengisi; laporan menulis "-".
+	HubunganBankCode string
+	// LocationCode adalah sandi Kabupaten/Kota bank lawan (Lampiran 03), sumber
+	// kolom VI. Kosong berarti bank belum mengisi; laporan menulis "-".
+	LocationCode string
+	// Jenis adalah sandi Form 13.00 kolom VII: "01" Tabungan, "02" Deposito.
+	Jenis string
+	// AccountCount adalah jumlah rekening/kontrak satuan pada kelompok ini.
+	AccountCount int
+	// TotalNominal adalah total saldo tabungan/giro atau nominal penempatan deposito
+	// dalam rupiah penuh, sumber kolom XI.
+	TotalNominal decimal.Decimal
+	// TotalBlocked adalah total saldo yang diblokir/dijaminkan (accounts.hold_balance),
+	// sumber kolom XII.
+	TotalBlocked decimal.Decimal
+}
+
+// BankDepositSource menyediakan agregasi Form 13.00 bank-wide. Posisi yang dibaca
+// adalah keadaan saat ekspor dijalankan; sistem belum menyimpan riwayat saldo
+// simpanan per akhir bulan.
+type BankDepositSource interface {
+	ListBankDepositsForOJK(ctx context.Context, actor domain.Actor) ([]BankDepositRow, error)
+}
+
 // aktifUntukOJK melaporkan apakah kredit masih punya eksposur berjalan menurut
 // statusnya. Mengikuti domain.LoanStatus.IsCKPNActive: hanya DISBURSED dan DEFAULTED.
 func aktifUntukOJK(status string) bool {

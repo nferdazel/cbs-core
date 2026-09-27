@@ -75,6 +75,50 @@ func TestBuilderMengisiKPMMLewatRepoSource(t *testing.T) {
 	}
 }
 
+// bankDepositRepoStub mengimplementasikan domain.BankDepositRepository untuk menguji
+// adaptor RepoSource tanpa basis data.
+type bankDepositRepoStub struct {
+	rows []domain.BankDepositAggregate
+}
+
+func (s bankDepositRepoStub) ListBankDeposits(context.Context) ([]domain.BankDepositAggregate, error) {
+	return s.rows, nil
+}
+
+var _ domain.BankDepositRepository = bankDepositRepoStub{}
+
+// TestRepoSourceListBankDeposits memastikan adaptor memetakan agregasi Form 13.00,
+// menegakkan kebijakan bank-wide di lapisan data, dan mengembalikan nil (bukan angka
+// nol) bila repositori tidak dirangkai.
+func TestRepoSourceListBankDeposits(t *testing.T) {
+	src := RepoSource{BankDeposits: bankDepositRepoStub{rows: []domain.BankDepositAggregate{
+		{
+			BranchCode: "001", CounterpartyCIF: "CIF-1", JenisBankCode: "700",
+			HubunganBankCode: "20", LocationCode: "0197", Jenis: "02",
+			AccountCount: 1, TotalNominal: decimal.NewFromInt(1_000_000),
+		},
+	}}}
+
+	rows, err := src.ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("ListBankDepositsForOJK: %v", err)
+	}
+	if len(rows) != 1 || rows[0].JenisBankCode != "700" || !rows[0].TotalNominal.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("baris = %+v", rows)
+	}
+
+	// Aktor cabang ditolak di lapisan data, bukan diberi sebagian.
+	if _, err := src.ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleTeller}); !errors.Is(err, ErrOJKBankWide) {
+		t.Fatalf("aktor non-lintas cabang: error = %v, ingin ErrOJKBankWide", err)
+	}
+
+	// Tanpa repositori, tidak ada baris dan tidak ada galat.
+	kosong, err := (RepoSource{}).ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil || kosong != nil {
+		t.Fatalf("tanpa repositori: rows=%v err=%v", kosong, err)
+	}
+}
+
 // customerBatchStub menangkap pemanggilan GetByIDs agar uji dapat memastikan sandi
 // referensi OJK dibaca sebagai SATU query agregat, bukan per kredit.
 type customerBatchStub struct {

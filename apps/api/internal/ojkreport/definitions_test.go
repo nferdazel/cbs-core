@@ -1,6 +1,7 @@
 package ojkreport
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,10 +86,10 @@ func TestDefinisiLengkap(t *testing.T) {
 
 func TestBuildableForms(t *testing.T) {
 	forms := BuildableForms()
-	if len(forms) != 7 {
-		t.Fatalf("ingin 7 form buildable, dapat %d", len(forms))
+	if len(forms) != 8 {
+		t.Fatalf("ingin 8 form buildable, dapat %d", len(forms))
 	}
-	want := []string{"00.00", "00.08", "01.00", "02.00", "05.00", "06.00", "00.14"}
+	want := []string{"00.00", "00.08", "01.00", "02.00", "05.00", "06.00", "13.00", "00.14"}
 	for i, w := range want {
 		if forms[i].Form != w {
 			t.Fatalf("form buildable[%d] = %s, ingin %s", i, forms[i].Form, w)
@@ -106,4 +107,41 @@ func TestDefinisiLaporanBMPKBuildable(t *testing.T) {
 	if def.UnavailableReason != "" {
 		t.Fatalf("LAPORAN_BMPK buildable tidak boleh menyimpan alasan: %q", def.UnavailableReason)
 	}
+}
+
+// Form 13.00 dapat dibangun dari agregasi simpanan bank lawan.
+func TestForm13Buildable(t *testing.T) {
+	for _, f := range OJKBulananForms {
+		if f.Form != "13.00" {
+			continue
+		}
+		if !f.Buildable {
+			t.Fatal("Form 13.00 harus buildable")
+		}
+		if f.UnavailableReason != "" {
+			t.Fatalf("Form 13.00 buildable tidak boleh menyimpan alasan: %q", f.UnavailableReason)
+		}
+		return
+	}
+	t.Fatal("Form 13.00 tidak terdaftar")
+}
+
+// Form 09.00 tetap belum dapat dibangun: alasannya harus menyebut saldo agregat dan
+// pos-pos Form 09.00 yang tidak punya akun/pemetaan, bukan sekadar "belum tersedia".
+func TestForm09TetapBelumTersediaDenganAlasanKonkret(t *testing.T) {
+	for _, f := range OJKBulananForms {
+		if f.Form != "09.00" {
+			continue
+		}
+		if f.Buildable {
+			t.Fatal("Form 09.00 tidak boleh buildable tanpa pemetaan COA ke pos Form 09.00")
+		}
+		for _, kata := range []string{"1299000000", "10400", "1299990000"} {
+			if !strings.Contains(f.UnavailableReason, kata) {
+				t.Errorf("alasan Form 09.00 harus menyebut %q: %q", kata, f.UnavailableReason)
+			}
+		}
+		return
+	}
+	t.Fatal("Form 09.00 tidak terdaftar")
 }
