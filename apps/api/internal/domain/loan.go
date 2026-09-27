@@ -319,6 +319,34 @@ type Loan struct {
 	// berarti belum diisi dan laporan menulis "-", bukan diturunkan dari plafon dikurangi
 	// baki.
 	OJKKelonggaranTarikAmount *decimal.Decimal `json:"ojk_kelonggaran_tarik_amount,omitempty"`
+	// OJKProvisiBelumDiamortisasiAmount adalah bagian provisi kredit yang belum menjadi
+	// pendapatan bunga periode berjalan (kolom XXIX Form 06.00; migrasi 000111). Definisi
+	// resmi Lampiran II SEOJK 16/2024 Form 06.00-3 (PDF #page 165): "bagian dari provisi
+	// yang belum menjadi pendapatan bunga periode berjalan atas kredit yang diberikan".
+	// Jadwal amortisasi provisi belum dimodelkan; bank mengisinya lewat SQL/seed. Nil
+	// berarti belum diisi dan laporan menulis "-", BUKAN nol.
+	OJKProvisiBelumDiamortisasiAmount *decimal.Decimal `json:"ojk_provisi_belum_diamortisasi_amount,omitempty"`
+	// OJKBiayaTransaksiBelumDiamortisasiAmount adalah bagian biaya transaksi kredit yang
+	// belum diamortisasi (kolom XXX Form 06.00; migrasi 000111). Definisi resmi PDF #page
+	// 165: "bagian dari biaya transaksi yang belum diamortisasi dan belum menjadi pengurang
+	// pendapatan bunga periode berjalan atas kredit yang diberikan". Jadwal amortisasinya
+	// belum dimodelkan; bank mengisinya lewat SQL/seed. Nil berarti belum diisi dan
+	// laporan menulis "-", BUKAN nol.
+	OJKBiayaTransaksiBelumDiamortisasiAmount *decimal.Decimal `json:"ojk_biaya_transaksi_belum_diamortisasi_amount,omitempty"`
+	// OJKPendapatanBungaDitangguhkanAmount adalah pendapatan bunga yang ditangguhkan dalam
+	// rangka restrukturisasi kredit melalui kapitalisasi tunggakan bunga ke pokok (kolom
+	// XXXI Form 06.00; migrasi 000111). Definisi resmi PDF #page 165. Pencatatan per
+	// kreditnya belum dimodelkan; bank mengisinya lewat SQL/seed. Nil berarti belum diisi
+	// dan laporan menulis "-", BUKAN nol.
+	OJKPendapatanBungaDitangguhkanAmount *decimal.Decimal `json:"ojk_pendapatan_bunga_ditangguhkan_amount,omitempty"`
+	// OJKCadanganKerugianRestrukturisasiAmount adalah cadangan kerugian restrukturisasi
+	// (kolom XXXII Form 06.00; migrasi 000111): selisih antara nilai perkiraan arus kas
+	// masa depan berdasarkan perjanjian restrukturisasi dengan tingkat diskonto tertentu
+	// dan baki debet kredit sebelum restrukturisasi (definisi resmi PDF #page 165).
+	// Pemetaan dari saldo kerugian restrukturisasi yang belum diamortisasi
+	// (restructure_loss_balance) belum diputuskan akuntan; bank mengisinya lewat SQL/seed.
+	// Nil berarti belum diisi dan laporan menulis "-", BUKAN nol.
+	OJKCadanganKerugianRestrukturisasiAmount *decimal.Decimal `json:"ojk_cadangan_kerugian_restrukturisasi_amount,omitempty"`
 	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
 	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
 	RejectionReason string `json:"rejection_reason,omitempty"`

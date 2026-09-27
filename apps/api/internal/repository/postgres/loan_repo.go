@@ -40,7 +40,9 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	ojk_kelompok_kredit_code, ojk_sumber_dana_code, ojk_kategori_usaha_code,
 	ojk_sifat_kredit_code, ojk_penjamin_code, ojk_penjamin_bagian_pct,
 	ojk_tanggal_mulai_macet, ojk_klasifikasi_aset_code,
-	ojk_agunan_ppka_amount, ojk_kelonggaran_tarik_amount`
+	ojk_agunan_ppka_amount, ojk_kelonggaran_tarik_amount,
+	ojk_provisi_belum_diamortisasi_amount, ojk_biaya_transaksi_belum_diamortisasi_amount,
+	ojk_pendapatan_bunga_ditangguhkan_amount, ojk_cadangan_kerugian_restrukturisasi_amount`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -57,6 +59,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var ojkTanggalMulaiMacet sql.NullTime
 	var ojkKlasifikasiAset sql.NullString
 	var ojkAgunanPPKA, ojkKelonggaranTarik decimal.NullDecimal
+	var ojkProvisiAmortisasi, ojkBiayaTransaksiAmortisasi, ojkPendapatanDitangguhkan, ojkCadanganRestrukturisasi decimal.NullDecimal
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -79,6 +82,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&ojkSifatKredit, &ojkPenjamin, &ojkPenjaminBagian,
 		&ojkTanggalMulaiMacet, &ojkKlasifikasiAset,
 		&ojkAgunanPPKA, &ojkKelonggaranTarik,
+		&ojkProvisiAmortisasi, &ojkBiayaTransaksiAmortisasi, &ojkPendapatanDitangguhkan, &ojkCadanganRestrukturisasi,
 	)
 	if err != nil {
 		return nil, err
@@ -153,6 +157,22 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	if ojkKelonggaranTarik.Valid {
 		v := ojkKelonggaranTarik.Decimal
 		l.OJKKelonggaranTarikAmount = &v
+	}
+	if ojkProvisiAmortisasi.Valid {
+		v := ojkProvisiAmortisasi.Decimal
+		l.OJKProvisiBelumDiamortisasiAmount = &v
+	}
+	if ojkBiayaTransaksiAmortisasi.Valid {
+		v := ojkBiayaTransaksiAmortisasi.Decimal
+		l.OJKBiayaTransaksiBelumDiamortisasiAmount = &v
+	}
+	if ojkPendapatanDitangguhkan.Valid {
+		v := ojkPendapatanDitangguhkan.Decimal
+		l.OJKPendapatanBungaDitangguhkanAmount = &v
+	}
+	if ojkCadanganRestrukturisasi.Valid {
+		v := ojkCadanganRestrukturisasi.Decimal
+		l.OJKCadanganKerugianRestrukturisasiAmount = &v
 	}
 	return &l, nil
 }

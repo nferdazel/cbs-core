@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/shopspring/decimal"
 )
 
 // form06.go membangun Form 06.00 DAFTAR KREDIT YANG DIBERIKAN dari baris kredit.
@@ -221,11 +222,44 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiBakiDebet, Nama: "Baki Debet", Value: func(r LoanRow) string {
 		return FormatRupiah(r.Outstanding)
 	}},
-	{Sandi: form06SandiProvisi, Nama: "Provisi Belum Diamortisasi", Reason: "provisi belum diamortisasi tidak disimpan per kredit"},
-	{Sandi: form06SandiBiayaTrans, Nama: "Biaya Transaksi Belum Diamortisasi", Reason: "biaya transaksi belum diamortisasi tidak disimpan per kredit"},
-	{Sandi: form06SandiBungaTangguh, Nama: "Pendapatan Bunga Ditangguhkan Dalam Rangka Restrukturisasi", Reason: "akun pendapatan bunga ditangguhkan restrukturisasi belum dicatat per kredit"},
-	{Sandi: form06SandiCadRestru, Nama: "Cadangan Kerugian Restrukturisasi", Reason: "cadangan kerugian restrukturisasi belum dicatat per kredit"},
-	{Sandi: form06SandiBakiNeto, Nama: "Baki Debet Neto", Reason: "butuh provisi, biaya transaksi, pendapatan ditangguhkan, dan cadangan restrukturisasi yang belum tersedia; tidak dihitung sebagian"},
+	{Sandi: form06SandiProvisi, Nama: "Provisi Belum Diamortisasi", Value: func(r LoanRow) string {
+		// Bagian provisi yang belum menjadi pendapatan bunga periode berjalan (kolom
+		// XXIX; loans.ojk_provisi_belum_diamortisasi_amount, migrasi 000111). Jadwal
+		// amortisasi provisi belum dimodelkan sehingga bank mengisinya lewat SQL/seed;
+		// definisi resmi Lampiran II Form 06.00-3 (PDF #page 165). Nil = belum diisi,
+		// ditulis "-", BUKAN diturunkan dari rumus amortisasi karangan.
+		return formatNominalOpsional(r.OJKProvisiBelumDiamortisasiAmount)
+	}},
+	{Sandi: form06SandiBiayaTrans, Nama: "Biaya Transaksi Belum Diamortisasi", Value: func(r LoanRow) string {
+		// Bagian biaya transaksi yang belum diamortisasi dan belum menjadi pengurang
+		// pendapatan bunga (kolom XXX; migrasi 000111). PDF #page 165. Bank mengisi.
+		return formatNominalOpsional(r.OJKBiayaTransaksiBelumDiamortisasiAmount)
+	}},
+	{Sandi: form06SandiBungaTangguh, Nama: "Pendapatan Bunga Ditangguhkan Dalam Rangka Restrukturisasi", Value: func(r LoanRow) string {
+		// Pendapatan bunga ditangguhkan dalam rangka restrukturisasi melalui
+		// kapitalisasi tunggakan bunga ke pokok (kolom XXXI; migrasi 000111).
+		// PDF #page 165. Pencatatan per kredit belum dimodelkan; bank mengisi.
+		return formatNominalOpsional(r.OJKPendapatanBungaDitangguhkanAmount)
+	}},
+	{Sandi: form06SandiCadRestru, Nama: "Cadangan Kerugian Restrukturisasi", Value: func(r LoanRow) string {
+		// Selisih nilai kini arus kas masa depan menurut perjanjian restrukturisasi dan
+		// baki debet sebelum restrukturisasi (kolom XXXII; migrasi 000111).
+		// PDF #page 165. Pemetaan dari saldo kerugian restrukturisasi belum diputuskan;
+		// bank mengisi.
+		return formatNominalOpsional(r.OJKCadanganKerugianRestrukturisasiAmount)
+	}},
+	{Sandi: form06SandiBakiNeto, Nama: "Baki Debet Neto", Value: func(r LoanRow) string {
+		// Rumus resmi Lampiran II Form 06.00-3 (PDF #page 165): baki debet dikurangi
+		// provisi belum diamortisasi, ditambah biaya transaksi belum diamortisasi,
+		// dikurangi pendapatan bunga ditangguhkan restrukturisasi, dan dikurangi
+		// cadangan kerugian restrukturisasi. Dihitung hanya bila komponennya sudah
+		// tersimpan; bila belum, ditulis "-" (BUKAN dianggap nol).
+		neto, ok := bakiDebetNeto(r)
+		if !ok {
+			return "-"
+		}
+		return FormatRupiah(neto)
+	}},
 	{Sandi: form06SandiCKPN, Nama: "CKPN Yang Telah Dibentuk", Value: func(r LoanRow) string {
 		return FormatRupiah(r.RequiredCKPN)
 	}},
@@ -316,6 +350,7 @@ func buildForm06(rows []LoanRow) TableSection {
 			"Baris dibangun dari keadaan kredit saat ekspor dijalankan; sistem belum menyimpan riwayat posisi kredit per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
 			"Status BMPK (kolom XXXVII) diambil dari hasil uji batas modul BMPK per pihak terkait; baris yang nasabahnya belum ditandai pihak terkait ditulis '-' (bukan dianggap sesuai batas).",
 			"Nilai Agunan yang Diperhitungkan untuk PPKA (kolom XXV) diambil dari hasil run PPAP terakhir (loans.ojk_agunan_ppka_amount) dan tidak dihitung ulang di sini; bila modul agunan belum aktif/belum dijalankan atau bank belum mengisi, kolom ditulis '-' (bukan nol). Kelonggaran Tarik (kolom XXVI) diisi bank dan ditulis '-' bila belum diisi.",
+			"Kolom XXIX Provisi Belum Diamortisasi, XXX Biaya Transaksi Belum Diamortisasi, XXXI Pendapatan Bunga Ditangguhkan Dalam Rangka Restrukturisasi, dan XXXII Cadangan Kerugian Restrukturisasi diisi bank (jadwal amortisasi provisi/biaya dan pencatatan penangguhan restrukturisasi belum dimodelkan); nilainya ditulis '-' bila belum diisi, BUKAN diturunkan dari rumus karangan. Kolom XXXIII Baki Debet Neto dihitung dari komponen di atas menurut definisi Lampiran II Form 06.00-3 (PDF #page 165): baki debet - provisi belum diamortisasi + biaya transaksi belum diamortisasi - pendapatan bunga ditangguhkan restrukturisasi - cadangan kerugian restrukturisasi; bila komponennya belum tersimpan, kolom ditulis '-' (bukan nol).",
 			"Kolom kondisional bank (VI, XXXIX, XL, XLIII) dinyatakan belum tersedia dengan alasan KEBIJAKAN, bukan cacat data: bank bukan peserta KUR/LPBBTI secara bawaan, partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom terkait ditulis '-'.",
 		},
 	}
@@ -424,4 +459,49 @@ func dashIfEmpty(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// formatNominalOpsional menulis nominal dalam rupiah penuh untuk nilai yang tersimpan
+// dan "-" bila nilainya belum diisi (NULL). Nol yang benar-benar tersimpan tetap
+// ditulis "0", berbeda dari NULL.
+func formatNominalOpsional(d *decimal.Decimal) string {
+	if d == nil {
+		return "-"
+	}
+	return FormatRupiah(*d)
+}
+
+// bakiDebetNeto menghitung kolom XXXIII Baki Debet Neto menurut definisi resmi
+// Lampiran II SEOJK No. 16/SEOJK.03/2024 Form 06.00-3 (PDF #page 165, hlm. 113): "baki
+// debet kredit setelah dikurangi dengan provisi yang belum diamortisasi dan ditambah
+// dengan biaya transaksi yang belum diamortisasi serta dikurangi dengan pendapatan bunga
+// yang ditangguhkan dalam rangka restrukturisasi kredit dan cadangan kerugian
+// restrukturisasi." Urutan dan tanda mengikuti kalimat itu apa adanya.
+//
+// ok=false bila komponen belum dapat ditentukan: provisi dan biaya transaksi wajib
+// tersimpan. Untuk kredit yang TIDAK direstrukturisasi, pendapatan ditangguhkan dan
+// cadangan kerugian restrukturisasi memang nol menurut definisi kolomnya, jadi tidak
+// menghalangi; untuk kredit yang direstrukturisasi keduanya wajib tersimpan agar kolom
+// tidak mencampur angka yang ada dengan yang belum diisi. Nilai nil BUKAN nol.
+func bakiDebetNeto(r LoanRow) (decimal.Decimal, bool) {
+	if r.OJKProvisiBelumDiamortisasiAmount == nil || r.OJKBiayaTransaksiBelumDiamortisasiAmount == nil {
+		return decimal.Zero, false
+	}
+	neto := r.Outstanding.
+		Sub(*r.OJKProvisiBelumDiamortisasiAmount).
+		Add(*r.OJKBiayaTransaksiBelumDiamortisasiAmount)
+
+	pendapatan := decimal.Zero
+	if r.OJKPendapatanBungaDitangguhkanAmount != nil {
+		pendapatan = *r.OJKPendapatanBungaDitangguhkanAmount
+	} else if r.IsRestructured {
+		return decimal.Zero, false
+	}
+	cadangan := decimal.Zero
+	if r.OJKCadanganKerugianRestrukturisasiAmount != nil {
+		cadangan = *r.OJKCadanganKerugianRestrukturisasiAmount
+	} else if r.IsRestructured {
+		return decimal.Zero, false
+	}
+	return neto.Sub(pendapatan).Sub(cadangan), true
 }

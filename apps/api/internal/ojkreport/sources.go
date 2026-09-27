@@ -140,6 +140,23 @@ type LoanRow struct {
 	// loans.ojk_kelonggaran_tarik_amount, migrasi 000109): bagian plafon komitmen yang
 	// belum ditarik. Nil berarti bank belum mengisi; laporan menulis "-".
 	OJKKelonggaranTarikAmount *decimal.Decimal
+	// Kolom XXIX–XXXII Form 06.00 (migrasi 000111): komponen amortisasi provisi/biaya
+	// dan restrukturisasi yang belum dihitung mesin, disimpan nullable dan diisi bank.
+	// Nil berarti belum diisi; laporan menulis "-", BUKAN nol. Definisi resmi Lampiran II
+	// SEOJK 16/2024 Form 06.00-3 (PDF #page 165).
+	//
+	// OJKProvisiBelumDiamortisasiAmount adalah provisi yang belum menjadi pendapatan
+	// bunga periode berjalan (kolom XXIX).
+	OJKProvisiBelumDiamortisasiAmount *decimal.Decimal
+	// OJKBiayaTransaksiBelumDiamortisasiAmount adalah biaya transaksi yang belum
+	// diamortisasi dan belum menjadi pengurang pendapatan bunga (kolom XXX).
+	OJKBiayaTransaksiBelumDiamortisasiAmount *decimal.Decimal
+	// OJKPendapatanBungaDitangguhkanAmount adalah pendapatan bunga ditangguhkan dalam
+	// rangka restrukturisasi akibat kapitalisasi tunggakan bunga ke pokok (kolom XXXI).
+	OJKPendapatanBungaDitangguhkanAmount *decimal.Decimal
+	// OJKCadanganKerugianRestrukturisasiAmount adalah cadangan kerugian restrukturisasi
+	// (kolom XXXII).
+	OJKCadanganKerugianRestrukturisasiAmount *decimal.Decimal
 	// RestructuredAt adalah tanggal restrukturisasi terakhir, dipakai menurunkan kolom
 	// XLII "Tanggal Akad Akhir" (akad terbaru) bila kredit pernah direstrukturisasi.
 	RestructuredAt *time.Time

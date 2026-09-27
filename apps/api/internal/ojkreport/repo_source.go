@@ -355,7 +355,13 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		// tarik. Nil berarti belum diisi/belum dihitung; form menulis "-", bukan nol.
 		OJKAgunanPPKAAmount:       l.OJKAgunanPPKAAmount,
 		OJKKelonggaranTarikAmount: l.OJKKelonggaranTarikAmount,
-		RestructuredAt:            l.RestructuredAt,
+		// Kolom XXIX–XXXII Form 06.00 (migrasi 000111): komponen amortisasi provisi/biaya
+		// dan restrukturisasi yang diisi bank. Nil berarti belum diisi; form menulis "-".
+		OJKProvisiBelumDiamortisasiAmount:        l.OJKProvisiBelumDiamortisasiAmount,
+		OJKBiayaTransaksiBelumDiamortisasiAmount: l.OJKBiayaTransaksiBelumDiamortisasiAmount,
+		OJKPendapatanBungaDitangguhkanAmount:     l.OJKPendapatanBungaDitangguhkanAmount,
+		OJKCadanganKerugianRestrukturisasiAmount: l.OJKCadanganKerugianRestrukturisasiAmount,
+		RestructuredAt:                           l.RestructuredAt,
 	}
 }
 

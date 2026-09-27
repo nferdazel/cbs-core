@@ -66,16 +66,10 @@ keranjang RO.
 
 Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 
-### 2c. Perlu register/modul baru (6)
+### 2c. Perlu register/modul baru (0)
 
-| Kolom | Nama | Catatan |
-|---|---|---|
-| XIX | Sandi Bank | Tidak dapat diimplementasikan: sandi 6 digit hanya dari APOLO/SPOJK (tidak terbit di SEOJK) |
-| XXIX | Provisi Belum Diamortisasi | Perlu amortisasi provisi per kredit |
-| XXX | Biaya Transaksi Belum Diamortisasi | Perlu amortisasi biaya transaksi per kredit |
-| XXXI | Pendapatan Bunga Ditangguhkan (restrukturisasi) | Perlu pencatatan per kredit |
-| XXXII | Cadangan Kerugian Restrukturisasi | Perlu pencatatan per kredit |
-| XXXIII | Baki Debet Neto | Bergantung pada XXIX/XXX/XXXI/XXXII |
+Tidak ada sisa. XIX (Sandi Bank) tidak dapat diimplementasikan (APOLO/SPOJK);
+XXIX–XXXIII sudah dikerjakan (migrasi 000111, bukti di §2f).
 
 ### 2d. Kondisional bank (4) — kebijakan: bank bukan peserta bawaan, bukan celah
 
@@ -96,7 +90,7 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XLV | CKPN Aset Kurang Baik | idem |
 | XLVI | CKPN Aset Tidak Baik | idem |
 
-### 2f. Sudah dikerjakan (20)
+### 2f. Sudah dikerjakan (25)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
@@ -116,6 +110,11 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XLVII | Klasifikasi Aset Keuangan | migrasi 000108: `loans.ojk_klasifikasi_aset_code` (diisi bank, tanpa auto-klasifikasi); `-` bila kosong |
 | XXV | Nilai Agunan Diperhitungkan untuk PPKA | migrasi 000109: `loans.ojk_agunan_ppka_amount`; diisi modul PPAP saat run (COALESCE, isian bank tidak terhapus), bank mengisi bila modul agunan mati |
 | XXVI | Kelonggaran Tarik | migrasi 000109: `loans.ojk_kelonggaran_tarik_amount` (bank-fill); TIDAK diturunkan dari plafon−baki |
+| XXIX | Provisi Belum Diamortisasi | migrasi 000111: `loans.ojk_provisi_belum_diamortisasi_amount` (bank-fill) |
+| XXX | Biaya Transaksi Belum Diamortisasi | migrasi 000111: `loans.ojk_biaya_transaksi_belum_diamortisasi_amount` (bank-fill) |
+| XXXI | Pendapatan Bunga Ditangguhkan | migrasi 000111: `loans.ojk_pendapatan_bunga_ditangguhkan_amount` (bank-fill) |
+| XXXII | Cadangan Kerugian Restrukturisasi | migrasi 000111: `loans.ojk_cadangan_kerugian_restrukturisasi_amount` (bank-fill) |
+| XXXIII | Baki Debet Neto | dihitung `baki debet − XXIX + XXX − XXXI − XXXII` (PDF #page 165); `-` bila komponen belum tersimpan |
 | VIII | Jenis Penggunaan | migrasi 000105: `loans.ojk_jenis_penggunaan_code` (inline 10/20/31/32/35/39); `-` bila kosong |
 | IX | Hubungan dengan Bank | migrasi 000105: `customers.ojk_hubungan_bank_code` (inline 11/12/20) |
 | XI | Periode Pembayaran Pokok dan Bunga | migrasi 000105: `loans.ojk_periode_pembayaran_code` (inline 1–8) |
@@ -138,23 +137,23 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **30 selesai**, **9 diputuskan/
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **35 selesai**, **9 diputuskan/
 kondisional** (KB 4, DK 5), **2 tidak dapat diimplementasikan** (Sandi Bank APOLO: Form 05 II,
-Form 06 XIX), **5 sisa** (K2: XXIX–XXXIII amortisasi/restrukturisasi). Laporan/berkas: **14** —
-**4 selesai** (BMPK; Perbedaan Kualitas; Form 00.14; Form 13.00), **7 diputuskan/di luar
-cakupan** (KB 2, LX 5), **3 sisa** (K2: Kelembagaan, Form 01.01, 09.00). **Total pekerjaan
-tersisa: 8.**
+Form 06 XIX). **Tidak ada kolom tersisa.** Laporan/berkas: **14** — **4 selesai** (BMPK;
+Perbedaan Kualitas; Form 00.14; Form 13.00), **7 diputuskan/di luar cakupan** (KB 2, LX 5),
+**3 sisa** (K2: Laporan Kelembagaan, Form 01.01, Form 09.00). **Total pekerjaan tersisa: 3
+(semua laporan K2 yang butuh register/modul baru).**
 
 | Kategori | Kolom | Laporan | Total sisa |
 |---|---|---|---|
 | K1 — bisa, kecil | 0 | 0 | 0 |
-| K2 — butuh modul | 5 | 3 | 8 |
+| K2 — butuh modul | 0 | 3 | 3 |
 | KB — kondisional (kebijakan: bukan peserta bawaan) | 0 | 0 | 0 |
 | NI — tidak dapat diimplementasikan (APOLO/SPOJK) | 0 | 0 | 0 |
 | RO — referensi OJK | 0 | 0 | 0 |
 | DK — diputuskan (lihat `KEPUTUSAN-OJK.md`) | 0 | 0 | 0 |
 | LX — di luar cakupan sistem | 0 | 0 | 0 |
-| **Total sisa** | **5** | **3** | **8** |
+| **Total sisa** | **0** | **3** | **3** |
 
 ## 5. Urutan yang disarankan
 
