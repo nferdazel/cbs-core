@@ -2,6 +2,9 @@
 
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { OJKBMPKCard } from "@/components/settings/OJKBMPKCard";
+import { OJKKelembagaanCard } from "@/components/settings/OJKKelembagaanCard";
+import { OJKOffBalanceCard } from "@/components/settings/OJKOffBalanceCard";
 import { OJKProfileCard } from "@/components/settings/OJKProfileCard";
 import { OJKReferenceCodesCard } from "@/components/settings/OJKReferenceCodesCard";
 
@@ -21,6 +24,9 @@ export default function OjkIdentityPage() {
       />
       <OJKProfileCard />
       <OJKReferenceCodesCard />
+      <OJKKelembagaanCard />
+      <OJKOffBalanceCard />
+      <OJKBMPKCard />
     </>
   );
 }

@@ -33,6 +33,18 @@ export function formatRate(value: Numeric): string {
   return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(num)}%`;
 }
 
+/**
+ * Tanggal ISO apa adanya dalam bentuk YYYY-MM-DD, dipakai untuk nilai OJK yang
+ * dikirim/diharapkan berformat itu. Nilai RFC3339 dipotong ke tanggalnya; nilai
+ * yang tidak berbentuk tanggal mengembalikan string kosong agar pemanggil
+ * memutuskan tampilannya (bukan mengarang tanggal).
+ */
+export function formatDateISO(value: string | null | undefined): string {
+  if (!value) return "";
+  const trimmed = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
+}
+
 /** dd MMM yyyy menurut locale id-ID. Contoh: 02 Sep 2026. */
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "-";

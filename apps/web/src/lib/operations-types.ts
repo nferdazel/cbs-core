@@ -361,3 +361,96 @@ export interface PermissionCatalog {
   menus: PermissionMenu[];
   available_permissions: string[];
 }
+
+/** domain.BankOffice (kelembagaan.go) — Form 00.04 jaringan kantor. */
+export interface BankOffice {
+  id: string;
+  office_type: string;
+  code?: string;
+  name: string;
+  address?: string;
+  city?: string;
+  ojk_kabupaten_code?: string;
+  opened_at?: string;
+  closed_at?: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** domain.BankManagement (kelembagaan.go) — Form 00.02/00.03 pengurus. */
+export interface BankManagement {
+  id: string;
+  category: string;
+  name: string;
+  position?: string;
+  ojk_position_code?: string;
+  license_number?: string;
+  license_date?: string;
+  started_at?: string;
+  ended_at?: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * domain.KelembagaanReport (kelembagaan.go) lewat handler ExportKelembagaan:
+ * GET /reports/ojk/kelembagaan mengirim { report, tables }, jadi daftar kantor
+ * dan pengurus berada di data.report. Slice boleh null saat kosong.
+ */
+export interface KelembagaanSummary {
+  as_of: string;
+  offices: BankOffice[] | null;
+  management: BankManagement[] | null;
+  warnings?: string[];
+}
+
+/** Respons GET /reports/ojk/kelembagaan (handler membungkus report + tables). */
+export interface KelembagaanData {
+  report: KelembagaanSummary;
+}
+
+/** domain.OffBalanceItem (off_balance.go) — Form 01.01 rekening administratif. */
+export interface OffBalanceItem {
+  id: string;
+  position_code?: string;
+  category: string;
+  description: string;
+  amount: string | number;
+  counterparty_customer_id?: string;
+  reference?: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/off-balance/items (kontrak pengisian). */
+export interface OffBalanceItemsData {
+  items: OffBalanceItem[] | null;
+}
+
+/** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
+export interface BMPKRelatedParty {
+  customer_id: string;
+  relationship_type: string;
+  note?: string;
+}
+
+/** domain.BMPKLimit (bmpk.go). max_amount rupiah penuh; nol sah. */
+export interface BMPKLimit {
+  customer_id: string;
+  max_amount: string | number;
+  effective_date?: string;
+  note?: string;
+}
+
+/** Respons GET /reports/ojk/bmpk/master (kontrak pengisian). */
+export interface BMPKMasterData {
+  related_parties: BMPKRelatedParty[] | null;
+  limits: BMPKLimit[] | null;
+}
