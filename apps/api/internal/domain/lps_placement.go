@@ -170,6 +170,11 @@ type LPSPlacement struct {
 	// lawan (harus sama dengan CIF pada SLIK), bukan sandi OJK. Kosong berarti
 	// belum diisi dan laporan menulis "-".
 	CounterpartyCIF string
+	// CustomerID adalah nasabah pihak terkait yang ditautkan ke penempatan ini
+	// (lps_placements.customer_id, migrasi 000103). Nil berarti penempatan belum
+	// ditautkan sehingga belum masuk agregasi BMPK; laporan Form 05.00 kolom XV
+	// (Status BMPK Individu) menuliskannya sebagai belum tersedia.
+	CustomerID *uuid.UUID
 	// CKPN adalah asesmen CKPN terakhir penempatan ini; nil berarti belum pernah
 	// diasesmen (kolom ckpn_assessed_at NULL). Form 05.00 kolom XII/XXI hanya tersedia
 	// bila minimal satu baris punya CKPN.

@@ -43,7 +43,7 @@ keputusan pemilik sistem.
 | XI | Alasan Diblokir | ✓ | `lps_placements.ojk_alasan_diblokir_code` (migrasi 000106) — disimpan, belum dipetakan (daftar sandi alasan belum ada di repo) |
 | XIII | Pendapatan Bunga yang Akan Diterima | ✓ | `lps_placements.accrued_interest_receivable` (migrasi 000106) |
 | XIV | Pendapatan Bunga Dalam Penyelesaian | ✓ | `lps_placements.accrued_interest_pending` (migrasi 000106) |
-| XV | Status BMPK Individu | K2 | Perlu uji BMPK per bank lawan (fondasi BMPK sudah ada, wiring menyusul) |
+| XV | Status BMPK Individu | ✓ | Terisi dari modul BMPK (`lps_placements.customer_id`); `-` bila penempatan belum ditautkan |
 | XVI | ID Pihak Lawan | ✓ | `lps_placements.counterparty_cif` (migrasi 000106, CIF internal) |
 | XX | Klasifikasi Aset Keuangan | DK | Klasifikasi SAK EP per penempatan |
 
@@ -75,7 +75,7 @@ keranjang RO.
 | XXXVIII | Sifat Kredit | Pengalihan piutang/lainnya |
 | XLII | Tanggal Akad Akhir | Tanggal addendum terakhir |
 
-### 2c. Perlu register/modul baru (9)
+### 2c. Perlu register/modul baru (8)
 
 | Kolom | Nama | Catatan |
 |---|---|---|
@@ -87,7 +87,6 @@ keranjang RO.
 | XXXI | Pendapatan Bunga Ditangguhkan (restrukturisasi) | Perlu pencatatan per kredit |
 | XXXII | Cadangan Kerugian Restrukturisasi | Perlu pencatatan per kredit |
 | XXXIII | Baki Debet Neto | Bergantung pada XXIX/XXX/XXXI/XXXII |
-| XXXVII | Status BMPK | Perlu modul BMPK per pihak terkait |
 
 ### 2d. Kondisional bank (4)
 
@@ -128,7 +127,6 @@ keranjang RO.
 | Kode | Nama | Kategori | Catatan |
 |---|---|---|---|
 | LAPORAN_KELEMBAGAAN | Laporan Kelembagaan | K2 | Perlu data jaringan kantor, direksi, komisaris, pejabat |
-| LAPORAN_BMPK | Laporan BMPK | K2 | Agregasi eksposur per pihak terkait belum ada |
 | LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF | Perbedaan Kualitas | K1 | Perbedaan kualitas komersial vs PPKA per debitur |
 | LAPORAN_LAKU_PANDAI | Perkembangan Laku Pandai | KB | Hanya bila bank jadi agen Laku Pandai |
 | LAPORAN_KEUANGAN_PUBLIKASI_TRIWULANAN | Publikasi keuangan triwulanan | LX | Rasionya sudah; berkas publikasinya manual |
@@ -144,18 +142,19 @@ keranjang RO.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **16 sudah dikerjakan** (§1 dan
-§2f), sisa 30. Laporan/berkas: **14**. Total sisa **44**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **18 sudah dikerjakan** (§1, §2c
+via modul BMPK, dan §2f), sisa 28. Laporan/berkas: **13** (LAPORAN_BMPK kini buildable dan
+dapat diunduh). Total sisa **41**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
 | K1 — bisa, kecil | 8 | 2 | 10 |
-| K2 — butuh modul | 11 | 5 | 16 |
+| K2 — butuh modul | 9 | 4 | 13 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 0 | 0 | 0 |
 | DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **30** | **14** | **44** |
+| **Total sisa** | **28** | **13** | **41** |
 
 ## 5. Urutan yang disarankan
 

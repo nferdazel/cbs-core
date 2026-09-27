@@ -260,6 +260,12 @@ func main() {
 	// sumber form daftar: kredit (Form 06.00/NPL), profil bank (Form 00.00), dan
 	// penempatan pada bank lain (Form 05.00).
 	//
+	// Laporan BMPK (Batas Maksimum Pemberian Kredit) baca-saja: paparan per pihak
+	// terkait dan uji batasnya dari migrasi 000103; pengisian pihak terkait/batas
+	// dilakukan bank lewat SQL/seed. Dipakai endpoint /reports/ojk/bmpk sekaligus
+	// kolom Status BMPK Form 05.00/06.00 lewat RepoSource yang sama.
+	bmpkSvc := service.NewBMPKService(postgres.NewBMPKRepository(db), configSvc, customerSvc)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
@@ -270,6 +276,7 @@ func main() {
 		Placements: postgres.NewLPSPlacementRepository(db),
 		Customers:  customerRepo,
 		KPMM:       kpmmSvc,
+		BMPK:       bmpkSvc,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

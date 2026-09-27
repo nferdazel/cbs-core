@@ -174,7 +174,12 @@ var form06Columns = []form06Column{
 		return FormatRupiah(r.AccruedProfit)
 	}},
 	{Sandi: form06SandiBungaProses, Nama: "Pendapatan Bunga Dalam Penyelesaian", Reason: "pendapatan bunga dalam penyelesaian belum dimodelkan"},
-	{Sandi: form06SandiBMPK, Nama: "Status BMPK", Reason: "uji BMPK per pihak terkait belum dihitung"},
+	{Sandi: form06SandiBMPK, Nama: "Status BMPK", Value: func(r LoanRow) string {
+		// Status batas pihak terkait (bmpk_related_parties/bmpk_limits) yang dimuat
+		// satu kali oleh perakit. Baris yang nasabahnya belum ditandai pihak terkait
+		// ditulis "-", bukan dianggap sesuai batas.
+		return dashIfEmpty(r.BMPKStatus)
+	}},
 	{Sandi: form06SandiSifatKredit, Nama: "Sifat Kredit", Reason: "sifat kredit (pengalihan piutang/lainnya) butuh daftar sandi OJK yang belum ada rujukannya di repo"},
 	{Sandi: form06SandiProgram, Nama: "Kredit Program Pemerintah", Reason: "program pemerintah (KUR dan lainnya) belum dimodelkan"},
 	{Sandi: form06SandiSektorKUR, Nama: "Sektor Kredit Usaha Rakyat", Reason: "sektor KUR belum dimodelkan"},
@@ -221,9 +226,31 @@ func buildForm06(rows []LoanRow) TableSection {
 		KeyLabel: "No. Rekening",
 		Notes: []string{
 			"Baris dibangun dari keadaan kredit saat ekspor dijalankan; sistem belum menyimpan riwayat posisi kredit per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
+			"Status BMPK (kolom XXXVII) diambil dari hasil uji batas modul BMPK per pihak terkait; baris yang nasabahnya belum ditandai pihak terkait ditulis '-' (bukan dianggap sesuai batas).",
 		},
 	}
-	for _, c := range form06Columns {
+
+	// Kolom BMPK hanya tersedia bila minimal satu baris punya status pihak terkait.
+	// Tanpa itu kolom dinyatakan belum tersedia beserta alasannya, bukan diisi nol.
+	adaBMPK := false
+	for _, r := range rows {
+		if strings.TrimSpace(r.BMPKStatus) != "" {
+			adaBMPK = true
+			break
+		}
+	}
+	cols := form06Columns
+	if !adaBMPK {
+		cols = make([]form06Column, len(form06Columns))
+		copy(cols, form06Columns)
+		for i := range cols {
+			if cols[i].Sandi == form06SandiBMPK {
+				cols[i].Reason = "modul BMPK tidak tersedia atau belum ada nasabah pada baris ini yang ditandai pihak terkait (bmpk_related_parties) sehingga batasnya belum dapat diuji"
+			}
+		}
+	}
+
+	for _, c := range cols {
 		if c.Reason != "" {
 			sec.Unavailable = append(sec.Unavailable, ColumnUnavailable{Sandi: c.Sandi, Nama: c.Nama, Reason: c.Reason})
 			continue
@@ -235,7 +262,7 @@ func buildForm06(rows []LoanRow) TableSection {
 			continue
 		}
 		row := TableRow{Key: dashIfEmpty(r.LoanNumber)}
-		for _, c := range form06Columns {
+		for _, c := range cols {
 			if c.Reason != "" || c.Value == nil {
 				continue
 			}

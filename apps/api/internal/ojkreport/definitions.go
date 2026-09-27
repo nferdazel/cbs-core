@@ -77,13 +77,10 @@ var OJKReportDefinitions = []OJKReportDefinition{
 	{
 		Code: "LAPORAN_BMPK", Name: "Laporan Batas Maksimum Pemberian Kredit (BMPK) BPR",
 		Periodicity: OJKBulanan, DueDay: 10, CorrectionDay: 15, Channel: OJKChannelAPOLO,
-		// Fondasi (migrasi 000103: bmpk_related_parties/bmpk_limits) dan perakit
-		// (bmpk.go) sudah ada, tetapi laporan ini BELUM disajikan endpoint mana pun
-		// dan belum ada jalur pengisian pihak terkait/batas lewat API. Menandainya
-		// buildable akan mengiklankannya di /reports/ojk/definitions padahal tak
-		// dapat diunduh. Tetap belum buildable sampai dirangkai ke handler.
-		Buildable:         false,
-		UnavailableReason: "fondasi BMPK (migrasi 000103) dan perakit laporan sudah ada, tetapi belum dirangkai ke endpoint ekspor dan belum ada jalur pengisian pihak terkait/batas lewat API",
+		// Fondasi (migrasi 000103), perakit (bmpk.go), dan endpoint ekspor
+		// GET /api/v1/reports/ojk/bmpk sudah ada. Pengisian pihak terkait/batas
+		// tetap dilakukan bank lewat SQL/seed; laporan hanya membaca.
+		Buildable: true,
 	},
 	{
 		Code: "LAPORAN_KEUANGAN_PUBLIKASI", Name: "Laporan Keuangan Publikasi BPR (bukti pengumuman)",

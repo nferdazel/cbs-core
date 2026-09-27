@@ -41,6 +41,11 @@ type BMPKSource interface {
 	BMPKReport(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.BMPKReport, error)
 }
 
+// ErrBMPKSourceUnavailable menandai sumber BMPK yang belum dirangkai pada perakitan
+// ini. Dibedakan dari galat nyata agar Form 05.00/06.00 dapat menyatakan kolom Status
+// BMPK belum tersedia tanpa menggagalkan seluruh ekspor bulanan.
+var ErrBMPKSourceUnavailable = errors.New("modul BMPK belum dikonfigurasi pada ekspor ini")
+
 // GenerateBMPK menyusun Bundle berisi satu tabel Laporan BMPK untuk posisi asOf. Bundle
 // dapat ditulis dengan WriteText seperti laporan lain. Sumber wajib tersedia; tanpa itu
 // ekspor ditolak, bukan menghasilkan berkas kosong yang tampak sah.

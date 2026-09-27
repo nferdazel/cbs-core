@@ -117,7 +117,12 @@ var form05Columns = []form05Column{
 		}
 		return FormatRupiah(*p.AccruedInterestPending)
 	}},
-	{Sandi: form05SandiBMPK, Nama: "Status BMPK Individu", Reason: "uji BMPK per bank lawan belum dihitung"},
+	{Sandi: form05SandiBMPK, Nama: "Status BMPK Individu", Value: func(p PlacementRow) string {
+		// Status batas pihak terkait bank lawan (lps_placements.customer_id, migrasi
+		// 000103) yang dimuat satu kali oleh perakit. Penempatan yang belum ditautkan
+		// ke pihak terkait ditulis "-", bukan dianggap sesuai batas.
+		return dashIfEmpty(p.BMPKStatus)
+	}},
 	{Sandi: form05SandiIDPihak, Nama: "ID Pihak Lawan", Value: func(p PlacementRow) string {
 		// ID Pihak Lawan = CIF internal bank lawan (BAB II Lampiran II), bukan sandi
 		// OJK; harus sama dengan CIF pada SLIK. Diisi bank lewat SQL/seed.
@@ -156,12 +161,14 @@ func buildForm05(rows []PlacementRow) TableSection {
 			"Jenis penempatan KREDIT dan LAINNYA ditempatkan sebagai '-' karena Form 05.00 – 2 hanya memberi sandi giro/tabungan/deposito/sertifikat deposito.",
 			"Kolom XII dan XXI hanya berisi CKPN penempatan yang sudah diasesmen (saklar ckpn.pabl.enabled dan asesmen tersimpan); penempatan lain ditulis '-'.",
 			"Kolom XVII-XIX memisahkan CKPN menurut golongan kualitas aset: Baik=Lancar, Kurang Baik=Kurang Lancar, Tidak Baik=Macet (PABL tidak mengenal kualitas Dalam Perhatian Khusus maupun Diragukan). CKPN satu penempatan hanya muncul pada kolom golongannya; kolom lain ditulis '-'.",
+			"Status BMPK Individu (kolom XV) diambil dari hasil uji batas modul BMPK untuk nasabah yang ditautkan ke penempatan (lps_placements.customer_id); penempatan yang belum ditautkan ditulis '-' (bukan dianggap sesuai batas).",
 		},
 	}
 
 	adaCKPN := false
 	adaJangkaWaktu := false
 	adaSukuBunga := false
+	adaBMPK := false
 	for _, p := range rows {
 		if p.CKPN != nil {
 			adaCKPN = true
@@ -172,12 +179,15 @@ func buildForm05(rows []PlacementRow) TableSection {
 		if p.InterestRateAnnual.IsPositive() {
 			adaSukuBunga = true
 		}
-		if adaCKPN && adaJangkaWaktu && adaSukuBunga {
+		if strings.TrimSpace(p.BMPKStatus) != "" {
+			adaBMPK = true
+		}
+		if adaCKPN && adaJangkaWaktu && adaSukuBunga && adaBMPK {
 			break
 		}
 	}
 	cols := form05Columns
-	if !adaCKPN || !adaJangkaWaktu || !adaSukuBunga {
+	if !adaCKPN || !adaJangkaWaktu || !adaSukuBunga || !adaBMPK {
 		cols = make([]form05Column, len(form05Columns))
 		copy(cols, form05Columns)
 		for i := range cols {
@@ -193,6 +203,10 @@ func buildForm05(rows []PlacementRow) TableSection {
 			case form05SandiSukuBunga:
 				if !adaSukuBunga {
 					cols[i].Reason = "suku bunga tahunan penempatan belum disimpan pada lps_placements"
+				}
+			case form05SandiBMPK:
+				if !adaBMPK {
+					cols[i].Reason = "modul BMPK tidak tersedia atau belum ada penempatan ini yang ditautkan ke pihak terkait (lps_placements.customer_id) sehingga batasnya belum dapat diuji"
 				}
 			}
 		}

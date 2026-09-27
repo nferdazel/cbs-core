@@ -95,3 +95,15 @@ func TestBuildableForms(t *testing.T) {
 		}
 	}
 }
+
+// Laporan BMPK kini dapat dibangun karena endpoint ekspornya sudah tersedia; alasan
+// "belum tersedia" harus hilang agar definisi tidak bertentangan dengan kenyataan.
+func TestDefinisiLaporanBMPKBuildable(t *testing.T) {
+	def := reportByCode("LAPORAN_BMPK")
+	if !def.Buildable {
+		t.Fatal("LAPORAN_BMPK harus buildable setelah endpoint ekspor dirangkai")
+	}
+	if def.UnavailableReason != "" {
+		t.Fatalf("LAPORAN_BMPK buildable tidak boleh menyimpan alasan: %q", def.UnavailableReason)
+	}
+}

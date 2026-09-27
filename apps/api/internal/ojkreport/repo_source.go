@@ -31,6 +31,10 @@ type RepoSource struct {
 	// KPMM mengisi baris KPMM Form 00.08. Bila nil, Form 00.08 menulis baris KPMM
 	// sebagai tidak tersedia (bukan nol).
 	KPMM domain.KPMMService
+	// BMPK menyediakan status batas per pihak terkait untuk kolom Status BMPK Form
+	// 05.00/06.00 dan laporan LAPORAN_BMPK. Bila nil, kolom BMPK dinyatakan belum
+	// tersedia; nilainya tidak dikarang.
+	BMPK domain.BMPKService
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -227,6 +231,7 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 			AccruedInterestReceivable: p.AccruedInterestReceivable,
 			AccruedInterestPending:    p.AccruedInterestPending,
 			CounterpartyCIF:           p.CounterpartyCIF,
+			CustomerID:                customerIDString(p.CustomerID),
 		}
 		if p.CKPN != nil {
 			row.CKPN = &PlacementCKPNRow{
@@ -265,4 +270,23 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		OJKPeriodePembayaranCode: l.OJKPeriodePembayaranCode,
 		OJKKabupatenCode:         l.OJKKabupatenCode,
 	}
+}
+
+// customerIDString menuliskan id nasabah sebagai string; penempatan yang belum
+// ditautkan ke pihak terkait (customer_id NULL) menjadi string kosong.
+func customerIDString(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+// BMPKReport meneruskan laporan BMPK dari modul BMPK. Kontrak bank-wide ditegakkan
+// modul BMPK sendiri (domain.ErrBMPKBankWide); RepoSource tidak menggandakan
+// pemeriksaannya agar identitas galat tetap satu.
+func (s RepoSource) BMPKReport(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.BMPKReport, error) {
+	if s.BMPK == nil {
+		return domain.BMPKReport{}, ErrBMPKSourceUnavailable
+	}
+	return s.BMPK.BMPKReport(ctx, asOf, actor)
 }

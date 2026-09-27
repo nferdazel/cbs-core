@@ -37,19 +37,27 @@ type OJKReportHandler struct {
 	reviews ojkreport.MappingReviewRepository
 	// config dipakai menolak ekspor selama parameter CKPN SEMENTARA (butir 1.5).
 	config domain.SystemConfigService
+	// bmpk menyediakan laporan BMPK untuk endpoint ekspor /ojk/bmpk; nil berarti
+	// sumber BMPK tidak dirangkai pada handler ini.
+	bmpk ojkreport.BMPKSource
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
 // reviews boleh nil, tetapi endpoint peninjauan membutuhkannya. config boleh nil pada
 // uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
+// Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource).
 func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService) *OJKReportHandler {
-	return &OJKReportHandler{
+	h := &OJKReportHandler{
 		builder: ojkreport.NewBuilder(source),
 		source:  source,
 		coa:     coa,
 		reviews: reviews,
 		config:  config,
 	}
+	if bs, ok := source.(ojkreport.BMPKSource); ok {
+		h.bmpk = bs
+	}
+	return h
 }
 
 // RegisterRoutes memasang rute di bawah /reports/ojk. Izin reports:export dipakai
@@ -65,6 +73,8 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Get("/definitions", h.Definitions)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/monthly", h.ExportMonthly)
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/bmpk", h.ExportBMPK)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -284,6 +294,57 @@ func (h *OJKReportHandler) ExportMonthly(w http.ResponseWriter, r *http.Request)
 	// Header sudah terkirim; kegagalan menulis hanya dapat dicatat ke log.
 	if err := ojkreport.WriteText(w, bundle); err != nil {
 		observability.FromContext(r.Context()).Error("gagal menulis berkas ekspor OJK", "error", err)
+	}
+}
+
+// ExportBMPK menulis berkas teks Laporan BMPK (Batas Maksimum Pemberian Kredit) untuk
+// periode YYYY-MM lewat ojkreport.GenerateBMPK + WriteText. Laporan bersifat bank-wide;
+// aktor non-lintas cabang ditolak 403. Seperti ExportMonthly, ekspor DITUNDA selama
+// parameter CKPN SEMENTARA karena berkas yang terkirim akan membawa angka sementara itu.
+func (h *OJKReportHandler) ExportBMPK(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	if !actor.IsCrossBranch() {
+		Fail(w, r, http.StatusForbidden, fmt.Errorf(
+			"%w: laporan BMPK bersifat bank-wide dan hanya dapat diekspor peran lintas cabang",
+			domain.ErrBMPKBankWide))
+		return
+	}
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	status := domain.CKPNParametersStatusFromConfig(r.Context(), h.config, time.Now())
+	if status.OJKExportBlocked {
+		Fail(w, r, http.StatusUnprocessableEntity, errors.New(status.OJKExportBlockReason))
+		return
+	}
+
+	bundle, err := ojkreport.GenerateBMPK(r.Context(), h.bmpk, period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrBMPKBankWide) || errors.Is(err, ojkreport.ErrOJKBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	filename := "ojk-bmpk-" + period.Format("2006-01") + ".txt"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	// Header sudah terkirim; kegagalan menulis hanya dapat dicatat ke log.
+	if err := ojkreport.WriteText(w, bundle); err != nil {
+		observability.FromContext(r.Context()).Error("gagal menulis berkas ekspor BMPK", "error", err)
 	}
 }
 

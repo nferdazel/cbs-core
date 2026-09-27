@@ -209,7 +209,17 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 		komponen.KPMMTersedia = tersedia
 	}
 
-	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows)
+	// Status BMPK per pihak terkait dimuat SATU kali dari modul BMPK lalu dipetakan
+	// ke baris Form 05.00/06.00 lewat UUID nasabah; tidak ada query per baris.
+	bmpkStatuses, err := b.bmpkStatusesByCustomer(ctx, periodEnd, actor)
+	if err != nil {
+		return nil, err
+	}
+	for i := range loanRows {
+		loanRows[i].BMPKStatus = bmpkStatuses[loanRows[i].CustomerID]
+	}
+
+	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +269,9 @@ func (b *Builder) rataRataTotalAset(ctx context.Context, period time.Time, book 
 }
 
 // buildTables menyusun form daftar 00.00/05.00/06.00 dan mencatat form yang belum
-// dapat dibangun pada sumber ini.
-func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow) ([]TableSection, []OJKFormDefinition, error) {
+// dapat dibangun pada sumber ini. bmpkStatuses (UUID nasabah -> status BMPK) dipakai
+// mengisi kolom Status BMPK; nil berarti modul BMPK tidak tersedia.
+func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow, bmpkStatuses map[string]string) ([]TableSection, []OJKFormDefinition, error) {
 	var tables []TableSection
 	var skipped []OJKFormDefinition
 
@@ -299,6 +310,9 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			skipped = append(skipped, OJKFormDefinition{Form: "05.00", Name: formName("05.00"),
 				UnavailableReason: "belum ada penempatan pada bank lain yang ditandai pada lps_placements (migrasi 000045)"})
 		} else {
+			for i := range rows {
+				rows[i].BMPKStatus = bmpkStatuses[rows[i].CustomerID]
+			}
 			tables = append(tables, buildForm05(rows))
 		}
 	} else {
@@ -307,6 +321,31 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 	}
 
 	return tables, skipped, nil
+}
+
+// bmpkStatusesByCustomer memuat status BMPK per pihak terkait dalam SATU panggilan
+// ke modul BMPK. Map nil berarti sumber BMPK tidak tersedia; map kosong berarti tidak
+// ada pihak terkait. Keduanya membuat kolom Status BMPK ditulis belum tersedia,
+// bukan dianggap sesuai batas.
+func (b *Builder) bmpkStatusesByCustomer(ctx context.Context, asOf time.Time, actor domain.Actor) (map[string]string, error) {
+	src, ok := b.source.(BMPKSource)
+	if !ok || src == nil {
+		return nil, nil
+	}
+	report, err := src.BMPKReport(ctx, asOf, actor)
+	if err != nil {
+		// Sumber BMPK yang belum dirangkai bukan kegagalan ekspor bulanan: kolom
+		// Status BMPK cukup dinyatakan belum tersedia. Galat nyata tetap diteruskan.
+		if errors.Is(err, ErrBMPKSourceUnavailable) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make(map[string]string, len(report.Rows))
+	for _, row := range report.Rows {
+		out[row.CustomerID.String()] = row.Status
+	}
+	return out, nil
 }
 
 // rasioLines menyusun baris Form 00.08 dari hasil perhitungan rasio. Baris rasio

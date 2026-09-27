@@ -229,6 +229,109 @@ func TestMappingMenyajikanNamaAkunDanCelah(t *testing.T) {
 	}
 }
 
+// stubOJBMPKSource memenuhi ojkreport.BMPKSource untuk menguji endpoint ekspor BMPK
+// tanpa basis data.
+type stubOJBMPKSource struct {
+	report domain.BMPKReport
+	err    error
+}
+
+func (s stubOJBMPKSource) BMPKReport(context.Context, time.Time, domain.Actor) (domain.BMPKReport, error) {
+	return s.report, s.err
+}
+
+func newOJKHandlerBMPK(src ojkreport.BMPKSource) *OJKReportHandler {
+	return &OJKReportHandler{
+		bmpk: src,
+		config: ojkCKPNConfigStub{values: map[string]string{
+			domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusFinal,
+		}},
+	}
+}
+
+func ojkBMPKRequest() *http.Request {
+	return httptest.NewRequest(http.MethodGet, "/api/v1/reports/ojk/bmpk?period=2026-03", nil)
+}
+
+// Laporan BMPK bersifat bank-wide: aktor yang hanya berwenang atas cabangnya ditolak 403.
+func TestExportBMPKMenolakAktorNonLintasCabang(t *testing.T) {
+	h := newOJKHandlerBMPK(stubOJBMPKSource{})
+	req := ojkBMPKRequest()
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleTeller, BranchCode: "001"}))
+	rec := httptest.NewRecorder()
+
+	h.ExportBMPK(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, ingin 403; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// Aktor lintas cabang menerima berkas teks Laporan BMPK.
+func TestExportBMPKMengizinkanAktorLintasCabang(t *testing.T) {
+	h := newOJKHandlerBMPK(stubOJBMPKSource{report: domain.BMPKReport{AsOf: time.Now().UTC()}})
+	req := ojkBMPKRequest()
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin}))
+	rec := httptest.NewRecorder()
+
+	h.ExportBMPK(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, ingin 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "ojk-bmpk-2026-03.txt") {
+		t.Fatalf("content-disposition = %q", cd)
+	}
+	if !strings.Contains(rec.Body.String(), "LAPORAN_BMPK") {
+		t.Fatal("berkas teks tidak memuat tabel LAPORAN_BMPK")
+	}
+}
+
+// Selama parameter CKPN SEMENTARA, ekspor BMPK juga ditunda keras (422), sama seperti
+// laporan bulanan, agar angka sementara tidak ikut terkirim.
+func TestExportBMPKMenolakSaatParameterCKPNSementara(t *testing.T) {
+	h := &OJKReportHandler{
+		bmpk: stubOJBMPKSource{},
+		config: ojkCKPNConfigStub{values: map[string]string{
+			domain.ConfigKeyCKPNParametersStatus: domain.CKPNParameterStatusSementara,
+			domain.ConfigKeyCKPNEnabled:          "true",
+		}},
+	}
+	req := ojkBMPKRequest()
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin}))
+	rec := httptest.NewRecorder()
+
+	h.ExportBMPK(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, ingin 422; body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "LAPORAN_BMPK") {
+		t.Fatal("berkas BMPK tidak boleh terbentuk saat parameter SEMENTARA")
+	}
+}
+
+// Modul BMPK yang menolak sendiri (domain.ErrBMPKBankWide) tetap dipetakan ke 403.
+func TestExportBMPKMemetakanPenolakanModulKe403(t *testing.T) {
+	h := newOJKHandlerBMPK(stubOJBMPKSource{err: domain.ErrBMPKBankWide})
+	req := ojkBMPKRequest()
+	req = req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin}))
+	rec := httptest.NewRecorder()
+
+	h.ExportBMPK(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, ingin 403; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // Aktor yang hanya berwenang atas cabangnya tidak boleh mengekspor laporan
 // bank-wide; permintaan harus ditolak 403.
 func TestExportMonthlyMenolakAktorNonLintasCabang(t *testing.T) {

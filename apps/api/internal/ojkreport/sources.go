@@ -99,6 +99,10 @@ type LoanRow struct {
 	// SEOJK 16/2024), sumber kolom XXII "Lokasi Penggunaan" Form 06.00. Kosong berarti
 	// bank belum mengisi sandinya; laporan menulis "-".
 	OJKKabupatenCode string
+	// BMPKStatus adalah status BMPK pihak terkait pemilik kredit ini, diisi perakit dari
+	// SATU pemuatan laporan BMPK (bukan query per kredit). Kosong berarti nasabah belum
+	// ditandai pihak terkait atau modul BMPK tidak tersedia; kolom XXXVII ditulis "-".
+	BMPKStatus string
 }
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk
@@ -185,7 +189,15 @@ type PlacementRow struct {
 	// CounterpartyCIF adalah ID Pihak Lawan kolom XVI: nomor CIF internal bank
 	// lawan (sama dengan SLIK), bukan sandi OJK.
 	CounterpartyCIF string
-	CKPN            *PlacementCKPNRow
+	// CustomerID adalah nasabah pihak terkait yang ditautkan ke penempatan
+	// (lps_placements.customer_id, migrasi 000103). Kosong berarti penempatan belum
+	// ditautkan; sumber pemetaan kolom XV Form 05.00 (Status BMPK Individu).
+	CustomerID string
+	// BMPKStatus adalah status BMPK pihak terkait pemilik penempatan ini, diisi perakit
+	// dari SATU pemuatan laporan BMPK. Kosong berarti penempatan belum ditautkan ke
+	// pihak terkait atau modul BMPK tidak tersedia; kolom XV ditulis "-".
+	BMPKStatus string
+	CKPN       *PlacementCKPNRow
 }
 
 // PlacementCKPNRow adalah CKPN tersimpan satu penempatan: metode asesmen dan target yang

@@ -1932,6 +1932,31 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportBMPK
+      summary: Berkas teks Laporan BMPK (Batas Maksimum Pemberian Kredit)
+      description: "Izin: `reports:export`. Bank-wide; ditolak selama parameter CKPN SEMENTARA."
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          description: Bundel berkas teks Laporan BMPK.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/mapping:
     get:
       tags: [Laporan]
