@@ -24,7 +24,14 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
 - **API-first**, bukan SQL/seed jangka panjang. Sudah tersedia:
   - `PUT /api/v1/ojk/loan-codes/{loanId}` (izin `system:config`) — Form 06 VIII/XI/XXII.
   - `PUT /customers/{id}` — Form 06 IX/XVIII/XX.
-- Pihak terkait + batas BMPK masih SQL/seed; jalur tulis menyusul.
+  - `GET/PUT/DELETE /api/v1/reports/ojk/bmpk/master|related-parties|limits` — pihak
+    terkait & batas BMPK (izin `system:config`, teraudit satu transaksi).
+  - `GET/PUT/DELETE /api/v1/reports/ojk/kelembagaan/offices|management` — data
+    kelembagaan (kantor + direksi/komisaris/pejabat).
+  - `GET/PUT/DELETE /api/v1/reports/ojk/off-balance/items` — register rekening
+    administratif (komitmen/kontinjensi).
+- Ketiganya juga punya layar di `pengaturan/ojk` (kartu Kelembagaan, Rekening
+  Administratif, BMPK, plus OJK Reference Codes) sehingga tak perlu SQL.
 - **SQL/seed hanya untuk backfill sekali**; data berkelanjutan wajib lewat API teraudit.
 
 ## 3. CKPN
