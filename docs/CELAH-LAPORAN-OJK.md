@@ -129,7 +129,6 @@ XXIX–XXXIII sudah dikerjakan (migrasi 000111, bukti di §2f).
 | LAPORAN_KEUANGAN_PUBLIKASI | Bukti pengumuman keuangan | LX | Dokumen dari luar sistem |
 | LAPORAN_BUKTI_PENGUMUMAN_TAHUNAN | Bukti pengumuman tahunan | LX | Dokumen dari luar sistem |
 | LAPORAN_TPPU_TPPT_PPSPM | Penilaian risiko TPPU | LX | Dokumen manual |
-| Form 01.01 | Rekening Administratif | K2 | Pos komitmen/kontinjensi belum ada di bagan akun |
 | Form 09.00 | Rincian Aset Lainnya | **Terblokir** | Bergantung pemetaan COA→pos 09.00 yang masih `DRAF-BELUM-TERVERIFIKASI` (`coa_mapping.go`); verifikasi bank/akuntan, bukan celah kode |
 | Form 00.13 | Dokumen Pendukung | LX | Berkas PDF, bukan angka |
 | Form 00.15 | Rincian Transaksi TPPU/TPPT | KB | Hanya bila bank punya kewajiban pelaporan ini |
@@ -138,21 +137,21 @@ XXIX–XXXIII sudah dikerjakan (migrasi 000111, bukti di §2f).
 
 Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **35 selesai**, **9 diputuskan/
 kondisional** (KB 4, DK 5), **2 tidak dapat diimplementasikan** (Sandi Bank APOLO: Form 05 II,
-Form 06 XIX). **Tidak ada kolom tersisa.** Laporan/berkas: **14** — **5 selesai** (BMPK;
-Perbedaan Kualitas; Form 00.14; Form 13.00; Laporan Kelembagaan), **7 diputuskan/di luar
-cakupan** (KB 2, LX 5), **2 di ujung** (Form 01.01 butuh register; Form 09.00 terblokir
-pemetaan COA DRAF). **Total pekerjaan tersisa: 2.**
+Form 06 XIX). **Tidak ada kolom tersisa.** Laporan/berkas: **14** — **6 selesai** (BMPK;
+Perbedaan Kualitas; Form 00.14; Form 13.00; Laporan Kelembagaan; Form 01.01), **7 diputuskan/
+di luar cakupan** (KB 2, LX 5), **1 terblokir** (Form 09.00 — pemetaan COA→pos 09.00 masih
+`DRAF-BELUM-TERVERIFIKASI`, verifikasi bank/akuntan). **Pekerjaan implementable tersisa: 0.**
 
 | Kategori | Kolom | Laporan | Total sisa |
 |---|---|---|---|
 | K1 — bisa, kecil | 0 | 0 | 0 |
-| K2 — butuh modul | 0 | 2 | 2 |
+| K2 — butuh modul | 0 | 1 | 1 |
 | KB — kondisional (kebijakan: bukan peserta bawaan) | 0 | 0 | 0 |
 | NI — tidak dapat diimplementasikan (APOLO/SPOJK) | 0 | 0 | 0 |
 | RO — referensi OJK | 0 | 0 | 0 |
 | DK — diputuskan (lihat `KEPUTUSAN-OJK.md`) | 0 | 0 | 0 |
 | LX — di luar cakupan sistem | 0 | 0 | 0 |
-| **Total sisa** | **0** | **2** | **2** |
+| **Total sisa** | **0** | **1** | **1** |
 
 ## 5. Urutan yang disarankan
 
