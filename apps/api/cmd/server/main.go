@@ -277,6 +277,7 @@ func main() {
 		Customers:  customerRepo,
 		KPMM:       kpmmSvc,
 		BMPK:       bmpkSvc,
+		Savings:    postgres.NewSavingsCustomerRepository(db),
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

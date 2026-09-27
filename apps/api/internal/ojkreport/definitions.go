@@ -91,8 +91,12 @@ var OJKReportDefinitions = []OJKReportDefinition{
 	{
 		Code: "LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF", Name: "Laporan Perbedaan Kualitas Aset Produktif",
 		Periodicity: OJKBulanan, DueDay: 10, CorrectionDay: 15, Channel: OJKChannelAPOLO,
-		Buildable:         false,
-		UnavailableReason: "Form 06.00 sudah memuat kualitas per debitur, tetapi perbedaan kualitas komersial dengan kualitas menurut PPKA per debitur belum dihitung sebagai keluaran laporan",
+		// Sisi "Pada BPR Bersangkutan" (kolom I-X) dapat dibangun dari baris kredit;
+		// perakit (perbedaan_kualitas.go) dan endpoint GET /api/v1/reports/ojk/
+		// perbedaan-kualitas sudah ada. Sisi pembanding ("Pada BPR Lain") dan
+		// perbandingan kualitas komersial vs PPKA dinyatakan belum tersedia dengan
+		// alasan eksplisit karena tidak ada sumber tersimpan.
+		Buildable: true,
 	},
 	{
 		Code: "LAPORAN_TPPU_TPPT_PPSPM", Name: "Laporan Dokumen Penilaian Risiko TPPU/TPPT/PPSPM",
@@ -155,8 +159,7 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "hanya tersedia saldo agregat COA 2103010000 (Simpanan dari Bank Lain); tidak ada rincian per bank lawan"},
 	{Form: "00.13", Name: "Dokumen Pendukung", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF pendukung, bukan angka"},
-	{Form: "00.14", Name: "Daftar Data Jenis Nasabah dan Produk Simpanan di BPR", Buildable: false,
-		UnavailableReason: "agregasi jenis nasabah per produk simpanan belum tersedia"},
+	{Form: "00.14", Name: "Daftar Data Jenis Nasabah dan Produk Simpanan di BPR", Buildable: true},
 	{Form: "00.15", Name: "Rincian Transaksi Terkait Penilaian Risiko TPPU dan TPPT", Buildable: false,
 		UnavailableReason: "data transaksi terkait penilaian risiko TPPU/TPPT belum tersedia"},
 }

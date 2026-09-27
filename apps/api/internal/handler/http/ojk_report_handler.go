@@ -40,6 +40,9 @@ type OJKReportHandler struct {
 	// bmpk menyediakan laporan BMPK untuk endpoint ekspor /ojk/bmpk; nil berarti
 	// sumber BMPK tidak dirangkai pada handler ini.
 	bmpk ojkreport.BMPKSource
+	// loans menyediakan baris kredit untuk endpoint ekspor Laporan Perbedaan Kualitas
+	// Aset Produktif; nil berarti sumber kredit tidak dirangkai pada handler ini.
+	loans ojkreport.LoanDataSource
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
@@ -56,6 +59,9 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
+	}
+	if ls, ok := source.(ojkreport.LoanDataSource); ok {
+		h.loans = ls
 	}
 	return h
 }
@@ -75,6 +81,8 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Get("/monthly", h.ExportMonthly)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/bmpk", h.ExportBMPK)
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/perbedaan-kualitas", h.ExportPerbedaanKualitas)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -345,6 +353,59 @@ func (h *OJKReportHandler) ExportBMPK(w http.ResponseWriter, r *http.Request) {
 	// Header sudah terkirim; kegagalan menulis hanya dapat dicatat ke log.
 	if err := ojkreport.WriteText(w, bundle); err != nil {
 		observability.FromContext(r.Context()).Error("gagal menulis berkas ekspor BMPK", "error", err)
+	}
+}
+
+// ExportPerbedaanKualitas menulis berkas teks Laporan Perbedaan Kualitas Aset
+// Produktif (Form 19.00) untuk periode YYYY-MM lewat
+// ojkreport.GeneratePerbedaanKualitas + WriteText. Laporan bersifat bank-wide; aktor
+// non-lintas cabang ditolak 403. Seperti ExportBMPK, ekspor DITUNDA selama parameter
+// CKPN SEMENTARA karena berkas yang terkirim akan membawa angka laporan yang belum
+// diratifikasi.
+func (h *OJKReportHandler) ExportPerbedaanKualitas(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	if !actor.IsCrossBranch() {
+		Fail(w, r, http.StatusForbidden, fmt.Errorf(
+			"%w: laporan perbedaan kualitas aset produktif bersifat bank-wide dan hanya dapat diekspor peran lintas cabang",
+			ojkreport.ErrOJKBankWide))
+		return
+	}
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	status := domain.CKPNParametersStatusFromConfig(r.Context(), h.config, time.Now())
+	if status.OJKExportBlocked {
+		Fail(w, r, http.StatusUnprocessableEntity, errors.New(status.OJKExportBlockReason))
+		return
+	}
+
+	bundle, err := ojkreport.GeneratePerbedaanKualitas(r.Context(), h.loans, period, actor)
+	if err != nil {
+		if errors.Is(err, ojkreport.ErrOJKBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	filename := "ojk-perbedaan-kualitas-" + period.Format("2006-01") + ".txt"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	// Header sudah terkirim; kegagalan menulis hanya dapat dicatat ke log.
+	if err := ojkreport.WriteText(w, bundle); err != nil {
+		observability.FromContext(r.Context()).Error("gagal menulis berkas ekspor perbedaan kualitas", "error", err)
 	}
 }
 

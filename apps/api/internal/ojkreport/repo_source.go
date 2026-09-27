@@ -35,6 +35,10 @@ type RepoSource struct {
 	// 05.00/06.00 dan laporan LAPORAN_BMPK. Bila nil, kolom BMPK dinyatakan belum
 	// tersedia; nilainya tidak dikarang.
 	BMPK domain.BMPKService
+	// Savings menyediakan agregasi Form 00.14 jenis nasabah per produk simpanan
+	// (rekening tabungan/giro dan deposito berjangka). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada angka yang dikarang.
+	Savings domain.SavingsCustomerRepository
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -249,6 +253,34 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 	return out, nil
 }
 
+// ListSavingsCustomerTypes membaca agregasi Form 00.14 bank-wide dan memetakannya ke
+// baris ekspor. Kebijakan bank-wide ditegakkan di lapisan data: aktor non-lintas
+// cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.Savings == nil {
+		return nil, nil
+	}
+	aggregates, err := s.Savings.ListSavingsCustomerAggregates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SavingsCustomerTypeRow, 0, len(aggregates))
+	for _, a := range aggregates {
+		out = append(out, SavingsCustomerTypeRow{
+			ProductFamily:    string(a.ProductFamily),
+			ProductCode:      a.ProductCode,
+			ProductName:      a.ProductName,
+			CustomerTypeCode: a.CustomerTypeCode,
+			AccountCount:     a.AccountCount,
+			TotalAmount:      a.TotalAmount,
+		})
+	}
+	return out, nil
+}
+
 // loanRowDariDomain memetakan kredit domain ke baris Form 06.00/NPL. Hanya field
 // yang tersedia yang dipetakan; sisanya dibiarkan nol/kosong dan ditandai belum
 // tersedia oleh form terkait.
@@ -262,6 +294,7 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		DPD:                l.DPD,
 		Outstanding:        l.OutstandingPrincipal,
 		RequiredCKPN:       l.RequiredCKPN,
+		RequiredPPAP:       l.RequiredPPAP,
 		CKPNMethod:         l.CKPNMethod,
 		IsRestructured:     l.IsRestructured,
 		RestructuredCount:  l.RestructuredCount,

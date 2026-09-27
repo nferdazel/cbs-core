@@ -126,7 +126,6 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | Kode | Nama | Kategori | Catatan |
 |---|---|---|---|
 | LAPORAN_KELEMBAGAAN | Laporan Kelembagaan | K2 | Perlu data jaringan kantor, direksi, komisaris, pejabat |
-| LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF | Perbedaan Kualitas | K1 | Perbedaan kualitas komersial vs PPKA per debitur |
 | LAPORAN_LAKU_PANDAI | Perkembangan Laku Pandai | KB | Hanya bila bank jadi agen Laku Pandai |
 | LAPORAN_KEUANGAN_PUBLIKASI_TRIWULANAN | Publikasi keuangan triwulanan | LX | Rasionya sudah; berkas publikasinya manual |
 | LAPORAN_KEUANGAN_PUBLIKASI | Bukti pengumuman keuangan | LX | Dokumen dari luar sistem |
@@ -136,25 +135,25 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | Form 09.00 | Rincian Aset Lainnya | K2 | Kini hanya saldo agregat COA |
 | Form 13.00 | Simpanan dari Bank Lain | K2 | Kini hanya saldo agregat COA |
 | Form 00.13 | Dokumen Pendukung | LX | Berkas PDF, bukan angka |
-| Form 00.14 | Jenis Nasabah & Produk Simpanan | K1 | Agregasi jenis nasabah per produk belum ada |
 | Form 00.15 | Rincian Transaksi TPPU/TPPT | KB | Hanya bila bank punya kewajiban pelaporan ini |
 
 ## 4. Ringkasan
 
 Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **28 selesai**, **9 diputuskan/
-kondisional** (KB 4, DK 5, bukan celah lagi), **9 sisa** (K2). Laporan/berkas: **14** — **1
-selesai** (LAPORAN_BMPK, buildable), **7 diputuskan/di luar cakupan** (KB 2, LX 5), **6 sisa**
-(K1 2, K2 4). **Total pekerjaan tersisa: 15.**
+kondisional** (KB 4, DK 5, bukan celah lagi), **9 sisa** (K2). Laporan/berkas: **14** — **3
+selesai** (LAPORAN_BMPK; Perbedaan Kualitas — kolom pembanding ditandai belum tersedia;
+Form 00.14), **7 diputuskan/di luar cakupan** (KB 2, LX 5), **4 sisa** (K2: Kelembagaan,
+Form 01.01, 09.00, 13.00). **Total pekerjaan tersisa: 13.**
 
 | Kategori | Kolom | Laporan | Total sisa |
 |---|---|---|---|
-| K1 — bisa, kecil | 0 | 2 | 2 |
+| K1 — bisa, kecil | 0 | 0 | 0 |
 | K2 — butuh modul | 9 | 4 | 13 |
 | KB — kondisional (kebijakan: bukan peserta bawaan) | 0 | 0 | 0 |
 | RO — referensi OJK | 0 | 0 | 0 |
 | DK — diputuskan (lihat `KEPUTUSAN-OJK.md`) | 0 | 0 | 0 |
 | LX — di luar cakupan sistem | 0 | 0 | 0 |
-| **Total sisa** | **9** | **6** | **15** |
+| **Total sisa** | **9** | **4** | **13** |
 
 ## 5. Urutan yang disarankan
 

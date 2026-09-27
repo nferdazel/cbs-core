@@ -53,6 +53,10 @@ type LoanRow struct {
 	Outstanding decimal.Decimal
 	// RequiredCKPN adalah target CKPN yang terakhir diakui untuk kredit ini.
 	RequiredCKPN decimal.Decimal
+	// RequiredPPAP adalah target PPKA terakhir yang diakui untuk kredit ini
+	// (loans.required_ppap), keluaran modul PPAP. Dipakai Laporan Perbedaan Kualitas
+	// sebagai jejak PPKA yang tersimpan; ini NOMINAL cadangan, bukan golongan kualitas.
+	RequiredPPAP decimal.Decimal
 	// CKPNMethod adalah segel metode per kredit (loans.ckpn_method): sumber kolom
 	// "Jenis CKPN" Form 06.00 (sandi XXI). Kosong berarti kredit lama sebelum T3;
 	// dilaporkan kolektif (bawaan kebijakan) agar tidak tersangkut data lama.
@@ -267,6 +271,30 @@ type PlacementCKPNRow struct {
 // PlacementDataSource menyediakan penempatan pada bank lain bank-wide.
 type PlacementDataSource interface {
 	ListPlacementsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]PlacementRow, error)
+}
+
+// SavingsCustomerTypeRow adalah satu baris agregasi Form 00.14 "Jenis Nasabah dan
+// Produk Simpanan": jumlah rekening dan total nominal per produk simpanan menurut
+// golongan nasabah.
+//
+// CustomerTypeCode adalah sandi Lampiran 02 – Daftar Sandi Pihak Lawan
+// (customers.ojk_pihak_lawan_code), sumber resmi "Golongan Nasabah" Form 11.00/12.00
+// SEOJK 16/2024. Kosong berarti bank belum mengisi; laporan menulis "-", bukan
+// menebak dari nama atau jenis identitas.
+type SavingsCustomerTypeRow struct {
+	ProductFamily    string
+	ProductCode      string
+	ProductName      string
+	CustomerTypeCode string
+	AccountCount     int
+	TotalAmount      decimal.Decimal
+}
+
+// SavingsCustomerTypeSource menyediakan agregasi Form 00.14 bank-wide. Posisi yang
+// dibaca adalah keadaan saat ekspor dijalankan; sistem belum menyimpan riwayat saldo
+// simpanan per akhir bulan.
+type SavingsCustomerTypeSource interface {
+	ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error)
 }
 
 // aktifUntukOJK melaporkan apakah kredit masih punya eksposur berjalan menurut
