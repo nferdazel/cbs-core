@@ -194,8 +194,27 @@ var form06Columns = []form06Column{
 		}
 		return r.OJKPenjaminBagianPct.StringFixed(2)
 	}},
-	{Sandi: form06SandiAgunanPPKA, Nama: "Nilai Agunan yang Diperhitungkan untuk PPKA", Reason: "nilai agunan tersimpan pada modul agunan, tetapi nilai yang diperhitungkan untuk PPKA dihitung modul PPAP, bukan kolom kredit"},
-	{Sandi: form06SandiKelonggaran, Nama: "Kelonggaran Tarik", Reason: "kelonggaran tarik (komitmen) belum dimodelkan sebagai fasilitas"},
+	{Sandi: form06SandiAgunanPPKA, Nama: "Nilai Agunan yang Diperhitungkan untuk PPKA", Value: func(r LoanRow) string {
+		// Nilai agunan yang benar-benar mengurangi dasar PPKA pada run PPAP terakhir
+		// (loans.ojk_agunan_ppka_amount, migrasi 000109). Disimpan modul PPAP saat
+		// ppap.collateral.enabled aktif. Bila modul agunan belum diaktifkan/belum
+		// dijalankan atau bank belum mengisi, laporan menulis "-", BUKAN 0: nilainya
+		// tidak dihitung ulang di sini (rumus pengurang ada di modul PPAP/domain).
+		if r.OJKAgunanPPKAAmount == nil {
+			return "-"
+		}
+		return FormatRupiah(*r.OJKAgunanPPKAAmount)
+	}},
+	{Sandi: form06SandiKelonggaran, Nama: "Kelonggaran Tarik", Value: func(r LoanRow) string {
+		// Bagian plafon komitmen yang belum ditarik
+		// (loans.ojk_kelonggaran_tarik_amount, migrasi 000109). Fasilitas komitmen belum
+		// dimodelkan, jadi bank mengisinya; kosong ditulis "-", bukan diturunkan dari
+		// plafon dikurangi baki.
+		if r.OJKKelonggaranTarikAmount == nil {
+			return "-"
+		}
+		return FormatRupiah(*r.OJKKelonggaranTarikAmount)
+	}},
 	{Sandi: form06SandiPlafon, Nama: "Plafon", Value: func(r LoanRow) string {
 		return FormatRupiah(r.PrincipalAmount)
 	}},
@@ -296,6 +315,7 @@ func buildForm06(rows []LoanRow) TableSection {
 		Notes: []string{
 			"Baris dibangun dari keadaan kredit saat ekspor dijalankan; sistem belum menyimpan riwayat posisi kredit per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
 			"Status BMPK (kolom XXXVII) diambil dari hasil uji batas modul BMPK per pihak terkait; baris yang nasabahnya belum ditandai pihak terkait ditulis '-' (bukan dianggap sesuai batas).",
+			"Nilai Agunan yang Diperhitungkan untuk PPKA (kolom XXV) diambil dari hasil run PPAP terakhir (loans.ojk_agunan_ppka_amount) dan tidak dihitung ulang di sini; bila modul agunan belum aktif/belum dijalankan atau bank belum mengisi, kolom ditulis '-' (bukan nol). Kelonggaran Tarik (kolom XXVI) diisi bank dan ditulis '-' bila belum diisi.",
 			"Kolom kondisional bank (VI, XXXIX, XL, XLIII) dinyatakan belum tersedia dengan alasan KEBIJAKAN, bukan cacat data: bank bukan peserta KUR/LPBBTI secara bawaan, partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom terkait ditulis '-'.",
 		},
 	}

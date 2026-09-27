@@ -306,6 +306,19 @@ type Loan struct {
 	// dan laporan menulis "-". Keputusan pemilik: sediakan kolom, TANPA auto-klasifikasi
 	// dari kolektibilitas.
 	OJKKlasifikasiAsetCode string `json:"ojk_klasifikasi_aset_code,omitempty"`
+	// OJKAgunanPPKAAmount adalah nilai agunan yang diperhitungkan untuk PPKA per kredit
+	// (kolom XXV Form 06.00; migrasi 000109). Disimpan modul PPAP saat
+	// ppap.collateral.enabled aktif, sebagai hasil run PPAP terakhir yang mengubah state
+	// kredit; bank boleh mengisinya lewat SQL/seed/API bila modul agunan belum
+	// diaktifkan. Nil berarti belum diisi/belum dihitung dan laporan menulis "-", BUKAN
+	// nol. Nilainya TIDAK dihitung ulang oleh perakit laporan.
+	OJKAgunanPPKAAmount *decimal.Decimal `json:"ojk_agunan_ppka_amount,omitempty"`
+	// OJKKelonggaranTarikAmount adalah kelonggaran tarik: bagian plafon komitmen yang
+	// belum ditarik (kolom XXVI Form 06.00; migrasi 000109). Fasilitas komitmen belum
+	// dimodelkan, jadi bank mengisinya lewat SQL/seed sampai jalur API tersedia. Nil
+	// berarti belum diisi dan laporan menulis "-", bukan diturunkan dari plafon dikurangi
+	// baki.
+	OJKKelonggaranTarikAmount *decimal.Decimal `json:"ojk_kelonggaran_tarik_amount,omitempty"`
 	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
 	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
 	RejectionReason string `json:"rejection_reason,omitempty"`

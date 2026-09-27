@@ -130,6 +130,16 @@ type LoanRow struct {
 	// (kolom XLVII, migrasi 000108), diisi bank lewat SQL/seed. Kosong berarti bank
 	// belum mengisi dan laporan menulis "-", BUKAN diturunkan dari kolektibilitas.
 	OJKKlasifikasiAsetCode string
+	// OJKAgunanPPKAAmount adalah nilai agunan yang diperhitungkan untuk PPKA (kolom XXV
+	// Form 06.00; loans.ojk_agunan_ppka_amount, migrasi 000109). Nil berarti belum
+	// diisi/belum dihitung (modul agunan belum diaktifkan atau bank belum mengisi);
+	// laporan menulis "-", BUKAN nol. Nilainya disimpan modul PPAP, tidak dihitung ulang
+	// di perakit laporan.
+	OJKAgunanPPKAAmount *decimal.Decimal
+	// OJKKelonggaranTarikAmount adalah kelonggaran tarik (kolom XXVI Form 06.00;
+	// loans.ojk_kelonggaran_tarik_amount, migrasi 000109): bagian plafon komitmen yang
+	// belum ditarik. Nil berarti bank belum mengisi; laporan menulis "-".
+	OJKKelonggaranTarikAmount *decimal.Decimal
 	// RestructuredAt adalah tanggal restrukturisasi terakhir, dipakai menurunkan kolom
 	// XLII "Tanggal Akad Akhir" (akad terbaru) bila kredit pernah direstrukturisasi.
 	RestructuredAt *time.Time

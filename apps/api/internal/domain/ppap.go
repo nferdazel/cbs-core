@@ -423,6 +423,12 @@ type PPAPLoanUpdate struct {
 	AccrualStatus  AccrualStatus
 	StopAccrual    bool
 	RequiredPPAP   decimal.Decimal
+	// OJKAgunanPPKAAmount adalah nilai agunan yang diperhitungkan untuk PPKA pada run
+	// ini (sumber Form 06.00 kolom XXV). Nil berarti modul agunan tidak aktif sehingga
+	// tidak ada pengurang yang dihitung: kolom tidak diubah (isian bank yang sudah ada
+	// tetap) dan laporan menulis "-" selama belum ada isian, bukan nol. Hanya diisi bila
+	// ppap.collateral.enabled aktif.
+	OJKAgunanPPKAAmount *decimal.Decimal
 }
 
 // PPAPRunItem adalah hasil pemrosesan satu kredit.

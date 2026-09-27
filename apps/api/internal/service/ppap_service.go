@@ -127,6 +127,10 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	if err != nil {
 		return domain.PPAPRunSummary{}, err
 	}
+	// Peta nil berarti modul agunan tidak aktif (atau repositori belum tersambung),
+	// sehingga tidak ada pengurang yang dihitung. Dalam keadaan itu nilai agunan PPKA
+	// TIDAK disimpan (kolom ditulis NULL -> laporan "-"), bukan diisi nol.
+	collateralActive := collateralsByLoan != nil
 
 	summary := domain.PPAPRunSummary{
 		AsOf:          asOf,
@@ -136,7 +140,7 @@ func (s *ppapService) run(ctx context.Context, asOf time.Time, actor domain.Acto
 	}
 
 	for _, snap := range snapshots {
-		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, collateralsByLoan[snap.LoanID], actor, preview)
+		item, err := s.processLoan(ctx, asOf, snap, thresholds, rates, collateralsByLoan[snap.LoanID], collateralActive, actor, preview)
 		if err != nil {
 			summary.Failed++
 			summary.Failures = append(summary.Failures, domain.PPAPRunFailure{
@@ -221,6 +225,7 @@ func (s *ppapService) processLoan(
 	thresholds domain.CollectibilityThresholds,
 	rates domain.PPAPRates,
 	collaterals []domain.LoanCollateral,
+	collateralActive bool,
 	actor domain.Actor,
 	preview bool,
 ) (domain.PPAPRunItem, error) {
@@ -351,14 +356,24 @@ func (s *ppapService) processLoan(
 			}
 			item.Posted = true
 		}
-		return s.repo.UpdateLoanState(ctx, tx, domain.PPAPLoanUpdate{
+		update := domain.PPAPLoanUpdate{
 			LoanID:         snap.LoanID,
 			Collectibility: col,
 			DPD:            dpd,
 			AccrualStatus:  accrual,
 			StopAccrual:    stop,
 			RequiredPPAP:   calc.Target,
-		})
+		}
+		// Nilai agunan yang diperhitungkan untuk PPKA disimpan per kredit sebagai sumber
+		// Form 06.00 kolom XXV. Hanya disimpan saat modul agunan aktif; bila tidak, kolom
+		// tidak diubah (isian bank yang sudah ada tetap) dan selama belum pernah diisi
+		// nilainya NULL sehingga laporan menulis "-", bukan nol. Nilainya adalah hasil
+		// perhitungan run ini, bukan rumus yang dihitung ulang perakit laporan.
+		if collateralActive {
+			v := appliedCollateral
+			update.OJKAgunanPPKAAmount = &v
+		}
+		return s.repo.UpdateLoanState(ctx, tx, update)
 	})
 	if err != nil {
 		return domain.PPAPRunItem{}, fmt.Errorf("kredit %s: %w", snap.LoanNumber, err)

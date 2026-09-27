@@ -190,6 +190,11 @@ func (r *PPAPRepository) UpdateCollectibility(ctx context.Context, tx any, loanI
 // Saat kredit pertama kali digolongkan Macet, macet_at diisi sekali; nilainya tidak
 // pernah ditimpa agar penurunan pengurang agunan Pasal 20(3)/(5) tetap dihitung sejak
 // saat kredit benar-benar macet, bukan sejak perhitungan terakhir.
+//
+// ojk_agunan_ppka_amount ikut disimpan sebagai hasil run (sumber Form 06.00 kolom XXV).
+// u.OJKAgunanPPKAAmount nil (modul agunan tidak aktif) berarti kolom TIDAK diubah lewat
+// COALESCE: nilai yang pernah diisi bank tidak terhapus. Nilai NULL berarti belum ada
+// isian mana pun sehingga laporan menulis "-", bukan mengklaim pengurang nol.
 func (r *PPAPRepository) UpdateLoanState(ctx context.Context, tx any, u domain.PPAPLoanUpdate) error {
 	// $1 dipakai di dua konteks: nilai kolom collectibility VARCHAR(32) dan pembanding
 	// CASE. Tanpa cast, PostgreSQL menyimpulkan tipe yang berbeda (varchar vs text) dan
@@ -198,14 +203,15 @@ func (r *PPAPRepository) UpdateLoanState(ctx context.Context, tx any, u domain.P
 	// baru diperlukan sejak parameter dipakai lebih dari sekali.
 	q := `UPDATE loans
 		SET collectibility=$1::varchar, dpd=$2, accrual_status=$3, stop_accrual=$4, required_ppap=$5,
+		    ojk_agunan_ppka_amount=COALESCE($6, ojk_agunan_ppka_amount),
 		    macet_at = CASE WHEN $1::varchar = '5_MACET' THEN COALESCE(macet_at, NOW()) ELSE macet_at END,
 		    updated_at=NOW()
-		WHERE id=$6`
+		WHERE id=$7`
 	exec, err := r.ppapExec(tx)
 	if err != nil {
 		return err
 	}
-	_, err = exec.ExecContext(ctx, q, u.Collectibility.OJKCode(), u.DPD, u.AccrualStatus, u.StopAccrual, u.RequiredPPAP, u.LoanID)
+	_, err = exec.ExecContext(ctx, q, u.Collectibility.OJKCode(), u.DPD, u.AccrualStatus, u.StopAccrual, u.RequiredPPAP, u.OJKAgunanPPKAAmount, u.LoanID)
 	return err
 }
 

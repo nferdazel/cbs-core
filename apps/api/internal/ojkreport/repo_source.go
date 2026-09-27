@@ -316,7 +316,11 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		OJKPenjaminBagianPct:   l.OJKPenjaminBagianPct,
 		OJKTanggalMulaiMacet:   l.OJKTanggalMulaiMacet,
 		OJKKlasifikasiAsetCode: l.OJKKlasifikasiAsetCode,
-		RestructuredAt:         l.RestructuredAt,
+		// Kolom XXV/XXVI Form 06.00 (migrasi 000109): nilai agunan PPKA dan kelonggaran
+		// tarik. Nil berarti belum diisi/belum dihitung; form menulis "-", bukan nol.
+		OJKAgunanPPKAAmount:       l.OJKAgunanPPKAAmount,
+		OJKKelonggaranTarikAmount: l.OJKKelonggaranTarikAmount,
+		RestructuredAt:            l.RestructuredAt,
 	}
 }
 

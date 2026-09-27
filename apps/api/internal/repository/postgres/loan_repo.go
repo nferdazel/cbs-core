@@ -39,7 +39,8 @@ const loanColumns = `id, loan_number, customer_id, product_id, branch_id, disbur
 	ojk_jenis_penggunaan_code, ojk_periode_pembayaran_code, ojk_kabupaten_code,
 	ojk_kelompok_kredit_code, ojk_sumber_dana_code, ojk_kategori_usaha_code,
 	ojk_sifat_kredit_code, ojk_penjamin_code, ojk_penjamin_bagian_pct,
-	ojk_tanggal_mulai_macet, ojk_klasifikasi_aset_code`
+	ojk_tanggal_mulai_macet, ojk_klasifikasi_aset_code,
+	ojk_agunan_ppka_amount, ojk_kelonggaran_tarik_amount`
 
 func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var l domain.Loan
@@ -55,6 +56,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 	var ojkPenjaminBagian decimal.NullDecimal
 	var ojkTanggalMulaiMacet sql.NullTime
 	var ojkKlasifikasiAset sql.NullString
+	var ojkAgunanPPKA, ojkKelonggaranTarik decimal.NullDecimal
 
 	err := row.Scan(
 		&l.ID, &l.LoanNumber, &l.CustomerID, &l.ProductID, &l.BranchID, &l.DisbursementAccountID, &l.LoanType, &l.Status,
@@ -76,6 +78,7 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		&ojkKelompokKredit, &ojkSumberDana, &ojkKategoriUsaha,
 		&ojkSifatKredit, &ojkPenjamin, &ojkPenjaminBagian,
 		&ojkTanggalMulaiMacet, &ojkKlasifikasiAset,
+		&ojkAgunanPPKA, &ojkKelonggaranTarik,
 	)
 	if err != nil {
 		return nil, err
@@ -143,6 +146,14 @@ func scanLoan(row interface{ Scan(...any) error }) (*domain.Loan, error) {
 		l.OJKTanggalMulaiMacet = &ojkTanggalMulaiMacet.Time
 	}
 	l.OJKKlasifikasiAsetCode = ojkKlasifikasiAset.String
+	if ojkAgunanPPKA.Valid {
+		v := ojkAgunanPPKA.Decimal
+		l.OJKAgunanPPKAAmount = &v
+	}
+	if ojkKelonggaranTarik.Valid {
+		v := ojkKelonggaranTarik.Decimal
+		l.OJKKelonggaranTarikAmount = &v
+	}
 	return &l, nil
 }
 
