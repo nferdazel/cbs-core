@@ -47,6 +47,10 @@ type OJKReportHandler struct {
 	// untuk laporan LAPORAN_KELEMBAGAAN sekaligus operasi upsert/hapusnya. Boleh nil
 	// pada uji; tanpa itu rute kelembagaan tetap terpasang tetapi gagal saat dipanggil.
 	kelembagaan domain.KelembagaanService
+	// offBalance menyediakan register rekening administratif (Form 01.01) sekaligus
+	// operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute rekening administratif
+	// tetap terpasang tetapi gagal saat dipanggil.
+	offBalance domain.OffBalanceService
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
@@ -54,7 +58,8 @@ type OJKReportHandler struct {
 // uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
 // Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
 // boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService) *OJKReportHandler {
+// offBalance boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -62,6 +67,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		reviews:     reviews,
 		config:      config,
 		kelembagaan: kelembagaan,
+		offBalance:  offBalance,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -103,6 +109,14 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kelembagaan/management", h.UpsertKelembagaanManagement)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kelembagaan/management/{id}", h.DeleteKelembagaanManagement)
+		// Register rekening administratif (Form 01.01): baca cukup reports:export;
+		// pengisian memakai system:config dan teraudit di service. Tiga rute saja.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/off-balance", h.ExportOffBalance)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/off-balance/items", h.UpsertOffBalanceItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/off-balance/items/{id}", h.DeleteOffBalanceItem)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -569,6 +583,112 @@ func (h *OJKReportHandler) DeleteKelembagaanManagement(w http.ResponseWriter, r 
 		return
 	}
 	Success(w, http.StatusOK, i18n.MsgKelembagaanDeleted, map[string]any{"id": id.String()})
+}
+
+// ExportOffBalance menyajikan register rekening administratif (Form 01.01) sebagai
+// JSON untuk periode YYYY-MM: daftar pos komitmen/kontinjensi off-balance beserta
+// tabel agregat yang dipakai bundel bulanan dan kolom yang belum tersedia. Register
+// bank-wide; aktor non-lintas cabang ditolak 403 oleh layanan.
+func (h *OJKReportHandler) ExportOffBalance(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.offBalance == nil {
+		InternalError(w, r, errors.New("sumber register rekening administratif belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.offBalance.OffBalanceReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrOffBalanceBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgOffBalanceReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm01_01(report.Aggregates)},
+	})
+}
+
+// UpsertOffBalanceItem membuat/memperbarui satu pos rekening administratif
+// (PUT /reports/ojk/off-balance/items). Decoder menolak bidang tak dikenal agar
+// payload di luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config;
+// teraudit di service.
+func (h *OJKReportHandler) UpsertOffBalanceItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateOffBalanceItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.offBalance == nil {
+		InternalError(w, r, errors.New("sumber register rekening administratif belum dikonfigurasi"))
+		return
+	}
+	item, err := h.offBalance.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeOffBalanceError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgOffBalanceSaved, item)
+}
+
+// DeleteOffBalanceItem menghapus satu pos rekening administratif menurut id.
+func (h *OJKReportHandler) DeleteOffBalanceItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgOffBalanceIDInvalid)
+		return
+	}
+	if h.offBalance == nil {
+		InternalError(w, r, errors.New("sumber register rekening administratif belum dikonfigurasi"))
+		return
+	}
+	if err := h.offBalance.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeOffBalanceError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgOffBalanceDeleted, map[string]any{"id": id.String()})
+}
+
+// writeOffBalanceError memetakan galat rekening administratif: baris tak ada 404,
+// pelanggaran bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat
+// berjejak internal otomatis disembunyikan Fail).
+func writeOffBalanceError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrOffBalanceNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrOffBalanceBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
 }
 
 // writeKelembagaanError memetakan galat kelembagaan: baris tak ada 404, pelanggaran

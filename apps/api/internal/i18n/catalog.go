@@ -216,13 +216,23 @@ const (
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
-	MsgKelembagaanReport                  Code = "kelembagaan_report"
-	MsgKelembagaanSaved                   Code = "kelembagaan_saved"
-	MsgKelembagaanDeleted                 Code = "kelembagaan_deleted"
-	MsgKelembagaanIDInvalid               Code = "kelembagaan_id_invalid"
-	MsgKelembagaanBankWide                Code = "kelembagaan_bank_wide"
-	MsgKelembagaanInputInvalid            Code = "kelembagaan_input_invalid"
-	MsgKelembagaanNotFound                Code = "kelembagaan_not_found"
+	MsgKelembagaanReport       Code = "kelembagaan_report"
+	MsgKelembagaanSaved        Code = "kelembagaan_saved"
+	MsgKelembagaanDeleted      Code = "kelembagaan_deleted"
+	MsgKelembagaanIDInvalid    Code = "kelembagaan_id_invalid"
+	MsgKelembagaanBankWide     Code = "kelembagaan_bank_wide"
+	MsgKelembagaanInputInvalid Code = "kelembagaan_input_invalid"
+	MsgKelembagaanNotFound     Code = "kelembagaan_not_found"
+	// Register rekening administratif (Form 01.01) pos komitmen/kontinjensi
+	// off-balance. Galat berkode harus selaras dengan pesan domain (uji
+	// errors_localized_test menegakkan ID/EN-nya).
+	MsgOffBalanceReport                   Code = "off_balance_report"
+	MsgOffBalanceSaved                    Code = "off_balance_saved"
+	MsgOffBalanceDeleted                  Code = "off_balance_deleted"
+	MsgOffBalanceIDInvalid                Code = "off_balance_id_invalid"
+	MsgOffBalanceBankWide                 Code = "off_balance_bank_wide"
+	MsgOffBalanceInputInvalid             Code = "off_balance_input_invalid"
+	MsgOffBalanceNotFound                 Code = "off_balance_not_found"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -551,6 +561,13 @@ var codeList = []Code{
 	MsgKelembagaanBankWide,
 	MsgKelembagaanInputInvalid,
 	MsgKelembagaanNotFound,
+	MsgOffBalanceReport,
+	MsgOffBalanceSaved,
+	MsgOffBalanceDeleted,
+	MsgOffBalanceIDInvalid,
+	MsgOffBalanceBankWide,
+	MsgOffBalanceInputInvalid,
+	MsgOffBalanceNotFound,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1482,6 +1499,34 @@ var catalog = map[Code]map[Lang]string{
 	MsgKelembagaanNotFound: {
 		ID: "data kelembagaan tidak ditemukan",
 		EN: "institutional data was not found",
+	},
+	MsgOffBalanceReport: {
+		ID: "register rekening administratif",
+		EN: "administrative accounts register",
+	},
+	MsgOffBalanceSaved: {
+		ID: "data rekening administratif disimpan",
+		EN: "administrative account data saved",
+	},
+	MsgOffBalanceDeleted: {
+		ID: "data rekening administratif dihapus",
+		EN: "administrative account data deleted",
+	},
+	MsgOffBalanceIDInvalid: {
+		ID: "id rekening administratif bukan UUID yang sah",
+		EN: "administrative account id is not a valid UUID",
+	},
+	MsgOffBalanceBankWide: {
+		ID: "register rekening administratif bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the administrative accounts register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgOffBalanceInputInvalid: {
+		ID: "data rekening administratif tidak valid",
+		EN: "administrative account data is invalid",
+	},
+	MsgOffBalanceNotFound: {
+		ID: "data rekening administratif tidak ditemukan",
+		EN: "administrative account data was not found",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

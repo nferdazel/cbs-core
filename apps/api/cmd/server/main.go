@@ -271,6 +271,12 @@ func main() {
 	// teraudit (migrasi 000112). Tidak menyentuh angka keuangan.
 	kelembagaanSvc := service.NewKelembagaanService(db, postgres.NewKelembagaanRepository(db), auditRepo)
 
+	// Register rekening administratif (pos komitmen/kontinjensi off-balance) untuk
+	// Form 01.01: baca bank-wide + jalur tulis berizin system:config yang teraudit
+	// (migrasi 000113). Tidak menyentuh bagan akun maupun angka jurnal.
+	offBalanceRepo := postgres.NewOffBalanceRepository(db)
+	offBalanceSvc := service.NewOffBalanceService(db, offBalanceRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
@@ -284,7 +290,8 @@ func main() {
 		BMPK:         bmpkSvc,
 		Savings:      postgres.NewSavingsCustomerRepository(db),
 		BankDeposits: postgres.NewBankDepositRepository(db),
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc)
+		OffBalance:   offBalanceRepo,
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

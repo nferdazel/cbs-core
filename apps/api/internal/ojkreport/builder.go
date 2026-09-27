@@ -358,6 +358,25 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber simpanan/deposito bank lawan belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 01.01 Rekening Administratif: register pos komitmen/kontinjensi off-balance
+	// yang bank catat (migrasi 000113). Bila belum ada baris AKTIF pada bulan periode,
+	// form dinyatakan belum tersedia, bukan ditulis kosong.
+	if os, ok := b.source.(OffBalanceSource); ok {
+		rows, err := os.ListOffBalanceForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "01.01", Name: formName("01.01"),
+				UnavailableReason: "belum ada pos rekening administratif berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm01_01(rows))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "01.01", Name: formName("01.01"),
+			UnavailableReason: "sumber register rekening administratif belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

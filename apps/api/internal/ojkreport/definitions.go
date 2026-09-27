@@ -148,8 +148,10 @@ var OJKBulananForms = []OJKFormDefinition{
 	// ditandai tidak tersedia (lihat ratios.go).
 	{Form: "00.08", Name: "Rasio Keuangan Triwulanan", Buildable: true},
 	{Form: "01.00", Name: "Laporan Posisi Keuangan", Buildable: true},
-	{Form: "01.01", Name: "Rekening Administratif", Buildable: false,
-		UnavailableReason: "pos komitmen/kontinjensi (off-balance) belum dicatat pada bagan akun; tidak ada COA maupun register komitmen"},
+	// Form 01.01 dibangun dari register pos komitmen/kontinjensi off-balance
+	// (off_balance_items, migrasi 000113) yang bank isi lewat API; bukan dari bagan
+	// akun. Bila belum ada baris aktif, builder mencatatnya pada SkippedForms.
+	{Form: "01.01", Name: "Rekening Administratif", Buildable: true},
 	{Form: "02.00", Name: "Laporan Laba Rugi dan Penghasilan Komprehensif Lain", Buildable: true},
 	// Form 05.00 dibangun dari penanda lps_placements (migrasi 000045) yang bukan
 	// register lengkap penempatan pada bank lain.

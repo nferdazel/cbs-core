@@ -43,6 +43,10 @@ type RepoSource struct {
 	// tabungan/giro dan deposito berjangka milik nasabah bergolongan bank). Bila nil,
 	// form dinyatakan belum tersedia; tidak ada angka yang dikarang.
 	BankDeposits domain.BankDepositRepository
+	// OffBalance menyediakan agregat Form 01.01 rekening administratif (pos komitmen/
+	// kontinjensi off-balance). Bila nil, form dinyatakan belum tersedia; tidak ada
+	// angka yang dikarang.
+	OffBalance domain.OffBalanceRepository
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -314,6 +318,19 @@ func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, actor domain.Act
 		})
 	}
 	return out, nil
+}
+
+// ListOffBalanceForOJK membaca agregat Form 01.01 bank-wide (pos komitmen/kontinjensi
+// pada bulan asOf). Kebijakan bank-wide ditegakkan di lapisan data: aktor non-lintas
+// cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListOffBalanceForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.OffBalanceAggregate, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.OffBalance == nil {
+		return nil, nil
+	}
+	return s.OffBalance.ListAggregates(ctx, asOf)
 }
 
 // loanRowDariDomain memetakan kredit domain ke baris Form 06.00/NPL. Hanya field

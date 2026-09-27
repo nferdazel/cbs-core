@@ -2139,6 +2139,96 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/off-balance:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportOffBalance
+      summary: Register rekening administratif Form 01.01 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar pos komitmen/kontinjensi
+        off-balance yang bank catat beserta tabel agregat Form 01.01 dan kolom yang belum
+        tersedia (Sandi Kantor tidak punya sumber karena register bank-wide). Angka hanya
+        berasal dari register; tidak diturunkan dari jurnal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/off-balance/items:
+    put:
+      tags: [Laporan]
+      operationId: upsertOffBalanceItem
+      summary: Simpan pos rekening administratif Form 01.01
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu pos
+        komitmen/kontinjensi off-balance. `position_code` boleh kosong bila bank belum
+        tahu sandi pos OJK; laporan menulis "-". `counterparty_customer_id` opsional dan
+        diperiksa ke tabel nasabah. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                position_code: { type: string }
+                category: { type: string, enum: [KOMITMEN, KONTINJENSI, LAINNYA] }
+                description: { type: string }
+                amount: { type: number }
+                counterparty_customer_id: { type: string, format: uuid }
+                reference: { type: string }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/off-balance/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteOffBalanceItem
+      summary: Hapus pos rekening administratif Form 01.01
+      description: "Izin: `system:config`. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/mapping:
     get:
       tags: [Laporan]
