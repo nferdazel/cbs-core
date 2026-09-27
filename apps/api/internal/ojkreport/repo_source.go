@@ -95,9 +95,10 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 }
 
 // lengkapiSandiReferensiCustomer mengisi sandi pihak lawan (kolom XVIII), sektor
-// ekonomi (kolom XX), dan hubungan dengan bank (kolom IX) tiap baris kredit dari SATU
-// panggilan GetByIDs untuk seluruh nasabah yang berbeda, bukan satu query per kredit.
-// Baris tanpa nasabah terbaca atau tanpa sandi dibiarkan kosong; form terkait menulis "-".
+// ekonomi (kolom XX), hubungan dengan bank (kolom IX), dan ID Pihak Lawan/CIF (kolom
+// II) tiap baris kredit dari SATU panggilan GetByIDs untuk seluruh nasabah yang
+// berbeda, bukan satu query per kredit. Baris tanpa nasabah terbaca atau tanpa sandi
+// dibiarkan kosong; form terkait menulis "-".
 func (s RepoSource) lengkapiSandiReferensiCustomer(ctx context.Context, rows []LoanRow) error {
 	if s.Customers == nil || len(rows) == 0 {
 		return nil
@@ -131,6 +132,9 @@ func (s RepoSource) lengkapiSandiReferensiCustomer(ctx context.Context, rows []L
 		rows[i].OJKPihakLawanCode = rec.OJKPihakLawanCode
 		rows[i].OJKSektorEkonomiCode = rec.OJKSektorEkonomiCode
 		rows[i].OJKHubunganBankCode = rec.OJKHubunganBankCode
+		// Kolom II ID Pihak Lawan = nomor CIF internal nasabah (sama dengan SLIK),
+		// bukan sandi OJK; tinggal disingkapkan dari nasabah yang sudah dibaca.
+		rows[i].IDPihakLawan = rec.CIFNumber
 	}
 	return nil
 }
@@ -269,6 +273,15 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		OJKJenisPenggunaanCode:   l.OJKJenisPenggunaanCode,
 		OJKPeriodePembayaranCode: l.OJKPeriodePembayaranCode,
 		OJKKabupatenCode:         l.OJKKabupatenCode,
+		// Kolom K1 Form 06.00 lain (migrasi 000107); kosong/nil ditulis "-".
+		OJKKelompokKreditCode: l.OJKKelompokKreditCode,
+		OJKSumberDanaCode:     l.OJKSumberDanaCode,
+		OJKKategoriUsahaCode:  l.OJKKategoriUsahaCode,
+		OJKSifatKreditCode:    l.OJKSifatKreditCode,
+		OJKPenjaminCode:       l.OJKPenjaminCode,
+		OJKPenjaminBagianPct:  l.OJKPenjaminBagianPct,
+		OJKTanggalMulaiMacet:  l.OJKTanggalMulaiMacet,
+		RestructuredAt:        l.RestructuredAt,
 	}
 }
 

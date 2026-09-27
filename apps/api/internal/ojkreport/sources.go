@@ -99,11 +99,60 @@ type LoanRow struct {
 	// SEOJK 16/2024), sumber kolom XXII "Lokasi Penggunaan" Form 06.00. Kosong berarti
 	// bank belum mengisi sandinya; laporan menulis "-".
 	OJKKabupatenCode string
+	// IDPihakLawan adalah nomor CIF internal nasabah (customers.cif_number), sumber
+	// kolom II "ID Pihak Lawan" Form 06.00. Bukan sandi OJK: harus sama dengan CIF yang
+	// dilaporkan ke SLIK (BAB II Lampiran II, PDF #page 66). Kosong berarti nasabah tak
+	// terbaca atau belum ber-CIF; laporan menulis "-".
+	IDPihakLawan string
+	// Kolom K1 Form 06.00 lain (migrasi 000107) yang diisi bank lewat SQL/seed. Semua
+	// kosong/nil berarti bank belum mengisi; laporan menulis "-", bukan menebak.
+	//
+	// OJKKelompokKreditCode adalah Kode Kelompok Kredit (kolom IV): kode unik
+	// angka/huruf buatan BPR, bukan daftar sandi OJK (PDF #page 158).
+	OJKKelompokKreditCode string
+	// OJKSumberDanaCode adalah sandi inline Sumber Dana Pelunasan (kolom X).
+	OJKSumberDanaCode string
+	// OJKKategoriUsahaCode adalah sandi inline Kategori Usaha (kolom XXI).
+	OJKKategoriUsahaCode string
+	// OJKSifatKreditCode adalah sandi inline Sifat Kredit (kolom XXXVIII).
+	OJKSifatKreditCode string
+	// OJKPenjaminCode adalah sandi golongan Penjamin (kolom XXIV butir 1, Lampiran 02);
+	// OJKPenjaminBagianPct adalah bagian yang dijamin dalam persen (butir 2).
+	OJKPenjaminCode      string
+	OJKPenjaminBagianPct *decimal.Decimal
+	// OJKTanggalMulaiMacet adalah tanggal kredit mulai berkualitas macet (kolom XV).
+	OJKTanggalMulaiMacet *time.Time
+	// RestructuredAt adalah tanggal restrukturisasi terakhir, dipakai menurunkan kolom
+	// XLII "Tanggal Akad Akhir" (akad terbaru) bila kredit pernah direstrukturisasi.
+	RestructuredAt *time.Time
 	// BMPKStatus adalah status BMPK pihak terkait pemilik kredit ini, diisi perakit dari
 	// SATU pemuatan laporan BMPK (bukan query per kredit). Kosong berarti nasabah belum
 	// ditandai pihak terkait atau modul BMPK tidak tersedia; kolom XXXVII ditulis "-".
 	BMPKStatus string
 }
+
+// Himpunan sandi inline Form 06.00 yang tersurat di Lampiran II SEOJK 16/2024.
+// Konstanta ini adalah daftar resmi yang boleh diisi bank lewat SQL/seed pada kolom
+// penyimpanan terkait (migrasi 000107); laporan membacanya apa adanya tanpa pemetaan,
+// karena sumbernya sudah sandi.
+const (
+	// Sumber Dana Pelunasan, kolom X (PDF #page 153 daftar; #page 160 penjelasan).
+	OJKSumberDanaGajiHonor       = "10"
+	OJKSumberDanaUsahaSubsidi    = "21"
+	OJKSumberDanaUsahaNonsubsidi = "22"
+	OJKSumberDanaLainSubsidi     = "31"
+	OJKSumberDanaLainNonsubsidi  = "32"
+
+	// Kategori Usaha, kolom XXI (PDF #page 154 daftar; #page 162-163 penjelasan).
+	OJKKategoriUsahaMikro    = "1"
+	OJKKategoriUsahaKecil    = "2"
+	OJKKategoriUsahaMenengah = "3"
+	OJKKategoriUsahaSelain   = "4"
+
+	// Sifat Kredit, kolom XXXVIII (PDF #page 155 daftar; #page 166 penjelasan).
+	OJKSifatKreditPengalihanPiutang = "2"
+	OJKSifatKreditLainnya           = "9"
+)
 
 // LoanDataSource menyediakan kredit bank-wide. asOf dipakai implementasi untuk
 // memilih posisi bila riwayat tersedia.

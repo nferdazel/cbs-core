@@ -62,18 +62,9 @@ keranjang RO.
 | XVIII | Jenis Debitur | Lampiran 02 Daftar Sandi Pihak Lawan (`docs/LAMPIRAN-OJK.md`) |
 | XX | Sektor Ekonomi | Lampiran 05 Daftar Sandi Sektor Ekonomi |
 
-### 2b. Bisa dimodelkan, perubahan kecil (8)
+### 2b. Bisa dimodelkan, perubahan kecil (0)
 
-| Kolom | Nama | Catatan |
-|---|---|---|
-| II | ID Pihak Lawan | Bukan sandi lampiran: CIF internal (harus sama dengan SLIK), tinggal disingkapkan |
-| IV | Kode Kelompok Kredit | Kelompok peminjam pihak tidak terkait |
-| X | Sumber Dana Pelunasan | Kolom sandi sumber dana |
-| XV | Tanggal Mulai Macet | Bisa diturunkan dari tunggakan/jadwal, bukan hanya DPD |
-| XXI | Kategori Usaha | Mikro/kecil/menengah |
-| XXIV | Penjamin | Perlu data penjamin + bagian yang dijamin |
-| XXXVIII | Sifat Kredit | Pengalihan piutang/lainnya |
-| XLII | Tanggal Akad Akhir | Tanggal addendum terakhir |
+Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 
 ### 2c. Perlu register/modul baru (8)
 
@@ -108,7 +99,7 @@ keranjang RO.
 | XLVI | CKPN Aset Tidak Baik | idem |
 | XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
-### 2f. Sudah dikerjakan (9)
+### 2f. Sudah dikerjakan (17)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
@@ -117,6 +108,14 @@ keranjang RO.
 | XVIII | Jenis Debitur (Pihak Lawan) | migrasi 000104: `customers.ojk_pihak_lawan_code`; `-` bila kosong |
 | XX | Sektor Ekonomi | migrasi 000104: `customers.ojk_sektor_ekonomi_code`; `-` bila kosong |
 | XXXV | Pendapatan Bunga yang Akan Diterima | SUM(`profit_accrued_amount`) = sisa akruan/piutang bunga 10400 per kredit |
+| II | ID Pihak Lawan | migrasi 000107 (tanpa kolom): CIF internal dari `customers.cif_number` (PDF #page 66); `-` bila kosong |
+| IV | Kode Kelompok Kredit | migrasi 000107: `loans.ojk_kelompok_kredit_code` (kode unik bank, bukan sandi OJK; PDF #page 158) |
+| X | Sumber Dana Pelunasan | migrasi 000107: `loans.ojk_sumber_dana_code` (inline 10/21/22/31/32; PDF #page 153) |
+| XV | Tanggal Mulai Macet | migrasi 000107: `loans.ojk_tanggal_mulai_macet` (diisi bank, bukan turunan DPD; PDF #page 153) |
+| XXI | Kategori Usaha | migrasi 000107: `loans.ojk_kategori_usaha_code` (1/2/3/4; PDF #page 154) |
+| XXIV | Penjamin | migrasi 000107: `loans.ojk_penjamin_code` (FK `ojk_pihak_lawan`) + `ojk_penjamin_bagian_pct`; dua subkolom |
+| XXXVIII | Sifat Kredit | migrasi 000107: `loans.ojk_sifat_kredit_code` (2/9; PDF #page 155) |
+| XLII | Tanggal Akad Akhir | turunan `restructured_at`/`akad_date` (PDF #page 167); addendum non-restrukturisasi belum punya tanggal tersendiri |
 | VIII | Jenis Penggunaan | migrasi 000105: `loans.ojk_jenis_penggunaan_code` (inline 10/20/31/32/35/39); `-` bila kosong |
 | IX | Hubungan dengan Bank | migrasi 000105: `customers.ojk_hubungan_bank_code` (inline 11/12/20) |
 | XI | Periode Pembayaran Pokok dan Bunga | migrasi 000105: `loans.ojk_periode_pembayaran_code` (inline 1–8) |
@@ -142,19 +141,19 @@ keranjang RO.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **18 sudah dikerjakan** (§1, §2c
-via modul BMPK, dan §2f), sisa 28. Laporan/berkas: **13** (LAPORAN_BMPK kini buildable dan
-dapat diunduh). Total sisa **41**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **26 sudah dikerjakan** (§1, §2c
+via modul BMPK, dan §2f), sisa 20. Laporan/berkas: **13** (LAPORAN_BMPK kini buildable dan
+dapat diunduh). Total sisa **33**.
 
 | Kategori | Kolom | Laporan | Total |
 |---|---|---|---|
-| K1 — bisa, kecil | 8 | 2 | 10 |
+| K1 — bisa, kecil | 0 | 2 | 2 |
 | K2 — butuh modul | 9 | 4 | 13 |
 | KB — kondisional bank | 4 | 2 | 6 |
 | RO — butuh referensi OJK | 0 | 0 | 0 |
 | DK — butuh keputusan | 7 | 0 | 7 |
 | LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **28** | **13** | **41** |
+| **Total sisa** | **20** | **13** | **33** |
 
 ## 5. Urutan yang disarankan
 

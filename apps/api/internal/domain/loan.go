@@ -281,6 +281,26 @@ type Loan struct {
 	OJKJenisPenggunaanCode   string `json:"ojk_jenis_penggunaan_code,omitempty"`
 	OJKPeriodePembayaranCode string `json:"ojk_periode_pembayaran_code,omitempty"`
 	OJKKabupatenCode         string `json:"ojk_kabupaten_code,omitempty"`
+	// Kolom K1 Form 06.00 lain (migrasi 000107) yang diisi bank lewat SQL/seed; kosong
+	// berarti belum diisi dan laporan menulis "-", bukan menebak dari loans.purpose.
+	//
+	// OJKKelompokKreditCode adalah Kode Kelompok Kredit peminjam pihak tidak terkait
+	// (kolom IV); kode unik angka/huruf buatan BPR, bukan sandi OJK (PDF #page 158).
+	OJKKelompokKreditCode string `json:"ojk_kelompok_kredit_code,omitempty"`
+	// OJKSumberDanaCode adalah sandi inline Sumber Dana Pelunasan (kolom X): 10/21/22/31/32.
+	OJKSumberDanaCode string `json:"ojk_sumber_dana_code,omitempty"`
+	// OJKKategoriUsahaCode adalah sandi inline Kategori Usaha (kolom XXI): 1/2/3/4.
+	OJKKategoriUsahaCode string `json:"ojk_kategori_usaha_code,omitempty"`
+	// OJKSifatKreditCode adalah sandi inline Sifat Kredit (kolom XXXVIII): 2/9.
+	OJKSifatKreditCode string `json:"ojk_sifat_kredit_code,omitempty"`
+	// OJKPenjaminCode adalah sandi golongan Penjamin (kolom XXIV butir 1) mengacu
+	// Lampiran 02 (FK ke ojk_pihak_lawan). OJKPenjaminBagianPct adalah bagian yang
+	// dijamin dalam persen 0-100 (kolom XXIV butir 2). Nil berarti belum diisi.
+	OJKPenjaminCode      string           `json:"ojk_penjamin_code,omitempty"`
+	OJKPenjaminBagianPct *decimal.Decimal `json:"ojk_penjamin_bagian_pct,omitempty"`
+	// OJKTanggalMulaiMacet adalah tanggal kredit mulai berkualitas macet (kolom XV),
+	// bukan turunan DPD. Nil berarti belum diisi.
+	OJKTanggalMulaiMacet *time.Time `json:"ojk_tanggal_mulai_macet,omitempty"`
 	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
 	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
 	RejectionReason string `json:"rejection_reason,omitempty"`
