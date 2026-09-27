@@ -225,6 +225,8 @@ type OffBalanceRepository interface {
 type OffBalanceService interface {
 	// OffBalanceReport menyusun laporan untuk satu posisi. Bank-wide.
 	OffBalanceReport(ctx context.Context, asOf time.Time, actor Actor) (OffBalanceReport, error)
+	// ListItems membaca baris mentah register untuk UI edit, urutan deterministik.
+	ListItems(ctx context.Context) ([]OffBalanceItem, error)
 	// UpsertItem menyimpan satu pos (id kosong = buat baru), teraudit.
 	UpsertItem(ctx context.Context, input UpdateOffBalanceItemInput, actor Actor) (*OffBalanceItem, error)
 	// DeleteItem menghapus satu pos, teraudit.

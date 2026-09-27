@@ -264,7 +264,7 @@ func main() {
 	// terkait dan uji batasnya dari migrasi 000103; pengisian pihak terkait/batas
 	// dilakukan bank lewat SQL/seed. Dipakai endpoint /reports/ojk/bmpk sekaligus
 	// kolom Status BMPK Form 05.00/06.00 lewat RepoSource yang sama.
-	bmpkSvc := service.NewBMPKService(postgres.NewBMPKRepository(db), configSvc, customerSvc)
+	bmpkSvc := service.NewBMPKService(db, postgres.NewBMPKRepository(db), configSvc, customerSvc, auditRepo)
 
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN: baca bank-wide + jalur tulis berizin system:config yang
@@ -291,7 +291,7 @@ func main() {
 		Savings:      postgres.NewSavingsCustomerRepository(db),
 		BankDeposits: postgres.NewBankDepositRepository(db),
 		OffBalance:   offBalanceRepo,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

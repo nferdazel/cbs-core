@@ -1957,6 +1957,147 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk/master:
+    get:
+      tags: [Laporan]
+      operationId: ojkBMPKMaster
+      summary: Data master pihak terkait dan batas BMPK (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan seluruh pihak terkait dan batas yang bank
+        isi untuk UI pengaturan (`related_parties`, `limits`). Ini data mentah, bukan
+        laporan terhitung.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk/related-parties:
+    put:
+      tags: [Laporan]
+      operationId: upsertBMPKRelatedParty
+      summary: Simpan pihak terkait BMPK
+      description: >-
+        Izin: `system:config`. Upsert satu baris per nasabah (invarian
+        `bmpk_related_parties`); `relationship_type` wajib. Nasabah tidak ada → 404;
+        validasi gagal → 422. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                customer_id: { type: string, format: uuid }
+                relationship_type: { type: string }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk/related-parties/{customerId}:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteBMPKRelatedParty
+      summary: Hapus pihak terkait BMPK
+      description: "Izin: `system:config`. Baris tidak ada → 404. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk/limits:
+    put:
+      tags: [Laporan]
+      operationId: upsertBMPKLimit
+      summary: Simpan batas BMPK per pihak terkait
+      description: >-
+        Izin: `system:config`. Upsert satu baris per nasabah (invarian `bmpk_limits`);
+        `max_amount` wajib dan >= 0. `effective_date` format YYYY-MM-DD. Nasabah tidak
+        ada → 404; validasi gagal → 422. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                customer_id: { type: string, format: uuid }
+                max_amount: { type: number }
+                effective_date: { type: string, description: "Format YYYY-MM-DD." }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/bmpk/limits/{customerId}:
+    parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteBMPKLimit
+      summary: Hapus batas BMPK per pihak terkait
+      description: "Izin: `system:config`. Baris tidak ada → 404. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/perbedaan-kualitas:
     get:
       tags: [Laporan]
@@ -2163,6 +2304,22 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/off-balance/items:
+    get:
+      tags: [Laporan]
+      operationId: listOffBalanceItems
+      summary: Daftar pos rekening administratif Form 01.01 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `off_balance_items` untuk UI
+        edit dengan urutan deterministik, bukan agregat laporan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
     put:
       tags: [Laporan]
       operationId: upsertOffBalanceItem

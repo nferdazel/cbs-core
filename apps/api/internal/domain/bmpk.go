@@ -52,6 +52,10 @@ var (
 	// penjaga bentuk bila kelak pengisian dipindahkan dari SQL ke API.
 	ErrBMPKInputInvalid = NewLocalizedError("bmpk_input_invalid",
 		"data pihak terkait/batas BMPK tidak valid")
+	// ErrBMPKNotFound menandai baris pihak terkait/batas (atau nasabahnya) yang tidak
+	// ada. Penghapusan yang tidak menemukan baris ditolak agar tidak tampak berhasil.
+	ErrBMPKNotFound = NewLocalizedError("bmpk_not_found",
+		"data pihak terkait/batas BMPK tidak ditemukan")
 )
 
 // BMPKRelationshipType adalah taksonomi jenis hubungan pihak terkait. Nilainya adalah
@@ -60,7 +64,8 @@ var (
 type BMPKRelatedParty struct {
 	CustomerID       uuid.UUID `json:"customer_id"`
 	RelationshipType string    `json:"relationship_type"`
-	Note             string    `json:"note,omitempty"`
+	// Note ikut dipaparkan meski kosong agar bentuk keluaran master seragam untuk UI.
+	Note string `json:"note"`
 }
 
 // ValidateRelatedParty menegakkan syarat yang tidak dapat dijaga pemanggil: nasabah
@@ -82,10 +87,102 @@ func (p BMPKRelatedParty) Validate() error {
 // rupiah penuh. baris yang tidak ada berarti batas belum diset; nol SAH dan berarti
 // tidak boleh ada eksposur.
 type BMPKLimit struct {
-	CustomerID    uuid.UUID       `json:"customer_id"`
-	MaxAmount     decimal.Decimal `json:"max_amount"`
-	EffectiveDate *time.Time      `json:"effective_date,omitempty"`
-	Note          string          `json:"note,omitempty"`
+	CustomerID uuid.UUID       `json:"customer_id"`
+	MaxAmount  decimal.Decimal `json:"max_amount"`
+	// EffectiveDate nil ditulis null (belum dicatat), bukan tanggal tebakan.
+	EffectiveDate *time.Time `json:"effective_date"`
+	Note          string     `json:"note"`
+}
+
+// UpdateBMPKRelatedPartyInput adalah isi upsert SATU penandaan pihak terkait. Satu
+// nasabah hanya punya satu baris (PRIMARY KEY customer_id); baris lama ditimpa.
+// CustomerID dan RelationshipType wajib.
+type UpdateBMPKRelatedPartyInput struct {
+	CustomerID       string `json:"customer_id"`
+	RelationshipType string `json:"relationship_type"`
+	Note             string `json:"note"`
+}
+
+// UpdateBMPKLimitInput adalah isi upsert SATU batas per nasabah. MaxAmount dalam
+// rupiah penuh, wajib dikirim, dan >= 0 (nol sah: tidak boleh ada eksposur). Ditulis
+// sebagai pointer agar bidang yang hilang ditolak 422, bukan diam-diam menjadi batas
+// nol. EffectiveDate memakai format YYYY-MM-DD; kosong = belum dicatat.
+type UpdateBMPKLimitInput struct {
+	CustomerID    string           `json:"customer_id"`
+	MaxAmount     *decimal.Decimal `json:"max_amount"`
+	EffectiveDate string           `json:"effective_date"`
+	Note          string           `json:"note"`
+}
+
+// BMPKMaster adalah data mentah pihak terkait dan batas yang bank isi, dipakai UI
+// pengaturan (bukan laporan terhitung). Urutan deterministik menurut customer_id.
+type BMPKMaster struct {
+	RelatedParties []BMPKRelatedParty `json:"related_parties"`
+	Limits         []BMPKLimit        `json:"limits"`
+}
+
+// BuildBMPKRelatedParty memvalidasi masukan dan membentuk baris siap simpan. Aturan
+// bentuk dipusatkan pada BMPKRelatedParty.Validate agar API dan laporan memakai
+// syarat yang sama.
+func BuildBMPKRelatedParty(in UpdateBMPKRelatedPartyInput) (BMPKRelatedParty, error) {
+	out := BMPKRelatedParty{RelationshipType: strings.TrimSpace(in.RelationshipType), Note: strings.TrimSpace(in.Note)}
+	id, err := parseBMPKCustomerID(in.CustomerID)
+	if err != nil {
+		return out, err
+	}
+	out.CustomerID = id
+	if err := out.Validate(); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// BuildBMPKLimit memvalidasi masukan dan membentuk batas siap simpan. MaxAmount
+// wajib dikirim; nol sah, negatif ditolak.
+func BuildBMPKLimit(in UpdateBMPKLimitInput) (BMPKLimit, error) {
+	out := BMPKLimit{Note: strings.TrimSpace(in.Note)}
+	if in.MaxAmount == nil {
+		return out, fmt.Errorf("%w: max_amount wajib diisi", ErrBMPKInputInvalid)
+	}
+	out.MaxAmount = *in.MaxAmount
+	id, err := parseBMPKCustomerID(in.CustomerID)
+	if err != nil {
+		return out, err
+	}
+	out.CustomerID = id
+	if out.MaxAmount.IsNegative() {
+		return out, fmt.Errorf("%w: max_amount tidak boleh negatif", ErrBMPKInputInvalid)
+	}
+	if out.EffectiveDate, err = parseBMPKEffectiveDate(in.EffectiveDate); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// parseBMPKCustomerID mewajibkan customer_id terisi dan berbentuk UUID.
+func parseBMPKCustomerID(raw string) (uuid.UUID, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return uuid.Nil, fmt.Errorf("%w: customer_id wajib diisi", ErrBMPKInputInvalid)
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("%w: customer_id bukan UUID yang sah", ErrBMPKInputInvalid)
+	}
+	return id, nil
+}
+
+// parseBMPKEffectiveDate menerima tanggal kosong (belum dicatat) atau YYYY-MM-DD.
+func parseBMPKEffectiveDate(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: effective_date harus format YYYY-MM-DD", ErrBMPKInputInvalid)
+	}
+	return &t, nil
 }
 
 // BMPKPartyExposure adalah satu baris paparan per pihak terkait beserta batasnya.
@@ -161,13 +258,27 @@ type BMPKReport struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// BMPKRepository membaca fondasi BMPK. Implementasi WAJIB membaca paparan gabungan
-// dalam SATU query (kredit + penempatan), bukan satu query per pihak.
+// BMPKRepository membaca fondasi BMPK dan menyimpan pengaturan pihak terkait/batas.
+// Implementasi WAJIB membaca paparan gabungan dalam SATU query (kredit + penempatan),
+// bukan satu query per pihak. Penulisan menerima transaksi dari layanan agar audit
+// berada pada transaksi yang sama.
 type BMPKRepository interface {
 	// ListPartyExposures mengembalikan satu baris per pihak terkait beserta paparan
 	// kredit/penempatan dan batasnya. Pihak terkait tanpa batas tetap muncul dengan
 	// HasLimit=false.
 	ListPartyExposures(ctx context.Context) ([]BMPKPartyExposure, error)
+	// ListRelatedParties dan ListLimits membaca data pengaturan mentah untuk UI.
+	ListRelatedParties(ctx context.Context) ([]BMPKRelatedParty, error)
+	ListLimits(ctx context.Context) ([]BMPKLimit, error)
+	// UpsertRelatedPartyTx/UpsertLimitTx menimpa baris nasabah (INSERT ... ON CONFLICT
+	// customer_id DO UPDATE) memakai transaksi pemanggil. Tabel BMPK tidak menyimpan
+	// kolom pelaku; jejak audit ditulis layanan pada transaksi yang sama.
+	UpsertRelatedPartyTx(ctx context.Context, tx any, p BMPKRelatedParty) error
+	UpsertLimitTx(ctx context.Context, tx any, l BMPKLimit) error
+	// DeleteRelatedPartyTx/DeleteLimitTx menghapus baris nasabah; found=false bila
+	// baris tidak ada.
+	DeleteRelatedPartyTx(ctx context.Context, tx any, customerID uuid.UUID) (bool, error)
+	DeleteLimitTx(ctx context.Context, tx any, customerID uuid.UUID) (bool, error)
 }
 
 // BMPKCustomerNamer melengkapi nama nasabah yang sudah didekripsi secara batch. Kontrak
@@ -177,8 +288,22 @@ type BMPKCustomerNamer interface {
 	NamesByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
-// BMPKService merakit laporan BMPK. Nama method dibuat eksplisit (BMPKReport) supaya
-// dapat dipakai juga sebagai sumber laporan OJK.
+// BMPKService merakit laporan BMPK sekaligus melayani pengaturan pihak terkait dan
+// batasnya. Nama method laporan dibuat eksplisit (BMPKReport) supaya dapat dipakai
+// juga sebagai sumber laporan OJK.
 type BMPKService interface {
 	BMPKReport(ctx context.Context, asOf time.Time, actor Actor) (BMPKReport, error)
+	// ListMaster mengembalikan data pengaturan mentah (pihak terkait + batas) untuk UI.
+	ListMaster(ctx context.Context) (BMPKMaster, error)
+	// UpsertRelatedParty menyimpan satu penandaan pihak terkait (upsert per nasabah),
+	// teraudit. Menolak nasabah yang tidak ada dengan ErrBMPKNotFound.
+	UpsertRelatedParty(ctx context.Context, input UpdateBMPKRelatedPartyInput, actor Actor) (*BMPKRelatedParty, error)
+	// DeleteRelatedParty menghapus penandaan satu nasabah; baris tak ada →
+	// ErrBMPKNotFound.
+	DeleteRelatedParty(ctx context.Context, customerID uuid.UUID, actor Actor) error
+	// UpsertLimit menyimpan satu batas per nasabah (upsert), teraudit. Menolak nasabah
+	// yang tidak ada dengan ErrBMPKNotFound.
+	UpsertLimit(ctx context.Context, input UpdateBMPKLimitInput, actor Actor) (*BMPKLimit, error)
+	// DeleteLimit menghapus batas satu nasabah; baris tak ada → ErrBMPKNotFound.
+	DeleteLimit(ctx context.Context, customerID uuid.UUID, actor Actor) error
 }

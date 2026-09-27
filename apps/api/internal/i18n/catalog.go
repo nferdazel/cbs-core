@@ -184,6 +184,13 @@ const (
 	MsgCrossBranchAccess                    Code = "cross_branch_access"
 	MsgBMPKBankWide                         Code = "bmpk_bank_wide"
 	MsgBMPKInputInvalid                     Code = "bmpk_input_invalid"
+	MsgBMPKNotFound                         Code = "bmpk_not_found"
+	MsgBMPKCustomerIDInvalid                Code = "bmpk_customer_id_invalid"
+	MsgBMPKMasterListed                     Code = "bmpk_master_listed"
+	MsgBMPKRelatedPartySaved                Code = "bmpk_related_party_saved"
+	MsgBMPKRelatedPartyDeleted              Code = "bmpk_related_party_deleted"
+	MsgBMPKLimitSaved                       Code = "bmpk_limit_saved"
+	MsgBMPKLimitDeleted                     Code = "bmpk_limit_deleted"
 	MsgBankProfileNameRequired              Code = "bank_profile_name_required"
 	MsgBankProfileNameTooShort              Code = "bank_profile_name_too_short"
 	MsgBankProfileEmpty                     Code = "bank_profile_empty"
@@ -233,6 +240,7 @@ const (
 	MsgOffBalanceBankWide                 Code = "off_balance_bank_wide"
 	MsgOffBalanceInputInvalid             Code = "off_balance_input_invalid"
 	MsgOffBalanceNotFound                 Code = "off_balance_not_found"
+	MsgOffBalanceItemsListed              Code = "off_balance_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -527,6 +535,13 @@ var codeList = []Code{
 	MsgCrossBranchAccess,
 	MsgBMPKBankWide,
 	MsgBMPKInputInvalid,
+	MsgBMPKNotFound,
+	MsgBMPKCustomerIDInvalid,
+	MsgBMPKMasterListed,
+	MsgBMPKRelatedPartySaved,
+	MsgBMPKRelatedPartyDeleted,
+	MsgBMPKLimitSaved,
+	MsgBMPKLimitDeleted,
 	MsgBankProfileNameRequired,
 	MsgBankProfileNameTooShort,
 	MsgBankProfileEmpty,
@@ -568,6 +583,7 @@ var codeList = []Code{
 	MsgOffBalanceBankWide,
 	MsgOffBalanceInputInvalid,
 	MsgOffBalanceNotFound,
+	MsgOffBalanceItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1364,6 +1380,34 @@ var catalog = map[Code]map[Lang]string{
 		ID: "data pihak terkait/batas BMPK tidak valid",
 		EN: "BMPK related party/limit data is invalid",
 	},
+	MsgBMPKNotFound: {
+		ID: "data pihak terkait/batas BMPK tidak ditemukan",
+		EN: "BMPK related party/limit data was not found",
+	},
+	MsgBMPKCustomerIDInvalid: {
+		ID: "customer_id BMPK tidak valid",
+		EN: "BMPK customer_id is invalid",
+	},
+	MsgBMPKMasterListed: {
+		ID: "daftar pengaturan BMPK",
+		EN: "BMPK master data listed",
+	},
+	MsgBMPKRelatedPartySaved: {
+		ID: "pihak terkait BMPK berhasil disimpan",
+		EN: "BMPK related party saved successfully",
+	},
+	MsgBMPKRelatedPartyDeleted: {
+		ID: "pihak terkait BMPK berhasil dihapus",
+		EN: "BMPK related party deleted successfully",
+	},
+	MsgBMPKLimitSaved: {
+		ID: "batas BMPK berhasil disimpan",
+		EN: "BMPK limit saved successfully",
+	},
+	MsgBMPKLimitDeleted: {
+		ID: "batas BMPK berhasil dihapus",
+		EN: "BMPK limit deleted successfully",
+	},
 	MsgBankProfileNameRequired: {
 		ID: "nama bank wajib diisi",
 		EN: "bank name is required",
@@ -1527,6 +1571,10 @@ var catalog = map[Code]map[Lang]string{
 	MsgOffBalanceNotFound: {
 		ID: "data rekening administratif tidak ditemukan",
 		EN: "administrative account data was not found",
+	},
+	MsgOffBalanceItemsListed: {
+		ID: "daftar pos rekening administratif",
+		EN: "off-balance items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

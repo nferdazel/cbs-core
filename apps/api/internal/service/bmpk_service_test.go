@@ -55,6 +55,32 @@ func (r *bmpkRepoStub) ListPartyExposures(_ context.Context) ([]domain.BMPKParty
 	return r.rows, nil
 }
 
+// Metode tulis/baca master berikut melengkapi kontrak domain.BMPKRepository; uji
+// laporan tidak memakainya, jadi cukup menjadi no-op yang tidak pernah dipanggil.
+func (r *bmpkRepoStub) ListRelatedParties(_ context.Context) ([]domain.BMPKRelatedParty, error) {
+	return nil, nil
+}
+
+func (r *bmpkRepoStub) ListLimits(_ context.Context) ([]domain.BMPKLimit, error) {
+	return nil, nil
+}
+
+func (r *bmpkRepoStub) UpsertRelatedPartyTx(_ context.Context, _ any, _ domain.BMPKRelatedParty) error {
+	return nil
+}
+
+func (r *bmpkRepoStub) UpsertLimitTx(_ context.Context, _ any, _ domain.BMPKLimit) error {
+	return nil
+}
+
+func (r *bmpkRepoStub) DeleteRelatedPartyTx(_ context.Context, _ any, _ uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+func (r *bmpkRepoStub) DeleteLimitTx(_ context.Context, _ any, _ uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 // bmpkNamerStub melengkapi nama nasabah secara batch.
 type bmpkNamerStub struct {
 	names map[uuid.UUID]string
@@ -76,7 +102,7 @@ func (n *bmpkNamerStub) NamesByIDs(_ context.Context, ids []uuid.UUID) (map[uuid
 
 func TestBMPKServiceMenolakAktorBukanLintasCabang(t *testing.T) {
 	repo := &bmpkRepoStub{}
-	svc := NewBMPKService(repo, &bmpkConfigStub{}, nil)
+	svc := NewBMPKService(nil, repo, &bmpkConfigStub{}, nil)
 	_, err := svc.BMPKReport(context.Background(), time.Now(), domain.Actor{Role: domain.RoleTeller, BranchCode: "001"})
 	if !errors.Is(err, domain.ErrBMPKBankWide) {
 		t.Fatalf("error = %v, ingin ErrBMPKBankWide", err)
@@ -108,7 +134,7 @@ func TestBMPKServiceMelengkapiNamaDanStatus(t *testing.T) {
 		terkait:    "Budi",
 		tanpaBatas: "Siti",
 	}}
-	svc := NewBMPKService(repo, &bmpkConfigStub{values: map[string]string{domain.BMPKEnabledKey: "false"}}, namer)
+	svc := NewBMPKService(nil, repo, &bmpkConfigStub{values: map[string]string{domain.BMPKEnabledKey: "false"}}, namer)
 
 	report, err := svc.BMPKReport(context.Background(), time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC), domain.Actor{Role: domain.RoleAuditor})
 	if err != nil {
@@ -155,7 +181,7 @@ func TestBMPKServiceMelengkapiNamaDanStatus(t *testing.T) {
 }
 
 func TestBMPKServiceSaklarMenyala(t *testing.T) {
-	svc := NewBMPKService(&bmpkRepoStub{}, &bmpkConfigStub{values: map[string]string{domain.BMPKEnabledKey: "true"}}, nil)
+	svc := NewBMPKService(nil, &bmpkRepoStub{}, &bmpkConfigStub{values: map[string]string{domain.BMPKEnabledKey: "true"}}, nil)
 	report, err := svc.BMPKReport(context.Background(), time.Now(), domain.Actor{Role: domain.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("error tak terduga: %v", err)
@@ -171,7 +197,7 @@ func TestBMPKServiceSaklarMenyala(t *testing.T) {
 }
 
 func TestBMPKServiceTanpaRepoMenolak(t *testing.T) {
-	svc := NewBMPKService(nil, &bmpkConfigStub{}, nil)
+	svc := NewBMPKService(nil, nil, &bmpkConfigStub{}, nil)
 	if _, err := svc.BMPKReport(context.Background(), time.Now(), domain.Actor{Role: domain.RoleSuperAdmin}); err == nil {
 		t.Fatal("repo nil harus ditolak, bukan laporan kosong yang tampak sah")
 	}
@@ -179,7 +205,7 @@ func TestBMPKServiceTanpaRepoMenolak(t *testing.T) {
 
 func TestBMPKServiceRepoErrorDiteruskan(t *testing.T) {
 	repo := &bmpkRepoStub{err: errors.New("db mati")}
-	svc := NewBMPKService(repo, &bmpkConfigStub{}, nil)
+	svc := NewBMPKService(nil, repo, &bmpkConfigStub{}, nil)
 	_, err := svc.BMPKReport(context.Background(), time.Now(), domain.Actor{Role: domain.RoleSuperAdmin})
 	if err == nil || !strings.Contains(err.Error(), "db mati") {
 		t.Fatalf("error = %v, ingin membungkus galat repositori", err)

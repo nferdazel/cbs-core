@@ -40,6 +40,10 @@ type OJKReportHandler struct {
 	// bmpk menyediakan laporan BMPK untuk endpoint ekspor /ojk/bmpk; nil berarti
 	// sumber BMPK tidak dirangkai pada handler ini.
 	bmpk ojkreport.BMPKSource
+	// bmpkAdmin menyediakan pembacaan master dan jalur tulis pihak terkait/batas BMPK
+	// (izin system:config). Boleh nil pada uji; tanpa itu rute pengaturan BMPK tetap
+	// terpasang tetapi gagal saat dipanggil.
+	bmpkAdmin domain.BMPKService
 	// loans menyediakan baris kredit untuk endpoint ekspor Laporan Perbedaan Kualitas
 	// Aset Produktif; nil berarti sumber kredit tidak dirangkai pada handler ini.
 	loans ojkreport.LoanDataSource
@@ -58,8 +62,9 @@ type OJKReportHandler struct {
 // uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
 // Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
 // boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
-// offBalance boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService) *OJKReportHandler {
+// offBalance boleh nil dengan perilaku yang sama. bmpkAdmin menyediakan pengaturan
+// pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, bmpkAdmin domain.BMPKService) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -68,6 +73,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		config:      config,
 		kelembagaan: kelembagaan,
 		offBalance:  offBalance,
+		bmpkAdmin:   bmpkAdmin,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -93,6 +99,19 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Get("/monthly", h.ExportMonthly)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/bmpk", h.ExportBMPK)
+		// Pengaturan BMPK (pihak terkait + batas) yang sebelumnya hanya bisa diisi
+		// SQL/seed: baca master dan jalur tulis memakai system:config, izin yang sama
+		// dengan setelan OJK lain, dan teraudit di service.
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/bmpk/master", h.BMPKMaster)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/bmpk/related-parties", h.UpsertBMPKRelatedParty)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/bmpk/related-parties/{customerId}", h.DeleteBMPKRelatedParty)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/bmpk/limits", h.UpsertBMPKLimit)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/bmpk/limits/{customerId}", h.DeleteBMPKLimit)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/perbedaan-kualitas", h.ExportPerbedaanKualitas)
 		// Laporan kelembagaan (jaringan kantor + direksi/komisaris/pejabat eksekutif):
@@ -110,9 +129,14 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kelembagaan/management/{id}", h.DeleteKelembagaanManagement)
 		// Register rekening administratif (Form 01.01): baca cukup reports:export;
-		// pengisian memakai system:config dan teraudit di service. Tiga rute saja.
+		// pengisian dan daftar mentah UI memakai system:config dan teraudit di service.
+		// Empat rute saja.
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/off-balance", h.ExportOffBalance)
+		// Daftar baris mentah register rekening administratif untuk UI edit memakai
+		// system:config, sama seperti jalur tulisnya.
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/off-balance/items", h.ListOffBalanceItems)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Put("/off-balance/items", h.UpsertOffBalanceItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -390,6 +414,144 @@ func (h *OJKReportHandler) ExportBMPK(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// BMPKMaster menyajikan data mentah pengaturan BMPK: seluruh pihak terkait dan batas
+// yang bank isi. Izin system:config; tidak ada penegakan bank-wide di sini karena ini
+// pengaturan, bukan laporan.
+func (h *OJKReportHandler) BMPKMaster(w http.ResponseWriter, r *http.Request) {
+	if h.bmpkAdmin == nil {
+		InternalError(w, r, errors.New("modul BMPK belum dikonfigurasi"))
+		return
+	}
+	master, err := h.bmpkAdmin.ListMaster(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca master BMPK: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgBMPKMasterListed, map[string]any{
+		"related_parties": master.RelatedParties,
+		"limits":          master.Limits,
+	})
+}
+
+// UpsertBMPKRelatedParty membuat/memperbarui satu penandaan pihak terkait
+// (PUT /reports/ojk/bmpk/related-parties). Decoder menolak bidang tak dikenal agar
+// payload di luar kontrak ditolak 422. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertBMPKRelatedParty(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateBMPKRelatedPartyInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.bmpkAdmin == nil {
+		InternalError(w, r, errors.New("modul BMPK belum dikonfigurasi"))
+		return
+	}
+	party, err := h.bmpkAdmin.UpsertRelatedParty(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeBMPKError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgBMPKRelatedPartySaved, party)
+}
+
+// DeleteBMPKRelatedParty menghapus penandaan satu nasabah menurut customerId.
+func (h *OJKReportHandler) DeleteBMPKRelatedParty(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	customerID, err := uuid.Parse(chi.URLParam(r, "customerId"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgBMPKCustomerIDInvalid)
+		return
+	}
+	if h.bmpkAdmin == nil {
+		InternalError(w, r, errors.New("modul BMPK belum dikonfigurasi"))
+		return
+	}
+	if err := h.bmpkAdmin.DeleteRelatedParty(r.Context(), customerID,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeBMPKError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgBMPKRelatedPartyDeleted, map[string]any{"customer_id": customerID.String()})
+}
+
+// UpsertBMPKLimit membuat/memperbarui satu batas per nasabah
+// (PUT /reports/ojk/bmpk/limits). Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertBMPKLimit(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateBMPKLimitInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.bmpkAdmin == nil {
+		InternalError(w, r, errors.New("modul BMPK belum dikonfigurasi"))
+		return
+	}
+	limit, err := h.bmpkAdmin.UpsertLimit(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeBMPKError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgBMPKLimitSaved, limit)
+}
+
+// DeleteBMPKLimit menghapus batas satu nasabah menurut customerId.
+func (h *OJKReportHandler) DeleteBMPKLimit(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	customerID, err := uuid.Parse(chi.URLParam(r, "customerId"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgBMPKCustomerIDInvalid)
+		return
+	}
+	if h.bmpkAdmin == nil {
+		InternalError(w, r, errors.New("modul BMPK belum dikonfigurasi"))
+		return
+	}
+	if err := h.bmpkAdmin.DeleteLimit(r.Context(), customerID,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeBMPKError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgBMPKLimitDeleted, map[string]any{"customer_id": customerID.String()})
+}
+
+// writeBMPKError memetakan galat pengaturan BMPK: baris/nasabah tak ada 404,
+// pelanggaran bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat
+// berjejak internal otomatis disembunyikan Fail).
+func writeBMPKError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrBMPKNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrBMPKBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
 // ExportPerbedaanKualitas menulis berkas teks Laporan Perbedaan Kualitas Aset
 // Produktif (Form 19.00) untuk periode YYYY-MM lewat
 // ojkreport.GeneratePerbedaanKualitas + WriteText. Laporan bersifat bank-wide; aktor
@@ -621,6 +783,22 @@ func (h *OJKReportHandler) ExportOffBalance(w http.ResponseWriter, r *http.Reque
 		"report": report,
 		"tables": []ojkreport.TableSection{ojkreport.BuildForm01_01(report.Aggregates)},
 	})
+}
+
+// ListOffBalanceItems menyajikan baris mentah register rekening administratif untuk
+// UI edit (GET /reports/ojk/off-balance/items). Urutan deterministik dari repositori.
+// Izin system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListOffBalanceItems(w http.ResponseWriter, r *http.Request) {
+	if h.offBalance == nil {
+		InternalError(w, r, errors.New("sumber register rekening administratif belum dikonfigurasi"))
+		return
+	}
+	items, err := h.offBalance.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register rekening administratif: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgOffBalanceItemsListed, map[string]any{"items": items})
 }
 
 // UpsertOffBalanceItem membuat/memperbarui satu pos rekening administratif

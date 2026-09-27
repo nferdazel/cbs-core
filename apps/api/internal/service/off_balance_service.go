@@ -67,6 +67,23 @@ func (s *offBalanceService) OffBalanceReport(ctx context.Context, asOf time.Time
 	return report, nil
 }
 
+// ListItems membaca baris mentah register untuk UI edit, urutan deterministik dari
+// repositori. Ini bukan laporan: tidak ada pemeriksaan bank-wide di sini karena rute
+// pengaturan dijaga izin system:config.
+func (s *offBalanceService) ListItems(ctx context.Context) ([]domain.OffBalanceItem, error) {
+	if s.repo == nil {
+		return nil, fmt.Errorf("modul rekening administratif: repositori tidak tersedia")
+	}
+	items, err := s.repo.ListItems(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("membaca register rekening administratif: %w", err)
+	}
+	if items == nil {
+		items = []domain.OffBalanceItem{}
+	}
+	return items, nil
+}
+
 // UpsertItem menyimpan satu pos (id kosong = buat baru) dan menulis audit dalam satu
 // transaksi.
 func (s *offBalanceService) UpsertItem(ctx context.Context, input domain.UpdateOffBalanceItemInput, actor domain.Actor) (*domain.OffBalanceItem, error) {
