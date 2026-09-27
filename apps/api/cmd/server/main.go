@@ -266,6 +266,11 @@ func main() {
 	// kolom Status BMPK Form 05.00/06.00 lewat RepoSource yang sama.
 	bmpkSvc := service.NewBMPKService(postgres.NewBMPKRepository(db), configSvc, customerSvc)
 
+	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
+	// LAPORAN_KELEMBAGAAN: baca bank-wide + jalur tulis berizin system:config yang
+	// teraudit (migrasi 000112). Tidak menyentuh angka keuangan.
+	kelembagaanSvc := service.NewKelembagaanService(db, postgres.NewKelembagaanRepository(db), auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
@@ -279,7 +284,7 @@ func main() {
 		BMPK:         bmpkSvc,
 		Savings:      postgres.NewSavingsCustomerRepository(db),
 		BankDeposits: postgres.NewBankDepositRepository(db),
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

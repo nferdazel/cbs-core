@@ -71,8 +71,11 @@ var OJKReportDefinitions = []OJKReportDefinition{
 	{
 		Code: "LAPORAN_KELEMBAGAAN", Name: "Laporan Kelembagaan BPR",
 		Periodicity: OJKBulanan, DueDay: 10, CorrectionDay: 15, Channel: OJKChannelAPOLO,
-		Buildable:         false,
-		UnavailableReason: "data jaringan kantor, direksi, dewan komisaris, dan pejabat eksekutif beserta dokumen pendukung belum tersedia di basis data",
+		// Data jaringan kantor (bank_offices) dan direksi/komisaris/pejabat eksekutif
+		// (bank_management) tersedia lewat migrasi 000112, perakit kelembagaan.go
+		// tersedia, dan jalur tulis berizin+teraudit sudah ada. Kolom form yang belum
+		// punya sumber ditandai belum tersedia oleh perakit, bukan dikarang.
+		Buildable: true,
 	},
 	{
 		Code: "LAPORAN_BMPK", Name: "Laporan Batas Maksimum Pemberian Kredit (BMPK) BPR",

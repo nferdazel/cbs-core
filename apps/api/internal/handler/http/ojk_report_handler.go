@@ -43,19 +43,25 @@ type OJKReportHandler struct {
 	// loans menyediakan baris kredit untuk endpoint ekspor Laporan Perbedaan Kualitas
 	// Aset Produktif; nil berarti sumber kredit tidak dirangkai pada handler ini.
 	loans ojkreport.LoanDataSource
+	// kelembagaan menyediakan data jaringan kantor/direksi/komisaris/pejabat eksekutif
+	// untuk laporan LAPORAN_KELEMBAGAAN sekaligus operasi upsert/hapusnya. Boleh nil
+	// pada uji; tanpa itu rute kelembagaan tetap terpasang tetapi gagal saat dipanggil.
+	kelembagaan domain.KelembagaanService
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
 // reviews boleh nil, tetapi endpoint peninjauan membutuhkannya. config boleh nil pada
 // uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
-// Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource).
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService) *OJKReportHandler {
+// Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
+// boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService) *OJKReportHandler {
 	h := &OJKReportHandler{
-		builder: ojkreport.NewBuilder(source),
-		source:  source,
-		coa:     coa,
-		reviews: reviews,
-		config:  config,
+		builder:     ojkreport.NewBuilder(source),
+		source:      source,
+		coa:         coa,
+		reviews:     reviews,
+		config:      config,
+		kelembagaan: kelembagaan,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -83,6 +89,20 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Get("/bmpk", h.ExportBMPK)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/perbedaan-kualitas", h.ExportPerbedaanKualitas)
+		// Laporan kelembagaan (jaringan kantor + direksi/komisaris/pejabat eksekutif):
+		// baca cukup reports:export; pengisian data memakai system:config, izin yang
+		// sama dengan setelan OJK lain, dan teraudit di service. Hanya lima rute agar
+		// tidak menumpuk detail.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/kelembagaan", h.ExportKelembagaan)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kelembagaan/offices", h.UpsertKelembagaanOffice)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kelembagaan/offices/{id}", h.DeleteKelembagaanOffice)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kelembagaan/management", h.UpsertKelembagaanManagement)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kelembagaan/management/{id}", h.DeleteKelembagaanManagement)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -406,6 +426,162 @@ func (h *OJKReportHandler) ExportPerbedaanKualitas(w http.ResponseWriter, r *htt
 	// Header sudah terkirim; kegagalan menulis hanya dapat dicatat ke log.
 	if err := ojkreport.WriteText(w, bundle); err != nil {
 		observability.FromContext(r.Context()).Error("gagal menulis berkas ekspor perbedaan kualitas", "error", err)
+	}
+}
+
+// ExportKelembagaan menyajikan LAPORAN_KELEMBAGAAN sebagai JSON untuk periode
+// YYYY-MM: data jaringan kantor, direksi/komisaris, dan pejabat eksekutif, beserta
+// daftar bagian tabel dan kolom yang belum tersedia. Laporan bank-wide; aktor
+// non-lintas cabang ditolak 403 oleh layanan.
+func (h *OJKReportHandler) ExportKelembagaan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+
+	report, err := h.kelembagaan.KelembagaanReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrKelembagaanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgKelembagaanReport, map[string]any{
+		"report": report,
+		"tables": ojkreport.BuildKelembagaanTables(report),
+	})
+}
+
+// UpsertKelembagaanOffice membuat/memperbarui satu kantor (PUT /reports/ojk/kelembagaan/
+// offices). Decoder menolak bidang tak dikenal agar payload di luar kontrak ditolak
+// 422, bukan diam-diam diabaikan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertKelembagaanOffice(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateBankOfficeInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	office, err := h.kelembagaan.UpsertOffice(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanSaved, office)
+}
+
+// DeleteKelembagaanOffice menghapus satu kantor menurut id.
+func (h *OJKReportHandler) DeleteKelembagaanOffice(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKelembagaanIDInvalid)
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	if err := h.kelembagaan.DeleteOffice(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanDeleted, map[string]any{"id": id.String()})
+}
+
+// UpsertKelembagaanManagement membuat/memperbarui satu direksi/komisaris/pejabat.
+func (h *OJKReportHandler) UpsertKelembagaanManagement(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateBankManagementInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	m, err := h.kelembagaan.UpsertManagement(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanSaved, m)
+}
+
+// DeleteKelembagaanManagement menghapus satu direksi/komisaris/pejabat menurut id.
+func (h *OJKReportHandler) DeleteKelembagaanManagement(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKelembagaanIDInvalid)
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	if err := h.kelembagaan.DeleteManagement(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanDeleted, map[string]any{"id": id.String()})
+}
+
+// writeKelembagaanError memetakan galat kelembagaan: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak internal
+// otomatis disembunyikan Fail).
+func writeKelembagaanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrKelembagaanNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrKelembagaanBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
 	}
 }
 

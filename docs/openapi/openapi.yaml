@@ -1982,6 +1982,163 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportKelembagaan
+      summary: Data Laporan Kelembagaan BPR (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan data jaringan kantor,
+        direksi/komisaris, dan pejabat eksekutif sebagai JSON beserta daftar bagian
+        tabel dan kolom yang belum tersedia (NIK, alamat pribadi, sertifikat,
+        koordinat, jumlah pegawai, EDC/ATM, dsb. ditandai belum tersedia, bukan nol).
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan/offices:
+    put:
+      tags: [Laporan]
+      operationId: upsertKelembagaanOffice
+      summary: Simpan data kantor kelembagaan
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        kantor jaringan. `ojk_kabupaten_code` diperiksa ke tabel referensi Lampiran 03.
+        Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                office_type: { type: string }
+                code: { type: string }
+                name: { type: string }
+                address: { type: string }
+                city: { type: string }
+                ojk_kabupaten_code: { type: string }
+                opened_at: { type: string }
+                closed_at: { type: string }
+                status: { type: string, enum: [AKTIF, TUTUP] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan/offices/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteKelembagaanOffice
+      summary: Hapus data kantor kelembagaan
+      description: "Izin: `system:config`. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan/management:
+    put:
+      tags: [Laporan]
+      operationId: upsertKelembagaanManagement
+      summary: Simpan data direksi/komisaris/pejabat eksekutif
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        anggota direksi/dewan komisaris/pejabat eksekutif. NIK tidak dimodelkan
+        (keputusan privasi). Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                category: { type: string, enum: [DIREKSI, KOMISARIS, PEJABAT_EKSEKUTIF] }
+                name: { type: string }
+                position: { type: string }
+                ojk_position_code: { type: string }
+                license_number: { type: string }
+                license_date: { type: string }
+                started_at: { type: string }
+                ended_at: { type: string }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan/management/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteKelembagaanManagement
+      summary: Hapus data direksi/komisaris/pejabat eksekutif
+      description: "Izin: `system:config`. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/mapping:
     get:
       tags: [Laporan]

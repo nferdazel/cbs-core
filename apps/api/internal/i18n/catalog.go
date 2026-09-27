@@ -209,10 +209,20 @@ const (
 	MsgCKPNActivationDateInvalid            Code = "ckpn_activation_date_invalid"
 	// Sandi referensi/inline OJK (Form 06.00) yang sebelumnya hanya bisa diisi lewat
 	// SQL/seed. Galat inline/referensi memuat nama kolom sebagai placeholder.
-	MsgOJKLoanCodesUpdated                Code = "ojk_loan_codes_updated"
-	MsgOJKLoanCodesEmpty                  Code = "ojk_loan_codes_empty"
-	MsgOJKInlineCodeInvalid               Code = "ojk_inline_code_invalid"
-	MsgOJKReferenceCodeInvalid            Code = "ojk_reference_code_invalid"
+	MsgOJKLoanCodesUpdated     Code = "ojk_loan_codes_updated"
+	MsgOJKLoanCodesEmpty       Code = "ojk_loan_codes_empty"
+	MsgOJKInlineCodeInvalid    Code = "ojk_inline_code_invalid"
+	MsgOJKReferenceCodeInvalid Code = "ojk_reference_code_invalid"
+	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
+	// LAPORAN_KELEMBAGAAN. Galat berkode harus selaras dengan pesan domain (uji
+	// errors_localized_test menegakkan ID/EN-nya).
+	MsgKelembagaanReport                  Code = "kelembagaan_report"
+	MsgKelembagaanSaved                   Code = "kelembagaan_saved"
+	MsgKelembagaanDeleted                 Code = "kelembagaan_deleted"
+	MsgKelembagaanIDInvalid               Code = "kelembagaan_id_invalid"
+	MsgKelembagaanBankWide                Code = "kelembagaan_bank_wide"
+	MsgKelembagaanInputInvalid            Code = "kelembagaan_input_invalid"
+	MsgKelembagaanNotFound                Code = "kelembagaan_not_found"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -534,6 +544,13 @@ var codeList = []Code{
 	MsgOJKLoanCodesEmpty,
 	MsgOJKInlineCodeInvalid,
 	MsgOJKReferenceCodeInvalid,
+	MsgKelembagaanReport,
+	MsgKelembagaanSaved,
+	MsgKelembagaanDeleted,
+	MsgKelembagaanIDInvalid,
+	MsgKelembagaanBankWide,
+	MsgKelembagaanInputInvalid,
+	MsgKelembagaanNotFound,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1437,6 +1454,34 @@ var catalog = map[Code]map[Lang]string{
 	MsgOJKReferenceCodeInvalid: {
 		ID: "sandi referensi %s tidak ditemukan pada tabel referensi",
 		EN: "reference code %s was not found in the reference table",
+	},
+	MsgKelembagaanReport: {
+		ID: "laporan kelembagaan",
+		EN: "institutional report",
+	},
+	MsgKelembagaanSaved: {
+		ID: "data kelembagaan disimpan",
+		EN: "institutional data saved",
+	},
+	MsgKelembagaanDeleted: {
+		ID: "data kelembagaan dihapus",
+		EN: "institutional data deleted",
+	},
+	MsgKelembagaanIDInvalid: {
+		ID: "id kelembagaan bukan UUID yang sah",
+		EN: "institutional id is not a valid UUID",
+	},
+	MsgKelembagaanBankWide: {
+		ID: "laporan kelembagaan bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the institutional report is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgKelembagaanInputInvalid: {
+		ID: "data kelembagaan tidak valid",
+		EN: "institutional data is invalid",
+	},
+	MsgKelembagaanNotFound: {
+		ID: "data kelembagaan tidak ditemukan",
+		EN: "institutional data was not found",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",
