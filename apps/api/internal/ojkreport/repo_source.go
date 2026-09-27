@@ -235,6 +235,7 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 			AccruedInterestReceivable: p.AccruedInterestReceivable,
 			AccruedInterestPending:    p.AccruedInterestPending,
 			CounterpartyCIF:           p.CounterpartyCIF,
+			OJKKlasifikasiAsetCode:    p.OJKKlasifikasiAsetCode,
 			CustomerID:                customerIDString(p.CustomerID),
 		}
 		if p.CKPN != nil {
@@ -274,14 +275,15 @@ func loanRowDariDomain(l domain.Loan) LoanRow {
 		OJKPeriodePembayaranCode: l.OJKPeriodePembayaranCode,
 		OJKKabupatenCode:         l.OJKKabupatenCode,
 		// Kolom K1 Form 06.00 lain (migrasi 000107); kosong/nil ditulis "-".
-		OJKKelompokKreditCode: l.OJKKelompokKreditCode,
-		OJKSumberDanaCode:     l.OJKSumberDanaCode,
-		OJKKategoriUsahaCode:  l.OJKKategoriUsahaCode,
-		OJKSifatKreditCode:    l.OJKSifatKreditCode,
-		OJKPenjaminCode:       l.OJKPenjaminCode,
-		OJKPenjaminBagianPct:  l.OJKPenjaminBagianPct,
-		OJKTanggalMulaiMacet:  l.OJKTanggalMulaiMacet,
-		RestructuredAt:        l.RestructuredAt,
+		OJKKelompokKreditCode:  l.OJKKelompokKreditCode,
+		OJKSumberDanaCode:      l.OJKSumberDanaCode,
+		OJKKategoriUsahaCode:   l.OJKKategoriUsahaCode,
+		OJKSifatKreditCode:     l.OJKSifatKreditCode,
+		OJKPenjaminCode:        l.OJKPenjaminCode,
+		OJKPenjaminBagianPct:   l.OJKPenjaminBagianPct,
+		OJKTanggalMulaiMacet:   l.OJKTanggalMulaiMacet,
+		OJKKlasifikasiAsetCode: l.OJKKlasifikasiAsetCode,
+		RestructuredAt:         l.RestructuredAt,
 	}
 }
 

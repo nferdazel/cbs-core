@@ -45,7 +45,7 @@ keputusan pemilik sistem.
 | XIV | Pendapatan Bunga Dalam Penyelesaian | ✓ | `lps_placements.accrued_interest_pending` (migrasi 000106) |
 | XV | Status BMPK Individu | ✓ | Terisi dari modul BMPK (`lps_placements.customer_id`); `-` bila penempatan belum ditautkan |
 | XVI | ID Pihak Lawan | ✓ | `lps_placements.counterparty_cif` (migrasi 000106, CIF internal) |
-| XX | Klasifikasi Aset Keuangan | DK | Klasifikasi SAK EP per penempatan |
+| XX | Klasifikasi Aset Keuangan | ✓ | `lps_placements.ojk_klasifikasi_aset_code` (migrasi 000108, diisi bank, tanpa auto-klasifikasi); `-` bila kosong |
 
 ## 2. Form 06.00 — Daftar Kredit yang Diberikan (36 kolom)
 
@@ -79,7 +79,7 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XXXII | Cadangan Kerugian Restrukturisasi | Perlu pencatatan per kredit |
 | XXXIII | Baki Debet Neto | Bergantung pada XXIX/XXX/XXXI/XXXII |
 
-### 2d. Kondisional bank (4)
+### 2d. Kondisional bank (4) — kebijakan: bank bukan peserta bawaan, bukan celah
 
 | Kolom | Nama | Syarat |
 |---|---|---|
@@ -88,7 +88,7 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XL | Sektor Kredit Usaha Rakyat | Hanya bila bank menyalurkan KUR |
 | XLIII | Sandi LPBBTI | Hanya bila bank bekerja sama dengan LPBBTI |
 
-### 2e. Butuh keputusan (6)
+### 2e. Diputuskan (5) — lihat `docs/KEPUTUSAN-OJK.md`
 
 | Kolom | Nama | Keputusan yang ditunggu |
 |---|---|---|
@@ -97,9 +97,8 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XLIV | CKPN Aset Baik | Stage 1/2/3 hanya untuk bank pasar modal (SAK Indonesia); instalasi ini SAK EP. Lihat `CKPN-SIAP-RILIS.md` §(f) |
 | XLV | CKPN Aset Kurang Baik | idem |
 | XLVI | CKPN Aset Tidak Baik | idem |
-| XLVII | Klasifikasi Aset Keuangan | Kebijakan klasifikasi SAK EP per kredit |
 
-### 2f. Sudah dikerjakan (17)
+### 2f. Sudah dikerjakan (18)
 
 | Kolom | Nama | Bukti |
 |---|---|---|
@@ -116,6 +115,7 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 | XXIV | Penjamin | migrasi 000107: `loans.ojk_penjamin_code` (FK `ojk_pihak_lawan`) + `ojk_penjamin_bagian_pct`; dua subkolom |
 | XXXVIII | Sifat Kredit | migrasi 000107: `loans.ojk_sifat_kredit_code` (2/9; PDF #page 155) |
 | XLII | Tanggal Akad Akhir | turunan `restructured_at`/`akad_date` (PDF #page 167); addendum non-restrukturisasi belum punya tanggal tersendiri |
+| XLVII | Klasifikasi Aset Keuangan | migrasi 000108: `loans.ojk_klasifikasi_aset_code` (diisi bank, tanpa auto-klasifikasi); `-` bila kosong |
 | VIII | Jenis Penggunaan | migrasi 000105: `loans.ojk_jenis_penggunaan_code` (inline 10/20/31/32/35/39); `-` bila kosong |
 | IX | Hubungan dengan Bank | migrasi 000105: `customers.ojk_hubungan_bank_code` (inline 11/12/20) |
 | XI | Periode Pembayaran Pokok dan Bunga | migrasi 000105: `loans.ojk_periode_pembayaran_code` (inline 1–8) |
@@ -141,19 +141,20 @@ Semua kolom §2b sudah dikerjakan (migrasi `000107`) — bukti di §2f.
 
 ## 4. Ringkasan
 
-Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36); **26 sudah dikerjakan** (§1, §2c
-via modul BMPK, dan §2f), sisa 20. Laporan/berkas: **13** (LAPORAN_BMPK kini buildable dan
-dapat diunduh). Total sisa **33**.
+Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **28 selesai**, **9 diputuskan/
+kondisional** (KB 4, DK 5, bukan celah lagi), **9 sisa** (K2). Laporan/berkas: **14** — **1
+selesai** (LAPORAN_BMPK, buildable), **7 diputuskan/di luar cakupan** (KB 2, LX 5), **6 sisa**
+(K1 2, K2 4). **Total pekerjaan tersisa: 15.**
 
-| Kategori | Kolom | Laporan | Total |
+| Kategori | Kolom | Laporan | Total sisa |
 |---|---|---|---|
 | K1 — bisa, kecil | 0 | 2 | 2 |
 | K2 — butuh modul | 9 | 4 | 13 |
-| KB — kondisional bank | 4 | 2 | 6 |
-| RO — butuh referensi OJK | 0 | 0 | 0 |
-| DK — butuh keputusan | 7 | 0 | 7 |
-| LX — di luar cakupan | 0 | 5 | 5 |
-| **Total sisa** | **20** | **13** | **33** |
+| KB — kondisional (kebijakan: bukan peserta bawaan) | 0 | 0 | 0 |
+| RO — referensi OJK | 0 | 0 | 0 |
+| DK — diputuskan (lihat `KEPUTUSAN-OJK.md`) | 0 | 0 | 0 |
+| LX — di luar cakupan sistem | 0 | 0 | 0 |
+| **Total sisa** | **9** | **6** | **15** |
 
 ## 5. Urutan yang disarankan
 

@@ -170,6 +170,11 @@ type LPSPlacement struct {
 	// lawan (harus sama dengan CIF pada SLIK), bukan sandi OJK. Kosong berarti
 	// belum diisi dan laporan menulis "-".
 	CounterpartyCIF string
+	// OJKKlasifikasiAsetCode adalah sandi klasifikasi aset keuangan SAK EP per
+	// penempatan (kolom XX Form 05.00), diisi bank lewat SQL/seed. Kosong berarti
+	// belum diisi dan laporan menulis "-". Keputusan pemilik: sediakan kolom, TANPA
+	// auto-klasifikasi dari kualitas penempatan.
+	OJKKlasifikasiAsetCode string
 	// CustomerID adalah nasabah pihak terkait yang ditautkan ke penempatan ini
 	// (lps_placements.customer_id, migrasi 000103). Nil berarti penempatan belum
 	// ditautkan sehingga belum masuk agregasi BMPK; laporan Form 05.00 kolom XV

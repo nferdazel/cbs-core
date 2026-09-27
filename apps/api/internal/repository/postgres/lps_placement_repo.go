@@ -57,6 +57,7 @@ const listLPSPlacementsSelect = `
 		p.accrued_interest_receivable,
 		p.accrued_interest_pending,
 		COALESCE(p.counterparty_cif, ''),
+		COALESCE(p.ojk_klasifikasi_aset_code, ''),
 		p.customer_id
 	FROM lps_placements p
 	LEFT JOIN branches b ON b.id = p.branch_id`
@@ -84,6 +85,7 @@ func scanLPSPlacement(row rowScanner) (*domain.LPSPlacement, error) {
 		&startDate, &maturityDate, &p.InterestRateAnnual, &p.OJKKabupatenCode,
 		&p.OJKHubunganBankCode, &blockedAmount, &p.OJKAlasanDiblokirCode,
 		&accruedInterest, &accruedInterestPending, &p.CounterpartyCIF,
+		&p.OJKKlasifikasiAsetCode,
 		&customerID,
 	); err != nil {
 		return nil, err

@@ -95,7 +95,9 @@ var form06Columns = []form06Column{
 	{Sandi: form06SandiNoRekening, Nama: "No. Rekening", Value: func(r LoanRow) string {
 		return dashIfEmpty(r.LoanNumber)
 	}},
-	{Sandi: form06SandiJenis, Nama: "Jenis", Reason: "kanal penyaluran kredit (sindikasi/kerja sama/LPBBTI) belum dimodelkan"},
+	{Sandi: form06SandiJenis, Nama: "Jenis", Reason: "kanal penyaluran kredit (sindikasi/kerja sama/LPBBTI) belum dimodelkan; " +
+		"kebijakan: bank bukan peserta secara bawaan, " +
+		"partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom ditulis '-' (bukan cacat data)"},
 	{Sandi: form06SandiRestruktur, Nama: "Status Restrukturisasi", Value: func(r LoanRow) string {
 		return sandiStatusRestrukturisasi(r)
 	}},
@@ -226,8 +228,12 @@ var form06Columns = []form06Column{
 		// kosong ditulis "-".
 		return dashIfEmpty(r.OJKSifatKreditCode)
 	}},
-	{Sandi: form06SandiProgram, Nama: "Kredit Program Pemerintah", Reason: "program pemerintah (KUR dan lainnya) belum dimodelkan"},
-	{Sandi: form06SandiSektorKUR, Nama: "Sektor Kredit Usaha Rakyat", Reason: "sektor KUR belum dimodelkan"},
+	{Sandi: form06SandiProgram, Nama: "Kredit Program Pemerintah", Reason: "program pemerintah (KUR dan lainnya) belum dimodelkan; " +
+		"kebijakan: bank bukan peserta secara bawaan, " +
+		"partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom ditulis '-' (bukan cacat data)"},
+	{Sandi: form06SandiSektorKUR, Nama: "Sektor Kredit Usaha Rakyat", Reason: "sektor KUR belum dimodelkan; " +
+		"kebijakan: bank bukan peserta secara bawaan, " +
+		"partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom ditulis '-' (bukan cacat data)"},
 	{Sandi: form06SandiAkadAwal, Nama: "Tanggal Akad Awal", Value: func(r LoanRow) string {
 		if r.AkadDate == nil {
 			return "-"
@@ -246,11 +252,18 @@ var form06Columns = []form06Column{
 		}
 		return r.AkadDate.Format("2006-01-02")
 	}},
-	{Sandi: form06SandiLPBBTI, Nama: "Sandi LPBBTI", Reason: "kerja sama LPBBTI belum dimodelkan"},
+	{Sandi: form06SandiLPBBTI, Nama: "Sandi LPBBTI", Reason: "kerja sama LPBBTI belum dimodelkan; " +
+		"kebijakan: bank bukan peserta secara bawaan, " +
+		"partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom ditulis '-' (bukan cacat data)"},
 	{Sandi: form06SandiCKPNBaik, Nama: "CKPN Aset Baik", Reason: "pemisahan CKPN per golongan kualitas tidak disimpan; required_ckpn hanya total per kredit"},
 	{Sandi: form06SandiCKPNKurang, Nama: "CKPN Aset Kurang Baik", Reason: "pemisahan CKPN per golongan kualitas tidak disimpan; required_ckpn hanya total per kredit"},
 	{Sandi: form06SandiCKPNTidak, Nama: "CKPN Aset Tidak Baik", Reason: "pemisahan CKPN per golongan kualitas tidak disimpan; required_ckpn hanya total per kredit"},
-	{Sandi: form06SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Reason: "klasifikasi SAK EP belum dipetakan per kredit"},
+	{Sandi: form06SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Value: func(r LoanRow) string {
+		// Keputusan pemilik: sediakan kolom, tanpa auto-klasifikasi. Nilai diisi bank
+		// lewat SQL/seed (loans.ojk_klasifikasi_aset_code, migrasi 000108); baris tanpa
+		// isian ditulis "-", bukan diturunkan dari kolektibilitas.
+		return dashIfEmpty(r.OJKKlasifikasiAsetCode)
+	}},
 	{Sandi: form06SandiJenisCKPN, Nama: "Jenis CKPN", Value: func(r LoanRow) string {
 		return sandiJenisCKPN(r.CKPNMethod)
 	}},
@@ -283,6 +296,7 @@ func buildForm06(rows []LoanRow) TableSection {
 		Notes: []string{
 			"Baris dibangun dari keadaan kredit saat ekspor dijalankan; sistem belum menyimpan riwayat posisi kredit per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
 			"Status BMPK (kolom XXXVII) diambil dari hasil uji batas modul BMPK per pihak terkait; baris yang nasabahnya belum ditandai pihak terkait ditulis '-' (bukan dianggap sesuai batas).",
+			"Kolom kondisional bank (VI, XXXIX, XL, XLIII) dinyatakan belum tersedia dengan alasan KEBIJAKAN, bukan cacat data: bank bukan peserta KUR/LPBBTI secara bawaan, partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom terkait ditulis '-'.",
 		},
 	}
 

@@ -122,6 +122,10 @@ type LoanRow struct {
 	OJKPenjaminBagianPct *decimal.Decimal
 	// OJKTanggalMulaiMacet adalah tanggal kredit mulai berkualitas macet (kolom XV).
 	OJKTanggalMulaiMacet *time.Time
+	// OJKKlasifikasiAsetCode adalah sandi klasifikasi aset keuangan SAK EP per kredit
+	// (kolom XLVII, migrasi 000108), diisi bank lewat SQL/seed. Kosong berarti bank
+	// belum mengisi dan laporan menulis "-", BUKAN diturunkan dari kolektibilitas.
+	OJKKlasifikasiAsetCode string
 	// RestructuredAt adalah tanggal restrukturisasi terakhir, dipakai menurunkan kolom
 	// XLII "Tanggal Akad Akhir" (akad terbaru) bila kredit pernah direstrukturisasi.
 	RestructuredAt *time.Time
@@ -238,6 +242,10 @@ type PlacementRow struct {
 	// CounterpartyCIF adalah ID Pihak Lawan kolom XVI: nomor CIF internal bank
 	// lawan (sama dengan SLIK), bukan sandi OJK.
 	CounterpartyCIF string
+	// OJKKlasifikasiAsetCode adalah sandi klasifikasi aset keuangan SAK EP per
+	// penempatan (kolom XX, migrasi 000108), diisi bank lewat SQL/seed. Kosong berarti
+	// bank belum mengisi dan laporan menulis "-", BUKAN diturunkan dari kualitas.
+	OJKKlasifikasiAsetCode string
 	// CustomerID adalah nasabah pihak terkait yang ditautkan ke penempatan
 	// (lps_placements.customer_id, migrasi 000103). Kosong berarti penempatan belum
 	// ditautkan; sumber pemetaan kolom XV Form 05.00 (Status BMPK Individu).

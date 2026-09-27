@@ -137,7 +137,12 @@ var form05Columns = []form05Column{
 	{Sandi: form05SandiCKPNTidak, Nama: "Cadangan Kerugian Penurunan Nilai Aset Tidak Baik", Value: func(p PlacementRow) string {
 		return ckpnGolonganKualitas(p, "MACET")
 	}},
-	{Sandi: form05SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Reason: "klasifikasi SAK EP belum dipetakan per penempatan"},
+	{Sandi: form05SandiKlasifikasi, Nama: "Klasifikasi Aset Keuangan", Value: func(p PlacementRow) string {
+		// Keputusan pemilik: sediakan kolom, tanpa auto-klasifikasi. Nilai diisi bank
+		// lewat SQL/seed (lps_placements.ojk_klasifikasi_aset_code, migrasi 000108);
+		// baris tanpa isian ditulis "-", bukan ditebak dari kualitas penempatan.
+		return dashIfEmpty(p.OJKKlasifikasiAsetCode)
+	}},
 	{Sandi: form05SandiJenisCKPN, Nama: "Jenis CKPN", Value: func(p PlacementRow) string {
 		if p.CKPN == nil {
 			return "-"
@@ -162,6 +167,7 @@ func buildForm05(rows []PlacementRow) TableSection {
 			"Kolom XII dan XXI hanya berisi CKPN penempatan yang sudah diasesmen (saklar ckpn.pabl.enabled dan asesmen tersimpan); penempatan lain ditulis '-'.",
 			"Kolom XVII-XIX memisahkan CKPN menurut golongan kualitas aset: Baik=Lancar, Kurang Baik=Kurang Lancar, Tidak Baik=Macet (PABL tidak mengenal kualitas Dalam Perhatian Khusus maupun Diragukan). CKPN satu penempatan hanya muncul pada kolom golongannya; kolom lain ditulis '-'.",
 			"Status BMPK Individu (kolom XV) diambil dari hasil uji batas modul BMPK untuk nasabah yang ditautkan ke penempatan (lps_placements.customer_id); penempatan yang belum ditautkan ditulis '-' (bukan dianggap sesuai batas).",
+			"Klasifikasi Aset Keuangan (kolom XX) disediakan sebagai kolom sandi bebas per penempatan (migrasi 000108); aplikasi TIDAK mengklasifikasi otomatis dari kualitas penempatan, dan baris yang belum diisi ditulis '-'.",
 		},
 	}
 

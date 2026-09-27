@@ -301,6 +301,11 @@ type Loan struct {
 	// OJKTanggalMulaiMacet adalah tanggal kredit mulai berkualitas macet (kolom XV),
 	// bukan turunan DPD. Nil berarti belum diisi.
 	OJKTanggalMulaiMacet *time.Time `json:"ojk_tanggal_mulai_macet,omitempty"`
+	// OJKKlasifikasiAsetCode adalah sandi klasifikasi aset keuangan SAK EP per kredit
+	// (kolom XLVII Form 06.00), diisi bank lewat SQL/seed. Kosong berarti belum diisi
+	// dan laporan menulis "-". Keputusan pemilik: sediakan kolom, TANPA auto-klasifikasi
+	// dari kolektibilitas.
+	OJKKlasifikasiAsetCode string `json:"ojk_klasifikasi_aset_code,omitempty"`
 	// RejectionReason diisi saat kredit ditolak; ikut tampil di daftar dan detail
 	// kredit agar keputusan penolakan dapat diperiksa tanpa membuka audit log.
 	RejectionReason string `json:"rejection_reason,omitempty"`
