@@ -26,8 +26,8 @@ terdaftar sama sekali** — itulah isi triase ini.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 4 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 10 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 5 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 9 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 11 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 6 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -65,7 +65,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 10.00 | Rincian Liabilitas Segera | `BELUM DIMODELKAN` | Hanya agregat `2101000000` yang diisi 4 COA (`coa_mapping.go:142`); 8 pos rincian `2101010000`–`2101990000` tidak punya akun sama sekali. Transkrip: 4 kolom (Sandi Kantor/Nama Rekening/Sandi/Jumlah), baris **tetap** 8 pos + JUMLAH, rupiah penuh | 191–192, 106 |
 | 11.00 | Daftar Tabungan | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form11.go`): baris per-rekening dari `accounts`×`banking_products`(SAVINGS)×`customers` pada `periodEnd`, saldo dari jurnal. 11 dari 18 kolom bersumber; sisanya `-` + alasan: IV Jenis, VIII Jangka Waktu, XI–XII blokir, XIII biaya, XV NIK (privasi), XVI–XVIII PEP/Risiko/Status Data. **Keputusan:** IV dan VIII tetap `-` (jangan diturunkan dari tenor — berisiko salah kelas); **Jumlah = Nominal** karena biaya belum disimpan, keterbatasan ini ditulis di `Notes` | 193–199 |
 | 12.00 | Daftar Deposito | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form12.go`): baris per-kontrak dari `time_deposits`×`customers`, `start_date <= periodEnd` dan belum ditutup. **17 kolom** — sama dengan 11.00 **tanpa kolom "Jenis"** (penomoran bergeser satu). 10 kolom bersumber; `-` + alasan untuk X–XI blokir, XII biaya, XIV NIK, XV–XVII PEP/Risiko/Status Data. Kolom "diblokir" tetap tidak dikarang (`bank_deposit_repo.go:30`) | 200–206 |
-| 14.00 | Rincian Liabilitas Lainnya | `SEBAGIAN` | 16 pos resmi `2299010100`–`2299990000`; hanya 4 COA (`20400`–`20700`) dan tidak ada satu pun entri `coa_mapping.go` bersandi pos itu. Transkrip: 4 kolom, baris **tetap**, dan aturan **pos "Lainnya" >25% dari total → wajib dirinci ke Form 14.01** | 213–215 |
+| 14.00 | Rincian Liabilitas Lainnya | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14.go`): 17 pos tetap (koreksi dari catatan lama "16 pos"). `COAMapping14Draft` hanya memetakan `20500`→`2299020000` Utang Pajak dan `20700`→`2299990000` Lainnya; 15 pos lain belum punya akun COA → alasan, bukan nol, dan `20300`/`12500`/`12900` sengaja tidak ditebak ke pos mana pun. Akibatnya **tidak ada tie otomatis ke `2299000000` Form 01.00** — hal ini ditulis eksplisit di `Notes` bersama aturan >25% → Form 14.01 | 213–215 |
 | 14.01 | Rincian Liabilitas Lainnya – Lain-lain | `KONDISIONAL` | Syarat **25%** dari jumlah liabilitas lainnya; bergantung Form 14.00 lebih dulu | **217**, 216 |
 | 15.00 | Daftar Aset Produktif yang Dihapus Buku | `SEBAGIAN` | Status `WRITTEN_OFF` + `written_off_amount` (`000085:29`); **tidak ada tanggal hapus buku**, nominal gabungan (pokok+bunga+denda) tak bisa dipisah per kolom; penempatan tak punya status hapus buku | 218–221 |
 | 16.00 | Daftar Penyertaan Modal | `BELUM DIMODELKAN` | Tidak ada tabel register penyertaan dan tidak ada akun COA "Penyertaan Modal" | 223–227 |
@@ -113,8 +113,19 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
    Jenis Agunan (`PDF #171`). Perlu konfirmasi sebelum dibangun.
 7. **NIK sengaja tidak disimpan** (keputusan privasi, `kelembagaan.go:175`) → kolom NIK
    pada `00.02`/`00.03`/`00.09`/`00.10` tidak akan terisi tanpa perubahan keputusan.
-   Data identitas pribadi `00.16` juga perlu keputusan serupa (tersimpan terenkripsi,
-   `000006:10`).
+8. **Form 06.00 tidak bisa dibaca penuh pada posisi akhir periode — keputusan 28 Sep 2026.**
+   Hasil riset: riwayat kolektibilitas/DPD/CKPN **tidak ada sama sekali** (run PPAP harian
+   menimpa baris pinjaman, `ppap_repo.go:204-216`; `loan_ckpn_individual_assessments`
+   belum pernah ditulis kode); `journal_lines` tidak punya kolom pinjaman — pengait
+   per-kredit hanya lewat format `idempotency_key` yang menurut repo sendiri bukan kontrak
+   skema (`loan_repo.go:1138-1139`); dan jadwal dihapus saat restrukturisasi
+   (`loan_repo.go:614-620`). **Keputusan: pakai pola jujur** — kolom XIV Kualitas dan XVI
+   DPD selalu `-` + alasan; kolom materiil lain (XXVIII baki debet, XXXIII neto, XXXIV
+   CKPN, XXXV bunga akruan, XVII tunggakan) hanya diisi angka **bila `periodEnd` jatuh pada
+   bulan berjalan** (posisi kini ≈ posisi akhir periode), periode lampau `-` + alasan.
+   Alternatif ditahan: rekonstruksi dari jurnal (tanpa migrasi, tetapi rapuh terhadap
+   format kunci) dan snapshot + riwayat kolektibilitas (butuh migrasi ganda; catat langkah
+   EOD terjadwal masih nonaktif, `000077:127-131`) — hanya bila OJK menuntut periode lampau.
 
 ## 4. Aksi berikutnya (diurutkan)
 
@@ -122,7 +133,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 |---|---|---|
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
-| A3 | ~~Bentuk form `SEBAGIAN`~~ **`11.00` dan `12.00` SELESAI 28 Sep 2026**; sisa `14.00` (butuh COA per posisi `2299xxxxxx`, lihat barisnya) dan `06.01` (ditahan — §3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
+| A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
 | A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `10.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | Bentuk `KONDISIONAL` setelah induknya ada (`09.01`, `14.01`, `00.09`, `00.10`, `00.12`, `03.00`). Transkrip + pemicu tiap form di `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
