@@ -131,6 +131,16 @@ func MonthEnd(t time.Time) time.Time {
 	return first.AddDate(0, 1, -1)
 }
 
+// posisiPeriodeBerjalan menandai apakah akhir periode laporan jatuh pada bulan
+// berjalan menurut waktu perakit. Hanya pada posisi itu kolom posisi per-kredit
+// Form 06.00 (XVII/XXVIII/XXXIII/XXXIV/XXXV) boleh diisi dari keadaan kini; periode
+// lampau ditulis '-' beserta alasan karena riwayat posisi per-pinjaman tidak
+// tersimpan (docs/CELAH-FORM-OJK.md §3 poin 8).
+func (b *Builder) posisiPeriodeBerjalan(periodEnd time.Time) bool {
+	now := b.now().UTC()
+	return periodEnd.Year() == now.Year() && periodEnd.Month() == now.Month()
+}
+
 // GenerateMonthly menyusun laporan bulanan untuk aktor lintas cabang bawaan. Unit
 // test memakainya tanpa data aktor; handler memakai GenerateMonthlyForActor dengan
 // aktor sungguhan.
@@ -341,9 +351,10 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber profil bank belum dikonfigurasi pada ekspor ini"})
 	}
 
-	// Form 06.00 Daftar Kredit yang Diberikan: dari baris kredit.
+	// Form 06.00 Daftar Kredit yang Diberikan: dari baris kredit. Kolom posisi
+	// per-kredit hanya diisi bila akhir periode jatuh pada bulan berjalan.
 	if _, ok := b.source.(LoanDataSource); ok {
-		tables = append(tables, buildForm06(loanRows))
+		tables = append(tables, buildForm06(loanRows, b.posisiPeriodeBerjalan(periodEnd)))
 	} else {
 		skipped = append(skipped, OJKFormDefinition{Form: "06.00", Name: formName("06.00"),
 			UnavailableReason: "sumber data kredit belum dikonfigurasi; hanya laporan journal-based yang tersedia"})

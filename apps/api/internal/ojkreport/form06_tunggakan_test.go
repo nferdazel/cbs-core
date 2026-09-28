@@ -19,7 +19,7 @@ func TestForm06KolomAngsuranPertamaDanNominalTunggakan(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-TUNGGAK", FirstInstallmentDate: &pertama, OverdueUnpaid: decimal.NewFromInt(1_234_567)},
 		{Status: "DISBURSED", LoanNumber: "LN-LANCAR"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-TUNGGAK", form06SandiAngsuranRetni).Value; got != "2025-04-10" {
 		t.Errorf("kolom XIII = %q, ingin 2025-04-10", got)
@@ -101,6 +101,42 @@ func TestListLoansForOJKMengisiAgregatJadwal(t *testing.T) {
 	if rows[1].FirstInstallmentDate != nil || !rows[1].OverdueUnpaid.IsZero() || !rows[1].AccruedProfit.IsZero() {
 		t.Errorf("LN-002 tanpa jadwal harus nil/0, dapat %v/%s/%s",
 			rows[1].FirstInstallmentDate, rows[1].OverdueUnpaid, rows[1].AccruedProfit)
+	}
+}
+
+// TestListLoansForOJKMelewatiKreditBelumCair menjaga agar kredit yang baru cair
+// setelah akhir periode tidak ikut laporan periode lampau (disbursed_at <= asOf,
+// granularitas hari), sedangkan pencairan pada hari akhir periode tetap ikut. Kredit
+// tanpa tanggal pencairan dibiarkan, bukan dikeluarkan tanpa bukti.
+func TestListLoansForOJKMelewatiKreditBelumCair(t *testing.T) {
+	asOf := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC)
+	cair := time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC)
+	hariAkhir := time.Date(2026, time.March, 31, 10, 0, 0, 0, time.UTC)
+	belum := time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
+	repo := &loanAggStub{loans: []domain.Loan{
+		{LoanNumber: "LN-CAIR", Status: domain.LoanStatusDisbursed, DisbursedAt: &cair},
+		{LoanNumber: "LN-HARI-AKHIR", Status: domain.LoanStatusDisbursed, DisbursedAt: &hariAkhir},
+		{LoanNumber: "LN-BELUM", Status: domain.LoanStatusDisbursed, DisbursedAt: &belum},
+		{LoanNumber: "LN-TANPA-TANGGAL", Status: domain.LoanStatusDisbursed},
+	}}
+	src := RepoSource{Loans: repo}
+
+	rows, err := src.ListLoansForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("ListLoansForOJK: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("jumlah baris = %d, ingin 3 (kredit belum cair dilewati)", len(rows))
+	}
+	ada := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		ada[r.LoanNumber] = true
+	}
+	if !ada["LN-CAIR"] || !ada["LN-HARI-AKHIR"] || !ada["LN-TANPA-TANGGAL"] {
+		t.Errorf("baris yang harus ikut = %v", ada)
+	}
+	if ada["LN-BELUM"] {
+		t.Error("kredit yang cair setelah akhir periode tidak boleh ikut")
 	}
 }
 

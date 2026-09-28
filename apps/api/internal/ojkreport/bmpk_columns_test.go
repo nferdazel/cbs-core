@@ -17,7 +17,7 @@ func TestBuildForm06MengisiStatusBMPK(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-BMPK", BMPKStatus: domain.BMPKStatusMelampauiBatas},
 		{Status: "DISBURSED", LoanNumber: "LN-BIASA"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-BMPK", form06SandiBMPK).Value; got != domain.BMPKStatusMelampauiBatas {
 		t.Errorf("kolom XXXVII = %q, ingin %s", got, domain.BMPKStatusMelampauiBatas)
@@ -35,7 +35,7 @@ func TestBuildForm06MengisiStatusBMPK(t *testing.T) {
 // Tanpa status BMPK sama sekali, kolom XXXVII dinyatakan belum tersedia beserta
 // alasannya, bukan diisi nol.
 func TestBuildForm06StatusBMPKBelumTersediaTanpaData(t *testing.T) {
-	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-001"}})
+	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-001"}}, true)
 	if u := unavailableColumn(t, sec, form06SandiBMPK); u.Reason == "" {
 		t.Fatal("kolom XXXVII tanpa data harus punya alasan")
 	}

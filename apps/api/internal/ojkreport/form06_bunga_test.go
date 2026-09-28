@@ -15,7 +15,7 @@ func TestForm06KolomPendapatanBungaAkanDiterima(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-AKRU", AccruedProfit: decimal.RequireFromString("1234567.8900")},
 		{Status: "DISBURSED", LoanNumber: "LN-BERSIH"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-AKRU", form06SandiBungaAkanTer).Value; got != "1234568" {
 		t.Errorf("kolom XXXV = %q, ingin 1234568 (dibulatkan ke rupiah penuh)", got)
@@ -35,7 +35,7 @@ func TestForm06KolomPendapatanBungaAkanDiterima(t *testing.T) {
 // pendapatan bunga dalam penyelesaian (XXXVI) belum dimodelkan sebagai nominal, jadi
 // harus tetap terdaftar beserta alasannya, bukan diisi angka karangan.
 func TestForm06KolomBungaDalamPenyelesaianTetapTidakTersedia(t *testing.T) {
-	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-001", AccruedProfit: decimal.NewFromInt(1)}})
+	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-001", AccruedProfit: decimal.NewFromInt(1)}}, true)
 	if u := unavailableColumn(t, sec, form06SandiBungaProses); u.Reason == "" {
 		t.Fatal("kolom XXXVI harus tetap terdaftar dengan alasan")
 	}

@@ -77,15 +77,13 @@ func TestBuildForm06MengisiKolomTersediaDanMenandaiYangTidak(t *testing.T) {
 		AkadDate:           &akad, FinalDueDate: &jatuh,
 	}}
 
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 	if sec.Form != "06.00" {
 		t.Fatalf("form = %s", sec.Form)
 	}
 	cases := []struct{ sandi, want string }{
 		{form06SandiKantor, "001"},
 		{form06SandiRestruktur, "21"}, // restrukturisasi ke-2
-		{form06SandiKualitas, "3"},    // kurang lancar
-		{form06SandiHariTunggakan, "45"},
 		{form06SandiBakiDebet, "5000000"},
 		{form06SandiCKPN, "250000"},
 		{form06SandiSukuBunga, "12.50"},
@@ -122,7 +120,9 @@ func TestBuildForm06MengisiKolomTersediaDanMenandaiYangTidak(t *testing.T) {
 	}
 
 	// Kolom tanpa sumber wajib terdaftar beserta alasan, bukan tampil sebagai nol.
-	for _, sandi := range []string{form06SandiNoIdentitas, form06SandiBMPK} {
+	// Kualitas (XIV) dan DPD (XVI) selalu tidak tersedia karena riwayat per periode
+	// tidak disimpan, termasuk pada posisi bulan berjalan.
+	for _, sandi := range []string{form06SandiNoIdentitas, form06SandiBMPK, form06SandiKualitas, form06SandiHariTunggakan} {
 		u := unavailableColumn(t, sec, sandi)
 		if strings.TrimSpace(u.Reason) == "" {
 			t.Errorf("kolom %s tanpa alasan", sandi)
@@ -137,7 +137,7 @@ func TestBuildForm06MelewatiKreditTidakAktif(t *testing.T) {
 		{Status: "PAID_OFF", LoanNumber: "LN-LUNAS", Outstanding: decimal.Zero},
 		{Status: "PENDING_APPROVAL", LoanNumber: "LN-PENDING"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 	if len(sec.Rows) != 1 || sec.Rows[0].Key != "LN-AKTIF" {
 		t.Fatalf("hanya kredit aktif yang dilaporkan; rows=%+v", sec.Rows)
 	}

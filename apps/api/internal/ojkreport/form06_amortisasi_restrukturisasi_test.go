@@ -34,7 +34,7 @@ func TestForm06AmortisasiRestrukturisasiDariKolomPenyimpanan(t *testing.T) {
 		},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	cases := []struct {
 		sandi  string
@@ -106,7 +106,7 @@ func TestForm06BakiDebetNeto(t *testing.T) {
 			OJKBiayaTransaksiBelumDiamortisasiAmount: decimalPtr(t, "50000"),
 		},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-NONRESTRUK", form06SandiBakiNeto).Value; got != "9850000" {
 		t.Errorf("baki debet neto non-restrukturisasi = %q, ingin 9850000", got)

@@ -16,7 +16,7 @@ func TestForm06KolomSandiReferensiOJK(t *testing.T) {
 		},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-ISI", form06SandiJenisDebitur).Value; got != "860" {
 		t.Errorf("kolom XVIII = %q, ingin 860", got)

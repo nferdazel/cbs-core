@@ -39,7 +39,7 @@ func TestForm06KolomJenisCKPNTersedia(t *testing.T) {
 		LoanNumber:   "KRD-UJI",
 		CKPNMethod:   "INDIVIDUAL_MAX",
 		RequiredCKPN: decimal.NewFromInt(50_000),
-	}})
+	}}, true)
 	for _, col := range sec.Columns {
 		if col.Sandi == form06SandiJenisCKPN {
 			return

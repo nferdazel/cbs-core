@@ -19,7 +19,7 @@ func TestForm06KlasifikasiAsetDariKolomPenyimpanan(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-ISI", OJKKlasifikasiAsetCode: "AMORTIZED_COST"},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-ISI", form06SandiKlasifikasi).Value; got != "AMORTIZED_COST" {
 		t.Errorf("kolom XLVII terisi = %q, ingin AMORTIZED_COST", got)
@@ -74,7 +74,7 @@ func TestForm05KlasifikasiAsetDariKolomPenyimpanan(t *testing.T) {
 // selama bukan peserta. Tidak ada saklar config yang dirujuk karena modul KUR/LPBBTI
 // belum dibangun (kunci config tanpa pembaca hanya menjadi sampah).
 func TestForm06KolomKBPakaiAlasanKebijakan(t *testing.T) {
-	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-1"}})
+	sec := buildForm06([]LoanRow{{Status: "DISBURSED", LoanNumber: "LN-1"}}, true)
 
 	for _, sandi := range []string{form06SandiJenis, form06SandiProgram, form06SandiSektorKUR, form06SandiLPBBTI} {
 		u := unavailableColumn(t, sec, sandi)

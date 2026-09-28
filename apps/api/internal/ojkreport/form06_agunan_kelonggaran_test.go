@@ -29,7 +29,7 @@ func TestForm06AgunanPPKADariKolomPenyimpanan(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-NOL", OJKAgunanPPKAAmount: decimalPtr(t, "0")},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-ISI", form06SandiAgunanPPKA).Value; got != "4000000" {
 		t.Errorf("kolom XXV terisi = %q, ingin 4000000", got)
@@ -55,7 +55,7 @@ func TestForm06KelonggaranTarikDariKolomPenyimpanan(t *testing.T) {
 		{Status: "DISBURSED", LoanNumber: "LN-ISI", OJKKelonggaranTarikAmount: decimalPtr(t, "1500000")},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	if got := findCell(t, sec, "LN-ISI", form06SandiKelonggaran).Value; got != "1500000" {
 		t.Errorf("kolom XXVI terisi = %q, ingin 1500000", got)

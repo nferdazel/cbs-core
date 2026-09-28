@@ -73,9 +73,12 @@ const maxHalamanKredit = 1000
 // di lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
 //
 // asOf dipakai menghitung tunggakan: angsuran yang jatuh tempo sebelum asOf dan
-// belum lunas. Agregat jadwal diambil dengan SATU query per kredit (GROUP BY
-// loan_id, lihat ListLoanScheduleAggregates), lalu dipetakan lewat nomor kredit
-// yang unik; bukan satu query per kredit.
+// belum lunas. Baris juga dibatasi kredit yang sudah cair pada akhir periode
+// (loans.disbursed_at <= asOf, granularitas hari) agar kredit yang baru cair setelah
+// periode tidak ikut pada laporan periode lampau. Kredit tanpa tanggal pencairan
+// dibiarkan (data lama), bukan dikeluarkan tanpa bukti. Agregat jadwal diambil dengan
+// SATU query per kredit (GROUP BY loan_id, lihat ListLoanScheduleAggregates), lalu
+// dipetakan lewat nomor kredit yang unik; bukan satu query per kredit.
 func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]LoanRow, error) {
 	if err := pastikanLintasCabang(actor); err != nil {
 		return nil, err
@@ -92,6 +95,10 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 		agregat[a.LoanNumber] = a
 	}
 
+	// Sumber as-of lain (Form 11.00/12.00) membandingkan tanggal pada granularitas
+	// hari (::date), jadi pencairan pada hari akhir periode tetap ikut.
+	asOfDate := asOf.UTC().Truncate(24 * time.Hour)
+
 	var out []LoanRow
 	offset := 0
 	for page := 0; page < maxHalamanKredit; page++ {
@@ -100,6 +107,9 @@ func (s RepoSource) ListLoansForOJK(ctx context.Context, asOf time.Time, actor d
 			return nil, err
 		}
 		for i := range items {
+			if d := items[i].DisbursedAt; d != nil && d.UTC().Truncate(24*time.Hour).After(asOfDate) {
+				continue
+			}
 			row := loanRowDariDomain(items[i])
 			if a, ok := agregat[row.LoanNumber]; ok {
 				row.FirstInstallmentDate = a.FirstInstallmentDate

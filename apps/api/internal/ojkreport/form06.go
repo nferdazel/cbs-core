@@ -1,7 +1,6 @@
 package ojkreport
 
 import (
-	"fmt"
 	"strings"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -75,6 +74,19 @@ const (
 	form06SandiJenisCKPN     = "XLVIII"
 )
 
+// Alasan kolom Form 06.00 yang bergantung pada ketersediaan riwayat per periode
+// (keputusan 28 Sep 2026, docs/CELAH-FORM-OJK.md §3 poin 8).
+const (
+	// form06AlasanRiwayatKualitasDPD dipakai kolom XIV Kualitas dan XVI Jumlah Hari
+	// Tunggakan: kolektibilitas/DPD hanya tersimpan sebagai keadaan kini, tanpa
+	// riwayat per periode, sehingga keadaan kini tidak dipakai mewakili periode laporan.
+	form06AlasanRiwayatKualitasDPD = "riwayat kolektibilitas/DPD per periode tidak disimpan; nilai keadaan kini tidak dipakai untuk periode laporan"
+	// form06AlasanPosisiPeriodeLampau dipakai kolom posisi per-kredit (XVII, XXVIII,
+	// XXXIII, XXXIV, XXXV) saat akhir periode bukan bulan berjalan: riwayat posisi
+	// per-pinjaman tidak tersimpan, sehingga angka keadaan kini tidak boleh dipakai.
+	form06AlasanPosisiPeriodeLampau = "riwayat posisi per-pinjaman tidak tersimpan untuk periode lampau"
+)
+
 // form06Columns adalah susunan kolom Form 06.00. Kolom dengan Reason terisi tidak
 // dihitung untuk baris mana pun.
 var form06Columns = []form06Column{
@@ -138,9 +150,9 @@ var form06Columns = []form06Column{
 		}
 		return r.FirstInstallmentDate.Format("2006-01-02")
 	}},
-	{Sandi: form06SandiKualitas, Nama: "Kualitas", Value: func(r LoanRow) string {
-		return sandiKualitasKredit(r.Collectibility)
-	}},
+	// Kolom XIV selalu tidak tersedia: kolektibilitas hanya tersimpan sebagai keadaan
+	// kini, bukan riwayat per periode, sehingga tidak dipakai mewakili periode laporan.
+	{Sandi: form06SandiKualitas, Nama: "Kualitas", Reason: form06AlasanRiwayatKualitasDPD},
 	{Sandi: form06SandiMulaiMacet, Nama: "Tanggal Mulai Macet", Value: func(r LoanRow) string {
 		// Tanggal kredit mulai dinyatakan macet (Lampiran II Form 06.00-3, PDF #page
 		// 161). Tidak diturunkan dari DPD: DPD menghitung hari sejak jatuh tempo,
@@ -150,9 +162,9 @@ var form06Columns = []form06Column{
 		}
 		return r.OJKTanggalMulaiMacet.Format("2006-01-02")
 	}},
-	{Sandi: form06SandiHariTunggakan, Nama: "Jumlah Hari Tunggakan Pokok dan/atau Bunga", Value: func(r LoanRow) string {
-		return fmt.Sprintf("%d", r.DPD)
-	}},
+	// Kolom XVI selalu tidak tersedia, alasannya sama dengan kolom XIV: DPD hanya
+	// tersimpan sebagai keadaan kini tanpa riwayat per periode.
+	{Sandi: form06SandiHariTunggakan, Nama: "Jumlah Hari Tunggakan Pokok dan/atau Bunga", Reason: form06AlasanRiwayatKualitasDPD},
 	{Sandi: form06SandiNominalTungg, Nama: "Nominal Tunggakan Pokok dan Bunga", Value: func(r LoanRow) string {
 		// Nol tetap ditulis "0" (FormatRupiah), bukan dikosongkan.
 		return FormatRupiah(r.OverdueUnpaid)
@@ -341,16 +353,24 @@ func sandiJenisCKPN(method string) string {
 
 // buildForm06 menyusun Form 06.00 dari baris kredit. Kredit di luar status berjalan
 // (DISBURSED/DEFAULTED) dilewati karena tidak punya baki debet yang dilaporkan.
-func buildForm06(rows []LoanRow) TableSection {
+//
+// posisiKini menandai akhir periode jatuh pada bulan berjalan (lihat
+// Builder.posisiPeriodeBerjalan): hanya pada posisi itu kolom posisi per-kredit
+// (XVII, XXVIII, XXXIII, XXXIV, XXXV) boleh diisi dari keadaan kini. Untuk periode
+// lampau kelima kolom dinyatakan tidak tersedia beserta alasannya, bukan diisi angka
+// keadaan kini. Kolom XIV dan XVI selalu tidak tersedia.
+func buildForm06(rows []LoanRow, posisiKini bool) TableSection {
 	sec := TableSection{
 		Form:     "06.00",
 		Name:     formName("06.00"),
 		KeyLabel: "No. Rekening",
 		Notes: []string{
-			"Baris dibangun dari keadaan kredit saat ekspor dijalankan; sistem belum menyimpan riwayat posisi kredit per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
+			"Baris dibangun dari daftar kredit saat ekspor dijalankan dan dibatasi kredit yang sudah cair pada akhir periode (loans.disbursed_at <= akhir periode); kredit yang baru cair setelah periode tidak ikut. Kredit yang lunas setelah akhir periode tidak dapat ditampilkan kembali karena sistem tidak menyimpan riwayat posisi per akhir bulan.",
+			"Kolom XIV Kualitas dan XVI Jumlah Hari Tunggakan Pokok dan/atau Bunga selalu ditulis '-' beserta alasannya: riwayat kolektibilitas/DPD per periode tidak disimpan dan nilai keadaan kini tidak dipakai untuk periode laporan.",
+			"Kolom XVII Nominal Tunggakan, XXVIII Baki Debet, XXXIII Baki Debet Neto, XXXIV CKPN Yang Telah Dibentuk, dan XXXV Pendapatan Bunga yang Akan Diterima hanya diisi angka bila akhir periode jatuh pada bulan berjalan (posisi kini dianggap mewakili posisi akhir periode); untuk periode lampau kelima kolom ditulis '-' beserta alasannya karena riwayat posisi per-pinjaman tidak tersimpan.",
 			"Status BMPK (kolom XXXVII) diambil dari hasil uji batas modul BMPK per pihak terkait; baris yang nasabahnya belum ditandai pihak terkait ditulis '-' (bukan dianggap sesuai batas).",
 			"Nilai Agunan yang Diperhitungkan untuk PPKA (kolom XXV) diambil dari hasil run PPAP terakhir (loans.ojk_agunan_ppka_amount) dan tidak dihitung ulang di sini; bila modul agunan belum aktif/belum dijalankan atau bank belum mengisi, kolom ditulis '-' (bukan nol). Kelonggaran Tarik (kolom XXVI) diisi bank dan ditulis '-' bila belum diisi.",
-			"Kolom XXIX Provisi Belum Diamortisasi, XXX Biaya Transaksi Belum Diamortisasi, XXXI Pendapatan Bunga Ditangguhkan Dalam Rangka Restrukturisasi, dan XXXII Cadangan Kerugian Restrukturisasi diisi bank (jadwal amortisasi provisi/biaya dan pencatatan penangguhan restrukturisasi belum dimodelkan); nilainya ditulis '-' bila belum diisi, BUKAN diturunkan dari rumus karangan. Kolom XXXIII Baki Debet Neto dihitung dari komponen di atas menurut definisi Lampiran II Form 06.00-3 (PDF #page 165): baki debet - provisi belum diamortisasi + biaya transaksi belum diamortisasi - pendapatan bunga ditangguhkan restrukturisasi - cadangan kerugian restrukturisasi; bila komponennya belum tersimpan, kolom ditulis '-' (bukan nol).",
+			"Kolom XXIX Provisi Belum Diamortisasi, XXX Biaya Transaksi Belum Diamortisasi, XXXI Pendapatan Bunga Ditangguhkan Dalam Rangka Restrukturisasi, dan XXXII Cadangan Kerugian Restrukturisasi diisi bank (jadwal amortisasi provisi/biaya dan pencatatan penangguhan restrukturisasi belum dimodelkan); nilainya ditulis '-' bila belum diisi, BUKAN diturunkan dari rumus karangan. Bila kolom XXXIII Baki Debet Neto disajikan (posisi bulan berjalan), nilainya dihitung dari komponen di atas menurut definisi Lampiran II Form 06.00-3 (PDF #page 165): baki debet - provisi belum diamortisasi + biaya transaksi belum diamortisasi - pendapatan bunga ditangguhkan restrukturisasi - cadangan kerugian restrukturisasi; bila komponennya belum tersimpan, kolom ditulis '-' (bukan nol).",
 			"Kolom kondisional bank (VI, XXXIX, XL, XLIII) dinyatakan belum tersedia dengan alasan KEBIJAKAN, bukan cacat data: bank bukan peserta KUR/LPBBTI secara bawaan, partisipasi dikonfirmasi saat onboarding bank, dan selama bukan peserta kolom terkait ditulis '-'.",
 		},
 	}
@@ -364,13 +384,22 @@ func buildForm06(rows []LoanRow) TableSection {
 			break
 		}
 	}
-	cols := form06Columns
+	cols := make([]form06Column, len(form06Columns))
+	copy(cols, form06Columns)
 	if !adaBMPK {
-		cols = make([]form06Column, len(form06Columns))
-		copy(cols, form06Columns)
 		for i := range cols {
 			if cols[i].Sandi == form06SandiBMPK {
 				cols[i].Reason = "modul BMPK tidak tersedia atau belum ada nasabah pada baris ini yang ditandai pihak terkait (bmpk_related_parties) sehingga batasnya belum dapat diuji"
+			}
+		}
+	}
+	// Kolom posisi per-kredit tidak dapat direkonstruksi untuk periode lampau.
+	if !posisiKini {
+		for i := range cols {
+			switch cols[i].Sandi {
+			case form06SandiNominalTungg, form06SandiBakiDebet, form06SandiBakiNeto,
+				form06SandiCKPN, form06SandiBungaAkanTer:
+				cols[i].Reason = form06AlasanPosisiPeriodeLampau
 			}
 		}
 	}

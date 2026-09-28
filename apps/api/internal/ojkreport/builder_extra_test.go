@@ -55,7 +55,11 @@ func TestGenerateMonthlyDenganSumberLengkap(t *testing.T) {
 		placements: []PlacementRow{{CounterpartyBank: "Bank Uji", PlacementType: "DEPOSITO", Collectibility: "LANCAR", Outstanding: decimal.NewFromInt(1_000_000)}},
 	}
 
-	b, err := NewBuilder(src).GenerateMonthly(context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
+	// Periode Maret 2026 harus jatuh pada bulan berjalan agar kolom posisi Form 06.00
+	// diisi angka; waktu perakit dipatok supaya uji tidak bergantung tanggal berjalan.
+	builder := NewBuilder(src)
+	builder.now = func() time.Time { return time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC) }
+	b, err := builder.GenerateMonthly(context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
 	if err != nil {
 		t.Fatalf("GenerateMonthly: %v", err)
 	}

@@ -25,7 +25,7 @@ func TestForm06KolomSandiInlineDariFieldPenyimpanan(t *testing.T) {
 		},
 		{Status: "DISBURSED", LoanNumber: "LN-KOSONG"},
 	}
-	sec := buildForm06(rows)
+	sec := buildForm06(rows, true)
 
 	kasus := []struct {
 		sandi, mau string
