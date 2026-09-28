@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **22 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **23 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,9 +26,9 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 8 | sudah terbit (dengan catatan cakupan) |
+| `SUDAH ADA` | 9 | sudah terbit (dengan catatan cakupan) |
 | `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
-| `BELUM DIMODELKAN` | 11 | tidak ada tabel/kolom/sumber sama sekali |
+| `BELUM DIMODELKAN` | 10 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
@@ -50,7 +50,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 00.11 | Kantor Selain Pusat/Cabang + TPE | `SEBAGIAN` | `bank_offices` (`office_type` teks bebas) + `branches.parent_id`; kurang sandi induk/pendahulu, koordinat, pimpinan, telepon; **tak ada perakit 00.11** | 270–275 |
 | 00.12 | Penutupan Kantor & TPE | `KONDISIONAL` | `bank_offices.closed_at` + `status='TUTUP'`; kurang sandi Jenis OJK, sandi induk, koordinat; **tak ada perakit 00.12** | 276–280 |
 | 00.16 | Daftar Pihak Lawan | `SEBAGIAN` | `customers` + `customers.ojk_pihak_lawan_code` (`000104:26`) + `counterparty_cif` (`000106:37`); kurang jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, pemeringkat | 286–292 |
-| 00.17 | Laporan Perubahan Ekuitas | `BELUM DIMODELKAN` | 15 baris sandi × 9 komponen ekuitas × 3 tahun; COA ekuitas hanya 5 (`000005:211`) tanpa Cadangan Tujuan/Surplus Revaluasi/DSM/Dividen | 293–294 |
+| 00.17 | Laporan Perubahan Ekuitas | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form17.go`, versi jujur-parsial): 17 baris × 12 kolom, **hanya Desember** (gerbang sama dengan 00.18), tiga saldo akhir tahun dari COA. Hanya III Modal Disetor (`30100`/`13100`), X Cadangan Umum (`30400`), XI Saldo Laba (`30200`+`30300`/`13200`) yang bersumber; kolom IV–IX tanpa akun → `-`, baris mutasi TIDAK diisi delta, "Pos Penambah/Pengurang Lainnya" tidak diisi residu. 15 baris sandi × 9 komponen ekuitas × 3 tahun; COA ekuitas hanya 5 (`000005:211`) tanpa Cadangan Tujuan/Surplus Revaluasi/DSM/Dividen | 293–294 |
 | 00.18 | Laporan Arus Kas | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form18.go` + `COAMapping18Draft`): 41 sandi ditranskrip dari PDF, kolom T dan T-1 dihitung dari jurnal, neto per aktivitas dijaga test invarian; hanya posisi Desember, baris tanpa sumber ditulis `-`. Sebelumnya cuma `GetCashFlow` yang belum dipetakan ke sandi OJK | 295–297 |
 | 00.19 | Struktur Organisasi | `DOKUMEN` | Berkas PDF; **bahan sudah ada** (`bank_offices`, `bank_management`, `branches`) sehingga PDF-nya bisa dirakit otomatis | 298 |
 | 00.20 | Struktur Kelompok Usaha | `DOKUMEN` | Berkas PDF; bahan hanya satu string `ojk.report.ultimate_shareholders` (`000096:40`) | 299 |
@@ -139,7 +139,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
@@ -213,6 +213,13 @@ per `loan_number`).
 - **Komentar `savings_account_repo.go` yang melebih-lebihkan jaminan** — filter `closed_at`
   ternyata mati karena `accounts.closed_at` tidak pernah ditulis aplikasi; pengaman
   sebenarnya adalah syarat saldo nol. Komentar kini menyatakan itu apa adanya.
+
+**Catatan produksi (dicek 28 Sep 2026):** `lps_placements` dan `off_balance_items`
+**kosong (0 baris)**, jadi risiko nomor 1–2 di atas masih latent — belum ada yang bisa
+terlipat atau hilang. `bank_management` dan `bank_offices` juga masih 0 baris, sehingga
+form peristiwa `00.09`/`00.10`/`00.12` akan berstatus "tidak ada peristiwa" dan kolom
+Sandi Kantor seluruh form akan `-` sampai bank mengisi data kelembagaan/kantor lewat API
+yang sudah ada. (Data lain: 10 kredit, 6 deposito, 93 rekening.)
 
 **Sudah terdokumentasi sebagai keterbatasan (bukan cacat baru):** baris Form 06.00 untuk
 kredit yang lunas setelah `periodEnd` hilang dari periode lampau (kolom posisi memang sudah
