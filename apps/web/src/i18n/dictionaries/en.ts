@@ -1820,4 +1820,36 @@ export const dictionaryEN: Dictionary = {
     shadowModeHint:
       "Shadow mode computes CKPN without journaling. Turn it off once CKPN is enabled so there are not two sets of figures.",
   },
+  ckpnPabl: {
+    title: "CKPN for Placements at Other Banks (PABL)",
+    description:
+      "Fill in the PD/LGD fractions and the switches for CKPN treatment of placements at other banks. PABL can only be enabled once every blocker is cleared; these are the bank's own figures, not system defaults.",
+    loadError: "CKPN PABL settings failed to load.",
+    forbidden:
+      "Your account may not read CKPN PABL settings (system:config:read).",
+    readOnly:
+      "You can review only. Changing settings requires the system:config permission.",
+    save: "Save changes",
+    saving: "Saving...",
+    saved: "CKPN PABL settings updated.",
+    saveError: "CKPN PABL settings failed to save.",
+    saveForbidden:
+      "Your account may not change these settings (system:config).",
+    sectionParameter: "PD/LGD fractions",
+    fractionHint: "Fraction 0..1, not percent. Example 0.0100 for 1%.",
+    pdGol1: "PD grade 1 (Current)",
+    pdGol3: "PD grade 3 (Substandard)",
+    pdGol5: "PD grade 5 (Loss)",
+    lgdFrac: "LGD",
+    sectionFlags: "Switches",
+    asetBaik: "Keep forming CKPN on good assets",
+    asetBaikHint:
+      "Choose Yes when CKPN is still formed on the full outstanding even if the placement meets the good asset criteria.",
+    enabledLabel: "CKPN PABL enabled",
+    enabledHint:
+      "Can only be enabled when there are no blockers. The server rejects premature enabling and names the blockers.",
+    gapsTitle: "Enablement blockers",
+    gapsReady: "No blockers. PABL is ready to be enabled.",
+    changeHint: "The save button becomes active once something changes.",
+  },
 };

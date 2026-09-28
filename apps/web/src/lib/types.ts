@@ -567,3 +567,14 @@ export interface CKPNActivation {
   enablement_ready: boolean;
   enablement_gaps?: string[];
 }
+
+/**
+ * Respons GET/PUT /system/ckpn-pabl. Nilai tiap kunci yang dikelola (kosong berarti
+ * belum diisi), kelayakan penyalakan, dan sisa hambatan penyalakan saklar CKPN
+ * penempatan pada bank lain (PABL).
+ */
+export interface CKPNPABL {
+  values: Record<string, string>;
+  enablement_ready: boolean;
+  enablement_gaps?: string[];
+}

@@ -1816,6 +1816,38 @@ export const dictionaryID = {
     shadowModeHint:
       "Mode bayangan menghitung CKPN tanpa menjurnal. Matikan setelah CKPN menyala agar tidak ada dua angka.",
   },
+  ckpnPabl: {
+    title: "CKPN Penempatan pada Bank Lain (PABL)",
+    description:
+      "Isi fraksi PD/LGD dan saklar perlakuan CKPN penempatan pada bank lain. Menyalakan PABL hanya dapat dilakukan setelah seluruh hambatan selesai; angka di sini adalah data bank, bukan nilai bawaan sistem.",
+    loadError: "Pengaturan CKPN PABL gagal dimuat.",
+    forbidden:
+      "Akun Anda tidak berwenang membaca pengaturan CKPN PABL (system:config:read).",
+    readOnly:
+      "Anda hanya dapat meninjau. Mengubah pengaturan butuh izin system:config.",
+    save: "Simpan perubahan",
+    saving: "Menyimpan...",
+    saved: "Pengaturan CKPN PABL diperbarui.",
+    saveError: "Pengaturan CKPN PABL gagal disimpan.",
+    saveForbidden:
+      "Akun Anda tidak berwenang mengubah pengaturan ini (system:config).",
+    sectionParameter: "Fraksi PD/LGD",
+    fractionHint: "Satuan fraksi 0..1, bukan persen. Contoh 0,0100 untuk 1%.",
+    pdGol1: "PD golongan 1 (Lancar)",
+    pdGol3: "PD golongan 3 (Kurang Lancar)",
+    pdGol5: "PD golongan 5 (Macet)",
+    lgdFrac: "LGD",
+    sectionFlags: "Saklar",
+    asetBaik: "Aset baik tetap dibentuk CKPN",
+    asetBaikHint:
+      "Pilih Ya bila CKPN tetap dibentuk atas outstanding penuh sekalipun penempatan memenuhi kriteria aset baik.",
+    enabledLabel: "CKPN PABL menyala",
+    enabledHint:
+      "Hanya dapat dinyalakan bila tidak ada hambatan. Server menolak penyalakan prematur dan menyebut hambatannya.",
+    gapsTitle: "Hambatan penyalakan",
+    gapsReady: "Tidak ada hambatan. PABL siap dinyalakan.",
+    changeHint: "Tombol simpan aktif setelah ada perubahan.",
+  },
 };
 
 export type Dictionary = typeof dictionaryID;

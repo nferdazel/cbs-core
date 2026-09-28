@@ -3,6 +3,7 @@
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CKPNActivationCard } from "@/components/settings/CKPNActivationCard";
+import { CKPNPABLCard } from "@/components/settings/CKPNPABLCard";
 
 /**
  * Halaman pengaturan aktivasi CKPN. Penjagaan sebenarnya ada di API
@@ -19,6 +20,7 @@ export default function CkpnActivationPage() {
         description={t.ckpnActivation.description}
       />
       <CKPNActivationCard />
+      <CKPNPABLCard />
     </>
   );
 }
