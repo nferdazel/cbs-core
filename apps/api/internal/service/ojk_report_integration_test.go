@@ -169,7 +169,11 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 		Config:     postgres.NewSystemConfigRepository(e.db),
 		Placements: postgres.NewLPSPlacementRepository(e.db),
 	}
-	period := time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC)
+	// Periode memakai bulan berjalan: Form 06.00 hanya menampilkan angka kolom
+	// materiil untuk posisi bulan berjalan (keputusan di CELAH-FORM-OJK.md §3 poin 8),
+	// dan kredit uji memang dibuat pada hari ini sehingga wajib ikut baris.
+	now := time.Now().UTC()
+	period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	b, err := ojkreport.NewBuilder(src).GenerateMonthlyForActor(e.ctx, period, "", e.actor)
 	if err != nil {
 		t.Fatalf("GenerateMonthlyForActor: %v", err)
@@ -181,8 +185,17 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 	if got := ojkCell(t, rowB, "XXVIII"); got != "400000" {
 		t.Errorf("Form 06.00 baki debet LN-B = %s, ingin 400000", got)
 	}
-	if got := ojkCell(t, rowB, "XIV"); got != "3" {
-		t.Errorf("Form 06.00 kualitas LN-B = %s, ingin 3", got)
+	// Kolom XIV Kualitas sengaja tidak pernah menampilkan angka: riwayat
+	// kolektibilitas per periode tidak disimpan, jadi nilai keadaan kini tidak
+	// dipakai untuk periode laporan (alasan wajib terisi, bukan kolom tersembunyi).
+	xivAlasan := ""
+	for _, u := range form06.Unavailable {
+		if u.Sandi == "XIV" {
+			xivAlasan = u.Reason
+		}
+	}
+	if xivAlasan == "" {
+		t.Error("Form 06.00 kolom XIV Kualitas harus terdaftar tidak tersedia beserta alasannya")
 	}
 	if got := ojkCell(t, rowB, "XXXIV"); got != "40000" {
 		t.Errorf("Form 06.00 CKPN LN-B = %s, ingin 40000", got)
