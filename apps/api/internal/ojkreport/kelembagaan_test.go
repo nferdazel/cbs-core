@@ -1,11 +1,40 @@
 package ojkreport
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"github.com/google/uuid"
 )
+
+// kelembagaanSourceStub menyajikan laporan kelembagaan apa adanya untuk menguji
+// perakitan LAPORAN_KELEMBAGAAN.
+type kelembagaanSourceStub struct {
+	report domain.KelembagaanReport
+}
+
+func (s kelembagaanSourceStub) KelembagaanReport(_ context.Context, _ time.Time, _ domain.Actor) (domain.KelembagaanReport, error) {
+	return s.report, nil
+}
+
+// LAPORAN_KELEMBAGAAN tetap menampilkan ketiga bagian apa adanya (termasuk yang kosong)
+// setelah Form 00.02/00.03/00.04 ikut bundel bulanan; penyaringan bagian kosong hanya
+// berlaku pada bundel bulanan.
+func TestGenerateKelembagaanTetapMemuatBagianKosong(t *testing.T) {
+	b, err := GenerateKelembagaan(context.Background(), kelembagaanSourceStub{},
+		time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC), domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("GenerateKelembagaan: %v", err)
+	}
+	if len(b.Tables) != 3 {
+		t.Fatalf("LAPORAN_KELEMBAGAAN harus tetap memuat 3 bagian, dapat %d", len(b.Tables))
+	}
+	if len(b.SkippedForms) != 0 {
+		t.Fatalf("LAPORAN_KELEMBAGAAN tidak memakai SkippedForms, dapat %d", len(b.SkippedForms))
+	}
+}
 
 // Baris direksi/komisaris harus masuk bagian 00.02 dan pejabat eksekutif ke bagian
 // 00.03; kolom yang belum punya sumber didaftarkan belum tersedia.

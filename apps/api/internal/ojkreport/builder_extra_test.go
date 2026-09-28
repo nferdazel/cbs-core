@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
@@ -118,5 +119,81 @@ func TestGenerateMonthlyTanpaSumberOpsionalMencatatFormDaftar(t *testing.T) {
 	}
 	if len(b.Tables) != 3 || b.Tables[0].Form != "09.00" || b.Tables[1].Form != "14.00" || b.Tables[2].Form != "10.00" {
 		t.Fatalf("tanpa sumber opsional hanya Form 09.00, 14.00, dan 10.00 yang boleh tampil, dapat %d tabel", len(b.Tables))
+	}
+}
+
+// kelembagaanStubSource menambahkan kontrak KelembagaanSource pada stubSource agar
+// Form 00.02/00.03/00.04 ikut bundel bulanan.
+type kelembagaanStubSource struct {
+	*stubSource
+	report domain.KelembagaanReport
+	err    error
+}
+
+func (s *kelembagaanStubSource) KelembagaanReport(_ context.Context, _ time.Time, _ domain.Actor) (domain.KelembagaanReport, error) {
+	return s.report, s.err
+}
+
+// Bila data kelembagaan terisi, Form 00.02/00.03/00.04 ikut bundel bulanan dan tidak
+// dicatat sebagai belum dibangun.
+func TestGenerateMonthlyMemuatFormKelembagaan(t *testing.T) {
+	src := &kelembagaanStubSource{
+		stubSource: newStubSource(),
+		report: domain.KelembagaanReport{
+			Offices: []domain.BankOffice{
+				{ID: uuid.New(), OfficeType: "KANTOR_PUSAT", Name: "Kantor Pusat", Status: domain.KelembagaanKantorAktif},
+			},
+			Management: []domain.BankManagement{
+				{ID: uuid.New(), Category: domain.KelembagaanKategoriDireksi, Name: "Budi"},
+				{ID: uuid.New(), Category: domain.KelembagaanKategoriPejabatEksekutif, Name: "Citra"},
+			},
+		},
+	}
+	b, err := NewBuilder(src).GenerateMonthly(context.Background(),
+		time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("GenerateMonthly: %v", err)
+	}
+	for form, rows := range map[string]int{"00.04": 1, "00.02": 1, "00.03": 1} {
+		sec := tableByForm(t, b, form)
+		if len(sec.Rows) != rows {
+			t.Errorf("Form %s baris = %d, ingin %d", form, len(sec.Rows), rows)
+		}
+	}
+	for _, f := range b.SkippedForms {
+		if f.Form == "00.02" || f.Form == "00.03" || f.Form == "00.04" {
+			t.Errorf("Form %s tidak boleh tercatat belum dibangun bila datanya ada: %s", f.Form, f.UnavailableReason)
+		}
+	}
+}
+
+// Bila data kelembagaan kosong, ketiga form tidak tampil sebagai tabel kosong melainkan
+// tercatat pada SkippedForms dengan alasan spesifik.
+func TestGenerateMonthlyKelembagaanKosongDicatatSkipped(t *testing.T) {
+	src := &kelembagaanStubSource{stubSource: newStubSource(), report: domain.KelembagaanReport{}}
+	b, err := NewBuilder(src).GenerateMonthly(context.Background(),
+		time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("GenerateMonthly: %v", err)
+	}
+	for _, sec := range b.Tables {
+		if sec.Form == "00.02" || sec.Form == "00.03" || sec.Form == "00.04" {
+			t.Errorf("Form %s tidak boleh tampil sebagai tabel saat datanya kosong", sec.Form)
+		}
+	}
+	want := map[string]bool{"00.02": false, "00.03": false, "00.04": false}
+	for _, f := range b.SkippedForms {
+		if _, ok := want[f.Form]; !ok {
+			continue
+		}
+		if f.UnavailableReason == "" {
+			t.Errorf("Form %s kosong harus punya alasan spesifik", f.Form)
+		}
+		want[f.Form] = true
+	}
+	for form, found := range want {
+		if !found {
+			t.Errorf("Form %s kosong harus tercatat belum dibangun", form)
+		}
 	}
 }

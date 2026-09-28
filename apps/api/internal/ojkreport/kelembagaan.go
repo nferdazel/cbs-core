@@ -87,6 +87,57 @@ func BuildKelembagaanTables(report domain.KelembagaanReport) []TableSection {
 	}
 }
 
+// formKelembagaanBulanan adalah form Laporan Gabungan yang sumbernya data kelembagaan
+// dan kini ikut bundel bulanan.
+var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04"}
+
+// buildKelembagaanMonthlyTables memilih bagian kelembagaan yang benar-benar berisi
+// baris untuk ikut bundel bulanan. Bagian tanpa baris TIDAK di-append, tetapi dicatat
+// sebagai SkippedForms dengan alasan spesifik supaya penulis berkas menuliskan
+// "# FORM x TIDAK DIBANGUN: ..." alih-alih menampilkan form kosong yang tampak lengkap.
+// LAPORAN_KELEMBAGAAN tetap memakai BuildKelembagaanTables apa adanya (selalu tiga
+// bagian, termasuk yang kosong).
+func buildKelembagaanMonthlyTables(report domain.KelembagaanReport) ([]TableSection, []OJKFormDefinition) {
+	var tables []TableSection
+	var skipped []OJKFormDefinition
+	for _, sec := range BuildKelembagaanTables(report) {
+		if len(sec.Rows) > 0 {
+			tables = append(tables, sec)
+			continue
+		}
+		skipped = append(skipped, OJKFormDefinition{
+			Form: sec.Form, Name: formName(sec.Form),
+			UnavailableReason: kelembagaanKosongReason(sec.Form),
+		})
+	}
+	return tables, skipped
+}
+
+// kelembagaanSkippedTanpaSumber mencatat ketiga form kelembagaan belum dibangun karena
+// sumbernya belum dirangkai pada ekspor ini.
+func kelembagaanSkippedTanpaSumber(reason string) []OJKFormDefinition {
+	out := make([]OJKFormDefinition, 0, len(formKelembagaanBulanan))
+	for _, form := range formKelembagaanBulanan {
+		out = append(out, OJKFormDefinition{Form: form, Name: formName(form), UnavailableReason: reason})
+	}
+	return out
+}
+
+// kelembagaanKosongReason merinci mengapa satu bagian kelembagaan belum dibangun saat
+// sumbernya ada tetapi bank belum mengisi datanya.
+func kelembagaanKosongReason(form string) string {
+	switch form {
+	case "00.02":
+		return "belum ada data anggota direksi/dewan komisaris pada bank_management (migrasi 000112); form tidak ditampilkan kosong agar tidak tampak lengkap"
+	case "00.03":
+		return "belum ada data pejabat eksekutif pada bank_management (migrasi 000112); form tidak ditampilkan kosong agar tidak tampak lengkap"
+	case "00.04":
+		return "belum ada data kantor pada bank_offices (migrasi 000112); form tidak ditampilkan kosong agar tidak tampak lengkap"
+	default:
+		return "data kelembagaan belum diisi bank; form tidak ditampilkan kosong agar tidak tampak lengkap"
+	}
+}
+
 // buildKelembagaanKantorTable menyusun bagian Data Kantor BPR (Form 00.04).
 func buildKelembagaanKantorTable(offices []domain.BankOffice) TableSection {
 	sec := TableSection{

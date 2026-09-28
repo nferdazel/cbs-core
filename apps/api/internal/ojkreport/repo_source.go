@@ -60,6 +60,11 @@ type RepoSource struct {
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
 	Kelembagaan domain.KelembagaanRepository
+	// KelembagaanSvc menyediakan laporan kelembagaan terhitung (bank_offices dan
+	// bank_management) untuk Form 00.02/00.03/00.04 pada bundel bulanan. Field ini
+	// memakai layanan kelembagaan yang sama dengan LAPORAN_KELEMBAGAAN. Bila nil,
+	// ketiga form dicatat belum tersedia beserta alasannya, bukan tampil kosong.
+	KelembagaanSvc domain.KelembagaanService
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -466,6 +471,17 @@ func selectReportingOffice(offices []domain.BankOffice) ReportingOffice {
 	default:
 		return ReportingOffice{Reason: fmt.Sprintf("%d kantor aktif ber-sandi; sistem tidak memilih kantor pelapor sendiri", len(aktifBerSandi))}
 	}
+}
+
+// KelembagaanReport meneruskan laporan kelembagaan terhitung agar Form 00.02/00.03/
+// 00.04 ikut bundel bulanan. Bila layanan belum dirangkai, ErrKelembagaanSourceUnavailable
+// dikembalikan supaya builder mencatat ketiga form sebagai belum dibangun, bukan
+// menggagalkan seluruh ekspor.
+func (s RepoSource) KelembagaanReport(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.KelembagaanReport, error) {
+	if s.KelembagaanSvc == nil {
+		return domain.KelembagaanReport{}, ErrKelembagaanSourceUnavailable
+	}
+	return s.KelembagaanSvc.KelembagaanReport(ctx, asOf, actor)
 }
 
 // loanRowDariDomain memetakan kredit domain ke baris Form 06.00/NPL. Hanya field

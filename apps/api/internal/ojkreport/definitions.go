@@ -183,12 +183,17 @@ var OJKBulananForms = []OJKFormDefinition{
 	// ── Laporan Gabungan (daftar resmi cetak -7-, PDF #59) ──
 	{Form: "00.01", Name: "Data Kepemilikan BPR", Buildable: false,
 		UnavailableReason: "belum ada tabel pemegang saham BPR; yang tersedia hanya tiga kunci teks pemegang saham Form 00.00 (migrasi 000096:25,38,40), tanpa komposisi kepemilikan (PDF #72-74)"},
-	{Form: "00.02", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR", Buildable: false,
-		UnavailableReason: "terbit sebagai bagian LAPORAN_KELEMBAGAAN (kelembagaan.go:73) dari bank_management (migrasi 000112:89), tetapi tidak ikut bundel bulanan; kolom NIK, alamat, sertifikat+pendidikan, komite, dan blok XIII-XVII belum punya sumber (PDF #75-82)"},
-	{Form: "00.03", Name: "Data Pejabat Eksekutif BPR", Buildable: false,
-		UnavailableReason: "terbit sebagai bagian LAPORAN_KELEMBAGAAN (kelembagaan.go:80), tetapi tidak ikut bundel bulanan; kolom alamat, NIK, fungsi, dan keanggotaan komite belum punya sumber (PDF #83-87)"},
-	{Form: "00.04", Name: "Data Kantor BPR", Buildable: false,
-		UnavailableReason: "terbit sebagai bagian LAPORAN_KELEMBAGAAN (kelembagaan.go:91) dari bank_offices (migrasi 000112:41), tetapi tidak ikut bundel bulanan; 10 dari 15 blok kolom belum punya sumber (PDF #88-95)"},
+	// Form 00.02/00.03/00.04 (Laporan Gabungan) ikut bundel bulanan. Sumbernya data
+	// kelembagaan yang bank isi lewat API reports/ojk/kelembagaan/* — bank_management
+	// (migrasi 000112:89) untuk 00.02/00.03 dan bank_offices (migrasi 000112:41) untuk
+	// 00.04 — lewat perakit yang sama dengan LAPORAN_KELEMBAGAAN
+	// (BuildKelembagaanTables, kelembagaan.go). Bila data belum diisi, form yang kosong
+	// dicatat pada SkippedForms dengan alasan spesifik, bukan tampil kosong. Kolom yang
+	// belum punya sumber (NIK, alamat, sertifikat+pendidikan, komite, blok XIII-XVII,
+	// dan 10 dari 15 blok kolom 00.04) tetap ditandai belum tersedia di dalam form.
+	{Form: "00.02", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR", Buildable: true},
+	{Form: "00.03", Name: "Data Pejabat Eksekutif BPR", Buildable: true},
+	{Form: "00.04", Name: "Data Kantor BPR", Buildable: true},
 	{Form: "00.05", Name: "Data Pihak Terkait Lainnya", Buildable: false,
 		UnavailableReason: "sumber bmpk_related_parties + customers (migrasi 000103:27, 000001:24) sudah ada, tetapi sandi Jenis dan Hubungan masih teks bebas serta kolom NPWP dan pihak terkait bukan nasabah belum ada (PDF #96-98)"},
 	{Form: "00.06", Name: "Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas", Buildable: false,
@@ -206,7 +211,7 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: false,
 		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
 	{Form: "00.17", Name: "Laporan Perubahan Ekuitas", Buildable: false,
-		UnavailableReason: "belum ada perakit 15 baris sandi x 9 komponen ekuitas x 3 tahun; COA ekuitas hanya 5 (migrasi 000005:211) tanpa Cadangan Tujuan, Surplus Revaluasi, Dana Setoran Modal, dan Dividen (PDF #293-294)"},
+		UnavailableReason: "belum ada perakit 17 baris sandi x 12 kolom (2 identitas + 10 kolom angka) x 3 tahun; COA ekuitas hanya 5 (migrasi 000005:211) tanpa Cadangan Tujuan, Surplus Revaluasi, Dana Setoran Modal, dan Dividen (PDF #293-294)"},
 	{Form: "00.18", Name: "Laporan Arus Kas", Buildable: true},
 	// Form 00.18 dibangun dari domain.CashFlow (jurnal akun kas/bank) lewat perakit
 	// form18.go dan pemetaan tersendiri COAMapping18Draft; hanya disampaikan untuk

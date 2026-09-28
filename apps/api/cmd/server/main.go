@@ -301,6 +301,9 @@ func main() {
 		TimeDeposits:    postgres.NewTimeDepositReportRepository(db),
 		OffBalance:      offBalanceRepo,
 		Kelembagaan:     kelembagaanRepo,
+		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
+		// 00.02/00.03/00.04 ikut bundel bulanan.
+		KelembagaanSvc: kelembagaanSvc,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

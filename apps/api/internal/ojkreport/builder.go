@@ -369,6 +369,29 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber data kredit belum dikonfigurasi; hanya laporan journal-based yang tersedia"})
 	}
 
+	// Form 00.02/00.03/00.04 (Laporan Gabungan) dibangun dari data kelembagaan yang
+	// bank isi lewat API reports/ojk/kelembagaan/* — bank_management (migrasi 000112)
+	// untuk 00.02/00.03 dan bank_offices untuk 00.04. Bila sumbernya belum dirangkai
+	// atau datanya belum diisi, form yang tidak berisi baris dicatat belum dibangun
+	// dengan alasan spesifik, bukan ditampilkan kosong seolah lengkap.
+	if ks, ok := b.source.(KelembagaanSource); ok {
+		report, err := ks.KelembagaanReport(ctx, periodEnd, actor)
+		switch {
+		case errors.Is(err, ErrKelembagaanSourceUnavailable):
+			skipped = append(skipped, kelembagaanSkippedTanpaSumber(
+				"sumber data kelembagaan (bank_offices/bank_management) belum dikonfigurasi pada ekspor ini")...)
+		case err != nil:
+			return nil, nil, err
+		default:
+			kelembagaanTables, kelembagaanSkipped := buildKelembagaanMonthlyTables(report)
+			tables = append(tables, kelembagaanTables...)
+			skipped = append(skipped, kelembagaanSkipped...)
+		}
+	} else {
+		skipped = append(skipped, kelembagaanSkippedTanpaSumber(
+			"sumber data kelembagaan (bank_offices/bank_management) belum dikonfigurasi pada ekspor ini")...)
+	}
+
 	// Form 05.00 Daftar Penempatan pada Bank Lain: dari penanda lps_placements.
 	if ps, ok := b.source.(PlacementDataSource); ok {
 		rows, err := ps.ListPlacementsForOJK(ctx, periodEnd, actor)
