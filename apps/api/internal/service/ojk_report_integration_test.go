@@ -31,6 +31,10 @@ func (ojkStubAccounting) GetIncomeStatement(_ context.Context, _, _ time.Time, _
 	return &domain.IncomeStatement{}, nil
 }
 
+func (ojkStubAccounting) GetCashFlow(_ context.Context, _, _ time.Time, _ string) (*domain.CashFlow, error) {
+	return &domain.CashFlow{}, nil
+}
+
 // setKreditOJK memaksa kualitas, CKPN, dan baki debet kredit untuk uji (jalur
 // produksi tidak memberi masukan kualitas manual).
 func setKreditOJK(t *testing.T, e *moneyEnv, loanID uuid.UUID, collectibility string, dpd int, outstanding, ckpn int64) {

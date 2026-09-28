@@ -170,6 +170,8 @@ func formLinesFor(form string) []formLine {
 		return form01Lines
 	case "02.00":
 		return form02Lines
+	case "00.18":
+		return form18Lines
 	default:
 		return nil
 	}

@@ -50,6 +50,10 @@ func (stubOJKSource) GetIncomeStatement(_ context.Context, _, _ time.Time, _ str
 	return &domain.IncomeStatement{}, nil
 }
 
+func (stubOJKSource) GetCashFlow(_ context.Context, _, _ time.Time, _ string) (*domain.CashFlow, error) {
+	return &domain.CashFlow{}, nil
+}
+
 func TestParseOJKPeriod(t *testing.T) {
 	if got, err := parseOJKPeriod("2026-03"); err != nil || !got.Equal(time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("YYYY-MM: got %s err %v", got, err)

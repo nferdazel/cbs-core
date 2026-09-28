@@ -18,6 +18,9 @@ import (
 type Source interface {
 	GetBalanceSheet(ctx context.Context, asOf time.Time, book string) (*domain.BalanceSheet, error)
 	GetIncomeStatement(ctx context.Context, from, to time.Time, book string) (*domain.IncomeStatement, error)
+	// GetCashFlow menyediakan arus kas periode dari jurnal akun kas/bank, sumber Form
+	// 00.18. Laporan itu hanya disusun untuk posisi Desember.
+	GetCashFlow(ctx context.Context, from, to time.Time, book string) (*domain.CashFlow, error)
 }
 
 // KPMMSource menyediakan komponen modal dan ATMR untuk baris KPMM (sandi 0101)
@@ -230,6 +233,22 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses, amounts09)
 	if err != nil {
 		return nil, err
+	}
+
+	// Form 00.18 Laporan Arus Kas hanya disampaikan untuk laporan posisi bulan
+	// Desember (Form 00.18 – 2, PDF #page 296-297). Posisi lain tetap mencatat form
+	// ini pada SkippedForms dengan alasan "hanya Desember", bukan menghilangkannya.
+	if periodStart.Month() == time.December {
+		sec, err := b.buildForm18(ctx, yearStart, periodEnd, bs, book)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, sec)
+	} else {
+		runtimeSkipped = append(runtimeSkipped, OJKFormDefinition{
+			Form: "00.18", Name: formName("00.18"),
+			UnavailableReason: "hanya disampaikan untuk posisi bulan Desember (Form 00.18 – 2, PDF #page 296-297); bentuk form tetap terbit tetapi tidak dibangun untuk posisi bulan ini",
+		})
 	}
 
 	def := reportByCode("LAPORAN_BULANAN_BPR")

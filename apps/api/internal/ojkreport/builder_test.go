@@ -36,6 +36,15 @@ func (s *stubSource) GetIncomeStatement(_ context.Context, from, to time.Time, _
 	return s.is, nil
 }
 
+// GetCashFlow mengembalikan arus kas kosong: uji yang bukan posisi Desember tidak
+// memicu perakit Form 00.18. Uji Form 00.18 memakai form18StubSource tersendiri.
+func (s *stubSource) GetCashFlow(_ context.Context, _, _ time.Time, _ string) (*domain.CashFlow, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &domain.CashFlow{}, nil
+}
+
 func row(code, name string, amount int64) domain.ReportRow {
 	return domain.ReportRow{AccountCode: code, AccountName: name, Amount: decimal.NewFromInt(amount)}
 }

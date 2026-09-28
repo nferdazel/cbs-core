@@ -197,8 +197,11 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
 	{Form: "00.17", Name: "Laporan Perubahan Ekuitas", Buildable: false,
 		UnavailableReason: "belum ada perakit 15 baris sandi x 9 komponen ekuitas x 3 tahun; COA ekuitas hanya 5 (migrasi 000005:211) tanpa Cadangan Tujuan, Surplus Revaluasi, Dana Setoran Modal, dan Dividen (PDF #293-294)"},
-	{Form: "00.18", Name: "Laporan Arus Kas", Buildable: false,
-		UnavailableReason: "GetCashFlow sudah menghitung arus operasi/investasi/pendanaan + baris jurnal (report_service.go:215), tetapi belum dipetakan ke sandi OJK 14010000-60000000 dan kolom pembanding T-1 belum ada (PDF #295-297)"},
+	{Form: "00.18", Name: "Laporan Arus Kas", Buildable: true},
+	// Form 00.18 dibangun dari domain.CashFlow (jurnal akun kas/bank) lewat perakit
+	// form18.go dan pemetaan tersendiri COAMapping18Draft; hanya disampaikan untuk
+	// laporan posisi bulan Desember (Form 00.18 – 2, PDF #page 296-297). Baris yang
+	// belum punya akun COA sumber ditulis tidak tersedia di dalam form, bukan nol.
 	{Form: "00.19", Name: "Struktur Organisasi", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF; bahan sudah ada (bank_offices, bank_management, branches) sehingga bisa dirakit otomatis, tetapi perakit dan bentuk berkasnya belum diputuskan (PDF #298)"},
 	{Form: "00.20", Name: "Struktur Kelompok Usaha", Buildable: false,

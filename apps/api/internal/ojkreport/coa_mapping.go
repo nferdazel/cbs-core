@@ -269,6 +269,110 @@ var COAMapping09Draft = []MappingEntry{
 		Note: "Piutang Denda Syariah -> Lainnya; pos resmi Form 09.00 tidak punya baris piutang denda"},
 }
 
+// COAMapping18Draft adalah pemetaan tersendiri kode COA ke baris arus kas Form 00.18
+// "LAPORAN ARUS KAS" menurut susunan Form 00.18 – 1 (PDF #page 295-296). Slice ini
+// SENGAJA terpisah dari COAMappingDraft: satu kode COA memang muncul pada beberapa form
+// (mis. akun pendapatan bunga ada di Form 02.00 dan Form 00.18), sedangkan
+// DuplicateCOACodes/defaultMappingIndex mewajibkan satu entri per kode di
+// COAMappingDraft. Sama seperti COAMapping09Draft, setiap entri di sini tidak
+// menggantikan entri Form 01.00/02.00.
+//
+// Nominal pada domain.CashFlow.Rows SUDAH bertanda relatif terhadap kas: lawan jurnal
+// bersisi KREDIT (penerimaan) positif, bersisi DEBIT (pembayaran) negatif
+// (reporting_repo.go:290-296). Karena itu seluruh Sign = +1 dan baris "neto" cukup
+// menjumlahkan baris rinciannya.
+//
+// Kode kas dan setara kas (10100, 10101, 10200, 11100, 11200) SENGAJA tidak dipetakan:
+// sumber arus kas mengeluarkan kode itu dari lawan jurnal (reporting_repo.go:24-28),
+// sehingga perubahannya tidak pernah muncul pada baris. Baris 14140000 (Penempatan pada
+// bank lain) karena itu ditulis tidak tersedia, bukan nol.
+var COAMapping18Draft = []MappingEntry{
+	// ── Arus kas operasi: penerimaan/pembayaran pendapatan dan beban (PDF #page 295) ──
+	{COACode: "40100", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Pendapatan Bunga Kredit -> Penerimaan pendapatan bunga"},
+	{COACode: "40200", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Pendapatan Bunga Penempatan -> Penerimaan pendapatan bunga"},
+	{COACode: "14100", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Margin Murabahah -> Penerimaan pendapatan bunga"},
+	{COACode: "14200", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Bagi Hasil Mudharabah -> Penerimaan pendapatan bunga"},
+	{COACode: "14300", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Bagi Hasil Musyarakah -> Penerimaan pendapatan bunga"},
+	{COACode: "14400", Form: "00.18", Sandi: "14010000", Sign: 1, Note: "Pendapatan Ijarah -> Penerimaan pendapatan bunga"},
+	{COACode: "40300", Form: "00.18", Sandi: "14020000", Sign: 1, Note: "Pendapatan Provisi dan Komisi -> Penerimaan pendapatan provisi dan jasa transaksi"},
+	{COACode: "40400", Form: "00.18", Sandi: "14020000", Sign: 1, Note: "Pendapatan Administrasi -> Penerimaan pendapatan provisi dan jasa transaksi"},
+	{COACode: "14500", Form: "00.18", Sandi: "14020000", Sign: 1, Note: "Pendapatan Administrasi Syariah -> Penerimaan pendapatan provisi dan jasa transaksi"},
+	{COACode: "40500", Form: "00.18", Sandi: "14050000", Sign: 1, Note: "Pendapatan Denda -> Pendapatan operasional lainnya"},
+	{COACode: "40900", Form: "00.18", Sandi: "14050000", Sign: 1, Note: "Pendapatan Lainnya -> Pendapatan operasional lainnya"},
+	{COACode: "14600", Form: "00.18", Sandi: "14050000", Sign: 1, Note: "Pendapatan Denda Syariah -> Pendapatan operasional lainnya"},
+	{COACode: "14900", Form: "00.18", Sandi: "14050000", Sign: 1, Note: "Pendapatan Lainnya Syariah -> Pendapatan operasional lainnya"},
+	{COACode: "50100", Form: "00.18", Sandi: "14060000", Sign: 1, Note: "Beban Bunga Deposito -> Pembayaran beban bunga"},
+	{COACode: "15100", Form: "00.18", Sandi: "14060000", Sign: 1, Note: "Bagi Hasil untuk Pemilik Dana -> Pembayaran beban bunga"},
+	{COACode: "50300", Form: "00.18", Sandi: "14070000", Sign: 1, Note: "Beban Gaji dan Tunjangan -> Beban gaji dan tunjangan"},
+	{COACode: "50400", Form: "00.18", Sandi: "14080000", Sign: 1, Note: "Beban Umum dan Administrasi -> Beban umum dan administrasi"},
+	{COACode: "50200", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Penyisihan Kerugian Kredit -> Beban operasional lainnya"},
+	{COACode: "50301", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Kerugian Penurunan Nilai - Kredit -> Beban operasional lainnya"},
+	{COACode: "50401", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Kerugian Restrukturisasi Kredit -> Beban operasional lainnya"},
+	{COACode: "50500", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Penyusutan -> Beban operasional lainnya"},
+	{COACode: "50900", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Lainnya -> Beban operasional lainnya"},
+	{COACode: "15200", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Penyisihan Kerugian Pembiayaan -> Beban operasional lainnya"},
+	{COACode: "15900", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Lainnya Syariah -> Beban operasional lainnya"},
+	{COACode: "15901", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Kerugian Penurunan Nilai - Pembiayaan -> Beban operasional lainnya"},
+	{COACode: "15902", Form: "00.18", Sandi: "14090000", Sign: 1, Note: "Beban Kerugian Restrukturisasi Pembiayaan -> Beban operasional lainnya"},
+	{COACode: "60100", Form: "00.18", Sandi: "14120000", Sign: 1, Note: "Beban Pajak Penghasilan -> Pembayaran pajak penghasilan"},
+
+	// ── Arus kas operasi: penurunan/peningkatan aset operasional (PDF #page 295) ──
+	{COACode: "10300", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Kredit yang Diberikan -> Kredit yang diberikan"},
+	{COACode: "10301", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Kredit - Pokok -> Kredit yang diberikan"},
+	{COACode: "11300", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Pembiayaan Murabahah -> Kredit yang diberikan"},
+	{COACode: "11310", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Murabahah - Piutang -> Kredit yang diberikan"},
+	{COACode: "11400", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Pembiayaan Mudharabah -> Kredit yang diberikan"},
+	{COACode: "11500", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Pembiayaan Musyarakah -> Kredit yang diberikan"},
+	{COACode: "11600", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Pembiayaan Ijarah -> Kredit yang diberikan"},
+	{COACode: "10900", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "CKPN/PPAP Kredit (kontra kredit) -> Kredit yang diberikan"},
+	{COACode: "10950", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "CKPN - Kredit (kontra kredit) -> Kredit yang diberikan"},
+	{COACode: "11900", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "Cadangan Kerugian Pembiayaan (kontra kredit) -> Kredit yang diberikan"},
+	{COACode: "11950", Form: "00.18", Sandi: "14150000", Sign: 1, Note: "CKPN - Pembiayaan (kontra kredit) -> Kredit yang diberikan"},
+	{COACode: "10500", Form: "00.18", Sandi: "14160000", Sign: 1, Note: "Agunan yang Diambil Alih -> Agunan yang diambil alih"},
+	{COACode: "10305", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Piutang Denda -> Aset lain-lain"},
+	{COACode: "10310", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Premi Penjaminan LPS Dibayar di Muka -> Aset lain-lain"},
+	{COACode: "10320", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Uang Muka Pajak -> Aset lain-lain"},
+	{COACode: "10330", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Aset Pajak Tangguhan -> Aset lain-lain"},
+	{COACode: "10340", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Biaya Dibayar di Muka -> Aset lain-lain"},
+	{COACode: "10350", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Tagihan kepada Perusahaan Asuransi -> Aset lain-lain"},
+	{COACode: "10360", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Uang Muka untuk Kegiatan Operasional -> Aset lain-lain"},
+	{COACode: "10400", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Bunga Kredit Masih Akan Diterima -> Aset lain-lain"},
+	{COACode: "10800", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Aset Antarkantor -> Aset lain-lain"},
+	{COACode: "10999", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Akun Sementara (Suspense) -> Aset lain-lain"},
+	{COACode: "11700", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Piutang Denda Syariah -> Aset lain-lain"},
+	{COACode: "11320", Form: "00.18", Sandi: "14170000", Sign: 1, Note: "Margin Murabahah Ditangguhkan -> Aset lain-lain"},
+
+	// ── Arus kas operasi: kenaikan/peningkatan liabilitas operasional (PDF #page 295) ──
+	{COACode: "20400", Form: "00.18", Sandi: "14190000", Sign: 1, Note: "Bunga Deposito Masih Harus Dibayar -> Liabilitas segera"},
+	{COACode: "20500", Form: "00.18", Sandi: "14190000", Sign: 1, Note: "Utang Pajak -> Liabilitas segera"},
+	{COACode: "20600", Form: "00.18", Sandi: "14190000", Sign: 1, Note: "Utang Bunga -> Liabilitas segera"},
+	{COACode: "12400", Form: "00.18", Sandi: "14190000", Sign: 1, Note: "Bagi Hasil Masih Harus Dibayar -> Liabilitas segera"},
+	{COACode: "20100", Form: "00.18", Sandi: "14200000", Sign: 1, Note: "Tabungan -> Tabungan"},
+	{COACode: "12100", Form: "00.18", Sandi: "14200000", Sign: 1, Note: "Tabungan Wadiah -> Tabungan"},
+	{COACode: "12200", Form: "00.18", Sandi: "14200000", Sign: 1, Note: "Tabungan Mudharabah -> Tabungan"},
+	{COACode: "20200", Form: "00.18", Sandi: "14210000", Sign: 1, Note: "Deposito Berjangka -> Deposito"},
+	{COACode: "12300", Form: "00.18", Sandi: "14210000", Sign: 1, Note: "Deposito Mudharabah -> Deposito"},
+	{COACode: "20300", Form: "00.18", Sandi: "14250000", Sign: 1, Note: "Giro -> Liabilitas lain-lain (Form 00.18 tidak punya baris giro tersendiri)"},
+	{COACode: "20700", Form: "00.18", Sandi: "14250000", Sign: 1, Note: "Utang Lainnya -> Liabilitas lain-lain"},
+	{COACode: "12500", Form: "00.18", Sandi: "14250000", Sign: 1, Note: "Dana Kebajikan -> Liabilitas lain-lain"},
+	{COACode: "12900", Form: "00.18", Sandi: "14250000", Sign: 1, Note: "Kewajiban Lainnya Syariah -> Liabilitas lain-lain"},
+	{COACode: "20800", Form: "00.18", Sandi: "14250000", Sign: 1, Note: "Rekening Antarkantor -> Liabilitas lain-lain"},
+
+	// ── Arus kas investasi (PDF #page 296) ──
+	{COACode: "10600", Form: "00.18", Sandi: "21010000", Sign: 1, Note: "Aset Tetap dan Inventaris -> Pembelian/penjualan aset tetap dan inventaris"},
+	{COACode: "10700", Form: "00.18", Sandi: "21010000", Sign: 1, Note: "Akumulasi Penyusutan Aset Tetap -> Pembelian/penjualan aset tetap dan inventaris"},
+
+	// ── Arus kas pendanaan (PDF #page 296) ──
+	// Form 00.18 tidak punya baris khusus setoran/penarikan modal disetor; seluruh
+	// perubahan ekuitas dipetakan ke baris "Penyesuaian lainnya".
+	{COACode: "30100", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Modal Disetor -> Penyesuaian lainnya (pendanaan)"},
+	{COACode: "30200", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Laba Ditahan -> Penyesuaian lainnya (pendanaan)"},
+	{COACode: "30300", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Laba Tahun Berjalan -> Penyesuaian lainnya (pendanaan)"},
+	{COACode: "30400", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Cadangan Umum -> Penyesuaian lainnya (pendanaan)"},
+	{COACode: "13100", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Modal Disetor Syariah -> Penyesuaian lainnya (pendanaan)"},
+	{COACode: "13200", Form: "00.18", Sandi: "31990000", Sign: 1, Note: "Laba Ditahan Syariah -> Penyesuaian lainnya (pendanaan)"},
+}
+
 // defaultMappingIndex adalah indeks COACode->entry untuk pemetaan bawaan.
 var defaultMappingIndex = buildMappingIndex(COAMappingDraft)
 
