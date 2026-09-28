@@ -26,8 +26,8 @@ terdaftar sama sekali** — itulah isi triase ini.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 5 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 9 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 6 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 11 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 6 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -62,7 +62,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 07.00 | Daftar Agunan yang Diambil Alih | `BELUM DIMODELKAN` | Hanya saldo agregat COA `10500` → `coa_mapping.go:110`; tidak ada register AYDA (tanggal, nilai pengakuan awal, akum. kerugian, NRV) | 179–181, 104 |
 | 08.00 | Daftar Aset Tetap, Inventaris, AT Berwujud | `BELUM DIMODELKAN` | Hanya agregat `10600`/`10700` → `forms.go:136-137`; tidak ada register aset, COA per jenis, sumber perolehan, metode pengukuran. Struktur 9 kolom kini ditranskrip (`docs/transkrip-form-08-10-11-12-14.md`); penjelasannya di **#184–186**, bukan 182–184 | 182–186, 60 |
 | 09.01 | Rincian Aset Lainnya – Lain-lain | `KONDISIONAL` | Syarat **25%** dari jumlah aset lainnya; Form 09.00 sudah ada, pos `1299990000` dari COA 10305/10999/11700; kurang register baris "Uraian" | **190**, 188–189 |
-| 10.00 | Rincian Liabilitas Segera | `BELUM DIMODELKAN` | Hanya agregat `2101000000` yang diisi 4 COA (`coa_mapping.go:142`); 8 pos rincian `2101010000`–`2101990000` tidak punya akun sama sekali. Transkrip: 4 kolom (Sandi Kantor/Nama Rekening/Sandi/Jumlah), baris **tetap** 8 pos + JUMLAH, rupiah penuh | 191–192, 106 |
+| 10.00 | Rincian Liabilitas Segera | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form10.go`): baris tetap 8 pos + JUMLAH, `COAMapping10Draft` hanya memetakan `20400`/`20600`/`12400` ke pos "Lainnya" (`2101990000`); 7 pos lain belum punya akun → alasan. **Pos 1 (pajak) sengaja `-`**: definisinya "pajak periode sebelum bulan laporan **yang dibayarkan pada bulan laporan**" (arus), sedangkan yang tersedia hanya saldo akhir periode — tidak dipaksa; `20500` juga tidak dipindah ke "Lainnya" agar tidak menggandakan pos Utang Pajak Form 14.00. JUMLAH `-` selama sebagian pos ber-alasan | 191–192, 106 |
 | 11.00 | Daftar Tabungan | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form11.go`): baris per-rekening dari `accounts`×`banking_products`(SAVINGS)×`customers` pada `periodEnd`, saldo dari jurnal. 11 dari 18 kolom bersumber; sisanya `-` + alasan: IV Jenis, VIII Jangka Waktu, XI–XII blokir, XIII biaya, XV NIK (privasi), XVI–XVIII PEP/Risiko/Status Data. **Keputusan:** IV dan VIII tetap `-` (jangan diturunkan dari tenor — berisiko salah kelas); **Jumlah = Nominal** karena biaya belum disimpan, keterbatasan ini ditulis di `Notes` | 193–199 |
 | 12.00 | Daftar Deposito | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form12.go`): baris per-kontrak dari `time_deposits`×`customers`, `start_date <= periodEnd` dan belum ditutup. **17 kolom** — sama dengan 11.00 **tanpa kolom "Jenis"** (penomoran bergeser satu). 10 kolom bersumber; `-` + alasan untuk X–XI blokir, XII biaya, XIV NIK, XV–XVII PEP/Risiko/Status Data. Kolom "diblokir" tetap tidak dikarang (`bank_deposit_repo.go:30`) | 200–206 |
 | 14.00 | Rincian Liabilitas Lainnya | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14.go`): 17 pos tetap (koreksi dari catatan lama "16 pos"). `COAMapping14Draft` hanya memetakan `20500`→`2299020000` Utang Pajak dan `20700`→`2299990000` Lainnya; 15 pos lain belum punya akun COA → alasan, bukan nol, dan `20300`/`12500`/`12900` sengaja tidak ditebak ke pos mana pun. Akibatnya **tidak ada tie otomatis ke `2299000000` Form 01.00** — hal ini ditulis eksplisit di `Notes` bersama aturan >25% → Form 14.01 | 213–215 |
@@ -134,28 +134,39 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `10.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | Bentuk `KONDISIONAL` setelah induknya ada (`09.01`, `14.01`, `00.09`, `00.10`, `00.12`, `03.00`). Transkrip + pemicu tiap form di `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
-## 7. Anomali hasil transkrip A4/A5/A6 (perlu konfirmasi sebelum dibangun)
+## 7. Anomali transkrip A4/A5/A6 — SEMUA TERPECAHKAN DARI PDF (28 Sep 2026)
 
-Hasil riset PDF 28 Sep 2026 (`docs/transkrip-form-a4-a5-a6.md`, 17 form, semua ketemu):
+Pemeriksaan ulang terhadap teks resmi menutup kedelapan butir; **tidak ada yang
+benar-benar butuh konfirmasi OJK** untuk bisa diimplementasikan:
 
-1. **`00.10` kolom III Jabatan** dipecah jadi 5 sub-kolom fungsi di header (`PDF #264`)
-   tetapi tabel sandinya (`#266`) hanya `00/01/02` tanpa pemetaan per fungsi — paling
-   berisiko untuk implementasi.
-2. **`00.09` kolom V** dipecah jadi 4 sub-kolom komite, masing-masing bersandi `00/01/02`
-   — encoding per komite perlu dikonfirmasi.
-3. **`16.00` typo romawi `XII` dua kali** di header (`#224`); ikuti tabel sandi (XII–XV).
-4. **`09.01` vs `14.01` tidak simetris**: penjelasan `09.01` mewajibkan Jumlah = pos
-   "Lainnya" Form 09.00, `14.01` tidak menyebut Form 14.00.
-5. **`04.00` kolom XV Kualitas** hanya sandi `1/3/5` (melompati 2 dan 4 yang ada di Bab II).
-6. **`16.00`/`17.00`/`18.00` tanpa baris JUMLAH**, sedangkan `00.07`/`04.00`/`07.00` punya.
-7. **`18.00` format tanggal `TT-MM-TTTT`**, beda dari `TT-BB-TTTT` di form lain.
-8. Label halaman `– 1` diulang untuk form multi-halaman (`00.07`/`00.09`/`00.10`) — jangan
-   dipakai sebagai penanda; rentang triase `09.01` juga menyesatkan (form di `#189`,
-   `#188` milik 09.00).
+1. **`00.10` kolom III Jabatan** — penjelasan `PDF #268-269` mengurutkan 5 fungsi **sama
+   persis** dengan sub-kolom header `#264`; pemetaan posisional → tiap sub-kolom diisi
+   sandi `00/01/02` per fungsi. (Konfirmasi OJK hanya bila ingin pasti soal semantik `00`.)
+2. **`00.09` kolom V komite** — pola sama: penjelasan `#262` mengurutkan 4 komite sejajar
+   header `#258` → `00` tidak / `01` ketua / `02` anggota per sub-kolom.
+3. **`09.01` vs `14.01`** — perbedaan memang nyata di teks (hanya `09.01` yang mengikat
+   "harus sama dengan pos Lainnya Form 09.00") → ikuti apa adanya, bukan salah baca.
+4. **`04.00` kolom XV Kualitas `1/3/5`** — tabel sandi form memang `1/3/5` (`#133`),
+   identik Form 05.00 (`#140`); penjelasan `#135` merujuk Bab II (5 sandi), tetapi form
+   ini memakai subset → bukan typo.
+5. **Label halaman `– 1` diulang** pada form multi-halaman (`#264-265`, `#258-259`) →
+   nomor halaman cetak tidak boleh dipakai penanda.
+6. **`16.00` typo `XII` dua kali** (`#224`) → ikuti tabel sandi `#225`; label ke-4 `XIII`.
+7. **`16.00`/`17.00`/`18.00` memang tanpa baris JUMLAH** (`#223-224`, `#229-230`,
+   `#233-234`) → jangan dirender, jangan divalidasi.
+8. **`18.00` format tanggal `TT-MM-TTTT`** (`#235`) → beda dari form lain; ikuti.
+
+Tambahan: `PDF #486` menyebut "Kolom V (Kualitas) pada Form 04.00 – Daftar Surat
+Berharga" padahal konteksnya Penyertaan Modal (Form **16.00**) — salah cetak regulasi,
+jangan diikuti.
+
+Satu-satunya butir yang masih menunggu pihak luar adalah **§3 poin 6 (Form 06.01)**,
+yaitu inkonsistensi internal PDF soal sel "Likuid | Non Likuid", bukan salah satu dari
+delapan anomali ini.
 
 ## 6. Selisih: Form 00.14 — TERVERIFIKASI, bukan form SEOJK 16/2024
 
