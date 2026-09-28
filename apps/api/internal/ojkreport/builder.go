@@ -556,6 +556,25 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register rekening administratif belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 07.00 Daftar Agunan yang Diambil Alih (AYDA): register per kasus yang bank
+	// catat (migrasi 000115). Bila belum ada baris AKTIF pada bulan periode, form
+	// dinyatakan belum tersedia, bukan ditulis kosong.
+	if as, ok := b.source.(AYDARegisterSource); ok {
+		rows, err := as.ListAYDAForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "07.00", Name: formName("07.00"),
+				UnavailableReason: "belum ada register AYDA berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm07(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "07.00", Name: formName("07.00"),
+			UnavailableReason: "sumber register AYDA belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

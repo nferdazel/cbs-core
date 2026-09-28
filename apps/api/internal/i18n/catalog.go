@@ -249,14 +249,24 @@ const (
 	// Register rekening administratif (Form 01.01) pos komitmen/kontinjensi
 	// off-balance. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
-	MsgOffBalanceReport                   Code = "off_balance_report"
-	MsgOffBalanceSaved                    Code = "off_balance_saved"
-	MsgOffBalanceDeleted                  Code = "off_balance_deleted"
-	MsgOffBalanceIDInvalid                Code = "off_balance_id_invalid"
-	MsgOffBalanceBankWide                 Code = "off_balance_bank_wide"
-	MsgOffBalanceInputInvalid             Code = "off_balance_input_invalid"
-	MsgOffBalanceNotFound                 Code = "off_balance_not_found"
-	MsgOffBalanceItemsListed              Code = "off_balance_items_listed"
+	MsgOffBalanceReport       Code = "off_balance_report"
+	MsgOffBalanceSaved        Code = "off_balance_saved"
+	MsgOffBalanceDeleted      Code = "off_balance_deleted"
+	MsgOffBalanceIDInvalid    Code = "off_balance_id_invalid"
+	MsgOffBalanceBankWide     Code = "off_balance_bank_wide"
+	MsgOffBalanceInputInvalid Code = "off_balance_input_invalid"
+	MsgOffBalanceNotFound     Code = "off_balance_not_found"
+	MsgOffBalanceItemsListed  Code = "off_balance_items_listed"
+	// Register AYDA (Form 07.00) agunan yang diambil alih. Galat berkode harus selaras
+	// dengan pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
+	MsgAYDAReport                         Code = "ayda_report"
+	MsgAYDASaved                          Code = "ayda_saved"
+	MsgAYDADeleted                        Code = "ayda_deleted"
+	MsgAYDAIDInvalid                      Code = "ayda_id_invalid"
+	MsgAYDABankWide                       Code = "ayda_bank_wide"
+	MsgAYDAInputInvalid                   Code = "ayda_input_invalid"
+	MsgAYDANotFound                       Code = "ayda_not_found"
+	MsgAYDAItemsListed                    Code = "ayda_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -612,6 +622,14 @@ var codeList = []Code{
 	MsgOffBalanceInputInvalid,
 	MsgOffBalanceNotFound,
 	MsgOffBalanceItemsListed,
+	MsgAYDAReport,
+	MsgAYDASaved,
+	MsgAYDADeleted,
+	MsgAYDAIDInvalid,
+	MsgAYDABankWide,
+	MsgAYDAInputInvalid,
+	MsgAYDANotFound,
+	MsgAYDAItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1651,6 +1669,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgOffBalanceItemsListed: {
 		ID: "daftar pos rekening administratif",
 		EN: "off-balance items listed",
+	},
+	MsgAYDAReport: {
+		ID: "register AYDA",
+		EN: "AYDA register",
+	},
+	MsgAYDASaved: {
+		ID: "data register AYDA disimpan",
+		EN: "AYDA register data saved",
+	},
+	MsgAYDADeleted: {
+		ID: "data register AYDA dihapus",
+		EN: "AYDA register data deleted",
+	},
+	MsgAYDAIDInvalid: {
+		ID: "id register AYDA bukan UUID yang sah",
+		EN: "AYDA register id is not a valid UUID",
+	},
+	MsgAYDABankWide: {
+		ID: "register AYDA bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the AYDA register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgAYDAInputInvalid: {
+		ID: "data register AYDA tidak valid",
+		EN: "AYDA register data is invalid",
+	},
+	MsgAYDANotFound: {
+		ID: "data register AYDA tidak ditemukan",
+		EN: "AYDA register data was not found",
+	},
+	MsgAYDAItemsListed: {
+		ID: "daftar baris register AYDA",
+		EN: "AYDA register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

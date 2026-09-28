@@ -242,8 +242,10 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "sumber loan_collaterals (migrasi 000036:31) + ojk_agunan_ppka_amount (000109:31) ada, tetapi kolom alamat agunan, nilai yang diagunkan, sandi jenis agunan Lampiran 01, dan PPKA per agunan belum ada (PDF #169-172, #301)"},
 	{Form: "06.02", Name: "Daftar Kredit Sindikasi", Buildable: false,
 		UnavailableReason: "belum ada tabel/kolom sindikasi; builder sendiri menyatakan kanal penyaluran belum dimodelkan (form06.go:99) (PDF #173-177)"},
-	{Form: "07.00", Name: "Daftar Agunan yang Diambil Alih", Buildable: false,
-		UnavailableReason: "baru ada saldo agregat COA 10500 (coa_mapping.go:110); belum ada register AYDA berisi tanggal, nilai pengakuan awal, akumulasi kerugian, dan NRV (PDF #179-181, #104)"},
+	// Form 07.00 dibangun dari register AYDA per kasus (ayda_register, migrasi 000115)
+	// yang bank isi lewat API; bukan dari saldo agregat COA 10500. Bila belum ada baris
+	// AKTIF, builder mencatatnya pada SkippedForms dengan alasan spesifik.
+	{Form: "07.00", Name: "Daftar Agunan yang Diambil Alih", Buildable: true},
 	{Form: "08.00", Name: "Daftar Aset Tetap, Inventaris, dan Aset Tidak Berwujud", Buildable: false,
 		UnavailableReason: "hanya agregat COA 10600/10700 (forms.go:136-137); belum ada register aset per jenis, COA per jenis, sumber perolehan, dan metode pengukuran (PDF #182-184, #60)"},
 	// Form 10.00 "Rincian Liabilitas Segera" (PDF #page 191-192): posisinya dipecah

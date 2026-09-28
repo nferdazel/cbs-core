@@ -61,6 +61,10 @@ type OJKReportHandler struct {
 	// operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute rekening administratif
 	// tetap terpasang tetapi gagal saat dipanggil.
 	offBalance domain.OffBalanceService
+	// ayda menyediakan register AYDA (Form 07.00) sekaligus operasi upsert/hapusnya.
+	// Boleh nil pada uji; tanpa itu rute register AYDA tetap terpasang tetapi gagal
+	// saat dipanggil.
+	ayda domain.AYDARegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -72,10 +76,12 @@ type OJKReportHandler struct {
 // uji lama; tanpa itu ekspor diperlakukan gagal-aman (parameter dianggap SEMENTARA).
 // Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
 // boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
-// offBalance boleh nil dengan perilaku yang sama. bmpkAdmin menyediakan pengaturan
-// pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama. placements menyediakan
-// daftar penempatan untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// offBalance boleh nil dengan perilaku yang sama. ayda menyediakan register AYDA
+// (Form 07.00) dan boleh nil dengan perilaku yang sama. bmpkAdmin menyediakan
+// pengaturan pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama. placements
+// menyediakan daftar penempatan untuk pemilih UI sandi OJK; boleh nil dengan perilaku
+// yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -84,6 +90,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		config:      config,
 		kelembagaan: kelembagaan,
 		offBalance:  offBalance,
+		ayda:        ayda,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
 	}
@@ -153,6 +160,16 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/off-balance/items", h.UpsertOffBalanceItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/off-balance/items/{id}", h.DeleteOffBalanceItem)
+		// Register AYDA (Form 07.00): baca cukup reports:export; pengisian dan daftar
+		// mentah UI memakai system:config dan teraudit di service. Empat rute saja.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/ayda", h.ExportAYDA)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/ayda/items", h.ListAYDAItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/ayda/items", h.UpsertAYDAItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/ayda/items/{id}", h.DeleteAYDAItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -918,6 +935,138 @@ func writeOffBalanceError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrOffBalanceNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrOffBalanceBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportAYDA menyajikan register AYDA (Form 07.00) sebagai JSON untuk periode
+// YYYY-MM: daftar agunan yang diambil alih beserta tabel Form 07.00 dan kolom yang
+// belum tersedia. Register bank-wide; aktor non-lintas cabang ditolak 403 oleh layanan.
+func (h *OJKReportHandler) ExportAYDA(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.ayda == nil {
+		InternalError(w, r, errors.New("sumber register AYDA belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.ayda.AYDAReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrAYDABankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	// Kolom I Sandi Kantor diambil dari kantor pelapor tunggal bila sumbernya tersedia
+	// (RepoSource); tanpa itu tetap dinyatakan tidak tersedia, bukan "-" tanpa alasan.
+	kantor := ojkreport.ReportingOffice{Reason: "register AYDA dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgAYDAReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm07(report.Items, kantor)},
+	})
+}
+
+// ListAYDAItems menyajikan baris mentah register AYDA untuk UI edit
+// (GET /reports/ojk/ayda/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListAYDAItems(w http.ResponseWriter, r *http.Request) {
+	if h.ayda == nil {
+		InternalError(w, r, errors.New("sumber register AYDA belum dikonfigurasi"))
+		return
+	}
+	items, err := h.ayda.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register AYDA: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAYDAItemsListed, map[string]any{"items": items})
+}
+
+// UpsertAYDAItem membuat/memperbarui satu AYDA (PUT /reports/ojk/ayda/items). Decoder
+// menolak bidang tak dikenal agar payload di luar kontrak ditolak 422, bukan diam-diam
+// diabaikan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertAYDAItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateAYDAItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.ayda == nil {
+		InternalError(w, r, errors.New("sumber register AYDA belum dikonfigurasi"))
+		return
+	}
+	item, err := h.ayda.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeAYDAError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAYDASaved, item)
+}
+
+// DeleteAYDAItem menghapus satu AYDA menurut id.
+func (h *OJKReportHandler) DeleteAYDAItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAYDAIDInvalid)
+		return
+	}
+	if h.ayda == nil {
+		InternalError(w, r, errors.New("sumber register AYDA belum dikonfigurasi"))
+		return
+	}
+	if err := h.ayda.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeAYDAError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAYDADeleted, map[string]any{"id": id.String()})
+}
+
+// writeAYDAError memetakan galat register AYDA: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak internal
+// otomatis disembunyikan Fail).
+func writeAYDAError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrAYDANotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrAYDABankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

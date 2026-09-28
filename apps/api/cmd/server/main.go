@@ -281,6 +281,12 @@ func main() {
 	offBalanceRepo := postgres.NewOffBalanceRepository(db)
 	offBalanceSvc := service.NewOffBalanceService(db, offBalanceRepo, auditRepo)
 
+	// Register AYDA (agunan yang diambil alih) untuk Form 07.00: baca bank-wide + jalur
+	// tulis berizin system:config yang teraudit (migrasi 000115). Tidak menyentuh bagan
+	// akun (saldo 10500 tetap posisi buku besar) maupun angka jurnal.
+	aydaRepo := postgres.NewAYDARegisterRepository(db)
+	aydaSvc := service.NewAYDARegisterService(db, aydaRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -300,11 +306,12 @@ func main() {
 		SavingsAccounts: postgres.NewSavingsAccountRepository(db),
 		TimeDeposits:    postgres.NewTimeDepositReportRepository(db),
 		OffBalance:      offBalanceRepo,
+		AYDA:            aydaRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

@@ -56,6 +56,9 @@ type RepoSource struct {
 	// kontinjensi off-balance). Bila nil, form dinyatakan belum tersedia; tidak ada
 	// angka yang dikarang.
 	OffBalance domain.OffBalanceRepository
+	// AYDA menyediakan register per kasus Form 07.00 (agunan yang diambil alih).
+	// Bila nil, form dinyatakan belum tersedia; tidak ada angka yang dikarang.
+	AYDA domain.AYDARegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -422,6 +425,19 @@ func (s RepoSource) ListOffBalanceForOJK(ctx context.Context, asOf time.Time, ac
 		return nil, nil
 	}
 	return s.OffBalance.ListAggregates(ctx, asOf)
+}
+
+// ListAYDAForOJK membaca baris register AYDA bank-wide yang as_of-nya pada bulan asOf
+// (kandidat Form 07.00). Kebijakan bank-wide ditegakkan di lapisan data: aktor
+// non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListAYDAForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.AYDAItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.AYDA == nil {
+		return nil, nil
+	}
+	return s.AYDA.ListAYDAForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,
