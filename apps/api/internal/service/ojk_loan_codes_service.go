@@ -59,6 +59,11 @@ func (s *ojkLoanCodesService) Update(ctx context.Context, loanID uuid.UUID, inpu
 			return nil, err
 		}
 	}
+	if s.db != nil && input.OJKPenjaminCode != nil {
+		if err := requireOJKReference(ctx, s.db, domain.OJKRefPihakLawan, *input.OJKPenjaminCode, domain.OJKPenjaminField); err != nil {
+			return nil, err
+		}
+	}
 
 	changes := ojkLoanCodesChanges(loan, input)
 	if err := s.runner.Run(ctx, func(tx any) error {
@@ -91,5 +96,19 @@ func ojkLoanCodesChanges(before *domain.Loan, input domain.UpdateOJKLoanCodesInp
 	add(domain.OJKJenisPenggunaanField, before.OJKJenisPenggunaanCode, input.OJKJenisPenggunaanCode)
 	add(domain.OJKPeriodePembayaranField, before.OJKPeriodePembayaranCode, input.OJKPeriodePembayaranCode)
 	add(domain.OJKKabupatenField, before.OJKKabupatenCode, input.OJKKabupatenCode)
+	add(domain.OJKKelompokKreditField, before.OJKKelompokKreditCode, input.OJKKelompokKreditCode)
+	add(domain.OJKSumberDanaField, before.OJKSumberDanaCode, input.OJKSumberDanaCode)
+	add(domain.OJKKategoriUsahaField, before.OJKKategoriUsahaCode, input.OJKKategoriUsahaCode)
+	add(domain.OJKSifatKreditField, before.OJKSifatKreditCode, input.OJKSifatKreditCode)
+	add(domain.OJKPenjaminField, before.OJKPenjaminCode, input.OJKPenjaminCode)
+	add(domain.OJKKlasifikasiAsetField, before.OJKKlasifikasiAsetCode, input.OJKKlasifikasiAsetCode)
+	ojkAddPercentageChange(out, domain.OJKPenjaminBagianPctField, before.OJKPenjaminBagianPct, input.OJKPenjaminBagianPct)
+	ojkAddDateChange(out, domain.OJKTanggalMulaiMacetField, before.OJKTanggalMulaiMacet, input.OJKTanggalMulaiMacet)
+	ojkAddAmountChange(out, domain.OJKAgunanPPKAAmountField, before.OJKAgunanPPKAAmount, input.OJKAgunanPPKAAmount)
+	ojkAddAmountChange(out, domain.OJKKelonggaranTarikAmountField, before.OJKKelonggaranTarikAmount, input.OJKKelonggaranTarikAmount)
+	ojkAddAmountChange(out, domain.OJKProvisiBelumDiamortisasiAmountField, before.OJKProvisiBelumDiamortisasiAmount, input.OJKProvisiBelumDiamortisasiAmount)
+	ojkAddAmountChange(out, domain.OJKBiayaTransaksiBelumDiamortisasiAmountField, before.OJKBiayaTransaksiBelumDiamortisasiAmount, input.OJKBiayaTransaksiBelumDiamortisasiAmount)
+	ojkAddAmountChange(out, domain.OJKPendapatanBungaDitangguhkanAmountField, before.OJKPendapatanBungaDitangguhkanAmount, input.OJKPendapatanBungaDitangguhkanAmount)
+	ojkAddAmountChange(out, domain.OJKCadanganKerugianRestrukturisasiAmountField, before.OJKCadanganKerugianRestrukturisasiAmount, input.OJKCadanganKerugianRestrukturisasiAmount)
 	return out
 }

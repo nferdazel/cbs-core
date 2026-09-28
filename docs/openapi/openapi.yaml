@@ -2386,6 +2386,24 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/placements:
+    get:
+      tags: [Laporan]
+      operationId: listOJKPlacements
+      summary: Daftar penempatan pada bank lain (pemilih sandi OJK)
+      description: >-
+        Izin: `system:config`. Mengembalikan daftar penempatan pada bank lain sebagai
+        pilihan UI pengisian sandi OJK (Form 05.00): `data.placements[].id` dan label
+        terbaca (nama bank lawan + tanggal mulai). Daftar disaring cakupan cabang aktor.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/mapping:
     get:
       tags: [Laporan]
@@ -3379,10 +3397,17 @@ paths:
       description: >-
         Izin: `system:config`. Mengisi sandi referensi/inline OJK Form 06.00 per
         kredit tanpa SQL: `ojk_jenis_penggunaan_code` (VIII, inline 10/20/31/32/35/39),
-        `ojk_periode_pembayaran_code` (XI, inline 1..8), dan `ojk_kabupaten_code`
-        (XXII, FK ke tabel `ojk_kabupaten`). Hanya bidang yang dikirim yang diubah;
-        teraudit satu transaksi. Menolak 422 bila sandi inline di luar himpunan atau
-        sandi referensi tidak ada di tabel.
+        `ojk_periode_pembayaran_code` (XI, inline 1..8), `ojk_kabupaten_code` (XXII,
+        FK ke tabel `ojk_kabupaten`), serta kolom K1/K2 lain (kelompok kredit, sumber
+        dana X, kategori usaha XXI, sifat kredit XXXVIII, penjamin XXIV, tanggal mulai
+        macet XV, agunan PPKA XXV, kelonggaran tarik XXVI, provisi/biaya amortisasi
+        XXIX/XXX, pendapatan ditangguhkan XXXI, cadangan restrukturisasi XXXII, dan
+        klasifikasi aset XLVII). Semua bidang opsional bertipe string nullable:
+        absen/null berarti tidak diubah, "" berarti dikosongkan (NULL), selain itu
+        divalidasi lalu disimpan. Hanya bidang yang dikirim yang diubah; teraudit satu
+        transaksi. Menolak 422 bila sandi inline di luar himpunan, sandi referensi
+        (kabupaten/penjamin) tidak ada di tabel, nominal negatif, persentase di luar
+        0-100 atau lebih dari 2 desimal, atau tanggal bukan YYYY-MM-DD.
       requestBody:
         required: true
         content:
@@ -3391,15 +3416,23 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                ojk_jenis_penggunaan_code:
-                  type: string
-                  nullable: true
-                ojk_periode_pembayaran_code:
-                  type: string
-                  nullable: true
-                ojk_kabupaten_code:
-                  type: string
-                  nullable: true
+                ojk_jenis_penggunaan_code: { type: string, nullable: true }
+                ojk_periode_pembayaran_code: { type: string, nullable: true }
+                ojk_kabupaten_code: { type: string, nullable: true }
+                ojk_kelompok_kredit_code: { type: string, nullable: true }
+                ojk_sumber_dana_code: { type: string, nullable: true }
+                ojk_kategori_usaha_code: { type: string, nullable: true }
+                ojk_sifat_kredit_code: { type: string, nullable: true }
+                ojk_penjamin_code: { type: string, nullable: true }
+                ojk_penjamin_bagian_pct: { type: string, nullable: true }
+                ojk_tanggal_mulai_macet: { type: string, nullable: true }
+                ojk_agunan_ppka_amount: { type: string, nullable: true }
+                ojk_kelonggaran_tarik_amount: { type: string, nullable: true }
+                ojk_provisi_belum_diamortisasi_amount: { type: string, nullable: true }
+                ojk_biaya_transaksi_belum_diamortisasi_amount: { type: string, nullable: true }
+                ojk_pendapatan_bunga_ditangguhkan_amount: { type: string, nullable: true }
+                ojk_cadangan_kerugian_restrukturisasi_amount: { type: string, nullable: true }
+                ojk_klasifikasi_aset_code: { type: string, nullable: true }
       responses:
         "200":
           $ref: "#/components/responses/OK"
@@ -3413,6 +3446,84 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/ojk/placement-codes/{placementId}:
+    parameters:
+      - name: placementId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Sistem]
+      operationId: updateOJKPlacementCodes
+      summary: Ubah sandi OJK penempatan
+      description: >-
+        Izin: `system:config`. Mengisi sandi referensi/inline OJK Form 05.00 per
+        penempatan pada bank lain tanpa SQL: `ojk_kabupaten_code` (III, FK ke
+        `ojk_kabupaten`), `ojk_hubungan_bank_code` (V, inline 12/20),
+        `ojk_alasan_diblokir_code` (XI), `counterparty_cif` (XVI),
+        `ojk_klasifikasi_aset_code` (XX), `blocked_amount` (X),
+        `accrued_interest_receivable` (XIII), dan `accrued_interest_pending` (XIV).
+        Semua bidang opsional bertipe string nullable: absen/null berarti tidak
+        diubah, "" berarti dikosongkan (NULL), selain itu divalidasi lalu disimpan.
+        Hanya bidang yang dikirim yang diubah; teraudit satu transaksi. Menolak 422
+        bila sandi inline di luar himpunan, sandi referensi tidak ada di tabel, atau
+        nominal negatif. Cakupan cabang aktor ditegakkan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ojk_kabupaten_code: { type: string, nullable: true }
+                ojk_hubungan_bank_code: { type: string, nullable: true }
+                ojk_alasan_diblokir_code: { type: string, nullable: true }
+                counterparty_cif: { type: string, nullable: true }
+                ojk_klasifikasi_aset_code: { type: string, nullable: true }
+                blocked_amount: { type: string, nullable: true }
+                accrued_interest_receivable: { type: string, nullable: true }
+                accrued_interest_pending: { type: string, nullable: true }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [Sistem]
+      operationId: getOJKPlacementCodes
+      summary: Baca sandi OJK penempatan tersimpan
+      description: >-
+        Izin: `system:config`. Mengembalikan nilai penempatan tersimpan. Sandi/teks/
+        counterparty bertipe string atau null; nominal bertipe number atau null selama
+        belum diisi (dibedakan dari nol). Cakupan cabang aktor ditegakkan: penempatan
+        di luar cabang aktor dibalas 404 (disamarkan) mengikuti pembacaan kredit.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 

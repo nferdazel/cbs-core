@@ -128,6 +128,7 @@ const (
 	MsgInvalidRequestBody             Code = "invalid_request_body"
 	MsgInvalidRequestBodyWithErr      Code = "invalid_request_body_with_err"
 	MsgInvalidLoanID                  Code = "invalid_loan_i_d"
+	MsgInvalidPlacementID             Code = "invalid_placement_id"
 	MsgInvalidCustomerID              Code = "invalid_customer_i_d"
 	MsgInvalidStaffUserID             Code = "invalid_staff_user_i_d"
 	MsgInvalidRequestID               Code = "invalid_request_i_d"
@@ -220,6 +221,15 @@ const (
 	MsgOJKLoanCodesEmpty       Code = "ojk_loan_codes_empty"
 	MsgOJKInlineCodeInvalid    Code = "ojk_inline_code_invalid"
 	MsgOJKReferenceCodeInvalid Code = "ojk_reference_code_invalid"
+	// Sandi referensi/inline OJK per penempatan pada bank lain (Form 05.00) dan
+	// validasi nominal/persentase/tanggal yang menyertainya.
+	MsgOJKPlacementCodesUpdated Code = "ojk_placement_codes_updated"
+	MsgOJKPlacementCodesEmpty   Code = "ojk_placement_codes_empty"
+	MsgOJKPlacementCodesRead    Code = "ojk_placement_codes_read"
+	MsgOJKPlacementsListed      Code = "ojk_placements_listed"
+	MsgOJKAmountInvalid         Code = "ojk_amount_invalid"
+	MsgOJKPercentageInvalid     Code = "ojk_percentage_invalid"
+	MsgOJKDateInvalid           Code = "ojk_date_invalid"
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
@@ -485,6 +495,7 @@ var codeList = []Code{
 	MsgInvalidRequestBody,
 	MsgInvalidRequestBodyWithErr,
 	MsgInvalidLoanID,
+	MsgInvalidPlacementID,
 	MsgInvalidCustomerID,
 	MsgInvalidStaffUserID,
 	MsgInvalidRequestID,
@@ -569,6 +580,13 @@ var codeList = []Code{
 	MsgOJKLoanCodesEmpty,
 	MsgOJKInlineCodeInvalid,
 	MsgOJKReferenceCodeInvalid,
+	MsgOJKPlacementCodesUpdated,
+	MsgOJKPlacementCodesEmpty,
+	MsgOJKPlacementCodesRead,
+	MsgOJKPlacementsListed,
+	MsgOJKAmountInvalid,
+	MsgOJKPercentageInvalid,
+	MsgOJKDateInvalid,
 	MsgKelembagaanReport,
 	MsgKelembagaanSaved,
 	MsgKelembagaanDeleted,
@@ -1180,6 +1198,10 @@ var catalog = map[Code]map[Lang]string{
 		ID: "id kredit tidak valid",
 		EN: "invalid loan id",
 	},
+	MsgInvalidPlacementID: {
+		ID: "id penempatan tidak valid",
+		EN: "invalid placement id",
+	},
 	MsgInvalidCustomerID: {
 		ID: "id nasabah tidak valid",
 		EN: "invalid customer id",
@@ -1515,6 +1537,34 @@ var catalog = map[Code]map[Lang]string{
 	MsgOJKReferenceCodeInvalid: {
 		ID: "sandi referensi %s tidak ditemukan pada tabel referensi",
 		EN: "reference code %s was not found in the reference table",
+	},
+	MsgOJKPlacementCodesUpdated: {
+		ID: "sandi OJK penempatan diperbarui",
+		EN: "OJK placement codes updated",
+	},
+	MsgOJKPlacementCodesEmpty: {
+		ID: "tidak ada sandi OJK penempatan yang dikirim",
+		EN: "no OJK placement code was submitted",
+	},
+	MsgOJKPlacementCodesRead: {
+		ID: "sandi OJK penempatan",
+		EN: "OJK placement codes",
+	},
+	MsgOJKPlacementsListed: {
+		ID: "daftar penempatan OJK",
+		EN: "OJK placements listed",
+	},
+	MsgOJKAmountInvalid: {
+		ID: "nominal %s tidak sah: harus angka dan tidak negatif",
+		EN: "amount %s is invalid: must be a number and not negative",
+	},
+	MsgOJKPercentageInvalid: {
+		ID: "persentase %s tidak sah: harus 0-100 dengan paling banyak 2 desimal",
+		EN: "percentage %s is invalid: must be 0-100 with at most 2 decimals",
+	},
+	MsgOJKDateInvalid: {
+		ID: "tanggal %s tidak sah: harus format YYYY-MM-DD",
+		EN: "date %s is invalid: must be YYYY-MM-DD",
 	},
 	MsgKelembagaanReport: {
 		ID: "laporan kelembagaan",

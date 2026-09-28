@@ -714,7 +714,8 @@ func (r *LoanRepository) UpdateCollectibility(ctx context.Context, id uuid.UUID,
 // UpdateOJKLoanCodesTx menyimpan sandi referensi/inline OJK satu kredit di dalam
 // transaksi pemanggil. Hanya kolom yang dikirim (pointer non-nil) yang masuk SET;
 // nilai kosong disimpan sebagai NULL agar laporan membacanya "belum diisi" dan
-// kolom referensi ber-foreign key tidak menerima sandi "".
+// kolom referensi ber-foreign key tidak menerima sandi "". Nominal/persentase/tanggal
+// diurai memakai aturan domain yang sama dengan validasinya.
 func (r *LoanRepository) UpdateOJKLoanCodesTx(ctx context.Context, tx any, id uuid.UUID, input domain.UpdateOJKLoanCodesInput) error {
 	sqlTx, ok := tx.(*sql.Tx)
 	if !ok {
@@ -722,7 +723,7 @@ func (r *LoanRepository) UpdateOJKLoanCodesTx(ctx context.Context, tx any, id uu
 	}
 
 	args := []any{id}
-	set := make([]string, 0, 3)
+	set := make([]string, 0, 17)
 	appendCode := func(column string, value *string) {
 		if value == nil {
 			return
@@ -731,9 +732,75 @@ func (r *LoanRepository) UpdateOJKLoanCodesTx(ctx context.Context, tx any, id uu
 		args = append(args, sql.NullString{String: trimmed, Valid: trimmed != ""})
 		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
+	appendAmount := func(column, field string, value *string) error {
+		if value == nil {
+			return nil
+		}
+		nd, err := domain.ParseOJKAmount(field, *value)
+		if err != nil {
+			return err
+		}
+		args = append(args, nd)
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+		return nil
+	}
+	appendPercentage := func(column, field string, value *string) error {
+		if value == nil {
+			return nil
+		}
+		nd, err := domain.ParseOJKPercentage(field, *value)
+		if err != nil {
+			return err
+		}
+		args = append(args, nd)
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+		return nil
+	}
+	appendDate := func(column, field string, value *string) error {
+		if value == nil {
+			return nil
+		}
+		t, err := domain.ParseOJKDate(field, *value)
+		if err != nil {
+			return err
+		}
+		args = append(args, sql.NullTime{Time: timeOrZero(t), Valid: t != nil})
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+		return nil
+	}
+
 	appendCode("ojk_jenis_penggunaan_code", input.OJKJenisPenggunaanCode)
 	appendCode("ojk_periode_pembayaran_code", input.OJKPeriodePembayaranCode)
 	appendCode("ojk_kabupaten_code", input.OJKKabupatenCode)
+	appendCode("ojk_kelompok_kredit_code", input.OJKKelompokKreditCode)
+	appendCode("ojk_sumber_dana_code", input.OJKSumberDanaCode)
+	appendCode("ojk_kategori_usaha_code", input.OJKKategoriUsahaCode)
+	appendCode("ojk_sifat_kredit_code", input.OJKSifatKreditCode)
+	appendCode("ojk_penjamin_code", input.OJKPenjaminCode)
+	appendCode("ojk_klasifikasi_aset_code", input.OJKKlasifikasiAsetCode)
+	if err := appendPercentage("ojk_penjamin_bagian_pct", domain.OJKPenjaminBagianPctField, input.OJKPenjaminBagianPct); err != nil {
+		return err
+	}
+	if err := appendDate("ojk_tanggal_mulai_macet", domain.OJKTanggalMulaiMacetField, input.OJKTanggalMulaiMacet); err != nil {
+		return err
+	}
+	amountColumns := []struct {
+		column string
+		field  string
+		value  *string
+	}{
+		{"ojk_agunan_ppka_amount", domain.OJKAgunanPPKAAmountField, input.OJKAgunanPPKAAmount},
+		{"ojk_kelonggaran_tarik_amount", domain.OJKKelonggaranTarikAmountField, input.OJKKelonggaranTarikAmount},
+		{"ojk_provisi_belum_diamortisasi_amount", domain.OJKProvisiBelumDiamortisasiAmountField, input.OJKProvisiBelumDiamortisasiAmount},
+		{"ojk_biaya_transaksi_belum_diamortisasi_amount", domain.OJKBiayaTransaksiBelumDiamortisasiAmountField, input.OJKBiayaTransaksiBelumDiamortisasiAmount},
+		{"ojk_pendapatan_bunga_ditangguhkan_amount", domain.OJKPendapatanBungaDitangguhkanAmountField, input.OJKPendapatanBungaDitangguhkanAmount},
+		{"ojk_cadangan_kerugian_restrukturisasi_amount", domain.OJKCadanganKerugianRestrukturisasiAmountField, input.OJKCadanganKerugianRestrukturisasiAmount},
+	}
+	for _, item := range amountColumns {
+		if err := appendAmount(item.column, item.field, item.value); err != nil {
+			return err
+		}
+	}
 	if len(set) == 0 {
 		return nil
 	}
@@ -744,6 +811,15 @@ func (r *LoanRepository) UpdateOJKLoanCodesTx(ctx context.Context, tx any, id uu
 		return fmt.Errorf("failed to update loan OJK codes: %w", err)
 	}
 	return nil
+}
+
+// timeOrZero mengembalikan nilai waktu atau zero time; dipakai menyusun sql.NullTime
+// saat tanggal kosong (NULL).
+func timeOrZero(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
 }
 
 func (r *LoanRepository) UpdateOutstanding(ctx context.Context, id uuid.UUID, outstanding, penalty decimal.Decimal) error {

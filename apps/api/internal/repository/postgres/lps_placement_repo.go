@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -181,6 +182,84 @@ func (r *LPSPlacementRepository) LockPlacementTx(ctx context.Context, tx any, id
 		return nil, err
 	}
 	return p, nil
+}
+
+// GetPlacementByID membaca satu penempatan tanpa kunci, dipakai jalur baca/edit sandi
+// OJK. Baris yang tidak ada ditandai ErrLPSPlacementNotFound.
+func (r *LPSPlacementRepository) GetPlacementByID(ctx context.Context, id uuid.UUID) (*domain.LPSPlacement, error) {
+	row := r.db.QueryRowContext(ctx, listLPSPlacementsSelect+" WHERE p.id = $1", id)
+	p, err := scanLPSPlacement(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrLPSPlacementNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// UpdateOJKPlacementCodesTx menyimpan sandi OJK satu penempatan di dalam transaksi
+// pemanggil. Hanya kolom yang dikirim (pointer non-nil) yang masuk SET; nilai kosong
+// disimpan sebagai NULL. Nominal diurai memakai aturan domain yang sama dengan
+// validasinya.
+func (r *LPSPlacementRepository) UpdateOJKPlacementCodesTx(ctx context.Context, tx any, id uuid.UUID, input domain.UpdateOJKPlacementCodesInput) error {
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok {
+		return errors.New("lps placement: transaksi tidak valid")
+	}
+
+	args := []any{id}
+	set := make([]string, 0, 8)
+	appendCode := func(column string, value *string) {
+		if value == nil {
+			return
+		}
+		trimmed := strings.TrimSpace(*value)
+		args = append(args, sql.NullString{String: trimmed, Valid: trimmed != ""})
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	appendAmount := func(column, field string, value *string) error {
+		if value == nil {
+			return nil
+		}
+		nd, err := domain.ParseOJKAmount(field, *value)
+		if err != nil {
+			return err
+		}
+		args = append(args, nd)
+		set = append(set, fmt.Sprintf("%s = $%d", column, len(args)))
+		return nil
+	}
+
+	appendCode("ojk_kabupaten_code", input.OJKKabupatenCode)
+	appendCode("ojk_hubungan_bank_code", input.OJKHubunganBankCode)
+	appendCode("ojk_alasan_diblokir_code", input.OJKAlasanDiblokirCode)
+	appendCode("counterparty_cif", input.CounterpartyCIF)
+	appendCode("ojk_klasifikasi_aset_code", input.OJKKlasifikasiAsetCode)
+	amountColumns := []struct {
+		column string
+		field  string
+		value  *string
+	}{
+		{"blocked_amount", domain.OJKBlockedAmountField, input.BlockedAmount},
+		{"accrued_interest_receivable", domain.OJKAccruedInterestReceivableField, input.AccruedInterestReceivable},
+		{"accrued_interest_pending", domain.OJKAccruedInterestPendingField, input.AccruedInterestPending},
+	}
+	for _, item := range amountColumns {
+		if err := appendAmount(item.column, item.field, item.value); err != nil {
+			return err
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	set = append(set, "updated_at = NOW()")
+
+	query := "UPDATE lps_placements SET " + strings.Join(set, ", ") + " WHERE id = $1"
+	if _, err := sqlTx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("menyimpan sandi OJK penempatan: %w", err)
+	}
+	return nil
 }
 
 // RecordCKPNTx menyimpan asesmen CKPN satu penempatan: memperbarui kolom CKPN pada

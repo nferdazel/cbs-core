@@ -76,6 +76,9 @@ type RouterParams struct {
 	// OJKLoanCodesHandler mengelola sandi referensi/inline OJK per kredit (Form 06.00
 	// kolom VIII/XI/XXII) agar bank mengisinya tanpa SQL. Rutenya tidak dipasang bila nil.
 	OJKLoanCodesHandler *OJKLoanCodesHandler
+	// OJKPlacementCodesHandler mengelola sandi referensi/inline OJK per penempatan pada
+	// bank lain (Form 05.00) agar bank mengisinya tanpa SQL. Rutenya tidak dipasang bila nil.
+	OJKPlacementCodesHandler *OJKPlacementCodesHandler
 	// PermissionHandler melayani katalog grup/izin/menu dan pengajuan perubahan
 	// pemetaan izin (lewat maker-checker, teraudit).
 	PermissionHandler *PermissionHandler
@@ -448,6 +451,12 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// dengan setelan OJK lain, dan diaudit di service.
 			if p.OJKLoanCodesHandler != nil {
 				p.OJKLoanCodesHandler.RegisterRoutes(r)
+			}
+			// ── Sandi referensi/inline OJK per penempatan pada bank lain ──
+			// Melengkapi jalur tulis sandi OJK kredit dengan atribut Form 05.00 per
+			// penempatan. Dijaga system:config dan diaudit di service.
+			if p.OJKPlacementCodesHandler != nil {
+				p.OJKPlacementCodesHandler.RegisterRoutes(r)
 			}
 			r.Route("/batch", func(r chi.Router) {
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).

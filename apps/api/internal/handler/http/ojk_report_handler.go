@@ -26,6 +26,12 @@ type OJKCOALister interface {
 	GetCOAList(ctx context.Context, actor domain.Actor) ([]domain.ChartOfAccount, error)
 }
 
+// OJKPlacementLister menyediakan daftar penempatan pada bank lain untuk pemilih UI
+// pengisian sandi OJK. Penyaringan cakupan cabang dilakukan pemanggil di repositori.
+type OJKPlacementLister interface {
+	ListPlacements(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LPSPlacement, error)
+}
+
 // OJKReportHandler melayani fondasi ekspor laporan OJK (APOLO). Angka diambil
 // dari laporan journal-based yang sudah ada; handler hanya menyajikan.
 type OJKReportHandler struct {
@@ -55,6 +61,10 @@ type OJKReportHandler struct {
 	// operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute rekening administratif
 	// tetap terpasang tetapi gagal saat dipanggil.
 	offBalance domain.OffBalanceService
+	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
+	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
+	// tetapi gagal saat dipanggil.
+	placements OJKPlacementLister
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
@@ -63,8 +73,9 @@ type OJKReportHandler struct {
 // Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
 // boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
 // offBalance boleh nil dengan perilaku yang sama. bmpkAdmin menyediakan pengaturan
-// pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, bmpkAdmin domain.BMPKService) *OJKReportHandler {
+// pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama. placements menyediakan
+// daftar penempatan untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -74,6 +85,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		kelembagaan: kelembagaan,
 		offBalance:  offBalance,
 		bmpkAdmin:   bmpkAdmin,
+		placements:  placements,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -141,6 +153,10 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/off-balance/items", h.UpsertOffBalanceItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/off-balance/items/{id}", h.DeleteOffBalanceItem)
+		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
+		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/placements", h.ListPlacements)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -799,6 +815,32 @@ func (h *OJKReportHandler) ListOffBalanceItems(w http.ResponseWriter, r *http.Re
 		return
 	}
 	Success(w, http.StatusOK, i18n.MsgOffBalanceItemsListed, map[string]any{"items": items})
+}
+
+// ListPlacements menyajikan pemilih penempatan pada bank lain untuk pengisian sandi OJK
+// (GET /reports/ojk/placements): id + label terbaca. Penyaringan cakupan cabang di
+// repositori memakai aktor dari klaim; izin system:config.
+func (h *OJKReportHandler) ListPlacements(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	if h.placements == nil {
+		InternalError(w, r, errors.New("sumber penempatan belum dikonfigurasi"))
+		return
+	}
+	items, err := h.placements.ListPlacements(r.Context(), time.Now().UTC(),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca penempatan pada bank lain: %w", err))
+		return
+	}
+	options := make([]domain.OJKPlacementOption, 0, len(items))
+	for _, p := range items {
+		options = append(options, domain.OJKPlacementOption{ID: p.ID, Label: domain.LPSPlacementLabel(p)})
+	}
+	Success(w, http.StatusOK, i18n.MsgOJKPlacementsListed, map[string]any{"placements": options})
 }
 
 // UpsertOffBalanceItem membuat/memperbarui satu pos rekening administratif

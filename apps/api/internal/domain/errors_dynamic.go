@@ -154,3 +154,20 @@ func OJKInlineCodeInvalid(field string) *LocalizedError {
 func OJKReferenceCodeInvalid(field string) *LocalizedError {
 	return NewLocalizedErrorf("ojk_reference_code_invalid", "sandi referensi %s tidak ditemukan pada tabel referensi", field)
 }
+
+// Validasi sandi OJK penempatan (Form 05.00): nominal, persentase, dan tanggal.
+// Nama kolom berada di TENGAH pesan, jadi memakai placeholder %s seperti galat
+// inline/referensi agar bunyi Indonesia tidak berubah.
+var ErrOJKPlacementCodesEmpty = NewLocalizedError("ojk_placement_codes_empty", "tidak ada sandi OJK penempatan yang dikirim")
+
+func OJKAmountInvalid(field string) *LocalizedError {
+	return NewLocalizedErrorf("ojk_amount_invalid", "nominal %s tidak sah: harus angka dan tidak negatif", field)
+}
+
+func OJKPercentageInvalid(field string) *LocalizedError {
+	return NewLocalizedErrorf("ojk_percentage_invalid", "persentase %s tidak sah: harus 0-100 dengan paling banyak 2 desimal", field)
+}
+
+func OJKDateInvalid(field string) *LocalizedError {
+	return NewLocalizedErrorf("ojk_date_invalid", "tanggal %s tidak sah: harus format YYYY-MM-DD", field)
+}

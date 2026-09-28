@@ -279,19 +279,22 @@ func main() {
 
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
+	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
+	// dan jalur tulis sandi OJK penempatan.
+	ojkPlacementRepo := postgres.NewLPSPlacementRepository(db)
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
 		Source:       reportSvc,
 		Loans:        loanRepo,
 		Profile:      bankProfileRepo,
 		Config:       configRepo,
-		Placements:   postgres.NewLPSPlacementRepository(db),
+		Placements:   ojkPlacementRepo,
 		Customers:    customerRepo,
 		KPMM:         kpmmSvc,
 		BMPK:         bmpkSvc,
 		Savings:      postgres.NewSavingsCustomerRepository(db),
 		BankDeposits: postgres.NewBankDepositRepository(db),
 		OffBalance:   offBalanceRepo,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
@@ -305,6 +308,10 @@ func main() {
 	// diisi bank tanpa SQL; layanan sempit ini hanya menyentuh atribut laporan.
 	ojkLoanCodesHandler := httpHandler.NewOJKLoanCodesHandler(
 		service.NewOJKLoanCodesService(db, loanRepo, auditRepo))
+	// Sandi referensi/inline OJK per penempatan pada bank lain (Form 05.00) kini dapat
+	// diisi bank tanpa SQL; layanan sempit ini hanya menyentuh atribut laporan.
+	ojkPlacementCodesHandler := httpHandler.NewOJKPlacementCodesHandler(
+		service.NewOJKPlacementCodesService(db, ojkPlacementRepo, auditRepo))
 	depositHandler := httpHandler.NewDepositHandler(depositSvc)
 	ppapHandler := httpHandler.NewPPAPHandler(ppapSvc, ppkaUmumSvc)
 	ckpnHandler := httpHandler.NewCKPNHandler(ckpnSvc, configSvc)
@@ -335,39 +342,40 @@ func main() {
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
-		CustomerHandler:         custHandler,
-		AccountHandler:          accHandler,
-		BranchHandler:           branchHandler,
-		ProductHandler:          productHandler,
-		LedgerHandler:           ledHandler,
-		AuthHandler:             authHandler,
-		StaffHandler:            staffHandler,
-		LoanHandler:             loanHandler,
-		MakerCheckerHandler:     mcHandler,
-		ReportHandler:           reportHandler,
-		OJKReportHandler:        ojkReportHandler,
-		KPMMHandler:             kpmmHandler,
-		CollectionHandler:       collectionHandler,
-		IntegrationHandler:      integrationHandler,
-		BatchProcessHandler:     batchHandler,
-		EODDefinitionHandler:    eodDefinitionHandler,
-		DocumentHandler:         docHandler,
-		DepositHandler:          depositHandler,
-		PPAPHandler:             ppapHandler,
-		CKPNHandler:             ckpnHandler,
-		LPSPlacementHandler:     lpsPlacementHandler,
-		AuditHandler:            httpHandler.NewAuditHandler(auditRepo, limitSvc),
-		CollateralHandler:       httpHandler.NewCollateralHandler(collateralSvc),
-		CollateralWeightHandler: httpHandler.NewCollateralWeightHandler(collateralWeightSvc, mcSvc),
-		AppInfoHandler:          appInfoHandler,
-		BankProfileHandler:      bankProfileHandler,
-		OJKProfileHandler:       ojkProfileHandler,
-		CKPNActivationHandler:   ckpnActivationHandler,
-		OJKLoanCodesHandler:     ojkLoanCodesHandler,
-		PermissionHandler:       permissionHandler,
-		MonitoringHandler:       monitoringHandler,
-		AuthService:             authSvc,
-		ConfigService:           configSvc,
+		CustomerHandler:          custHandler,
+		AccountHandler:           accHandler,
+		BranchHandler:            branchHandler,
+		ProductHandler:           productHandler,
+		LedgerHandler:            ledHandler,
+		AuthHandler:              authHandler,
+		StaffHandler:             staffHandler,
+		LoanHandler:              loanHandler,
+		MakerCheckerHandler:      mcHandler,
+		ReportHandler:            reportHandler,
+		OJKReportHandler:         ojkReportHandler,
+		KPMMHandler:              kpmmHandler,
+		CollectionHandler:        collectionHandler,
+		IntegrationHandler:       integrationHandler,
+		BatchProcessHandler:      batchHandler,
+		EODDefinitionHandler:     eodDefinitionHandler,
+		DocumentHandler:          docHandler,
+		DepositHandler:           depositHandler,
+		PPAPHandler:              ppapHandler,
+		CKPNHandler:              ckpnHandler,
+		LPSPlacementHandler:      lpsPlacementHandler,
+		AuditHandler:             httpHandler.NewAuditHandler(auditRepo, limitSvc),
+		CollateralHandler:        httpHandler.NewCollateralHandler(collateralSvc),
+		CollateralWeightHandler:  httpHandler.NewCollateralWeightHandler(collateralWeightSvc, mcSvc),
+		AppInfoHandler:           appInfoHandler,
+		BankProfileHandler:       bankProfileHandler,
+		OJKProfileHandler:        ojkProfileHandler,
+		CKPNActivationHandler:    ckpnActivationHandler,
+		OJKLoanCodesHandler:      ojkLoanCodesHandler,
+		OJKPlacementCodesHandler: ojkPlacementCodesHandler,
+		PermissionHandler:        permissionHandler,
+		MonitoringHandler:        monitoringHandler,
+		AuthService:              authSvc,
+		ConfigService:            configSvc,
 		// Cakupan unit organisasi (cabang/area/wilayah) diresolusi per permintaan
 		// dari tabel branches, sama seperti cakupan buku dibaca dari konfigurasi.
 		BranchScopeResolver: branchRepo,

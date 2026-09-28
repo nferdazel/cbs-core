@@ -3,8 +3,10 @@ package domain
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // ojk_reference_codes.go membuka pengisian sandi referensi/inline OJK lewat API
@@ -42,6 +44,21 @@ const (
 	OJKPihakLawanField        = "ojk_pihak_lawan_code"
 	OJKSektorEkonomiField     = "ojk_sektor_ekonomi_code"
 	OJKHubunganBankField      = "ojk_hubungan_bank_code"
+	// Kolom K1/K2 Form 06.00 (migrasi 000107-000111) yang kini dapat diisi lewat API.
+	OJKKelompokKreditField                        = "ojk_kelompok_kredit_code"
+	OJKSumberDanaField                            = "ojk_sumber_dana_code"
+	OJKKategoriUsahaField                         = "ojk_kategori_usaha_code"
+	OJKSifatKreditField                           = "ojk_sifat_kredit_code"
+	OJKPenjaminField                              = "ojk_penjamin_code"
+	OJKPenjaminBagianPctField                     = "ojk_penjamin_bagian_pct"
+	OJKTanggalMulaiMacetField                     = "ojk_tanggal_mulai_macet"
+	OJKKlasifikasiAsetField                       = "ojk_klasifikasi_aset_code"
+	OJKAgunanPPKAAmountField                      = "ojk_agunan_ppka_amount"
+	OJKKelonggaranTarikAmountField                = "ojk_kelonggaran_tarik_amount"
+	OJKProvisiBelumDiamortisasiAmountField        = "ojk_provisi_belum_diamortisasi_amount"
+	OJKBiayaTransaksiBelumDiamortisasiAmountField = "ojk_biaya_transaksi_belum_diamortisasi_amount"
+	OJKPendapatanBungaDitangguhkanAmountField     = "ojk_pendapatan_bunga_ditangguhkan_amount"
+	OJKCadanganKerugianRestrukturisasiAmountField = "ojk_cadangan_kerugian_restrukturisasi_amount"
 )
 
 // Himpunan sandi inline Form 06.00-2 (Lampiran II SEOJK 16/2024). Peta membuat
@@ -55,6 +72,21 @@ var (
 	}
 	ojkHubunganBankAllowed = map[string]struct{}{
 		"11": {}, "12": {}, "20": {},
+	}
+	// Sandi inline K1/K2 Form 06.00 (Lampiran II SEOJK 16/2024, migrasi 000107).
+	ojkSumberDanaAllowed = map[string]struct{}{
+		"10": {}, "21": {}, "22": {}, "31": {}, "32": {},
+	}
+	ojkKategoriUsahaAllowed = map[string]struct{}{
+		"1": {}, "2": {}, "3": {}, "4": {},
+	}
+	ojkSifatKreditAllowed = map[string]struct{}{
+		"2": {}, "9": {},
+	}
+	// Hubungan dengan Bank khusus penempatan pada bank lain (Form 05.00-2): 12 terkait,
+	// 20 tidak terkait. Berbeda dari nasabah (11/12/20) sehingga dipisah.
+	ojkHubunganBankPenempatanAllowed = map[string]struct{}{
+		"12": {}, "20": {},
 	}
 )
 
@@ -77,32 +109,144 @@ func ValidateOJKHubunganBankCode(raw string) error {
 	return validateOJKInline(raw, ojkHubunganBankAllowed, OJKHubunganBankField)
 }
 
-// UpdateOJKLoanCodesInput adalah isi PUT sandi OJK per kredit. Pointer nil berarti
-// "jangan ubah"; string kosong berarti "kosongkan" (belum diisi). Semua bidang
-// opsional agar klien web dapat mengirim satu bidang pada satu waktu.
+// ParseOJKAmount mengubah masukan nominal bertipe string menjadi nilai nullable.
+// String kosong berarti "kosongkan" (NULL); selain itu wajib angka dan tidak negatif.
+// Satu sumber aturan dipakai validasi maupun penyimpanan.
+func ParseOJKAmount(field, raw string) (decimal.NullDecimal, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return decimal.NullDecimal{}, nil
+	}
+	d, err := decimal.NewFromString(s)
+	if err != nil || d.IsNegative() {
+		return decimal.NullDecimal{}, OJKAmountInvalid(field)
+	}
+	return decimal.NullDecimal{Decimal: d, Valid: true}, nil
+}
+
+// ParseOJKPercentage mengubah masukan persentase bertipe string menjadi nilai
+// nullable. Rentang 0-100 inklusif, paling banyak 2 digit desimal.
+func ParseOJKPercentage(field, raw string) (decimal.NullDecimal, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return decimal.NullDecimal{}, nil
+	}
+	d, err := decimal.NewFromString(s)
+	if err != nil || d.IsNegative() || d.GreaterThan(decimal.NewFromInt(100)) || !d.Equal(d.Round(2)) {
+		return decimal.NullDecimal{}, OJKPercentageInvalid(field)
+	}
+	return decimal.NullDecimal{Decimal: d, Valid: true}, nil
+}
+
+// ParseOJKDate mengubah masukan tanggal bertipe string (YYYY-MM-DD) menjadi nilai
+// nullable. String kosong berarti "kosongkan" (NULL).
+func ParseOJKDate(field, raw string) (*time.Time, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return nil, OJKDateInvalid(field)
+	}
+	return &t, nil
+}
+
+// UpdateOJKLoanCodesInput adalah isi PUT sandi OJK per kredit. Semua bidang bertipe
+// pointer-string nullable dengan semantik seragam: absen/null berarti "jangan ubah";
+// string kosong berarti "kosongkan" (NULL); selain itu divalidasi lalu disimpan.
+// Nominal, persentase, dan tanggal juga dikirim sebagai string agar semantiknya sama.
 type UpdateOJKLoanCodesInput struct {
-	OJKJenisPenggunaanCode   *string `json:"ojk_jenis_penggunaan_code,omitempty"`
-	OJKPeriodePembayaranCode *string `json:"ojk_periode_pembayaran_code,omitempty"`
-	OJKKabupatenCode         *string `json:"ojk_kabupaten_code,omitempty"`
+	OJKJenisPenggunaanCode                   *string `json:"ojk_jenis_penggunaan_code,omitempty"`
+	OJKPeriodePembayaranCode                 *string `json:"ojk_periode_pembayaran_code,omitempty"`
+	OJKKabupatenCode                         *string `json:"ojk_kabupaten_code,omitempty"`
+	OJKKelompokKreditCode                    *string `json:"ojk_kelompok_kredit_code,omitempty"`
+	OJKSumberDanaCode                        *string `json:"ojk_sumber_dana_code,omitempty"`
+	OJKKategoriUsahaCode                     *string `json:"ojk_kategori_usaha_code,omitempty"`
+	OJKSifatKreditCode                       *string `json:"ojk_sifat_kredit_code,omitempty"`
+	OJKPenjaminCode                          *string `json:"ojk_penjamin_code,omitempty"`
+	OJKPenjaminBagianPct                     *string `json:"ojk_penjamin_bagian_pct,omitempty"`
+	OJKTanggalMulaiMacet                     *string `json:"ojk_tanggal_mulai_macet,omitempty"`
+	OJKAgunanPPKAAmount                      *string `json:"ojk_agunan_ppka_amount,omitempty"`
+	OJKKelonggaranTarikAmount                *string `json:"ojk_kelonggaran_tarik_amount,omitempty"`
+	OJKProvisiBelumDiamortisasiAmount        *string `json:"ojk_provisi_belum_diamortisasi_amount,omitempty"`
+	OJKBiayaTransaksiBelumDiamortisasiAmount *string `json:"ojk_biaya_transaksi_belum_diamortisasi_amount,omitempty"`
+	OJKPendapatanBungaDitangguhkanAmount     *string `json:"ojk_pendapatan_bunga_ditangguhkan_amount,omitempty"`
+	OJKCadanganKerugianRestrukturisasiAmount *string `json:"ojk_cadangan_kerugian_restrukturisasi_amount,omitempty"`
+	OJKKlasifikasiAsetCode                   *string `json:"ojk_klasifikasi_aset_code,omitempty"`
 }
 
 // IsEmpty melaporkan apakah tidak ada satu bidang pun yang dikirim.
 func (in UpdateOJKLoanCodesInput) IsEmpty() bool {
 	return in.OJKJenisPenggunaanCode == nil &&
 		in.OJKPeriodePembayaranCode == nil &&
-		in.OJKKabupatenCode == nil
+		in.OJKKabupatenCode == nil &&
+		in.OJKKelompokKreditCode == nil &&
+		in.OJKSumberDanaCode == nil &&
+		in.OJKKategoriUsahaCode == nil &&
+		in.OJKSifatKreditCode == nil &&
+		in.OJKPenjaminCode == nil &&
+		in.OJKPenjaminBagianPct == nil &&
+		in.OJKTanggalMulaiMacet == nil &&
+		in.OJKAgunanPPKAAmount == nil &&
+		in.OJKKelonggaranTarikAmount == nil &&
+		in.OJKProvisiBelumDiamortisasiAmount == nil &&
+		in.OJKBiayaTransaksiBelumDiamortisasiAmount == nil &&
+		in.OJKPendapatanBungaDitangguhkanAmount == nil &&
+		in.OJKCadanganKerugianRestrukturisasiAmount == nil &&
+		in.OJKKlasifikasiAsetCode == nil
 }
 
-// Validate memeriksa sandi inline yang dikirim. Sandi referensi (kabupaten) tidak
-// diperiksa di sini karena harus dibandingkan dengan tabel referensi lewat service.
+// Validate memeriksa sandi inline serta nominal/persentase/tanggal yang dikirim.
+// Sandi referensi (kabupaten/penjamin) tidak diperiksa di sini karena harus
+// dibandingkan dengan tabel referensi lewat service.
 func (in UpdateOJKLoanCodesInput) Validate() error {
-	if in.OJKJenisPenggunaanCode != nil {
-		if err := validateOJKInline(*in.OJKJenisPenggunaanCode, ojkJenisPenggunaanAllowed, OJKJenisPenggunaanField); err != nil {
+	inline := []struct {
+		field   string
+		value   *string
+		allowed map[string]struct{}
+	}{
+		{OJKJenisPenggunaanField, in.OJKJenisPenggunaanCode, ojkJenisPenggunaanAllowed},
+		{OJKPeriodePembayaranField, in.OJKPeriodePembayaranCode, ojkPeriodePembayaranAllowed},
+		{OJKSumberDanaField, in.OJKSumberDanaCode, ojkSumberDanaAllowed},
+		{OJKKategoriUsahaField, in.OJKKategoriUsahaCode, ojkKategoriUsahaAllowed},
+		{OJKSifatKreditField, in.OJKSifatKreditCode, ojkSifatKreditAllowed},
+	}
+	for _, item := range inline {
+		if item.value == nil {
+			continue
+		}
+		if err := validateOJKInline(*item.value, item.allowed, item.field); err != nil {
 			return err
 		}
 	}
-	if in.OJKPeriodePembayaranCode != nil {
-		if err := validateOJKInline(*in.OJKPeriodePembayaranCode, ojkPeriodePembayaranAllowed, OJKPeriodePembayaranField); err != nil {
+
+	if in.OJKPenjaminBagianPct != nil {
+		if _, err := ParseOJKPercentage(OJKPenjaminBagianPctField, *in.OJKPenjaminBagianPct); err != nil {
+			return err
+		}
+	}
+	if in.OJKTanggalMulaiMacet != nil {
+		if _, err := ParseOJKDate(OJKTanggalMulaiMacetField, *in.OJKTanggalMulaiMacet); err != nil {
+			return err
+		}
+	}
+	amounts := []struct {
+		field string
+		value *string
+	}{
+		{OJKAgunanPPKAAmountField, in.OJKAgunanPPKAAmount},
+		{OJKKelonggaranTarikAmountField, in.OJKKelonggaranTarikAmount},
+		{OJKProvisiBelumDiamortisasiAmountField, in.OJKProvisiBelumDiamortisasiAmount},
+		{OJKBiayaTransaksiBelumDiamortisasiAmountField, in.OJKBiayaTransaksiBelumDiamortisasiAmount},
+		{OJKPendapatanBungaDitangguhkanAmountField, in.OJKPendapatanBungaDitangguhkanAmount},
+		{OJKCadanganKerugianRestrukturisasiAmountField, in.OJKCadanganKerugianRestrukturisasiAmount},
+	}
+	for _, item := range amounts {
+		if item.value == nil {
+			continue
+		}
+		if _, err := ParseOJKAmount(item.field, *item.value); err != nil {
 			return err
 		}
 	}
