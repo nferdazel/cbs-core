@@ -22,6 +22,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { KpmmReport } from "@/components/report/KpmmReport";
+import { OJKMonthlyFormsCard } from "@/components/report/OJKMonthlyFormsCard";
 
 function isoDate(date: Date): string {
   const year = date.getFullYear();
@@ -340,6 +341,8 @@ export default function LaporanPage() {
           </CardContent>
         </Card>
       )}
+
+      <OJKMonthlyFormsCard />
     </>
   );
 }

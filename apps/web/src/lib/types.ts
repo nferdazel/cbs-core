@@ -371,6 +371,23 @@ export interface OJKMappingReview {
   source_unbalanced: boolean;
 }
 
+/**
+ * Satu form Laporan Bulanan BPR dari GET /reports/ojk/definitions
+ * (apps/api/internal/ojkreport/definitions.go, OJKFormDefinition). Field disalin
+ * dari struct Go: form yang belum dapat dibangun menyertakan `unavailable_reason`.
+ */
+export interface OJKMonthlyForm {
+  form: string;
+  name: string;
+  buildable: boolean;
+  unavailable_reason?: string;
+}
+
+/** Respons GET /reports/ojk/definitions (handler OJKReportHandler.Definitions). */
+export interface OJKDefinitions {
+  monthly_forms: OJKMonthlyForm[];
+}
+
 /** domain.EODSummaryResult (system_date.go) */
 export interface EODSummaryResult {
   executed_date: string;

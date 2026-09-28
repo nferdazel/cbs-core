@@ -749,6 +749,22 @@ export const dictionaryEN: Dictionary = {
     kpmmModalIntiMinFrac: "Minimum Core Capital Ratio",
     kpmmModalIntiMinAmount: "Minimum Core Capital (Amount)",
     kpmmCatatanTitle: "Calculation Notes",
+    ojkFormsTitle: "OJK Monthly Report Form Coverage",
+    ojkFormsDescription:
+      "List of BPR Monthly Report forms for the APOLO channel with their status. Forms not yet published stay listed so coverage is visible, not hidden.",
+    ojkFormsLoading: "Loading the OJK form list...",
+    ojkFormsForbidden:
+      "Your account may not read the OJK form list (reports:export).",
+    ojkFormsLoadError: "The OJK form list failed to load.",
+    ojkFormsEmpty: "No OJK forms are registered.",
+    ojkFormsColForm: "Form Code",
+    ojkFormsColName: "Form Name",
+    ojkFormsColStatus: "Status",
+    ojkFormsColReason: "Reason Not Published",
+    ojkFormsStatusPublished: "Published",
+    ojkFormsStatusUnpublished: "Not published",
+    ojkFormsNotBankFault:
+      '"Not published" is not a judgment on the bank\'s compliance. Reasons that mention documents or files outside the system are prepared manually outside the app; other reasons mean the data assembler is not yet available. Both block automatic assembly, not evidence of incorrect bank data.',
   },
   products: {
     title: "Products",

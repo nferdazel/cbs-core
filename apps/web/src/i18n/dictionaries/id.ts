@@ -745,6 +745,22 @@ export const dictionaryID = {
     kpmmModalIntiMinFrac: "Rasio Modal Inti Minimum",
     kpmmModalIntiMinAmount: "Modal Inti Minimum (Nominal)",
     kpmmCatatanTitle: "Catatan Perhitungan",
+    ojkFormsTitle: "Kelengkapan Form Laporan Bulanan OJK",
+    ojkFormsDescription:
+      "Daftar form Laporan Bulanan BPR untuk kanal APOLO beserta statusnya. Form yang belum terbit tetap terdaftar supaya cakupannya terlihat, bukan disembunyikan.",
+    ojkFormsLoading: "Memuat daftar form OJK...",
+    ojkFormsForbidden:
+      "Akun Anda tidak berwenang membaca daftar form OJK (reports:export).",
+    ojkFormsLoadError: "Daftar form OJK gagal dimuat.",
+    ojkFormsEmpty: "Tidak ada form OJK yang terdaftar.",
+    ojkFormsColForm: "Kode Form",
+    ojkFormsColName: "Nama Form",
+    ojkFormsColStatus: "Status",
+    ojkFormsColReason: "Alasan Belum Terbit",
+    ojkFormsStatusPublished: "Terbit",
+    ojkFormsStatusUnpublished: "Belum terbit",
+    ojkFormsNotBankFault:
+      'Status "belum terbit" bukan penilaian atas kepatuhan bank. Alasan yang menyebut dokumen atau berkas di luar sistem memang disusun manual di luar aplikasi; alasan lain berarti perakit datanya belum tersedia di sistem. Keduanya menghambat perakitan otomatis, bukan tanda data bank salah.',
   },
   products: {
     title: "Produk",
