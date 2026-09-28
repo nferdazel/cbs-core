@@ -100,6 +100,8 @@ var COAMappingDraft = []MappingEntry{
 	{COACode: "10700", Form: "01.00", Sandi: "1202020000", Sign: -1, Note: "Akumulasi Penyusutan mengurangi aset tetap"},
 	{COACode: "10800", Form: "01.00", Sandi: "1204000000", Sign: 1, Note: "Aset Antarkantor"},
 	{COACode: "10900", Form: "01.00", Sandi: "1104020000", Sign: -1, Note: "CKPN/PPAP kredit mengurangi Kredit yang Diberikan"},
+	{COACode: "10950", Form: "01.00", Sandi: "1104020000", Sign: -1, Verified: false,
+		Note: "CKPN - Kredit: akun cadangan mesin CKPN (migrasi 000042), kontra-aset atas Kredit yang Diberikan; perlakuan sama dengan 10900 (PPAP). Tanpa pemetaan ini saldonya hilang dari Form 01.00 begitu CKPN menyala."},
 	{COACode: "10999", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
 		Note: "Akun Sementara (Suspense); diusulkan ke Aset Lainnya"},
 
@@ -116,6 +118,8 @@ var COAMappingDraft = []MappingEntry{
 	{COACode: "11700", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
 		Note: "Piutang Denda Syariah; diusulkan ke Aset Lainnya"},
 	{COACode: "11900", Form: "01.00", Sandi: "1104020000", Sign: -1, Note: "Cadangan Kerugian Pembiayaan mengurangi Kredit yang Diberikan"},
+	{COACode: "11950", Form: "01.00", Sandi: "1104020000", Sign: -1, Verified: false,
+		Note: "CKPN - Pembiayaan (buku syariah, migrasi 000042): kontra-aset pembiayaan; perlakuan sama dengan 11900"},
 
 	// ── Form 01.00: LIABILITAS ──────────────────────────────────────────────
 	{COACode: "20100", Form: "01.00", Sandi: "2102010100", Sign: 1, Note: "Tabungan -> Simpanan a. Tabungan"},
@@ -192,6 +196,13 @@ var COAMappingDraft = []MappingEntry{
 	// ── Form 02.00: BEBAN OPERASIONAL ───────────────────────────────────────
 	{COACode: "50100", Form: "02.00", Sandi: "5101010200", Sign: 1, Note: "Beban Bunga Deposito -> Beban Bunga Kontraktual Deposito"},
 	{COACode: "50200", Form: "02.00", Sandi: "5103030200", Sign: 1, Note: "Beban Penyisihan Kerugian Kredit -> Beban Kerugian Penurunan Nilai kredit pihak ketiga"},
+	// Akun CKPN dan restrukturisasi (migrasi 000042/000043) berdiri sendiri dari
+	// PPAP 50200; posnya mengikuti pemakaian 50200/15200 agar satu jenis beban tidak
+	// terpecah dua pos.
+	{COACode: "50301", Form: "02.00", Sandi: "5103030200", Sign: 1, Verified: false,
+		Note: "Beban Kerugian Penurunan Nilai - Kredit (sisi debit pembentukan CKPN, migrasi 000042); pos sama dengan 50200"},
+	{COACode: "50401", Form: "02.00", Sandi: "5102000000", Sign: 1, Verified: false,
+		Note: "Beban Kerugian Restrukturisasi Kredit (migrasi 000043) -> pos Form 02.00 bernama sama persis"},
 	{COACode: "50300", Form: "02.00", Sandi: "5106010100", Sign: 1, Note: "Beban Gaji dan Tunjangan -> Gaji dan Upah"},
 	{COACode: "50400", Form: "02.00", Sandi: "5106080000", Sign: 1, Verified: false,
 		Note: "Beban Umum dan Administrasi belum dirinci; diusulkan ke Beban Barang dan Jasa"},
@@ -200,6 +211,10 @@ var COAMappingDraft = []MappingEntry{
 	{COACode: "15100", Form: "02.00", Sandi: "5101010200", Sign: 1, Verified: false,
 		Note: "Bagi Hasil untuk Pemilik Dana; diusulkan ke beban bunga deposito, form syariah belum dipetakan rinci"},
 	{COACode: "15200", Form: "02.00", Sandi: "5103030200", Sign: 1, Note: "Beban Penyisihan Kerugian Pembiayaan -> Beban Kerugian Penurunan Nilai kredit"},
+	{COACode: "15901", Form: "02.00", Sandi: "5103030200", Sign: 1, Verified: false,
+		Note: "Beban Kerugian Penurunan Nilai - Pembiayaan (migrasi 000042); pos sama dengan 15200"},
+	{COACode: "15902", Form: "02.00", Sandi: "5102000000", Sign: 1, Verified: false,
+		Note: "Beban Kerugian Restrukturisasi Pembiayaan (migrasi 000043); pos sama dengan 50401"},
 	{COACode: "15900", Form: "02.00", Sandi: "5199990000", Sign: 1, Note: "Beban Lainnya Syariah -> Beban Lainnya - Lainnya"},
 
 	// ── Form 02.00: PAJAK (di bawah laba sebelum pajak) ─────────────────────

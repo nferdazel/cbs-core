@@ -6,21 +6,25 @@ import (
 )
 
 // seedLeafCOACodes adalah akun daun pada bagan akun baku (migrasi 000004/000005/
-// 000019/000024). Daftar ini sengaja ditulis eksplisit sebagai jaring pengaman:
-// bila kelak ada COA baru yang belum dipetakan, uji ini gagal dan ekspor tidak
-// diam-diam menghasilkan laporan bolong.
+// 000019/000024/000042/000043). Daftar ini sengaja ditulis eksplisit sebagai jaring
+// pengaman: bila kelak ada COA baru yang belum dipetakan, uji ini gagal dan ekspor
+// tidak diam-diam menghasilkan laporan bolong. Karena itu setiap akun daun yang
+// ditambah migrasi HARUS masuk daftar ini bersama pemetaannya — enam akun CKPN dan
+// restrukturisasi dari 000042/000043 sempat terlewat dan bolongnya baru ketahuan
+// ketika daftar ini dibandingkan ulang dengan seluruh seed.
 var seedLeafCOACodes = []string{
 	"10100", "10101", "10200", "10300", "10301", "10305", "10400", "10500", "10600",
-	"10700", "10800", "10900", "10999",
+	"10700", "10800", "10900", "10950", "10999",
 	"11100", "11200", "11300", "11310", "11320", "11400", "11500", "11600", "11700", "11900",
+	"11950",
 	"12100", "12200", "12300", "12400", "12500", "12900",
 	"13100", "13200",
 	"14100", "14200", "14300", "14400", "14500", "14600", "14900",
-	"15100", "15200", "15900",
+	"15100", "15200", "15900", "15901", "15902",
 	"20100", "20200", "20300", "20400", "20500", "20600", "20700", "20800",
 	"30100", "30200", "30300", "30400",
 	"40100", "40200", "40300", "40400", "40500", "40900",
-	"50100", "50200", "50300", "50400", "50500", "50900",
+	"50100", "50200", "50300", "50301", "50400", "50401", "50500", "50900",
 	"60100",
 }
 
