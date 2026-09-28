@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"cbs-core/apps/core-api/internal/domain"
 	"github.com/shopspring/decimal"
 )
 
@@ -73,7 +74,8 @@ func TestForm09KodeAdaDiSeedDanSandiAdaDiSusunan(t *testing.T) {
 // buildForm09 memakai nama pos resmi untuk baris yang punya sumber dan menandai baris
 // yang belum punya akun COA sebagai tidak tersedia (bukan nol).
 func TestBuildForm09MenandaiPosTanpaSumber(t *testing.T) {
-	sec := buildForm09(map[string]decimal.Decimal{"1299010200": decimal.NewFromInt(200)})
+	sec := buildForm09(map[string]decimal.Decimal{"1299010200": decimal.NewFromInt(200)},
+		ReportingOffice{Reason: "belum ada kantor aktif ber-sandi"})
 	if sec.Form != "09.00" {
 		t.Fatalf("form = %q, ingin 09.00", sec.Form)
 	}
@@ -192,4 +194,63 @@ func form09Value(t *testing.T, sec TableSection, sandi string) decimal.Decimal {
 	}
 	t.Fatalf("baris Form 09.00 sandi %s tidak ditemukan", sandi)
 	return decimal.Zero
+}
+
+// Kolom I Form 09.00 kini bersumber dari kantor pelapor tunggal pada bank_offices.
+// Lewat RepoSource, kolom I muncul sebagai kolom nyata paling kiri ber-sandi kantor
+// itu dan tidak lagi didaftarkan sebagai tidak tersedia.
+func TestBuilderForm09KolomSandiKantorLewatRepoSource(t *testing.T) {
+	src := RepoSource{
+		Source: newStubSource(),
+		Kelembagaan: kelembagaanRepoStub{offices: []domain.BankOffice{
+			{Code: "001", Name: "Kantor Pusat", Status: domain.KelembagaanKantorAktif},
+		}},
+	}
+	b, err := NewBuilder(src).GenerateMonthly(
+		context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("GenerateMonthly: %v", err)
+	}
+	sec := tableByForm(t, b, "09.00")
+	if punyaUnavailable(sec.Unavailable, "I") {
+		t.Fatal("kolom I tidak boleh tidak tersedia saat kantor pelapor tunggal tersedia")
+	}
+	if len(sec.Columns) == 0 || sec.Columns[0].Sandi != "I" || sec.Columns[0].Nama != "Sandi Kantor" {
+		t.Fatalf("kolom pertama = %+v, ingin I Sandi Kantor", sec.Columns)
+	}
+	if len(sec.Rows) == 0 {
+		t.Fatal("Form 09.00 tidak punya baris")
+	}
+	for _, r := range sec.Rows {
+		if got := cellValue(r, "I"); got != "001" {
+			t.Errorf("baris %s kolom I = %q, ingin 001", r.Key, got)
+		}
+	}
+}
+
+// Lebih dari satu kantor aktif ber-sandi: kolom I tetap tidak tersedia dengan alasan
+// yang menyebut jumlahnya; sistem tidak memilih kantor pelapor sendiri.
+func TestBuilderForm09KolomSandiKantorBanyakKantor(t *testing.T) {
+	src := RepoSource{
+		Source: newStubSource(),
+		Kelembagaan: kelembagaanRepoStub{offices: []domain.BankOffice{
+			{Code: "001", Name: "Kantor A", Status: domain.KelembagaanKantorAktif},
+			{Code: "002", Name: "Kantor B", Status: domain.KelembagaanKantorAktif},
+		}},
+	}
+	b, err := NewBuilder(src).GenerateMonthly(
+		context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
+	if err != nil {
+		t.Fatalf("GenerateMonthly: %v", err)
+	}
+	sec := tableByForm(t, b, "09.00")
+	u := unavailableColumn(t, sec, "I")
+	if !strings.Contains(u.Reason, "2 kantor aktif ber-sandi") {
+		t.Fatalf("alasan kolom I = %q, ingin menyebut 2 kantor aktif ber-sandi", u.Reason)
+	}
+	for _, c := range sec.Columns {
+		if c.Sandi == "I" {
+			t.Fatal("kolom I tidak boleh tersedia saat kantor pelapor ambigu")
+		}
+	}
 }

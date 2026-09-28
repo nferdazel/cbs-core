@@ -795,9 +795,22 @@ func (h *OJKReportHandler) ExportOffBalance(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Kolom I Sandi Kantor diambil dari kantor pelapor tunggal bila sumbernya
+	// tersedia (RepoSource); tanpa itu tetap dinyatakan tidak tersedia, bukan "-"
+	// tanpa alasan.
+	kantor := ojkreport.ReportingOffice{Reason: "register rekening administratif dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
 	Success(w, http.StatusOK, i18n.MsgOffBalanceReport, map[string]any{
 		"report": report,
-		"tables": []ojkreport.TableSection{ojkreport.BuildForm01_01(report.Aggregates)},
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm01_01(report.Aggregates, kantor)},
 	})
 }
 

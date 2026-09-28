@@ -3,6 +3,7 @@ package ojkreport
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,5 +176,92 @@ func TestListLoansForOJKMengisiSandiReferensiDariCustomer(t *testing.T) {
 	}
 	if rows[2].OJKPihakLawanCode != "" || rows[2].OJKSektorEkonomiCode != "" {
 		t.Errorf("sandi nasabah B belum diisi, ingin kosong, dapat %q/%q", rows[2].OJKPihakLawanCode, rows[2].OJKSektorEkonomiCode)
+	}
+}
+
+// kelembagaanRepoStub mengimplementasikan domain.KelembagaanRepository untuk menguji
+// pemilihan kantor pelapor tanpa basis data.
+type kelembagaanRepoStub struct {
+	domain.KelembagaanRepository
+	offices []domain.BankOffice
+	err     error
+}
+
+func (s kelembagaanRepoStub) ListOffices(context.Context) ([]domain.BankOffice, error) {
+	return s.offices, s.err
+}
+
+var _ domain.KelembagaanRepository = kelembagaanRepoStub{}
+
+// TestRepoSourceReportingOffice menutup tiga aturan pemilihan kantor pelapor kolom I:
+// tepat satu kantor AKTIF ber-sandi dipakai; nol dan lebih dari satu dinyatakan tidak
+// tersedia beserta alasan spesifik, tanpa menebak "kantor pusat".
+func TestRepoSourceReportingOffice(t *testing.T) {
+	tutup := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		nama       string
+		offices    []domain.BankOffice
+		wantSandi  string
+		wantNama   string
+		wantReason string
+	}{
+		{
+			nama: "satu kantor aktif ber-sandi",
+			offices: []domain.BankOffice{
+				{Code: "001", Name: "Kantor Pusat", Status: domain.KelembagaanKantorAktif},
+				{Code: "", Name: "Kantor Tanpa Sandi", Status: domain.KelembagaanKantorAktif},
+				{Code: "002", Name: "Kantor Tutup", Status: domain.KelembagaanKantorTutup},
+				{Code: "003", Name: "Kantor Tertutup", Status: domain.KelembagaanKantorAktif, ClosedAt: &tutup},
+			},
+			wantSandi: "001",
+			wantNama:  "Kantor Pusat",
+		},
+		{
+			nama: "nol kantor aktif ber-sandi",
+			offices: []domain.BankOffice{
+				{Code: "", Name: "Tanpa Sandi", Status: domain.KelembagaanKantorAktif},
+				{Code: "009", Name: "Tutup", Status: domain.KelembagaanKantorTutup},
+			},
+			wantReason: "belum ada kantor aktif ber-sandi",
+		},
+		{
+			nama: "banyak kantor aktif ber-sandi",
+			offices: []domain.BankOffice{
+				{Code: "001", Name: "Kantor A", Status: domain.KelembagaanKantorAktif},
+				{Code: "002", Name: "Kantor B", Status: domain.KelembagaanKantorAktif},
+			},
+			wantReason: "2 kantor aktif ber-sandi; sistem tidak memilih kantor pelapor sendiri",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.nama, func(t *testing.T) {
+			src := RepoSource{Kelembagaan: kelembagaanRepoStub{offices: tc.offices}}
+			got, err := src.ReportingOffice(context.Background())
+			if err != nil {
+				t.Fatalf("ReportingOffice: %v", err)
+			}
+			if got.Sandi != tc.wantSandi || got.Nama != tc.wantNama {
+				t.Errorf("kantor = %q/%q, ingin %q/%q", got.Sandi, got.Nama, tc.wantSandi, tc.wantNama)
+			}
+			if tc.wantReason == "" {
+				if strings.TrimSpace(got.Reason) != "" {
+					t.Errorf("kantor tersedia tetapi ada alasan: %q", got.Reason)
+				}
+				return
+			}
+			if !strings.Contains(got.Reason, tc.wantReason) {
+				t.Errorf("alasan = %q, ingin memuat %q", got.Reason, tc.wantReason)
+			}
+		})
+	}
+
+	// Tanpa repositori: kolom I tetap tidak tersedia, bukan diisi sandi karangan.
+	got, err := (RepoSource{}).ReportingOffice(context.Background())
+	if err != nil {
+		t.Fatalf("tanpa repositori: %v", err)
+	}
+	if got.Sandi != "" || !strings.Contains(got.Reason, "belum dikonfigurasi") {
+		t.Fatalf("tanpa repositori: %+v", got)
 	}
 }

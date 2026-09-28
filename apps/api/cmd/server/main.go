@@ -272,7 +272,8 @@ func main() {
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN: baca bank-wide + jalur tulis berizin system:config yang
 	// teraudit (migrasi 000112). Tidak menyentuh angka keuangan.
-	kelembagaanSvc := service.NewKelembagaanService(db, postgres.NewKelembagaanRepository(db), auditRepo)
+	kelembagaanRepo := postgres.NewKelembagaanRepository(db)
+	kelembagaanSvc := service.NewKelembagaanService(db, kelembagaanRepo, auditRepo)
 
 	// Register rekening administratif (pos komitmen/kontinjensi off-balance) untuk
 	// Form 01.01: baca bank-wide + jalur tulis berizin system:config yang teraudit
@@ -297,6 +298,7 @@ func main() {
 		Savings:      postgres.NewSavingsCustomerRepository(db),
 		BankDeposits: postgres.NewBankDepositRepository(db),
 		OffBalance:   offBalanceRepo,
+		Kelembagaan:  kelembagaanRepo,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)

@@ -2,6 +2,7 @@ package ojkreport
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -48,6 +49,10 @@ type RepoSource struct {
 	// kontinjensi off-balance). Bila nil, form dinyatakan belum tersedia; tidak ada
 	// angka yang dikarang.
 	OffBalance domain.OffBalanceRepository
+	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
+	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
+	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
+	Kelembagaan domain.KelembagaanRepository
 }
 
 // pageSizeKredit membatasi jumlah kredit per halaman pembacaan.
@@ -334,6 +339,55 @@ func (s RepoSource) ListOffBalanceForOJK(ctx context.Context, asOf time.Time, ac
 		return nil, nil
 	}
 	return s.OffBalance.ListAggregates(ctx, asOf)
+}
+
+// ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,
+// migrasi 000112). Aturan pemilihan ada di selectReportingOffice. Bila repositori
+// kelembagaan belum dirangkai, kolom I tetap dinyatakan tidak tersedia, bukan diisi
+// tebakan.
+func (s RepoSource) ReportingOffice(ctx context.Context) (ReportingOffice, error) {
+	if s.Kelembagaan == nil {
+		return ReportingOffice{Reason: "sumber jaringan kantor (bank_offices) belum dikonfigurasi pada ekspor ini"}, nil
+	}
+	offices, err := s.Kelembagaan.ListOffices(ctx)
+	if err != nil {
+		return ReportingOffice{}, err
+	}
+	return selectReportingOffice(offices), nil
+}
+
+// selectReportingOffice memilih kantor pelapor untuk kolom I form bank-wide:
+//   - hanya kantor berstatus AKTIF dan closed_at kosong;
+//   - hanya kantor yang code-nya tidak kosong (code = sandi kantor yang bank pakai);
+//   - TEPAT SATU hasil dipakai sebagai sandi dan nama kantor pelapor;
+//   - NOL hasil -> tidak tersedia dengan alasan spesifik;
+//   - LEBIH DARI SATU -> tidak tersedia dengan jumlahnya; sistem tidak menebak
+//     "kantor pusat" dari office_type (teks bebas bank) dan tidak mengarang sandi.
+func selectReportingOffice(offices []domain.BankOffice) ReportingOffice {
+	var aktifBerSandi []domain.BankOffice
+	for _, o := range offices {
+		if o.Status != domain.KelembagaanKantorAktif {
+			continue
+		}
+		if o.ClosedAt != nil && !o.ClosedAt.IsZero() {
+			continue
+		}
+		if strings.TrimSpace(o.Code) == "" {
+			continue
+		}
+		aktifBerSandi = append(aktifBerSandi, o)
+	}
+	switch len(aktifBerSandi) {
+	case 0:
+		return ReportingOffice{Reason: "belum ada kantor aktif ber-sandi pada bank_offices (status TUTUP, closed_at terisi, atau code kosong); kolom Sandi Kantor tidak dikarang"}
+	case 1:
+		return ReportingOffice{
+			Sandi: strings.TrimSpace(aktifBerSandi[0].Code),
+			Nama:  strings.TrimSpace(aktifBerSandi[0].Name),
+		}
+	default:
+		return ReportingOffice{Reason: fmt.Sprintf("%d kantor aktif ber-sandi; sistem tidak memilih kantor pelapor sendiri", len(aktifBerSandi))}
+	}
 }
 
 // loanRowDariDomain memetakan kredit domain ke baris Form 06.00/NPL. Hanya field

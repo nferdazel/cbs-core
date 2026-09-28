@@ -24,8 +24,9 @@ import (
 //   - Nama pos resmi hanya dipetakan untuk sandi yang memang tercantum di PDF #page
 //     110; sandi di luar itu ditampilkan dengan uraian bank apa adanya, tidak ditutup
 //     dengan nama karangan. Baris tanpa sandi ditulis "-" pada kolom Sandi.
-//   - Kolom I "Sandi Kantor" tidak punya sumber: register bersifat bank-wide dan tidak
-//     menyimpan kantor, jadi didaftarkan Unavailable, bukan diisi "-" tanpa alasan.
+//   - Kolom I "Sandi Kantor" diambil dari kantor pelapor tunggal pada bank_offices
+//     (migrasi 000112); register-nya sendiri bank-wide. Aturan pemilihan ada di
+//     selectReportingOffice (repo_source.go).
 
 // OffBalanceSource menyediakan agregat register rekening administratif bank-wide.
 // Kontraknya opsional pada perakitan RepoSource: tanpa sumber ini Form 01.01
@@ -63,9 +64,10 @@ var form0101PositionNames = map[string]string{
 }
 
 // BuildForm01_01 menyusun tabel Form 01.01 dari agregat register yang sudah dihitung
-// sumber data. Fungsi ini murni sehingga dapat diuji tanpa basis data. Bila tidak ada
-// baris, Rows kosong tetapi daftar kolom yang belum tersedia tetap dibawa.
-func BuildForm01_01(rows []domain.OffBalanceAggregate) TableSection {
+// sumber data dan kantor pelapor kolom I. Fungsi ini murni sehingga dapat diuji tanpa
+// basis data. Bila tidak ada baris, Rows kosong tetapi daftar kolom yang belum
+// tersedia tetap dibawa.
+func BuildForm01_01(rows []domain.OffBalanceAggregate, kantor ReportingOffice) TableSection {
 	sec := TableSection{
 		Form:     "01.01",
 		Name:     formName("01.01"),
@@ -76,15 +78,11 @@ func BuildForm01_01(rows []domain.OffBalanceAggregate) TableSection {
 			{Sandi: "KATEGORI", Nama: "Kategori"},
 			{Sandi: "IV", Nama: "Jumlah"},
 		},
-		Unavailable: []ColumnUnavailable{
-			{Sandi: "I", Nama: "Sandi Kantor",
-				Reason: "register rekening administratif dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"},
-		},
 		Notes: []string{
 			"Nama pos resmi mengikuti Form 01.01 - 1 SEOJK No. 16/SEOJK.03/2024 (PDF #page 110, hlm. 58); sandi di luar daftar resmi ditampilkan memakai uraian bank, bukan nama karangan.",
 			"Seluruh angka berasal dari register rekening administratif yang bank isi. Sistem tidak menurunkan pos dari jurnal dan memakai basis kas untuk kredit NPL (docs/KEPUTUSAN-OJK.md §4), sehingga pos seperti Pendapatan Bunga Dalam Penyelesaian dan Aset Produktif yang Dihapus Buku hanya muncul bila bank mencatatnya.",
 			"Baris diagregasi per kategori dan sandi pos; pos tanpa sandi dipisah menurut uraian bank. Baris tanpa sandi ditulis \"-\" pada kolom Sandi.",
-			"Form 01.01 lengkap (Sandi Kantor + Nama Rekening + Sandi + Jumlah) belum dapat direkonstruksi karena register tidak menyimpan kantor; yang disajikan adalah posisi bank-wide.",
+			"Kolom I Sandi Kantor diambil dari kantor pelapor tunggal pada bank_offices (migrasi 000112), bukan dari register; baris register tetap bank-wide sehingga tidak dipisah per kantor. Bila jumlah kantor aktif ber-sandi bukan tepat satu, kolom dinyatakan tidak tersedia, bukan dikarang.",
 		},
 	}
 	for _, a := range rows {
@@ -105,5 +103,6 @@ func BuildForm01_01(rows []domain.OffBalanceAggregate) TableSection {
 		)
 		sec.Rows = append(sec.Rows, row)
 	}
+	pasangKolomSandiKantor(&sec, kantor)
 	return sec
 }

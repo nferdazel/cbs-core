@@ -1,5 +1,7 @@
 package ojkreport
 
+import "strings"
+
 // tables.go memuat representasi form daftar/rincian (Form 00.00, 05.00, 06.00).
 //
 // Berbeda dari Form 01.00/02.00 yang berupa pos-pos neraca/laba rugi, form daftar
@@ -50,4 +52,23 @@ type TableSection struct {
 	Unavailable []ColumnUnavailable
 	// Notes mencatat batas sumber data yang perlu diketahui pembaca berkas.
 	Notes []string
+}
+
+// pasangKolomSandiKantor menambahkan kolom I "Sandi Kantor" sebagai kolom paling kiri
+// ke setiap baris sec. Bila kantor pelapor tersedia (Reason kosong), kolom menjadi
+// kolom nyata bernilai sandi kantor itu; bila tidak, kolom didaftarkan pada Unavailable
+// beserta alasan spesifiknya. Aturan pemilihan kantor ada di selectReportingOffice
+// (repo_source.go).
+func pasangKolomSandiKantor(sec *TableSection, kantor ReportingOffice) {
+	if strings.TrimSpace(kantor.Reason) != "" {
+		sec.Unavailable = append(sec.Unavailable, ColumnUnavailable{
+			Sandi: "I", Nama: "Sandi Kantor", Reason: kantor.Reason,
+		})
+		return
+	}
+	sec.Columns = append([]TableColumn{{Sandi: "I", Nama: "Sandi Kantor"}}, sec.Columns...)
+	cell := TableCell{Sandi: "I", Nama: "Sandi Kantor", Value: kantor.Sandi}
+	for i := range sec.Rows {
+		sec.Rows[i].Cells = append([]TableCell{cell}, sec.Rows[i].Cells...)
+	}
 }

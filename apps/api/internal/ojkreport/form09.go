@@ -29,7 +29,9 @@ import "github.com/shopspring/decimal"
 //   - Tiga pos anak 1299010100/1299010300/1299010900 belum punya akun COA; ditulis
 //     sebagai baris tidak tersedia dengan alasan, bukan nol. Pos itu TIDAK diisi dari
 //     Form 05.00/06.00 karena akan membuat total Form 09.00 berbeda dari Form 01.00.
-//   - Kolom I "Sandi Kantor" belum punya sumber: saldo COA bersifat bank-wide.
+//   - Kolom I "Sandi Kantor" diambil dari kantor pelapor tunggal pada bank_offices
+//     (migrasi 000112); saldo COA-nya sendiri bank-wide. Aturan pemilihan ada di
+//     selectReportingOffice (repo_source.go).
 
 // form09Lines adalah susunan resmi Form 09.00. Sandi dan nama pos diambil apa adanya
 // dari PDF #page 187; Reason diisi hanya untuk pos yang belum punya akun COA.
@@ -53,9 +55,9 @@ var form09Lines = []formLine{
 }
 
 // buildForm09 menyusun tabel Form 09.00 dari saldo per sandi yang sudah dihitung
-// (setelah deriveTotals mengisi baris 1299010000 dari pos anaknya). Fungsi ini murni
-// sehingga dapat diuji tanpa basis data.
-func buildForm09(amounts map[string]decimal.Decimal) TableSection {
+// (setelah deriveTotals mengisi baris 1299010000 dari pos anaknya) dan kantor pelapor
+// kolom I. Fungsi ini murni sehingga dapat diuji tanpa basis data.
+func buildForm09(amounts map[string]decimal.Decimal, kantor ReportingOffice) TableSection {
 	sec := TableSection{
 		Form:     "09.00",
 		Name:     formName("09.00"),
@@ -65,15 +67,11 @@ func buildForm09(amounts map[string]decimal.Decimal) TableSection {
 			{Sandi: "III", Nama: "Sandi"},
 			{Sandi: "IV", Nama: "Jumlah"},
 		},
-		Unavailable: []ColumnUnavailable{
-			{Sandi: "I", Nama: "Sandi Kantor",
-				Reason: "saldo aset lainnya dibaca bank-wide dari bagan akun (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"},
-		},
 		Notes: []string{
 			"Seluruh angka berasal dari saldo COA yang sama dengan pos Aset Lainnya (1299000000) Form 01.00, sehingga total Form 09.00 selalu sama dengan pos itu; pemetaan ada di COAMapping09Draft.",
 			"Pos 1299010100 (a. Penempatan pada Bank Lain), 1299010300 (c. Surat Berharga), dan 1299010900 (d. Lainnya) belum punya akun COA, jadi ditulis tidak tersedia, bukan nol. Pos itu tidak diisi dari Form 05.00/06.00 karena akan membuat total Form 09.00 berbeda dari Form 01.00.",
 			"Pos 1299010000 (Pendapatan Bunga yang Akan Diterima) adalah jumlah dari pos anak a sampai d.",
-			"Kolom I Sandi Kantor belum tersedia karena saldo COA bersifat bank-wide.",
+			"Kolom I Sandi Kantor diambil dari kantor pelapor tunggal pada bank_offices (hanya kantor AKTIF ber-sandi); bila jumlahnya bukan tepat satu, kolom dinyatakan tidak tersedia, bukan dikarang.",
 		},
 	}
 	for _, l := range form09Lines {
@@ -100,5 +98,6 @@ func buildForm09(amounts map[string]decimal.Decimal) TableSection {
 			},
 		})
 	}
+	pasangKolomSandiKantor(&sec, kantor)
 	return sec
 }

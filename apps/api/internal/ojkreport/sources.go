@@ -366,6 +366,25 @@ type BankDepositSource interface {
 	ListBankDepositsForOJK(ctx context.Context, actor domain.Actor) ([]BankDepositRow, error)
 }
 
+// ReportingOffice adalah kantor pelapor yang dipakai mengisi kolom I "Sandi Kantor"
+// pada form bank-wide (09.00, 01.01). Sumbernya bank_offices (migrasi 000112):
+// Code = sandi kantor yang bank pakai, Name = nama kantor. Reason terisi berarti
+// kantor pelapor tidak dapat ditentukan; Sandi dan Nama dibiarkan kosong dan form
+// menulis kolom I sebagai tidak tersedia, bukan dikarang.
+type ReportingOffice struct {
+	Sandi  string
+	Nama   string
+	Reason string
+}
+
+// ReportingOfficeSource menyediakan satu kantor pelapor untuk form bank-wide.
+// Kontraknya opsional pada perakitan RepoSource: tanpa sumber ini, atau bila jumlah
+// kantor aktif ber-sandi bukan tepat satu, kolom I dinyatakan tidak tersedia beserta
+// alasan spesifik. Aturan pemilihan ada di selectReportingOffice (repo_source.go).
+type ReportingOfficeSource interface {
+	ReportingOffice(ctx context.Context) (ReportingOffice, error)
+}
+
 // aktifUntukOJK melaporkan apakah kredit masih punya eksposur berjalan menurut
 // statusnya. Mengikuti domain.LoanStatus.IsCKPNActive: hanya DISBURSED dan DEFAULTED.
 func aktifUntukOJK(status string) bool {

@@ -303,6 +303,19 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 	var tables []TableSection
 	var skipped []OJKFormDefinition
 
+	// Kantor pelapor kolom I untuk form bank-wide 09.00/01.01 dipilih SEKALI dari
+	// jaringan kantor (bank_offices). Bila sumbernya tidak ada atau jumlah kantor
+	// aktif ber-sandi bukan tepat satu, kedua form menulis kolom I sebagai tidak
+	// tersedia beserta alasannya; sandinya tidak dikarang.
+	kantor := ReportingOffice{Reason: "sumber jaringan kantor (bank_offices) belum dikonfigurasi pada ekspor ini"}
+	if ros, ok := b.source.(ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		kantor = k
+	}
+
 	// Form 00.00 Informasi Pokok BPR: dari konfigurasi bank.
 	if ps, ok := b.source.(BankProfileSource); ok {
 		cfg, err := ps.GetBankProfileConfig(ctx)
@@ -376,7 +389,7 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 	// Form 09.00 Rincian Aset Lainnya: pecahan pos Aset Lainnya (COA 1299000000) dari
 	// saldo COA yang sama dengan Form 01.00. Selalu dibangun karena saldo COA selalu
 	// tersedia; pos tanpa akun COA ditulis tidak tersedia di dalam form.
-	tables = append(tables, buildForm09(amounts09))
+	tables = append(tables, buildForm09(amounts09, kantor))
 
 	// Form 01.01 Rekening Administratif: register pos komitmen/kontinjensi off-balance
 	// yang bank catat (migrasi 000113). Bila belum ada baris AKTIF pada bulan periode,
@@ -390,7 +403,7 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			skipped = append(skipped, OJKFormDefinition{Form: "01.01", Name: formName("01.01"),
 				UnavailableReason: "belum ada pos rekening administratif berstatus AKTIF pada bulan periode"})
 		} else {
-			tables = append(tables, BuildForm01_01(rows))
+			tables = append(tables, BuildForm01_01(rows, kantor))
 		}
 	} else {
 		skipped = append(skipped, OJKFormDefinition{Form: "01.01", Name: formName("01.01"),
