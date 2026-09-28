@@ -140,7 +140,7 @@ kondisional** (KB 4, DK 5), **2 tidak dapat diimplementasikan** (Sandi Bank APOL
 Form 06 XIX). **Tidak ada kolom tersisa.** Laporan/berkas: **14** — **6 selesai** (BMPK;
 Perbedaan Kualitas; Form 00.14; Form 13.00; Laporan Kelembagaan; Form 01.01; Form
 09.00), **7 diputuskan/di luar cakupan** (KB 2, LX 5), **0 terblokir**. **Pekerjaan implementable tersisa: 0** untuk lingkup dokumen ini (kolom Form
-05.00/06.00 dan 14 butir laporan). **Lingkup form penuh berbeda:** dari 46 form resmi,
+05.00/06.00 dan 14 butir laporan). **Lingkup form penuh berbeda:** dari 45 form resmi,
 sistem hanya mendaftar 12 — 34 form tidak ikut terbit dalam bundel. Triase lengkapnya di
 [`CELAH-FORM-OJK.md`](CELAH-FORM-OJK.md).
 

@@ -16,10 +16,13 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 ## 1. Ringkasan
 
-Form unik di regulasi: **46**. Terdaftar di sistem (`OJKBulananForms`,
-`definitions.go:142`): **12** — `00.00, 00.08, 01.00, 01.01, 02.00, 05.00, 06.00,
-09.00, 13.00, 00.13, 00.14, 00.15` (10 buildable, 2 ber-alasan). Sisanya **34 form
-tidak terdaftar sama sekali** — itulah isi triase ini.
+Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
+Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
+seluruh 528 halaman PDF). Terdaftar di sistem (`OJKBulananForms`, `definitions.go:142`):
+**12** — `00.00, 00.08, 01.00, 01.01, 02.00, 05.00, 06.00, 09.00, 13.00, 00.13, 00.14,
+00.15` (10 buildable, 2 ber-alasan). Sebelas di antaranya termasuk daftar regulasi;
+**`00.14` tidak ditemukan di SEOJK 16/2024** — lihat §6. Sisanya **34 form tidak
+terdaftar sama sekali** — itulah isi triase ini.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
@@ -104,6 +107,24 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `10.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | Bentuk `KONDISIONAL` setelah induknya ada (`09.01`, `14.01`, `00.09`, `00.10`, `00.12`, `03.00`) | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual | keputusan bank |
+
+## 6. Selisih: Form 00.14 tidak ada di SEOJK 16/2024
+
+Pemindaian seluruh 528 halaman PDF resmi menemukan **nol** kemunculan `00.14`,
+"Daftar Data Jenis Nasabah", maupun "Produk Simpanan" — sementara `00.13` muncul 5 kali
+dan `00.15` 6 kali, jadi pemindaian teksnya berfungsi. Regulasi berisi **45** kode form
+unik; `00.14` bukan salah satunya, padahal sistem membangunnya (`form00_14.go`,
+`definitions.go:169`, `savings_customer_repo.go`).
+
+Satu-satunya sumber klaim di repo adalah `docs/KEPUTUSAN.md:95` ("00.14/00.15 data
+nasabah dan risiko TPPU") **tanpa halaman rujukan** — statusnya belum terverifikasi.
+Kemungkinan: (a) tertinggal dari SEOJK 12/2022 yang sudah dicabut, (b) salah ketik nomor
+form, atau (c) berasal dari dokumen lain di luar PDF ini.
+
+**Belum diambil tindakan.** Mematikan form yang berfungsi hanya karena sumbernya tidak
+ditemukan berisiko menghapus kewajiban yang nyata. Yang dibutuhkan: verifikasi terhadap
+dokumen sumbernya (SEOJK 12/2022 atau pedoman APOLO) untuk memutuskan apakah `00.14`
+tetap dilaporkan, nomornya diganti, atau ditarik.
 
 ## 5. Yang menjadi milik bank (bukan celah kode)
 
