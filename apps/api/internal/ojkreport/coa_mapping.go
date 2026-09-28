@@ -269,6 +269,38 @@ var COAMapping09Draft = []MappingEntry{
 		Note: "Piutang Denda Syariah -> Lainnya; pos resmi Form 09.00 tidak punya baris piutang denda"},
 }
 
+// COAMapping14Draft adalah pemetaan tersendiri kode COA ke baris Form 14.00 "RINCIAN
+// LIABILITAS LAINNYA" (PDF #page 213-215). Slice ini SENGAJA terpisah dari
+// COAMappingDraft: satu kode COA memang muncul pada beberapa form (mis. 20700 ada di
+// Form 01.00 dan Form 14.00), sedangkan DuplicateCOACodes/defaultMappingIndex mewajibkan
+// satu entri per kode di COAMappingDraft. Setiap entri di sini tidak menggantikan entri
+// Form 01.00.
+//
+// Hanya akun yang SUDAH ADA dan namanya secara tidak ambigu cocok dengan nama pos resmi
+// Form 14.00 yang dipetakan:
+//   - 20500 "Utang Pajak" -> 2299020000 "Utang Pajak": nama sama persis.
+//   - 20700 "Utang Lainnya" -> 2299990000 "Lainnya": akun ini sudah dipetakan ke pos
+//     Liabilitas Lainnya Form 01.00 (2299000000), jadi jelas bagian dari rincian ini,
+//     dan pos resmi "Lainnya" adalah penampung resminya.
+//
+// Pos lain tidak dipetakan karena bagan akun belum punya akunnya atau namanya ambigu,
+// sehingga buildForm14 menuliskannya sebagai baris tidak tersedia beserta alasannya,
+// bukan nol dan bukan tebakan. Utang Bunga (2299010100-2299019900) hanya punya akun
+// agregat 20400/20600 yang tidak menyimpan status jatuh tempo; Giro (20300), Dana
+// Kebajikan (12500), dan Kewajiban Lainnya Syariah (12900) sengaja TIDAK dipetakan ke
+// "Lainnya" karena namanya tidak cocok dengan pos resmi mana pun (berbeda dari Form 09.00
+// yang memakai "Lainnya" sebagai penampung resmi akun tanpa baris tersendiri).
+//
+// Catatan: 20500 saat ini masih dipetakan Form 01.00 ke Liabilitas Segera (2101000000).
+// Sampai bank memperbaiki pedoman konversinya, angka Utang Pajak dapat muncul pada dua
+// form; hal itu dicatat di Notes Form 14.00, bukan disembunyikan.
+var COAMapping14Draft = []MappingEntry{
+	{COACode: "20500", Form: "14.00", Sandi: "2299020000", Sign: 1, Verified: false,
+		Note: "Utang Pajak -> pos resmi bernama sama persis; Form 01.00 masih menaruhnya di Liabilitas Segera"},
+	{COACode: "20700", Form: "14.00", Sandi: "2299990000", Sign: 1, Verified: false,
+		Note: "Utang Lainnya -> Lainnya; sudah dipetakan ke Liabilitas Lainnya Form 01.00 (2299000000)"},
+}
+
 // COAMapping18Draft adalah pemetaan tersendiri kode COA ke baris arus kas Form 00.18
 // "LAPORAN ARUS KAS" menurut susunan Form 00.18 – 1 (PDF #page 295-296). Slice ini
 // SENGAJA terpisah dari COAMappingDraft: satu kode COA memang muncul pada beberapa form

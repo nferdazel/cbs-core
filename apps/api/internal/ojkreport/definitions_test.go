@@ -86,14 +86,49 @@ func TestDefinisiLengkap(t *testing.T) {
 
 func TestBuildableForms(t *testing.T) {
 	forms := BuildableForms()
-	if len(forms) != 12 {
-		t.Fatalf("ingin 12 form buildable, dapat %d", len(forms))
+	if len(forms) != 13 {
+		t.Fatalf("ingin 13 form buildable, dapat %d", len(forms))
 	}
-	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "13.00", "00.18", "11.00", "12.00"}
+	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "13.00", "00.18", "11.00", "12.00", "14.00"}
 	for i, w := range want {
 		if forms[i].Form != w {
 			t.Fatalf("form buildable[%d] = %s, ingin %s", i, forms[i].Form, w)
 		}
+	}
+}
+
+// Form 14.00 kini dapat dibangun dari saldo COA Liabilitas Lainnya. Daftar sandinya
+// harus persis susunan resmi Form 14.00 (PDF #page 213).
+func TestForm14BuildableDenganSandiResmi(t *testing.T) {
+	var def *OJKFormDefinition
+	for i := range OJKBulananForms {
+		if OJKBulananForms[i].Form == "14.00" {
+			def = &OJKBulananForms[i]
+			break
+		}
+	}
+	if def == nil {
+		t.Fatal("Form 14.00 tidak terdaftar")
+	}
+	if !def.Buildable {
+		t.Fatal("Form 14.00 harus buildable setelah pemetaan COA ke pos 14.00 tersedia")
+	}
+	if def.UnavailableReason != "" {
+		t.Fatalf("Form 14.00 buildable tidak boleh menyimpan alasan: %q", def.UnavailableReason)
+	}
+
+	want := []string{
+		"2299010100", "2299010201", "2299010202", "2299010301", "2299010302",
+		"2299010401", "2299010402", "2299010501", "2299010502", "2299019900",
+		"2299020000", "2299030000", "2299040000", "2299050000", "2299060000",
+		"2299070000", "2299990000",
+	}
+	got := make([]string, 0, len(form14Lines))
+	for _, l := range form14Lines {
+		got = append(got, l.Sandi)
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("sandi Form 14.00 = %v, ingin %v", got, want)
 	}
 }
 

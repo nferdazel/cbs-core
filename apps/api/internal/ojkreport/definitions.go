@@ -238,10 +238,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	// pada posisi akhir periode (form12.go). Kolom tanpa sumber ditulis tidak tersedia
 	// di dalam form, bukan nol.
 	{Form: "12.00", Name: "Daftar Deposito", Buildable: true},
-	{Form: "14.00", Name: "Rincian Liabilitas Lainnya", Buildable: false,
-		UnavailableReason: "dari 16 pos resmi 2299010100-2299990000 hanya 4 COA (20400-20700) yang tersedia dan tidak ada satu pun entri coa_mapping.go bersandi pos itu (PDF #213-215)"},
+	// Form 14.00 "Rincian Liabilitas Lainnya" (Form 14.00 – 1/–2, PDF #page 213-215):
+	// posisinya dipecah dari saldo COA yang dipetakan ke pos Liabilitas Lainnya Form
+	// 01.00 (sandi 2299000000). Pemetaannya masih DRAF dan dipisah di COAMapping14Draft;
+	// pos tanpa akun COA ditulis tidak tersedia di dalam form, bukan nol.
+	{Form: "14.00", Name: "Rincian Liabilitas Lainnya", Buildable: true},
 	{Form: "14.01", Name: "Rincian Liabilitas Lainnya - Lain-lain", Buildable: false,
-		UnavailableReason: "hanya diwajibkan bila minimal 25% dari jumlah liabilitas lainnya, dan bergantung pada Form 14.00 yang belum dibangun (PDF #217, #216)"},
+		UnavailableReason: "hanya diwajibkan bila pos Lainnya Form 14.00 melebihi 25% dari jumlah liabilitas lainnya; Form 14.00 kini tersedia, tetapi register rincian per uraian belum ada (PDF #217, #216)"},
 	{Form: "15.00", Name: "Daftar Aset Produktif yang Dihapus Buku", Buildable: false,
 		UnavailableReason: "status WRITTEN_OFF + written_off_amount ada (migrasi 000085:29), tetapi tanggal hapus buku tidak ada, nominal gabungan (pokok+bunga+denda) tidak bisa dipisah per kolom, dan penempatan belum punya status hapus buku (PDF #218-221)"},
 	{Form: "16.00", Name: "Daftar Penyertaan Modal", Buildable: false,
