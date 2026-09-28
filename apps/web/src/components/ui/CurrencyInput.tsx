@@ -6,13 +6,19 @@ export interface CurrencyInputProps extends Omit<
   "onChange" | "value"
 > {
   value: number | string;
-  onChange: (value: number) => void;
+  /**
+   * `value` adalah angka terurai (0 saat kosong), `raw` adalah digit mentah yang
+   * baru diketik ("", "0", "1500"). Pemanggil yang perlu membedakan "belum diketik"
+   * dari "diketik 0" harus memakai `raw`, bukan `value`/tampilan terformat.
+   */
+  onChange: (value: number, raw: string) => void;
   currencyPrefix?: string;
 }
 
 /**
  * Input nominal. Menampilkan pemisah ribuan; nilai mentah disertakan lewat
- * hidden input ber-`name` agar bisa dikirim sebagai angka tanpa format.
+ * hidden input ber-`name` agar bisa dikirim sebagai angka tanpa format. Nilai
+ * string kosong berarti belum diisi dan tampil kosong, bukan "0".
  */
 export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   value,
@@ -25,7 +31,12 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   name,
   ...props
 }) => {
-  const numericValue = typeof value === "string" ? Number(value) || 0 : value;
+  const isEmpty = value === "";
+  const numericValue = isEmpty
+    ? 0
+    : typeof value === "string"
+      ? Number(value) || 0
+      : value;
 
   // Label harus terhubung ke input lewat htmlFor/id agar pembaca layar
   // membacakan nama field, bukan sekadar teks visual di sebelahnya.
@@ -34,10 +45,12 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9]/g, "");
-    onChange(raw ? parseInt(raw, 10) : 0);
+    onChange(raw ? parseInt(raw, 10) : 0, raw);
   };
 
-  const formatted = new Intl.NumberFormat("id-ID").format(numericValue);
+  const formatted = isEmpty
+    ? ""
+    : new Intl.NumberFormat("id-ID").format(numericValue);
 
   return (
     <div className="w-full space-y-1">

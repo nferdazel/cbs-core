@@ -151,10 +151,28 @@ export interface Loan {
   approved_by?: string;
   approved_at?: string;
   disbursed_at?: string;
-  /** Sandi referensi/inline OJK per kredit (Form 06.00 VIII/XI/XXII). */
+  /**
+   * Sandi referensi/inline OJK per kredit (Form 06.00) yang disimpan nullable:
+   * kosong/nil berarti belum diisi dan laporan menulis "-", bukan nol. Nominal dan
+   * persentase datang sebagai string desimal (shopspring), tanggal sebagai RFC3339.
+   */
   ojk_jenis_penggunaan_code?: string;
   ojk_periode_pembayaran_code?: string;
   ojk_kabupaten_code?: string;
+  ojk_kelompok_kredit_code?: string;
+  ojk_sumber_dana_code?: string;
+  ojk_kategori_usaha_code?: string;
+  ojk_sifat_kredit_code?: string;
+  ojk_penjamin_code?: string;
+  ojk_penjamin_bagian_pct?: string | number | null;
+  ojk_tanggal_mulai_macet?: string | null;
+  ojk_agunan_ppka_amount?: string | number | null;
+  ojk_kelonggaran_tarik_amount?: string | number | null;
+  ojk_provisi_belum_diamortisasi_amount?: string | number | null;
+  ojk_biaya_transaksi_belum_diamortisasi_amount?: string | number | null;
+  ojk_pendapatan_bunga_ditangguhkan_amount?: string | number | null;
+  ojk_cadangan_kerugian_restrukturisasi_amount?: string | number | null;
+  ojk_klasifikasi_aset_code?: string;
   created_at: string;
   updated_at: string;
   schedules?: LoanSchedule[];
@@ -453,4 +471,37 @@ export interface BMPKLimit {
 export interface BMPKMasterData {
   related_parties: BMPKRelatedParty[] | null;
   limits: BMPKLimit[] | null;
+}
+
+/**
+ * Satu pilihan penempatan pada bank lain dari GET /reports/ojk/placements. Daftar
+ * hanya memuat id dan label; nilai tersimpan diambil terpisah lewat
+ * GET /ojk/placement-codes/{placementId}.
+ */
+export interface OJKPlacementOption {
+  id: string;
+  label: string;
+}
+
+/** Respons GET /reports/ojk/placements (kontrak pengisian). */
+export interface OJKPlacementsData {
+  placements: OJKPlacementOption[] | null;
+}
+
+/**
+ * Respons GET/PUT /ojk/placement-codes/{placementId} (domain.OJKPlacementCodesView).
+ * Sandi/teks nullable: null berarti belum diisi. Nominal juga null selama belum
+ * diisi, dibedakan dari nol; desimal shopspring tiba sebagai number.
+ */
+export interface OJKPlacementCodesData {
+  placement_id: string;
+  label: string;
+  ojk_kabupaten_code: string | null;
+  ojk_hubungan_bank_code: string | null;
+  ojk_alasan_diblokir_code: string | null;
+  counterparty_cif: string | null;
+  ojk_klasifikasi_aset_code: string | null;
+  blocked_amount: string | number | null;
+  accrued_interest_receivable: string | number | null;
+  accrued_interest_pending: string | number | null;
 }

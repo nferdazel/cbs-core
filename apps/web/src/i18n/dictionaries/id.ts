@@ -1287,7 +1287,7 @@ export const dictionaryID = {
   ojkCodes: {
     title: "Sandi Referensi OJK (Form 06.00)",
     description:
-      "Sandi pihak lawan, sektor ekonomi, dan hubungan dengan bank per nasabah, serta sandi jenis penggunaan, periode pembayaran, dan kabupaten per kredit. Sebelumnya hanya dapat diisi lewat SQL.",
+      "Sandi pihak lawan, sektor ekonomi, dan hubungan dengan bank per nasabah, serta sandi dan nominal Form 06.00 per kredit. Sebelumnya hanya dapat diisi lewat SQL.",
     customerTitle: "Sandi OJK nasabah",
     customerHint:
       "Cari nasabah dengan nomor CIF, lalu isi sandi referensi/inline Form 06.00.",
@@ -1328,6 +1328,97 @@ export const dictionaryID = {
     readOnly:
       "Peran Anda tidak dapat mengubah sandi OJK. Hubungi pengelola sistem.",
     requiredCif: "Nomor CIF wajib diisi.",
+    onlyChangedHint:
+      "Hanya bidang yang Anda ubah yang dikirim; bidang lain tidak tersentuh.",
+    noChanges: "Tidak ada perubahan untuk disimpan.",
+    kelompokKreditLabel: "Kode kelompok kredit (IV)",
+    kelompokKreditHint:
+      "Kode unik kelompok peminjam buatan bank (angka/huruf), bukan sandi OJK.",
+    sumberDanaLabel: "Sumber dana pelunasan (X)",
+    kategoriUsahaLabel: "Kategori usaha (XXI)",
+    sifatKreditLabel: "Sifat kredit (XXXVIII)",
+    penjaminLabel: "Sandi penjamin (XXIV)",
+    penjaminHint:
+      "Sandi golongan penjamin, mengacu Daftar Sandi Pihak Lawan (Lampiran 02).",
+    penjaminPctLabel: "Bagian yang dijamin (%)",
+    penjaminPctHint: "Persentase 0 sampai 100, sampai dua angka desimal.",
+    tanggalMulaiMacetLabel: "Tanggal mulai macet (XV)",
+    tanggalMulaiMacetHint:
+      "Tanggal kredit mulai berkualitas macet, bukan turunan DPD.",
+    agunanPpkaLabel: "Agunan diperhitungkan PPKA (XXV)",
+    agunanPpkaHint:
+      "Nilai agunan yang diperhitungkan untuk PPKA. Kosong berarti belum diisi.",
+    kelonggaranTarikLabel: "Kelonggaran tarik (XXVI)",
+    kelonggaranTarikHint:
+      "Bagian plafon komitmen yang belum ditarik. Kosong berarti belum diisi.",
+    provisiBelumDiamortisasiLabel: "Provisi belum diamortisasi (XXIX)",
+    provisiBelumDiamortisasiHint:
+      "Bagian provisi yang belum menjadi pendapatan bunga periode berjalan.",
+    biayaTransaksiBelumDiamortisasiLabel:
+      "Biaya transaksi belum diamortisasi (XXX)",
+    biayaTransaksiBelumDiamortisasiHint:
+      "Bagian biaya transaksi yang belum diamortisasi.",
+    pendapatanBungaDitangguhkanLabel: "Pendapatan bunga ditangguhkan (XXXI)",
+    pendapatanBungaDitangguhkanHint:
+      "Pendapatan bunga ditangguhkan akibat kapitalisasi tunggakan bunga.",
+    cadanganKerugianRestrukturisasiLabel:
+      "Cadangan kerugian restrukturisasi (XXXII)",
+    cadanganKerugianRestrukturisasiHint:
+      "Cadangan kerugian atas restrukturisasi yang belum diamortisasi.",
+    klasifikasiAsetLabel: "Sandi klasifikasi aset (XLVII)",
+    klasifikasiAsetHint:
+      "Sandi klasifikasi aset keuangan SAK EP, tanpa klasifikasi otomatis.",
+    sumberDanaGajiHonor: "Gaji/Honor",
+    sumberDanaUsahaSubsidi: "Usaha subsidi",
+    sumberDanaUsahaNonsubsidi: "Usaha nonsubsidi",
+    sumberDanaLainSubsidi: "Lainnya subsidi",
+    sumberDanaLainNonsubsidi: "Lainnya nonsubsidi",
+    kategoriUsahaMikro: "Mikro",
+    kategoriUsahaKecil: "Kecil",
+    kategoriUsahaMenengah: "Menengah",
+    kategoriUsahaLainnya: "Selain mikro, kecil, dan menengah",
+    sifatKreditPengalihan: "Pengalihan piutang",
+    sifatKreditLainnya: "Lainnya",
+  },
+  ojkPlacement: {
+    title: "Sandi OJK penempatan pada bank lain (Form 05.00)",
+    description:
+      "Sandi inline dan nominal Form 05.00 per penempatan pada bank lain. Sebelumnya hanya dapat diisi lewat SQL.",
+    selectLabel: "Penempatan",
+    selectPlaceholder: "Pilih penempatan",
+    loading: "Memuat daftar penempatan...",
+    empty: "Belum ada penempatan pada bank lain.",
+    selectError: "Gagal memuat daftar penempatan.",
+    loadError: "Gagal memuat data penempatan.",
+    forbidden: "Anda tidak memiliki izin melihat data penempatan (403).",
+    loadingCodes: "Memuat nilai tersimpan...",
+    onlyChangedHint:
+      "Hanya bidang yang Anda ubah yang dikirim; kosongkan bidang untuk menghapus nilainya.",
+    kabupatenLabel: "Sandi kabupaten/kota bank lawan (III)",
+    kabupatenHint: "4 digit dari Daftar Sandi Kabupaten/Kota (Lampiran 03).",
+    hubunganBankLabel: "Hubungan dengan bank (V)",
+    alasanDiblokirLabel: "Sandi alasan diblokir (XI)",
+    alasanDiblokirHint: "Sandi alasan blokir penempatan, disimpan apa adanya.",
+    counterpartyCifLabel: "CIF pihak lawan (XVI)",
+    counterpartyCifHint:
+      "Nomor CIF internal bank lawan, sama dengan yang dilaporkan ke SLIK.",
+    klasifikasiAsetLabel: "Sandi klasifikasi aset (XX)",
+    klasifikasiAsetHint:
+      "Sandi klasifikasi aset keuangan SAK EP, tanpa klasifikasi otomatis.",
+    blockedAmountLabel: "Nominal diblokir (X)",
+    blockedAmountHint: "Nominal penempatan yang diblokir atau dijaminkan.",
+    accruedInterestReceivableLabel: "Pendapatan bunga akan diterima (XIII)",
+    accruedInterestPendingLabel: "Pendapatan bunga dalam penyelesaian (XIV)",
+    hubunganTerkait: "Terkait",
+    hubunganTidakTerkait: "Tidak terkait",
+    save: "Simpan sandi penempatan",
+    saving: "Menyimpan...",
+    saved: "Sandi OJK penempatan tersimpan.",
+    saveError: "Gagal menyimpan sandi penempatan.",
+    saveForbidden: "Anda tidak memiliki izin mengubah data ini (403).",
+    readOnly:
+      "Peran Anda tidak dapat mengubah sandi penempatan. Hubungi pengelola sistem.",
+    noChanges: "Tidak ada perubahan untuk disimpan.",
   },
   ojkData: {
     readOnly:

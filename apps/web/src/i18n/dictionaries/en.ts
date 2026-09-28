@@ -1291,7 +1291,7 @@ export const dictionaryEN: Dictionary = {
   ojkCodes: {
     title: "OJK reference codes (Form 06.00)",
     description:
-      "Counterparty, economic sector, and bank-relationship codes per customer, plus usage type, payment period, and regency codes per loan. These could previously only be filled via SQL.",
+      "Counterparty, economic sector, and bank-relationship codes per customer, plus Form 06.00 codes and amounts per loan. These could previously only be filled via SQL.",
     customerTitle: "Customer OJK codes",
     customerHint:
       "Find a customer by CIF number, then fill the Form 06.00 reference/inline codes.",
@@ -1332,6 +1332,95 @@ export const dictionaryEN: Dictionary = {
     readOnly:
       "Your role cannot change OJK codes. Contact the system administrator.",
     requiredCif: "CIF number is required.",
+    onlyChangedHint:
+      "Only the fields you change are sent; the rest are left untouched.",
+    noChanges: "There are no changes to save.",
+    kelompokKreditLabel: "Loan group code (IV)",
+    kelompokKreditHint:
+      "A bank-defined unique borrower group code (letters/digits), not an OJK code.",
+    sumberDanaLabel: "Source of repayment funds (X)",
+    kategoriUsahaLabel: "Business category (XXI)",
+    sifatKreditLabel: "Nature of credit (XXXVIII)",
+    penjaminLabel: "Guarantor code (XXIV)",
+    penjaminHint:
+      "Guarantor group code, referring to the Counterparty Code List (Appendix 02).",
+    penjaminPctLabel: "Guaranteed share (%)",
+    penjaminPctHint: "Percentage from 0 to 100, up to two decimal places.",
+    tanggalMulaiMacetLabel: "Date classified as bad debt (XV)",
+    tanggalMulaiMacetHint:
+      "The date the loan was classified as bad debt, not derived from DPD.",
+    agunanPpkaLabel: "Collateral counted for PPKA (XXV)",
+    agunanPpkaHint:
+      "Collateral value counted toward PPKA. Empty means not filled yet.",
+    kelonggaranTarikLabel: "Undrawn commitment (XXVI)",
+    kelonggaranTarikHint:
+      "The undrawn part of the commitment ceiling. Empty means not filled yet.",
+    provisiBelumDiamortisasiLabel: "Unamortized provision (XXIX)",
+    provisiBelumDiamortisasiHint:
+      "The part of the provision not yet recognized as current interest income.",
+    biayaTransaksiBelumDiamortisasiLabel: "Unamortized transaction cost (XXX)",
+    biayaTransaksiBelumDiamortisasiHint:
+      "The part of the transaction cost that is not yet amortized.",
+    pendapatanBungaDitangguhkanLabel: "Deferred interest income (XXXI)",
+    pendapatanBungaDitangguhkanHint:
+      "Interest income deferred from capitalizing overdue interest.",
+    cadanganKerugianRestrukturisasiLabel: "Restructuring loss reserve (XXXII)",
+    cadanganKerugianRestrukturisasiHint:
+      "Unamortized loss reserve arising from restructuring.",
+    klasifikasiAsetLabel: "Asset classification code (XLVII)",
+    klasifikasiAsetHint:
+      "SAK EP financial asset classification code, without automatic classification.",
+    sumberDanaGajiHonor: "Salary/Honorarium",
+    sumberDanaUsahaSubsidi: "Subsidized business",
+    sumberDanaUsahaNonsubsidi: "Non-subsidized business",
+    sumberDanaLainSubsidi: "Other subsidized",
+    sumberDanaLainNonsubsidi: "Other non-subsidized",
+    kategoriUsahaMikro: "Micro",
+    kategoriUsahaKecil: "Small",
+    kategoriUsahaMenengah: "Medium",
+    kategoriUsahaLainnya: "Other than micro, small, and medium",
+    sifatKreditPengalihan: "Receivable transfer",
+    sifatKreditLainnya: "Other",
+  },
+  ojkPlacement: {
+    title: "OJK codes for placements with other banks (Form 05.00)",
+    description:
+      "Inline codes and amounts for Form 05.00 per placement with another bank. These could previously only be filled via SQL.",
+    selectLabel: "Placement",
+    selectPlaceholder: "Select a placement",
+    loading: "Loading placement list...",
+    empty: "No placements with other banks yet.",
+    selectError: "Failed to load the placement list.",
+    loadError: "Failed to load placement data.",
+    forbidden: "You do not have permission to view placement data (403).",
+    loadingCodes: "Loading stored values...",
+    onlyChangedHint:
+      "Only the fields you change are sent; clear a field to remove its stored value.",
+    kabupatenLabel: "Counterparty regency/city code (III)",
+    kabupatenHint: "4 digits from the Regency/City Code List (Appendix 03).",
+    hubunganBankLabel: "Relationship with the bank (V)",
+    alasanDiblokirLabel: "Blocked reason code (XI)",
+    alasanDiblokirHint: "The reason code for the block, stored as entered.",
+    counterpartyCifLabel: "Counterparty CIF (XVI)",
+    counterpartyCifHint:
+      "The counterparty bank's internal CIF number, the same one reported to SLIK.",
+    klasifikasiAsetLabel: "Asset classification code (XX)",
+    klasifikasiAsetHint:
+      "SAK EP financial asset classification code, without automatic classification.",
+    blockedAmountLabel: "Blocked amount (X)",
+    blockedAmountHint: "The placement amount that is blocked or pledged.",
+    accruedInterestReceivableLabel: "Accrued interest receivable (XIII)",
+    accruedInterestPendingLabel: "Accrued interest pending (XIV)",
+    hubunganTerkait: "Related",
+    hubunganTidakTerkait: "Not related",
+    save: "Save placement codes",
+    saving: "Saving...",
+    saved: "Placement OJK codes saved.",
+    saveError: "Failed to save the placement codes.",
+    saveForbidden: "You do not have permission to change this data (403).",
+    readOnly:
+      "Your role cannot change placement codes. Contact the system administrator.",
+    noChanges: "There are no changes to save.",
   },
   ojkData: {
     readOnly:
