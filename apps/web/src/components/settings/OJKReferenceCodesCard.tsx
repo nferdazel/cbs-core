@@ -672,6 +672,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
               <div className="grid gap-4 md:grid-cols-2">
                 <CurrencyInput
                   label={t.ojkCodes.agunanPpkaLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.agunanPpkaHint}
                   value={amountValue(form.agunanPpkaAmount)}
                   disabled={!canEdit}
@@ -681,6 +682,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
                 />
                 <CurrencyInput
                   label={t.ojkCodes.kelonggaranTarikLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.kelonggaranTarikHint}
                   value={amountValue(form.kelonggaranTarikAmount)}
                   disabled={!canEdit}
@@ -690,6 +692,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
                 />
                 <CurrencyInput
                   label={t.ojkCodes.provisiBelumDiamortisasiLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.provisiBelumDiamortisasiHint}
                   value={amountValue(form.provisiBelumDiamortisasiAmount)}
                   disabled={!canEdit}
@@ -699,6 +702,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
                 />
                 <CurrencyInput
                   label={t.ojkCodes.biayaTransaksiBelumDiamortisasiLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.biayaTransaksiBelumDiamortisasiHint}
                   value={amountValue(
                     form.biayaTransaksiBelumDiamortisasiAmount,
@@ -710,6 +714,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
                 />
                 <CurrencyInput
                   label={t.ojkCodes.pendapatanBungaDitangguhkanLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.pendapatanBungaDitangguhkanHint}
                   value={amountValue(form.pendapatanBungaDitangguhkanAmount)}
                   disabled={!canEdit}
@@ -719,6 +724,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
                 />
                 <CurrencyInput
                   label={t.ojkCodes.cadanganKerugianRestrukturisasiLabel}
+                  allowDecimals
                   helperText={t.ojkCodes.cadanganKerugianRestrukturisasiHint}
                   value={amountValue(
                     form.cadanganKerugianRestrukturisasiAmount,

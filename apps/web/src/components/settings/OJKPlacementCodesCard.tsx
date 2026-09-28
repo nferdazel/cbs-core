@@ -369,6 +369,7 @@ export function OJKPlacementCodesCard() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <CurrencyInput
                           label={t.ojkPlacement.blockedAmountLabel}
+                          allowDecimals
                           helperText={t.ojkPlacement.blockedAmountHint}
                           value={amountValue(form.blockedAmount)}
                           onChange={(_value, raw) =>
@@ -377,6 +378,7 @@ export function OJKPlacementCodesCard() {
                         />
                         <CurrencyInput
                           label={t.ojkPlacement.accruedInterestReceivableLabel}
+                          allowDecimals
                           value={amountValue(form.accruedInterestReceivable)}
                           onChange={(_value, raw) =>
                             amountChange("accruedInterestReceivable", raw)
@@ -384,6 +386,7 @@ export function OJKPlacementCodesCard() {
                         />
                         <CurrencyInput
                           label={t.ojkPlacement.accruedInterestPendingLabel}
+                          allowDecimals
                           value={amountValue(form.accruedInterestPending)}
                           onChange={(_value, raw) =>
                             amountChange("accruedInterestPending", raw)
