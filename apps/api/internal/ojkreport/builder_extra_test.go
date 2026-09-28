@@ -112,7 +112,7 @@ func TestGenerateMonthlyTanpaSumberOpsionalMencatatFormDaftar(t *testing.T) {
 			t.Errorf("form %s seharusnya dicatat belum dapat dibangun", form)
 		}
 	}
-	if len(b.Tables) != 0 {
-		t.Fatalf("tanpa sumber opsional tidak boleh ada tabel, dapat %d", len(b.Tables))
+	if len(b.Tables) != 1 || b.Tables[0].Form != "09.00" {
+		t.Fatalf("tanpa sumber opsional hanya Form 09.00 yang boleh tampil, dapat %d tabel", len(b.Tables))
 	}
 }

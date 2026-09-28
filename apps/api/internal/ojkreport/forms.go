@@ -14,12 +14,14 @@ type totalPart struct {
 }
 
 // formLine adalah satu baris form OJK. TotalFrom diisi untuk baris total; baris
-// biasa cukup mengandalkan hasil pemetaan COA.
+// biasa cukup mengandalkan hasil pemetaan COA. Reason != "" menandai pos yang belum
+// punya akun COA sumber; nilainya ditulis tidak tersedia, bukan nol.
 type formLine struct {
 	Sandi     string
 	Name      string
 	Level     int
 	TotalFrom []totalPart
+	Reason    string
 }
 
 // plus membuat komponen total dengan bobot +1.

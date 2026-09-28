@@ -102,17 +102,19 @@ func WriteText(w io.Writer, b *Bundle) error {
 			}
 		}
 		for _, row := range section.Rows {
-			if row.Reason != "" {
-				if err := write("# %s|%s TIDAK TERSEDIA: %s\n",
-					section.Form, row.Key, row.Reason); err != nil {
-					return err
-				}
-				continue
-			}
 			for _, cell := range row.Cells {
 				if err := write("%s\n", strings.Join([]string{
 					section.Form, row.Key, cell.Sandi + " " + cell.Nama, cell.Value,
 				}, ColumnSeparator)); err != nil {
+					return err
+				}
+			}
+			// Baris tanpa sel dan beralasan ditulis sebagai komentar saja (Form 00.00).
+			// Baris bersel beralasan (mis. Form 09.00 pos tanpa akun COA) tetap
+			// menampilkan selnya — kolom Jumlah "-" — lalu alasannya sebagai komentar.
+			if row.Reason != "" {
+				if err := write("# %s|%s TIDAK TERSEDIA: %s\n",
+					section.Form, row.Key, row.Reason); err != nil {
 					return err
 				}
 			}

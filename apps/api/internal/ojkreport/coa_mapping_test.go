@@ -6,14 +6,15 @@ import (
 )
 
 // seedLeafCOACodes adalah akun daun pada bagan akun baku (migrasi 000004/000005/
-// 000019/000024/000042/000043). Daftar ini sengaja ditulis eksplisit sebagai jaring
+// 000019/000024/000042/000043/000114). Daftar ini sengaja ditulis eksplisit sebagai jaring
 // pengaman: bila kelak ada COA baru yang belum dipetakan, uji ini gagal dan ekspor
 // tidak diam-diam menghasilkan laporan bolong. Karena itu setiap akun daun yang
 // ditambah migrasi HARUS masuk daftar ini bersama pemetaannya — enam akun CKPN dan
 // restrukturisasi dari 000042/000043 sempat terlewat dan bolongnya baru ketahuan
 // ketika daftar ini dibandingkan ulang dengan seluruh seed.
 var seedLeafCOACodes = []string{
-	"10100", "10101", "10200", "10300", "10301", "10305", "10400", "10500", "10600",
+	"10100", "10101", "10200", "10300", "10301", "10305", "10310", "10320", "10330",
+	"10340", "10350", "10360", "10400", "10500", "10600",
 	"10700", "10800", "10900", "10950", "10999",
 	"11100", "11200", "11300", "11310", "11320", "11400", "11500", "11600", "11700", "11900",
 	"11950",

@@ -159,11 +159,10 @@ var OJKBulananForms = []OJKFormDefinition{
 	// Form 06.00 dibangun dari baris kredit per debitur.
 	{Form: "06.00", Name: "Daftar Kredit yang Diberikan", Buildable: true},
 	// Form 09.00 "Rincian Aset Lainnya" (Form 09.00 – 1/–2, PDF #page 187-188):
-	// posisinya adalah pecahan 1299010100 s.d. 1299990000. Bagan akun belum punya
-	// akun/pemetaan untuk pecahan itu, sehingga form tetap belum tersedia; alasan di
-	// bawah menyebut celahnya secara konkret, bukan "belum tersedia" tanpa isi.
-	{Form: "09.00", Name: "Rincian Aset Lainnya", Buildable: false,
-		UnavailableReason: "pos Aset Lainnya belum dapat dirinci menurut Form 09.00 (posisi 1299010100 s.d. 1299990000) karena bagan akun hanya mencatat saldo agregat COA 1299000000: empat akun yang memetakan ke sana (10305 Piutang Denda, 10400 Bunga Kredit yang Masih Akan Diterima, 10999 Akun Sementara, 11700 Piutang Denda Syariah) belum dipetakan ke pos Form 09.00 (pemetaan COA masih DRAF), dan tidak ada akun tersendiri untuk Premi Penjaminan LPS Dibayar di Muka, Uang Muka Pajak, Aset Pajak Tangguhan, Biaya Dibayar di Muka, Tagihan kepada Perusahaan Asuransi, maupun Uang Muka Kegiatan Operasional"},
+	// posisinya dipecah dari saldo COA yang dipetakan ke pos Aset Lainnya Form 01.00
+	// (sandi 1299000000). Pemetaannya masih DRAF dan dipisah di COAMapping09Draft;
+	// pos tanpa akun COA ditulis tidak tersedia di dalam form, bukan nol.
+	{Form: "09.00", Name: "Rincian Aset Lainnya", Buildable: true},
 	{Form: "13.00", Name: "Daftar Simpanan dari Bank Lain", Buildable: true},
 	{Form: "00.13", Name: "Dokumen Pendukung", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF pendukung, bukan angka"},

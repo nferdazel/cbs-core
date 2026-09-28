@@ -176,6 +176,13 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 	if err != nil {
 		return nil, err
 	}
+	// Form 09.00 memakai saldo COA yang sama dengan Form 01.00, tetapi lewat pemetaan
+	// tersendiri (COAMapping09Draft). Celahnya sudah tercakup gaps01 karena memakai
+	// baris neraca yang sama, jadi gap Form 09.00 tidak digabung ke pesan galat.
+	amounts09, err := collectForm09(b.mapping, bs.Rows)
+	if err != nil {
+		return nil, err
+	}
 
 	if missing := mergeGaps("01.00", gaps01, "02.00", gaps02); len(missing) > 0 {
 		return nil, &IncompleteMappingError{Missing: missing}
@@ -183,6 +190,7 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 
 	deriveTotals(form01Lines, amounts01)
 	deriveTotals(form02Lines, amounts02)
+	deriveTotals(form09Lines, amounts09)
 
 	// Komponen rasio di luar Form 01.00/02.00: kualitas kredit (NPL) dan rata-rata
 	// total aset (ROA). Bila sumber kredit tidak tersedia, komponen kredit dibiarkan
@@ -219,7 +227,7 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 		loanRows[i].BMPKStatus = bmpkStatuses[loanRows[i].CustomerID]
 	}
 
-	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses)
+	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses, amounts09)
 	if err != nil {
 		return nil, err
 	}
@@ -270,8 +278,9 @@ func (b *Builder) rataRataTotalAset(ctx context.Context, period time.Time, book 
 
 // buildTables menyusun form daftar 00.00/05.00/06.00 dan mencatat form yang belum
 // dapat dibangun pada sumber ini. bmpkStatuses (UUID nasabah -> status BMPK) dipakai
-// mengisi kolom Status BMPK; nil berarti modul BMPK tidak tersedia.
-func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow, bmpkStatuses map[string]string) ([]TableSection, []OJKFormDefinition, error) {
+// mengisi kolom Status BMPK; nil berarti modul BMPK tidak tersedia. amounts09 adalah
+// saldo per sandi Form 09.00, yang selalu tersedia karena dibaca dari saldo COA.
+func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow, bmpkStatuses map[string]string, amounts09 map[string]decimal.Decimal) ([]TableSection, []OJKFormDefinition, error) {
 	var tables []TableSection
 	var skipped []OJKFormDefinition
 
@@ -357,6 +366,11 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 		skipped = append(skipped, OJKFormDefinition{Form: "13.00", Name: formName("13.00"),
 			UnavailableReason: "sumber simpanan/deposito bank lawan belum dikonfigurasi pada ekspor ini"})
 	}
+
+	// Form 09.00 Rincian Aset Lainnya: pecahan pos Aset Lainnya (COA 1299000000) dari
+	// saldo COA yang sama dengan Form 01.00. Selalu dibangun karena saldo COA selalu
+	// tersedia; pos tanpa akun COA ditulis tidak tersedia di dalam form.
+	tables = append(tables, buildForm09(amounts09))
 
 	// Form 01.01 Rekening Administratif: register pos komitmen/kontinjensi off-balance
 	// yang bank catat (migrasi 000113). Bila belum ada baris AKTIF pada bulan periode,
@@ -453,6 +467,19 @@ func collect(rows []domain.ReportRow, form string, index map[string]MappingEntry
 		amounts[entry.Sandi] = amounts[entry.Sandi].Add(contribution)
 	}
 	return amounts, gaps, nil
+}
+
+// collectForm09 menghitung saldo per sandi Form 09.00 dari baris neraca yang sama
+// dengan Form 01.00. Indeksnya menggabungkan pemetaan form lain dengan pemetaan
+// tersendiri Form 09.00 (COAMapping09Draft) supaya baris di luar Form 09.00 hanya
+// dilewati, bukan dianggap celah.
+func collectForm09(mapping []MappingEntry, rows []domain.ReportRow) (map[string]decimal.Decimal, error) {
+	index := buildMappingIndex(mapping)
+	for _, e := range COAMapping09Draft {
+		index[e.COACode] = e
+	}
+	amounts, _, err := collect(rows, "09.00", index)
+	return amounts, err
 }
 
 // deriveTotals mengisi baris total dengan menjumlahkan pos anak berbobot.

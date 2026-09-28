@@ -86,10 +86,10 @@ func TestDefinisiLengkap(t *testing.T) {
 
 func TestBuildableForms(t *testing.T) {
 	forms := BuildableForms()
-	if len(forms) != 9 {
-		t.Fatalf("ingin 9 form buildable, dapat %d", len(forms))
+	if len(forms) != 10 {
+		t.Fatalf("ingin 10 form buildable, dapat %d", len(forms))
 	}
-	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "13.00", "00.14"}
+	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "13.00", "00.14"}
 	for i, w := range want {
 		if forms[i].Form != w {
 			t.Fatalf("form buildable[%d] = %s, ingin %s", i, forms[i].Form, w)
@@ -126,22 +126,36 @@ func TestForm13Buildable(t *testing.T) {
 	t.Fatal("Form 13.00 tidak terdaftar")
 }
 
-// Form 09.00 tetap belum dapat dibangun: alasannya harus menyebut saldo agregat dan
-// pos-pos Form 09.00 yang tidak punya akun/pemetaan, bukan sekadar "belum tersedia".
-func TestForm09TetapBelumTersediaDenganAlasanKonkret(t *testing.T) {
-	for _, f := range OJKBulananForms {
-		if f.Form != "09.00" {
-			continue
+// Form 09.00 kini dapat dibangun dari saldo COA Aset Lainnya. Daftar sandinya harus
+// persis susunan resmi Form 09.00 - 1 (PDF #page 187).
+func TestForm09BuildableDenganSandiResmi(t *testing.T) {
+	var def *OJKFormDefinition
+	for i := range OJKBulananForms {
+		if OJKBulananForms[i].Form == "09.00" {
+			def = &OJKBulananForms[i]
+			break
 		}
-		if f.Buildable {
-			t.Fatal("Form 09.00 tidak boleh buildable tanpa pemetaan COA ke pos Form 09.00")
-		}
-		for _, kata := range []string{"1299000000", "10400", "1299990000"} {
-			if !strings.Contains(f.UnavailableReason, kata) {
-				t.Errorf("alasan Form 09.00 harus menyebut %q: %q", kata, f.UnavailableReason)
-			}
-		}
-		return
 	}
-	t.Fatal("Form 09.00 tidak terdaftar")
+	if def == nil {
+		t.Fatal("Form 09.00 tidak terdaftar")
+	}
+	if !def.Buildable {
+		t.Fatal("Form 09.00 harus buildable setelah pemetaan COA ke pos 09.00 tersedia")
+	}
+	if def.UnavailableReason != "" {
+		t.Fatalf("Form 09.00 buildable tidak boleh menyimpan alasan: %q", def.UnavailableReason)
+	}
+
+	want := []string{
+		"1299010000", "1299010100", "1299010200", "1299010300", "1299010900",
+		"1299020000", "1299030000", "1299040000", "1299050000", "1299060000",
+		"1299070000", "1299990000",
+	}
+	got := make([]string, 0, len(form09Lines))
+	for _, l := range form09Lines {
+		got = append(got, l.Sandi)
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("sandi Form 09.00 = %v, ingin %v", got, want)
+	}
 }

@@ -93,6 +93,18 @@ var COAMappingDraft = []MappingEntry{
 	{COACode: "10301", Form: "01.00", Sandi: "1104010100", Sign: 1, Note: "Kredit - Pokok -> Kredit yang Diberikan (Baki Debet)"},
 	{COACode: "10305", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
 		Note: "Piutang Denda tidak punya pos tersendiri; diusulkan ke Aset Lainnya"},
+	{COACode: "10310", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Premi Penjaminan LPS Dibayar di Muka (migrasi 000114); Aset Lainnya Form 09.00"},
+	{COACode: "10320", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Uang Muka Pajak (migrasi 000114); Aset Lainnya Form 09.00"},
+	{COACode: "10330", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Aset Pajak Tangguhan (migrasi 000114); Aset Lainnya Form 09.00"},
+	{COACode: "10340", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Biaya Dibayar di Muka (migrasi 000114); Aset Lainnya Form 09.00"},
+	{COACode: "10350", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Tagihan kepada Perusahaan Asuransi (migrasi 000114); Aset Lainnya Form 09.00"},
+	{COACode: "10360", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
+		Note: "Uang Muka untuk Kegiatan Operasional (migrasi 000114); Aset Lainnya Form 09.00"},
 	{COACode: "10400", Form: "01.00", Sandi: "1299000000", Sign: 1, Verified: false,
 		Note: "Bunga kredit masih akan diterima; diusulkan ke Aset Lainnya (perlu konfirmasi apakah digabung ke Kredit)"},
 	{COACode: "10500", Form: "01.00", Sandi: "1201000000", Sign: 1, Note: "Agunan yang Diambil Alih"},
@@ -219,6 +231,42 @@ var COAMappingDraft = []MappingEntry{
 
 	// ── Form 02.00: PAJAK (di bawah laba sebelum pajak) ─────────────────────
 	{COACode: "60100", Form: "02.00", Sandi: "5300000000", Sign: 1, Note: "Beban Pajak Penghasilan -> Taksiran Pajak Penghasilan"},
+}
+
+// COAMapping09Draft adalah pemetaan tersendiri pos Aset Lainnya (COA bersandi
+// 1299000000 pada Form 01.00) ke susunan Form 09.00. Slice ini SENGAJA terpisah dari
+// COAMappingDraft: DuplicateCOACodes dan defaultMappingIndex (dipakai KPMM/ModalClass)
+// mewajibkan satu kode COA hanya punya satu entri, sedangkan satu akun Aset Lainnya
+// perlu muncul pada dua form. Setiap entri di sini berpasangan dengan tepat satu entri
+// COAMappingDraft bersandi 1299000000; invarian cakupan itu ditegakkan
+// TestForm09PemetaanSejajarDenganForm01 agar total Form 09.00 selalu sama dengan pos
+// Aset Lainnya Form 01.00.
+//
+// Pos 1299010100 (a. Penempatan pada Bank Lain), 1299010300 (c. Surat Berharga), dan
+// 1299010900 (d. Lainnya) tidak punya entri di sini karena bagan akun belum punya
+// akunnya; buildForm09 menuliskannya sebagai baris tidak tersedia beserta alasannya,
+// bukan nol atau angka karangan.
+var COAMapping09Draft = []MappingEntry{
+	{COACode: "10305", Form: "09.00", Sandi: "1299990000", Sign: 1, Verified: false,
+		Note: "Piutang Denda -> Lainnya; pos resmi Form 09.00 tidak punya baris piutang denda"},
+	{COACode: "10310", Form: "09.00", Sandi: "1299020000", Sign: 1, Verified: false,
+		Note: "Premi Penjaminan LPS Dibayar di Muka -> pos resmi bernama sama persis"},
+	{COACode: "10320", Form: "09.00", Sandi: "1299030000", Sign: 1, Verified: false,
+		Note: "Uang Muka Pajak -> pos resmi bernama sama persis"},
+	{COACode: "10330", Form: "09.00", Sandi: "1299040000", Sign: 1, Verified: false,
+		Note: "Aset Pajak Tangguhan -> pos resmi bernama sama persis"},
+	{COACode: "10340", Form: "09.00", Sandi: "1299050000", Sign: 1, Verified: false,
+		Note: "Biaya Dibayar di Muka -> pos resmi bernama sama persis"},
+	{COACode: "10350", Form: "09.00", Sandi: "1299060000", Sign: 1, Verified: false,
+		Note: "Tagihan kepada Perusahaan Asuransi -> pos resmi bernama sama persis"},
+	{COACode: "10360", Form: "09.00", Sandi: "1299070000", Sign: 1, Verified: false,
+		Note: "Uang Muka untuk Kegiatan Operasional -> pos resmi bernama sama persis"},
+	{COACode: "10400", Form: "09.00", Sandi: "1299010200", Sign: 1, Verified: false,
+		Note: "Bunga Kredit yang Masih Akan Diterima -> b. Kredit yang Diberikan"},
+	{COACode: "10999", Form: "09.00", Sandi: "1299990000", Sign: 1, Verified: false,
+		Note: "Akun Sementara (Suspense) -> Lainnya; pos resmi Form 09.00 tidak punya baris akun sementara"},
+	{COACode: "11700", Form: "09.00", Sandi: "1299990000", Sign: 1, Verified: false,
+		Note: "Piutang Denda Syariah -> Lainnya; pos resmi Form 09.00 tidak punya baris piutang denda"},
 }
 
 // defaultMappingIndex adalah indeks COACode->entry untuk pemetaan bawaan.
