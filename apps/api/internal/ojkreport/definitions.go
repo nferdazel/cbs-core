@@ -166,7 +166,10 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "13.00", Name: "Daftar Simpanan dari Bank Lain", Buildable: true},
 	{Form: "00.13", Name: "Dokumen Pendukung", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF pendukung, bukan angka"},
-	{Form: "00.14", Name: "Daftar Data Jenis Nasabah dan Produk Simpanan di BPR", Buildable: true},
+	// "00.14" sengaja tidak didaftarkan: nomor itu tidak ada di SEOJK 16/2024
+	// (hanya di SEOJK 12/2022 yang dicabut). Agregasi jenis nasabah per produk
+	// tetap ada sebagai laporan internal (form00_14.go), tetapi tidak diakui
+	// sebagai form OJK; lihat docs/CELAH-FORM-OJK.md §6.
 	{Form: "00.15", Name: "Rincian Transaksi Terkait Penilaian Risiko TPPU dan TPPT", Buildable: false,
 		UnavailableReason: "data transaksi terkait penilaian risiko TPPU/TPPT belum tersedia"},
 
@@ -227,7 +230,7 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "10.00", Name: "Rincian Liabilitas Segera", Buildable: false,
 		UnavailableReason: "hanya agregat 2101000000 yang diisi 4 COA (coa_mapping.go:142); 8 pos rincian 2101010000-2101990000 belum punya akun COA sama sekali (PDF #191-192, #106)"},
 	{Form: "11.00", Name: "Daftar Tabungan", Buildable: false,
-		UnavailableReason: "blok angka sudah dipakai Form 00.14/13.00, tetapi kolom PEP, Risiko Nasabah, Status Data, alasan diblokir, biaya transaksi belum diamortisasi, dan snapshot saldo akhir bulan belum ada (PDF #193-199)"},
+		UnavailableReason: "blok angka sudah dipakai Form 13.00, tetapi kolom PEP, Risiko Nasabah, Status Data, alasan diblokir, biaya transaksi belum diamortisasi, dan snapshot saldo akhir bulan belum ada (PDF #193-199)"},
 	{Form: "12.00", Name: "Daftar Deposito", Buildable: false,
 		UnavailableReason: "sumber time_deposits (migrasi 000013:24) ada, tetapi kolom 'diblokir' tidak punya sumber (kontrak deposito menyumbang 0, bank_deposit_repo.go:30) dan kolom PEP/Risiko Nasabah/Status Data/snapshot saldo akhir bulan belum ada (PDF #200-206)"},
 	{Form: "14.00", Name: "Rincian Liabilitas Lainnya", Buildable: false,

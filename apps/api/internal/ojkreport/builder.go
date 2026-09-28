@@ -348,24 +348,11 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber penempatan pada bank lain belum dikonfigurasi pada ekspor ini"})
 	}
 
-	// Form 00.14 Daftar Data Jenis Nasabah dan Produk Simpanan: agregasi jenis nasabah
-	// (sandi Lampiran 02) per produk simpanan. Bila tidak ada rekening/deposito yang
-	// dapat diagregasi, form dinyatakan belum tersedia, bukan ditulis kosong.
-	if ss, ok := b.source.(SavingsCustomerTypeSource); ok {
-		rows, err := ss.ListSavingsCustomerTypes(ctx, actor)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(rows) == 0 {
-			skipped = append(skipped, OJKFormDefinition{Form: "00.14", Name: formName("00.14"),
-				UnavailableReason: "belum ada rekening simpanan (tabungan/giro) maupun deposito berjangka berstatus berjalan yang dapat diagregasi"})
-		} else {
-			tables = append(tables, buildForm00_14(rows))
-		}
-	} else {
-		skipped = append(skipped, OJKFormDefinition{Form: "00.14", Name: formName("00.14"),
-			UnavailableReason: "sumber rekening simpanan/deposito belum dikonfigurasi pada ekspor ini"})
-	}
+	// Laporan internal jenis nasabah per produk (dulu diberi nomor Form 00.14 — nomor
+	// itu tidak ada di SEOJK 16/2024, lihat docs/CELAH-FORM-OJK.md §6) SENGAJA tidak
+	// diikutkan pada bundel bulanan: label "Form 00.14" sudah ditarik dari pelaporan
+	// OJK. Agregasinya tetap tersedia sebagai data internal lewat buildForm00_14,
+	// tetapi tidak boleh muncul pada keluaran ekspor maupun manifest OJKBulananForms.
 
 	// Form 13.00 Daftar Simpanan dari Bank Lain: agregasi simpanan (tabungan/giro) dan
 	// deposito milik nasabah bergolongan bank (sandi Lampiran 02). Bila tidak ada

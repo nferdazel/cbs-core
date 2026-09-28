@@ -7,8 +7,13 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 )
 
-// form00_14.go membangun Form 00.14 "Daftar Data Jenis Nasabah dan Produk Simpanan"
+// form00_14.go membangun laporan internal jenis nasabah per produk (dulu diberi nomor
+// Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat docs/CELAH-FORM-OJK.md §6)
 // sebagai agregasi jenis nasabah per produk simpanan.
+//
+// Laporan ini bukan form OJK: ia tidak terdaftar pada OJKBulananForms dan tidak
+// diikutkan pada bundel ekspor bulanan (lihat builder.go). Namanya tetap dijaga di
+// sini supaya agregasinya dapat dipakai sebagai data internal.
 //
 // Golongan nasabah memakai sandi Lampiran 02 – Daftar Sandi Pihak Lawan, sumber resmi
 // "Golongan Nasabah" pada Form 11.00 (Daftar Tabungan) dan Form 12.00 (Daftar Deposito),
@@ -27,12 +32,13 @@ const (
 	form0014SandiTotalNominal = "TOTAL_NOMINAL"
 )
 
-// buildForm00_14 menyusun tabel Form 00.14 dari agregasi yang sudah dihitung sumber
-// data. Fungsi ini murni sehingga dapat diuji tanpa basis data.
+// buildForm00_14 menyusun tabel laporan internal jenis nasabah per produk (dulu
+// "Form 00.14") dari agregasi yang sudah dihitung sumber data. Fungsi ini murni
+// sehingga dapat diuji tanpa basis data; hasilnya tidak diikutkan pada ekspor OJK.
 func buildForm00_14(rows []SavingsCustomerTypeRow) TableSection {
 	sec := TableSection{
-		Form:     "00.14",
-		Name:     formName("00.14"),
+		Form:     "JENIS_NASABAH_PRODUK",
+		Name:     "Laporan Internal Jenis Nasabah per Produk",
 		KeyLabel: "Kode Produk / Golongan Nasabah",
 		Columns: []TableColumn{
 			{Sandi: form0014SandiJenisProduk, Nama: "Jenis Produk"},

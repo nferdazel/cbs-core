@@ -17,8 +17,9 @@ import (
 // 001 Bank Indonesia, 600 BPR, 601 BPRS, 700 Bank Umum, 701 Bank Umum Syariah, dan
 // 901 Unit Usaha Syariah. Nasabah tanpa sandi bank tidak dapat dikenali.
 //
-// Sama seperti Form 00.14, yang dilaporkan adalah keadaan saat query dijalankan:
-// sistem belum menyimpan riwayat saldo per akhir bulan.
+// Sama seperti agregasi internal jenis nasabah per produk (dulu Form 00.14), yang
+// dilaporkan adalah keadaan saat query dijalankan: sistem belum menyimpan riwayat
+// saldo per akhir bulan.
 type BankDepositRepository struct {
 	db *sql.DB
 }

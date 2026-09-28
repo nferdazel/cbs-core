@@ -6,9 +6,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// SavingsCustomerAggregate adalah satu baris agregasi Form 00.14 "Jenis Nasabah dan
-// Produk Simpanan": jumlah rekening dan total nominal per produk simpanan menurut
-// golongan nasabah.
+// SavingsCustomerAggregate adalah satu baris agregasi laporan internal jenis nasabah
+// per produk (dulu diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024,
+// lihat docs/CELAH-FORM-OJK.md §6): jumlah rekening dan total nominal per produk
+// simpanan menurut golongan nasabah.
 //
 // Golongan nasabah memakai sandi Lampiran 02 – Daftar Sandi Pihak Lawan, sama dengan
 // "Golongan Nasabah" pada Form 11.00/12.00 SEOJK 16/2024 dan kolom "Jenis Debitur"
@@ -27,8 +28,9 @@ type SavingsCustomerAggregate struct {
 	TotalAmount decimal.Decimal
 }
 
-// SavingsCustomerRepository menyediakan agregasi Form 00.14. Posisi yang dibaca
-// adalah keadaan saat ini, bukan potret historis: sistem belum menyimpan riwayat
+// SavingsCustomerRepository menyediakan agregasi laporan internal jenis nasabah per
+// produk (dulu diberi nomor Form 00.14; lihat docs/CELAH-FORM-OJK.md §6). Posisi yang
+// dibaca adalah keadaan saat ini, bukan potret historis: sistem belum menyimpan riwayat
 // saldo simpanan per akhir bulan, sehingga periode lampau tidak dapat direkonstruksi.
 type SavingsCustomerRepository interface {
 	ListSavingsCustomerAggregates(ctx context.Context) ([]SavingsCustomerAggregate, error)

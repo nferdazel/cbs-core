@@ -7,10 +7,11 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 )
 
-// SavingsCustomerRepository menyediakan agregasi Form 00.14 "Jenis Nasabah dan Produk
-// Simpanan". Satu query menggabungkan rekening tabungan/giro (accounts) dan kontrak
-// deposito berjangka (time_deposits), lalu mengelompokkannya per produk dan golongan
-// nasabah.
+// SavingsCustomerRepository menyediakan agregasi internal jenis nasabah per produk
+// (dulu diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
+// docs/CELAH-FORM-OJK.md §6). Satu query menggabungkan rekening tabungan/giro
+// (accounts) dan kontrak deposito berjangka (time_deposits), lalu mengelompokkannya per
+// produk dan golongan nasabah.
 //
 // Golongan nasabah dibaca dari customers.ojk_pihak_lawan_code (Lampiran 02 Daftar
 // Sandi Pihak Lawan). Sandi yang belum diisi menghasilkan kelompok sendiri dengan

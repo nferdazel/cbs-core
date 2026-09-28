@@ -35,9 +35,10 @@ type RepoSource struct {
 	// 05.00/06.00 dan laporan LAPORAN_BMPK. Bila nil, kolom BMPK dinyatakan belum
 	// tersedia; nilainya tidak dikarang.
 	BMPK domain.BMPKService
-	// Savings menyediakan agregasi Form 00.14 jenis nasabah per produk simpanan
-	// (rekening tabungan/giro dan deposito berjangka). Bila nil, form dinyatakan belum
-	// tersedia; tidak ada angka yang dikarang.
+	// Savings menyediakan agregasi internal jenis nasabah per produk simpanan
+	// (rekening tabungan/giro dan deposito berjangka) — dulu diberi nomor Form 00.14,
+	// nomor itu tidak ada di SEOJK 16/2024 (docs/CELAH-FORM-OJK.md §6). Bila nil,
+	// agregasi dinyatakan tidak tersedia; tidak ada angka yang dikarang.
 	Savings domain.SavingsCustomerRepository
 	// BankDeposits menyediakan agregasi Form 13.00 simpanan dari bank lain (rekening
 	// tabungan/giro dan deposito berjangka milik nasabah bergolongan bank). Bila nil,
@@ -261,9 +262,11 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 	return out, nil
 }
 
-// ListSavingsCustomerTypes membaca agregasi Form 00.14 bank-wide dan memetakannya ke
-// baris ekspor. Kebijakan bank-wide ditegakkan di lapisan data: aktor non-lintas
-// cabang ditolak, bukan diberi sebagian.
+// ListSavingsCustomerTypes membaca agregasi internal jenis nasabah per produk (dulu
+// diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
+// docs/CELAH-FORM-OJK.md §6) bank-wide dan memetakannya ke baris internal. Kebijakan
+// bank-wide ditegakkan di lapisan data: aktor non-lintas cabang ditolak, bukan diberi
+// sebagian.
 func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error) {
 	if err := pastikanLintasCabang(actor); err != nil {
 		return nil, err

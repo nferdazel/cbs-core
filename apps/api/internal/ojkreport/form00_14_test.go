@@ -9,8 +9,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Form 00.14 mengagregasi jumlah rekening dan total nominal per produk simpanan
-// menurut golongan nasabah (sandi Lampiran 02). Golongan kosong ditulis "-".
+// Laporan internal jenis nasabah per produk (dulu diberi nomor Form 00.14 — nomor itu
+// tidak ada di SEOJK 16/2024, lihat docs/CELAH-FORM-OJK.md §6) mengagregasi jumlah
+// rekening dan total nominal per produk simpanan menurut golongan nasabah (sandi
+// Lampiran 02). Golongan kosong ditulis "-".
 func TestBuildForm00_14BarisDanNominal(t *testing.T) {
 	rows := []SavingsCustomerTypeRow{
 		{
@@ -32,8 +34,8 @@ func TestBuildForm00_14BarisDanNominal(t *testing.T) {
 	}
 
 	sec := buildForm00_14(rows)
-	if sec.Form != "00.14" {
-		t.Fatalf("form = %s, ingin 00.14", sec.Form)
+	if sec.Form != "JENIS_NASABAH_PRODUK" {
+		t.Fatalf("form = %s, ingin JENIS_NASABAH_PRODUK", sec.Form)
 	}
 	if len(sec.Rows) != 2 {
 		t.Fatalf("jumlah baris = %d, ingin 2", len(sec.Rows))
@@ -57,7 +59,8 @@ func TestBuildForm00_14BarisDanNominal(t *testing.T) {
 	}
 }
 
-// savingsStubSource melengkapi ojkStubSource dengan agregasi Form 00.14.
+// savingsStubSource melengkapi ojkStubSource dengan agregasi internal jenis nasabah
+// per produk (dulu diberi nomor Form 00.14).
 type savingsStubSource struct {
 	*ojkStubSource
 	savings []SavingsCustomerTypeRow
@@ -67,8 +70,10 @@ func (s *savingsStubSource) ListSavingsCustomerTypes(_ context.Context, _ domain
 	return s.savings, nil
 }
 
-// Dengan sumber simpanan, Form 00.14 muncul pada tabel bundle bulanan.
-func TestGenerateMonthlyMemuatForm00_14(t *testing.T) {
+// Agregasi internal jenis nasabah per produk tetap tersedia sebagai data internal,
+// tetapi SENGAJA tidak diikutkan pada bundel bulanan: label "Form 00.14" sudah
+// ditarik dari pelaporan OJK (docs/CELAH-FORM-OJK.md §6).
+func TestGenerateMonthlyTidakMemuatAgregasiJenisNasabah(t *testing.T) {
 	base := newStubSource()
 	src := &savingsStubSource{
 		ojkStubSource: &ojkStubSource{stubSource: base},
@@ -76,12 +81,26 @@ func TestGenerateMonthlyMemuatForm00_14(t *testing.T) {
 			{ProductFamily: "SAVINGS", ProductCode: "TAB-01", ProductName: "Tabungan", CustomerTypeCode: "871", AccountCount: 1, TotalAmount: decimal.NewFromInt(5000)},
 		},
 	}
+
+	// Sumbernya tetap dapat diagregasi untuk keperluan internal.
+	rows, err := src.ListSavingsCustomerTypes(context.Background(), domain.Actor{})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("agregasi internal = %d baris (err %v), ingin 1", len(rows), err)
+	}
+
+	// Tetapi agregasinya tidak boleh muncul pada keluaran ekspor bulanan.
 	b, err := NewBuilder(src).GenerateMonthly(context.Background(), time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC), "")
 	if err != nil {
 		t.Fatalf("GenerateMonthly: %v", err)
 	}
-	sec := tableByForm(t, b, "00.14")
-	if got := findCell(t, sec, "TAB-01 / 871", form0014SandiTotalNominal).Value; got != "5000" {
-		t.Fatalf("total nominal = %q, ingin 5000", got)
+	for _, sec := range b.Tables {
+		if sec.Form == "JENIS_NASABAH_PRODUK" {
+			t.Fatalf("agregasi internal %s tidak boleh ikut bundel ekspor", sec.Form)
+		}
+	}
+	for _, f := range b.SkippedForms {
+		if f.Form == "00.14" {
+			t.Fatalf("form 00.14 tidak boleh muncul di SkippedForms bundel ekspor")
+		}
 	}
 }

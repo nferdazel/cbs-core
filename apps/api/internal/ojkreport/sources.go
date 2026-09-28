@@ -300,9 +300,10 @@ type PlacementDataSource interface {
 	ListPlacementsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]PlacementRow, error)
 }
 
-// SavingsCustomerTypeRow adalah satu baris agregasi Form 00.14 "Jenis Nasabah dan
-// Produk Simpanan": jumlah rekening dan total nominal per produk simpanan menurut
-// golongan nasabah.
+// SavingsCustomerTypeRow adalah satu baris agregasi laporan internal jenis nasabah per
+// produk (dulu diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
+// docs/CELAH-FORM-OJK.md §6): jumlah rekening dan total nominal per produk simpanan
+// menurut golongan nasabah.
 //
 // CustomerTypeCode adalah sandi Lampiran 02 – Daftar Sandi Pihak Lawan
 // (customers.ojk_pihak_lawan_code), sumber resmi "Golongan Nasabah" Form 11.00/12.00
@@ -317,9 +318,10 @@ type SavingsCustomerTypeRow struct {
 	TotalAmount      decimal.Decimal
 }
 
-// SavingsCustomerTypeSource menyediakan agregasi Form 00.14 bank-wide. Posisi yang
-// dibaca adalah keadaan saat ekspor dijalankan; sistem belum menyimpan riwayat saldo
-// simpanan per akhir bulan.
+// SavingsCustomerTypeSource menyediakan agregasi laporan internal jenis nasabah per
+// produk (dulu diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
+// docs/CELAH-FORM-OJK.md §6) bank-wide. Posisi yang dibaca adalah keadaan saat ekspor
+// dijalankan; sistem belum menyimpan riwayat saldo simpanan per akhir bulan.
 type SavingsCustomerTypeSource interface {
 	ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error)
 }
