@@ -269,17 +269,17 @@ func (s RepoSource) ListPlacementsForOJK(ctx context.Context, asOf time.Time, ac
 
 // ListSavingsCustomerTypes membaca agregasi internal jenis nasabah per produk (dulu
 // diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
-// docs/CELAH-FORM-OJK.md §6) bank-wide dan memetakannya ke baris internal. Kebijakan
+// docs/CELAH-FORM-OJK.md §6) bank-wide pada posisi akhir periode asOf. Kebijakan
 // bank-wide ditegakkan di lapisan data: aktor non-lintas cabang ditolak, bukan diberi
 // sebagian.
-func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error) {
+func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, asOf time.Time, actor domain.Actor) ([]SavingsCustomerTypeRow, error) {
 	if err := pastikanLintasCabang(actor); err != nil {
 		return nil, err
 	}
 	if s.Savings == nil {
 		return nil, nil
 	}
-	aggregates, err := s.Savings.ListSavingsCustomerAggregates(ctx)
+	aggregates, err := s.Savings.ListSavingsCustomerAggregates(ctx, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -297,17 +297,17 @@ func (s RepoSource) ListSavingsCustomerTypes(ctx context.Context, actor domain.A
 	return out, nil
 }
 
-// ListBankDepositsForOJK membaca agregasi Form 13.00 bank-wide dan memetakannya ke
-// baris ekspor. Kebijakan bank-wide ditegakkan di lapisan data: aktor non-lintas
-// cabang ditolak, bukan diberi sebagian.
-func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, actor domain.Actor) ([]BankDepositRow, error) {
+// ListBankDepositsForOJK membaca agregasi Form 13.00 bank-wide pada posisi akhir
+// periode asOf dan memetakannya ke baris ekspor. Kebijakan bank-wide ditegakkan di
+// lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]BankDepositRow, error) {
 	if err := pastikanLintasCabang(actor); err != nil {
 		return nil, err
 	}
 	if s.BankDeposits == nil {
 		return nil, nil
 	}
-	aggregates, err := s.BankDeposits.ListBankDeposits(ctx)
+	aggregates, err := s.BankDeposits.ListBankDeposits(ctx, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +322,6 @@ func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, actor domain.Act
 			Jenis:            a.Jenis,
 			AccountCount:     a.AccountCount,
 			TotalNominal:     a.TotalNominal,
-			TotalBlocked:     a.TotalBlocked,
 		})
 	}
 	return out, nil

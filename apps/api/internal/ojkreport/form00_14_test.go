@@ -60,13 +60,15 @@ func TestBuildForm00_14BarisDanNominal(t *testing.T) {
 }
 
 // savingsStubSource melengkapi ojkStubSource dengan agregasi internal jenis nasabah
-// per produk (dulu diberi nomor Form 00.14).
+// per produk (dulu diberi nomor Form 00.14) dan merekam posisi akhir periode.
 type savingsStubSource struct {
 	*ojkStubSource
-	savings []SavingsCustomerTypeRow
+	savings  []SavingsCustomerTypeRow
+	lastAsOf time.Time
 }
 
-func (s *savingsStubSource) ListSavingsCustomerTypes(_ context.Context, _ domain.Actor) ([]SavingsCustomerTypeRow, error) {
+func (s *savingsStubSource) ListSavingsCustomerTypes(_ context.Context, asOf time.Time, _ domain.Actor) ([]SavingsCustomerTypeRow, error) {
+	s.lastAsOf = asOf
 	return s.savings, nil
 }
 
@@ -82,10 +84,15 @@ func TestGenerateMonthlyTidakMemuatAgregasiJenisNasabah(t *testing.T) {
 		},
 	}
 
-	// Sumbernya tetap dapat diagregasi untuk keperluan internal.
-	rows, err := src.ListSavingsCustomerTypes(context.Background(), domain.Actor{})
+	// Sumbernya tetap dapat diagregasi untuk keperluan internal, pada posisi akhir
+	// periode yang diminta (bukan waktu ekspor).
+	asOf := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC)
+	rows, err := src.ListSavingsCustomerTypes(context.Background(), asOf, domain.Actor{})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("agregasi internal = %d baris (err %v), ingin 1", len(rows), err)
+	}
+	if !src.lastAsOf.Equal(asOf) {
+		t.Fatalf("asOf agregasi internal = %v, ingin %v", src.lastAsOf, asOf)
 	}
 
 	// Tetapi agregasinya tidak boleh muncul pada keluaran ekspor bulanan.

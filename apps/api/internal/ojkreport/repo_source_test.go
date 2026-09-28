@@ -77,44 +77,52 @@ func TestBuilderMengisiKPMMLewatRepoSource(t *testing.T) {
 }
 
 // bankDepositRepoStub mengimplementasikan domain.BankDepositRepository untuk menguji
-// adaptor RepoSource tanpa basis data.
+// adaptor RepoSource tanpa basis data. lastAsOf merekam posisi yang diminta agar uji
+// dapat memastikan adaptor meneruskan akhir periode, bukan waktu ekspor.
 type bankDepositRepoStub struct {
-	rows []domain.BankDepositAggregate
+	rows     []domain.BankDepositAggregate
+	lastAsOf time.Time
 }
 
-func (s bankDepositRepoStub) ListBankDeposits(context.Context) ([]domain.BankDepositAggregate, error) {
+func (s *bankDepositRepoStub) ListBankDeposits(_ context.Context, asOf time.Time) ([]domain.BankDepositAggregate, error) {
+	s.lastAsOf = asOf
 	return s.rows, nil
 }
 
-var _ domain.BankDepositRepository = bankDepositRepoStub{}
+var _ domain.BankDepositRepository = (*bankDepositRepoStub)(nil)
 
 // TestRepoSourceListBankDeposits memastikan adaptor memetakan agregasi Form 13.00,
-// menegakkan kebijakan bank-wide di lapisan data, dan mengembalikan nil (bukan angka
-// nol) bila repositori tidak dirangkai.
+// menegakkan kebijakan bank-wide di lapisan data, meneruskan posisi akhir periode ke
+// repositori, dan mengembalikan nil (bukan angka nol) bila repositori tidak dirangkai.
 func TestRepoSourceListBankDeposits(t *testing.T) {
-	src := RepoSource{BankDeposits: bankDepositRepoStub{rows: []domain.BankDepositAggregate{
+	stub := &bankDepositRepoStub{rows: []domain.BankDepositAggregate{
 		{
 			BranchCode: "001", CounterpartyCIF: "CIF-1", JenisBankCode: "700",
 			HubunganBankCode: "20", LocationCode: "0197", Jenis: "02",
 			AccountCount: 1, TotalNominal: decimal.NewFromInt(1_000_000),
 		},
-	}}}
+	}}
+	src := RepoSource{BankDeposits: stub}
+	asOf := time.Date(2026, time.June, 30, 0, 0, 0, 0, time.UTC)
 
-	rows, err := src.ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleSuperAdmin})
+	rows, err := src.ListBankDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("ListBankDepositsForOJK: %v", err)
 	}
 	if len(rows) != 1 || rows[0].JenisBankCode != "700" || !rows[0].TotalNominal.Equal(decimal.NewFromInt(1_000_000)) {
 		t.Fatalf("baris = %+v", rows)
 	}
+	if !stub.lastAsOf.Equal(asOf) {
+		t.Fatalf("asOf yang diteruskan = %v, ingin %v", stub.lastAsOf, asOf)
+	}
 
 	// Aktor cabang ditolak di lapisan data, bukan diberi sebagian.
-	if _, err := src.ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleTeller}); !errors.Is(err, ErrOJKBankWide) {
+	if _, err := src.ListBankDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleTeller}); !errors.Is(err, ErrOJKBankWide) {
 		t.Fatalf("aktor non-lintas cabang: error = %v, ingin ErrOJKBankWide", err)
 	}
 
 	// Tanpa repositori, tidak ada baris dan tidak ada galat.
-	kosong, err := (RepoSource{}).ListBankDepositsForOJK(context.Background(), domain.Actor{Role: domain.RoleSuperAdmin})
+	kosong, err := (RepoSource{}).ListBankDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
 	if err != nil || kosong != nil {
 		t.Fatalf("tanpa repositori: rows=%v err=%v", kosong, err)
 	}

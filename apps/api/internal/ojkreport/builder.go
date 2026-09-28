@@ -371,7 +371,7 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 	// deposito milik nasabah bergolongan bank (sandi Lampiran 02). Bila tidak ada
 	// nasabah bank yang dapat dikenali, form dinyatakan belum tersedia, bukan kosong.
 	if bs, ok := b.source.(BankDepositSource); ok {
-		rows, err := bs.ListBankDepositsForOJK(ctx, actor)
+		rows, err := bs.ListBankDepositsForOJK(ctx, periodEnd, actor)
 		if err != nil {
 			return nil, nil, err
 		}

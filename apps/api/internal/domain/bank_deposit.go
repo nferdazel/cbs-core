@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -28,14 +29,13 @@ type BankDepositAggregate struct {
 	// TotalNominal adalah total saldo tabungan/giro atau nominal penempatan deposito
 	// dalam rupiah penuh.
 	TotalNominal decimal.Decimal
-	// TotalBlocked adalah total saldo yang diblokir/dijaminkan (accounts.hold_balance)
-	// pada kelompok ini.
-	TotalBlocked decimal.Decimal
 }
 
-// BankDepositRepository menyediakan agregasi Form 13.00. Posisi yang dibaca adalah
-// keadaan saat ini, bukan potret historis: sistem belum menyimpan riwayat saldo
-// simpanan per akhir bulan, sehingga periode lampau tidak dapat direkonstruksi.
+// BankDepositRepository menyediakan agregasi Form 13.00 pada posisi akhir periode
+// (asOf), bukan keadaan saat ekspor dijalankan. Saldo rekening simpanan direkonstruksi
+// dari jurnal (entry_date <= asOf); kontrak deposito dipilih dari tanggal mulai dan
+// penutupannya. Sistem TIDAK menyimpan riwayat saldo yang diblokir (accounts.hold_balance)
+// per akhir bulan, sehingga komponen itu tidak ikut direkonstruksi.
 type BankDepositRepository interface {
-	ListBankDeposits(ctx context.Context) ([]BankDepositAggregate, error)
+	ListBankDeposits(ctx context.Context, asOf time.Time) ([]BankDepositAggregate, error)
 }

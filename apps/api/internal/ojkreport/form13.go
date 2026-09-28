@@ -79,9 +79,7 @@ var form13Columns = []form13Column{
 	{Sandi: form13SandiNominal, Nama: "Nominal", Value: func(r BankDepositRow) string {
 		return FormatRupiah(r.TotalNominal)
 	}},
-	{Sandi: form13SandiDiblokir, Nama: "Nominal yang Diblokir/Dijaminkan", Value: func(r BankDepositRow) string {
-		return FormatRupiah(r.TotalBlocked)
-	}},
+	{Sandi: form13SandiDiblokir, Nama: "Nominal yang Diblokir/Dijaminkan", Reason: "saldo yang diblokir hanya tersimpan sebagai keadaan saat ini (accounts.hold_balance); riwayat blokir per akhir periode tidak tersimpan dan kontrak deposito tidak punya kolomnya, sehingga tidak direkonstruksi (bukan ditulis nol)"},
 	{Sandi: form13SandiAlasan, Nama: "Alasan Diblokir", Reason: "alasan pemblokiran belum disimpan per rekening simpanan bank lawan"},
 	{Sandi: form13SandiBiaya, Nama: "Biaya Transaksi Belum Diamortisasi", Reason: "saldo biaya transaksi belum diamortisasi per bank lawan belum disimpan"},
 	{Sandi: form13SandiJumlah, Nama: "Jumlah", Value: func(r BankDepositRow) string {
@@ -103,8 +101,8 @@ func buildForm13(rows []BankDepositRow) TableSection {
 		Notes: []string{
 			"Simpanan dari bank lain adalah seluruh liabilitas BPR berupa tabungan dan deposito kepada bank lain di Indonesia (Form 13.00 – 3, PDF #page 211).",
 			"Bank lawan dikenali dari sandi Lampiran 02 Daftar Sandi Pihak Lawan (customers.ojk_pihak_lawan_code): 001 Bank Indonesia, 600 BPR, 601 BPRS, 700 Bank Umum, 701 Bank Umum Syariah, dan 901 Unit Usaha Syariah. Nasabah tanpa sandi bank tidak dikenali sebagai bank lawan.",
-			"Baris diagregasi per bank lawan, kantor, dan jenis simpanan; sistem belum menyimpan riwayat saldo per akhir bulan, sehingga posisi yang dibaca adalah keadaan saat ekspor dijalankan.",
-			"Kolom III (No. Rekening), IX (Jangka Waktu), dan X (Suku Bunga) tidak dapat disajikan pada baris agregat; kolom V (Sandi Bank) menunggu sandi APOLO/SPOJK, dan XIII/XIV belum punya sumber tersimpan.",
+			"Baris diagregasi per bank lawan, kantor, dan jenis simpanan pada posisi AKHIR PERIODE laporan, bukan keadaan saat ekspor dijalankan: saldo rekening simpanan direkonstruksi dari jurnal dan kontrak deposito dipilih menurut tanggal mulai/penutupannya.",
+			"Kolom III (No. Rekening), IX (Jangka Waktu), dan X (Suku Bunga) tidak dapat disajikan pada baris agregat; kolom V (Sandi Bank) menunggu sandi APOLO/SPOJK, dan XII/XIII/XIV belum punya sumber tersimpan.",
 			"Kolom XV (Jumlah) ditulis sama dengan Nominal karena belum ada saldo biaya transaksi belum diamortisasi (kolom XIV) yang tersimpan per bank lawan.",
 		},
 	}

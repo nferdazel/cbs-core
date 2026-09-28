@@ -19,9 +19,10 @@ import (
 // "Golongan Nasabah" pada Form 11.00 (Daftar Tabungan) dan Form 12.00 (Daftar Deposito),
 // yaitu customers.ojk_pihak_lawan_code. Sandi yang belum diisi ditulis "-".
 //
-// Form ini TIDAK menghitung ulang saldo dari jurnal; angka diambil dari saldo
-// rekening/kontrak yang sudah ada (accounts.balance, time_deposits.placement_amount),
-// dan hanya berlaku untuk posisi saat ekspor dijalankan.
+// Form ini TIDAK menghitung ulang saldo dari jurnal; angka diambil dari sumber data
+// pada posisi AKHIR PERIODE laporan (saldo rekening direkonstruksi dari jurnal,
+// kontrak deposito dipilih menurut tanggal mulai/penutupan), bukan keadaan saat ekspor
+// dijalankan.
 
 const (
 	form0014SandiJenisProduk  = "JENIS_PRODUK"
@@ -50,8 +51,8 @@ func buildForm00_14(rows []SavingsCustomerTypeRow) TableSection {
 		},
 		Notes: []string{
 			"Golongan nasabah memakai sandi Lampiran 02 – Daftar Sandi Pihak Lawan (customers.ojk_pihak_lawan_code), sumber resmi yang sama dengan kolom Golongan Nasabah Form 11.00/12.00 SEOJK 16/2024; sandi yang belum diisi ditulis '-'.",
-			"Sumber angka: saldo rekening tabungan/giro (accounts.balance) berstatus selain CLOSED dan nominal penempatan deposito berjangka (time_deposits.placement_amount) berstatus PLACED/MATURED (yang belum dicairkan).",
-			"Posisi yang dibaca adalah keadaan saat ekspor dijalankan; sistem belum menyimpan riwayat saldo simpanan per akhir bulan, sehingga posisi periode lampau tidak dapat direkonstruksi.",
+			"Sumber angka: saldo rekening tabungan/giro dan nominal penempatan deposito berjangka pada posisi akhir periode. Saldo rekening direkonstruksi dari jurnal (entry_date <= akhir periode); kontrak deposito dipilih menurut tanggal mulai dan penutupannya.",
+			"Posisi yang dibaca adalah akhir periode laporan, bukan keadaan saat ekspor dijalankan, sehingga ekspor yang ditunda tetap melaporkan bulan yang diminta.",
 		},
 	}
 	for _, r := range rows {

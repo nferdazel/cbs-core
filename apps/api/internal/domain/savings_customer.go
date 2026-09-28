@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -29,9 +30,10 @@ type SavingsCustomerAggregate struct {
 }
 
 // SavingsCustomerRepository menyediakan agregasi laporan internal jenis nasabah per
-// produk (dulu diberi nomor Form 00.14; lihat docs/CELAH-FORM-OJK.md §6). Posisi yang
-// dibaca adalah keadaan saat ini, bukan potret historis: sistem belum menyimpan riwayat
-// saldo simpanan per akhir bulan, sehingga periode lampau tidak dapat direkonstruksi.
+// produk (dulu diberi nomor Form 00.14; lihat docs/CELAH-FORM-OJK.md §6) pada posisi
+// akhir periode (asOf), bukan keadaan saat ekspor dijalankan. Saldo rekening simpanan
+// direkonstruksi dari jurnal (entry_date <= asOf); kontrak deposito dipilih dari
+// tanggal mulai dan penutupannya.
 type SavingsCustomerRepository interface {
-	ListSavingsCustomerAggregates(ctx context.Context) ([]SavingsCustomerAggregate, error)
+	ListSavingsCustomerAggregates(ctx context.Context, asOf time.Time) ([]SavingsCustomerAggregate, error)
 }

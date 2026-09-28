@@ -320,10 +320,11 @@ type SavingsCustomerTypeRow struct {
 
 // SavingsCustomerTypeSource menyediakan agregasi laporan internal jenis nasabah per
 // produk (dulu diberi nomor Form 00.14 — nomor itu tidak ada di SEOJK 16/2024, lihat
-// docs/CELAH-FORM-OJK.md §6) bank-wide. Posisi yang dibaca adalah keadaan saat ekspor
-// dijalankan; sistem belum menyimpan riwayat saldo simpanan per akhir bulan.
+// docs/CELAH-FORM-OJK.md §6) bank-wide pada posisi akhir periode (asOf). Saldo rekening
+// simpanan direkonstruksi dari jurnal; kontrak deposito dipilih menurut tanggal mulai
+// dan penutupannya.
 type SavingsCustomerTypeSource interface {
-	ListSavingsCustomerTypes(ctx context.Context, actor domain.Actor) ([]SavingsCustomerTypeRow, error)
+	ListSavingsCustomerTypes(ctx context.Context, asOf time.Time, actor domain.Actor) ([]SavingsCustomerTypeRow, error)
 }
 
 // BankDepositRow adalah satu baris agregasi Form 13.00 "Daftar Simpanan dari Bank
@@ -354,16 +355,14 @@ type BankDepositRow struct {
 	// TotalNominal adalah total saldo tabungan/giro atau nominal penempatan deposito
 	// dalam rupiah penuh, sumber kolom XI.
 	TotalNominal decimal.Decimal
-	// TotalBlocked adalah total saldo yang diblokir/dijaminkan (accounts.hold_balance),
-	// sumber kolom XII.
-	TotalBlocked decimal.Decimal
 }
 
-// BankDepositSource menyediakan agregasi Form 13.00 bank-wide. Posisi yang dibaca
-// adalah keadaan saat ekspor dijalankan; sistem belum menyimpan riwayat saldo
-// simpanan per akhir bulan.
+// BankDepositSource menyediakan agregasi Form 13.00 bank-wide pada posisi akhir periode
+// (asOf). Saldo rekening simpanan direkonstruksi dari jurnal; kontrak deposito dipilih
+// menurut tanggal mulai dan penutupannya. Kolom "diblokir" tidak tersedia karena
+// saldo blokir tidak punya riwayat per akhir bulan.
 type BankDepositSource interface {
-	ListBankDepositsForOJK(ctx context.Context, actor domain.Actor) ([]BankDepositRow, error)
+	ListBankDepositsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]BankDepositRow, error)
 }
 
 // ReportingOffice adalah kantor pelapor yang dipakai mengisi kolom I "Sandi Kantor"
