@@ -259,6 +259,23 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 		return nil, err
 	}
 
+	// Form 00.17 Laporan Perubahan Ekuitas hanya disampaikan untuk laporan posisi
+	// bulan Desember (PDF #page 293). Sumbernya saldo COA ekuitas pada 31 Des T-2,
+	// T-1, dan T; hanya kolom yang punya akun yang diisi, sisanya "-" beralasan.
+	// Posisi lain tetap dicatat pada SkippedForms dengan alasan "hanya Desember".
+	if periodStart.Month() == time.December {
+		sec, err := b.buildForm17(ctx, yearStart, bs, book)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, sec)
+	} else {
+		runtimeSkipped = append(runtimeSkipped, OJKFormDefinition{
+			Form: "00.17", Name: formName("00.17"),
+			UnavailableReason: "hanya disampaikan untuk posisi bulan Desember (Form 00.17, PDF #page 293); bentuk form tetap terbit tetapi tidak dibangun untuk posisi bulan ini",
+		})
+	}
+
 	// Form 00.18 Laporan Arus Kas hanya disampaikan untuk laporan posisi bulan
 	// Desember (Form 00.18 – 2, PDF #page 296-297). Posisi lain tetap mencatat form
 	// ini pada SkippedForms dengan alasan "hanya Desember", bukan menghilangkannya.

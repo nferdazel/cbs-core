@@ -214,8 +214,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "00.12", Name: "Data Penutupan Kantor dan Terminal Perbankan Elektronik", Buildable: true},
 	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: false,
 		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
-	{Form: "00.17", Name: "Laporan Perubahan Ekuitas", Buildable: false,
-		UnavailableReason: "belum ada perakit 17 baris sandi x 12 kolom (2 identitas + 10 kolom angka) x 3 tahun; COA ekuitas hanya 5 (migrasi 000005:211) tanpa Cadangan Tujuan, Surplus Revaluasi, Dana Setoran Modal, dan Dividen (PDF #293-294)"},
+	// Form 00.17 "Laporan Perubahan Ekuitas" (PDF #page 293-294) disusun sebagai form
+	// parsial: 17 baris tetap x 12 kolom, hanya kolom yang punya akun COA ekuitas yang
+	// diisi (III 30100/13100, X 30400, XI 30200/30300/13200), baris "Saldo per 31 Des"
+	// dibaca dari saldo akhir tahun T-2/T-1/T. Kolom dan baris mutasi yang belum punya
+	// akun ditandai tidak tersedia di dalam form, bukan nol. Hanya posisi Desember
+	// (PDF #page 293); posisi lain dicatat pada SkippedForms lewat builder.go (form17.go).
+	{Form: "00.17", Name: "Laporan Perubahan Ekuitas", Buildable: true},
 	{Form: "00.18", Name: "Laporan Arus Kas", Buildable: true},
 	// Form 00.18 dibangun dari domain.CashFlow (jurnal akun kas/bank) lewat perakit
 	// form18.go dan pemetaan tersendiri COAMapping18Draft; hanya disampaikan untuk
