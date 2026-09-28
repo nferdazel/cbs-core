@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **19 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **22 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -140,7 +140,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
 | A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
-| A5 | `09.01` + `14.01` **SELESAI 28 Sep 2026** (ambang 25% + baris per akun COA, tanpa skema). Sisa: `00.09`, `00.10`, `00.12` — versi jujur dari `bank_management`/`bank_offices` dengan jendela peristiwa dalam bulan periode (kolom tanpa sumber tetap `-`), dan `03.00` yang ternyata butuh register valas + kurs → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
+| A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
 ## 7. Anomali transkrip A4/A5/A6 — SEMUA TERPECAHKAN DARI PDF (28 Sep 2026)
@@ -172,6 +172,52 @@ jangan diikuti.
 Satu-satunya butir yang masih menunggu pihak luar adalah **§3 poin 6 (Form 06.01)**,
 yaitu inkonsistensi internal PDF soal sel "Likuid | Non Likuid", bukan salah satu dari
 delapan anomali ini.
+
+## 8. Audit query as-of (28 Sep 2026) — mana yang aman, mana yang butuh keputusan
+
+Audit baca-saja terhadap seluruh sumber laporan yang memakai `asOf`/`periodEnd`,
+berfokus pada multiplicitas baris (ganda vs hilang). Ringkasnya:
+
+**Aman (teragregasi / unik per entitas):** `BalanceSheet`, `IncomeStatement`,
+`CashFlow`, `TrialBalance` (SUM jurnal `GROUP BY` COA); Form 13.00 (saldo per
+`account_number` unik + kontrak satu baris); Form 11.00 (CTE per `account_id`, arah
+jurnal identik `reporting_repo.go:170-171`); Form 12.00 (unik per kontrak); agregat
+jenis nasabah; BMPK per pihak (`GROUP BY customer_id` + upsert); pinjaman (satu baris
+per `loan_number`).
+
+**Perlu keputusan, bukan sekadar kode:**
+1. **`lps_placements` → Form 05.00.** `lps_placement_repo.go:146` hanya `as_of <= asOf`
+   tanpa dedup; tabel tanpa UNIQUE selain PK (`000045:28-52`) dan **tabel ini tidak punya
+   jalur INSERT di aplikasi** — diisi bank lewat SQL. Dua skenario: bank **menimpa** baris
+   (menaikkan `as_of`) → penempatan **hilang** dari bulan-bulan sebelumnya; bank **menyimpan
+   snapshot per bulan** → semua baris terambil dan nominal **terlipat** (`form05.go:228-237`
+   tanpa dedup). Invarian tertulis di `docs/CKPN-SIAP-RILIS.md:350-353` menyebut pola
+   "satu baris ditimpa", tetapi tidak dicegah constraint apa pun. **Keputusan bank:** semantik
+   `as_of` (tanggal posisi vs tanggal input) — tanpa itu query tidak boleh diubah.
+2. **`off_balance_items` → Form 01.01.** `off_balance_repo.go:69-70` memakai
+   `status='AKTIF'` (keadaan kini) untuk semua bulan, dan `:123` menimpa `as_of` saat edit
+   tanpa unique `(position_code, as_of)` → pos bisa hilang dari bulan lama atau terhitung
+   ganda dalam satu bulan.
+3. **Rollover deposito menulis ulang `start_date`** (`deposit_repo.go:233-246`) → kontrak
+   ARO hilang dari bulan sebelumnya dan/atau nominal terbaca pasca-rollover (Form 12.00 dan
+   bagian Form 13.00). Sudah diakui di komentar repo; query tidak bisa merekonstruksi yang
+   sudah ditimpa — perubahan jalur tulis.
+4. **BMPK bukan as-of** (`bmpk_repo.go:30-59`, `bmpk_service.go:47-61`): `asOf` hanya
+   disalin, sedangkan eksposur/batas dibaca keadaan kini → kolom XV Form 05.00 dan XXXVII
+   Form 06.00 pada periode lampau memakai posisi kini.
+
+**Sudah diperbaiki 28 Sep 2026:**
+- **Paginasi kredit tanpa pemecah seri** — `loan_repo.go` kini `ORDER BY created_at DESC,
+  id DESC`; tanpa itu kredit dengan `created_at` kembar bisa terlewat/terulang antar halaman
+  saat loop `repo_source.go` menjelajahi OFFSET.
+- **Komentar `savings_account_repo.go` yang melebih-lebihkan jaminan** — filter `closed_at`
+  ternyata mati karena `accounts.closed_at` tidak pernah ditulis aplikasi; pengaman
+  sebenarnya adalah syarat saldo nol. Komentar kini menyatakan itu apa adanya.
+
+**Sudah terdokumentasi sebagai keterbatasan (bukan cacat baru):** baris Form 06.00 untuk
+kredit yang lunas setelah `periodEnd` hilang dari periode lampau (kolom posisi memang sudah
+ditahan `-`), dan agregat pengurang PABL (`lps_placement.go:272`, `pabl_ckpn.go:197`) ikut
+memakai `outstanding` keadaan kini.
 
 ## 6. Selisih: Form 00.14 — TERVERIFIKASI, bukan form SEOJK 16/2024
 
