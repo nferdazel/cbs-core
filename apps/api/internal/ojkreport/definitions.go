@@ -200,14 +200,18 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "hanya saldo COA 30100/13100 yang dipetakan (coa_mapping.go:166,174); akun Modal Sumbangan dan Dana Setoran Modal serta kolom Jenis dan Tanggal Persetujuan OJK belum ada (PDF #245-247)"},
 	{Form: "00.07", Name: "Daftar Pinjaman yang Diterima", Buildable: false,
 		UnavailableReason: "belum ada register pinjaman per kreditur; akun liabilitas 20100-20800 tidak menyimpan identitas kreditur (migrasi 000005:198) dan off_balance_items hanya mencatat komitmen belum ditarik (PDF #248-254)"},
-	{Form: "00.09", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR yang Berhenti Menjabat", Buildable: false,
-		UnavailableReason: "sumber bank_management (kolom ended_at/note) ada, tetapi belum ada perakit Form 00.09; kolom NIK sengaja tidak disimpan (kelembagaan.go:175) dan komite serta alasan vs penyebab berhenti belum ada (PDF #258-263)"},
-	{Form: "00.10", Name: "Data Pejabat Eksekutif BPR yang Berhenti Menjabat", Buildable: false,
-		UnavailableReason: "sumber bank_management + license_number/date ada, tetapi belum ada perakit Form 00.10; kolom Surat Pemberhentian (beda dari pengangkatan) dan NIK belum ada (PDF #264-269)"},
+	// Form 00.09/00.10/00.12 kini buildable sebagai form KONDISIONAL berbasis
+	// PERISTIWA: sumber bank_management.ended_at (00.09/00.10, migrasi 000112:89) dan
+	// bank_offices.closed_at (00.12, migrasi 000112:41), dirakit form_berhenti.go.
+	// Baris muncul hanya bila peristiwanya jatuh pada bulan periode; bila tidak ada,
+	// form dicatat pada SkippedForms dengan alasan spesifik. Kolom tanpa sumber (NIK,
+	// komite, penyebab berhenti sandi 1/2/3, sandi Jenis OJK, sandi induk, koordinat)
+	// ditulis "-" beserta alasan; note teks bebas tidak pernah menjadi sandi.
+	{Form: "00.09", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR yang Berhenti Menjabat", Buildable: true},
+	{Form: "00.10", Name: "Data Pejabat Eksekutif BPR yang Berhenti Menjabat", Buildable: true},
 	{Form: "00.11", Name: "Data Kantor selain Kantor Pusat dan Kantor Cabang dan Terminal Perbankan Elektronik", Buildable: false,
 		UnavailableReason: "sumber bank_offices (office_type teks bebas) + branches.parent_id ada, tetapi belum ada perakit Form 00.11; sandi induk/pendahulu, koordinat, pimpinan, dan telepon belum ada (PDF #270-275)"},
-	{Form: "00.12", Name: "Data Penutupan Kantor dan Terminal Perbankan Elektronik", Buildable: false,
-		UnavailableReason: "sumber bank_offices.closed_at + status='TUTUP' ada, tetapi belum ada perakit Form 00.12; sandi Jenis OJK, sandi induk, dan koordinat belum ada (PDF #276-280)"},
+	{Form: "00.12", Name: "Data Penutupan Kantor dan Terminal Perbankan Elektronik", Buildable: true},
 	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: false,
 		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
 	{Form: "00.17", Name: "Laporan Perubahan Ekuitas", Buildable: false,

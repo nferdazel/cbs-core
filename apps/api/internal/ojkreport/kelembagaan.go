@@ -88,8 +88,10 @@ func BuildKelembagaanTables(report domain.KelembagaanReport) []TableSection {
 }
 
 // formKelembagaanBulanan adalah form Laporan Gabungan yang sumbernya data kelembagaan
-// dan kini ikut bundel bulanan.
-var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04"}
+// dan ikut bundel bulanan. Dua di antaranya berbasis peristiwa (00.09/00.10/00.12):
+// saat peristiwanya tidak ada pada bulan periode, form tetap dicatat belum dibangun
+// dengan alasan spesifik supaya ketidakhadirannya terbaca.
+var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04", "00.09", "00.10", "00.12"}
 
 // buildKelembagaanMonthlyTables memilih bagian kelembagaan yang benar-benar berisi
 // baris untuk ikut bundel bulanan. Bagian tanpa baris TIDAK di-append, tetapi dicatat
@@ -113,7 +115,7 @@ func buildKelembagaanMonthlyTables(report domain.KelembagaanReport) ([]TableSect
 	return tables, skipped
 }
 
-// kelembagaanSkippedTanpaSumber mencatat ketiga form kelembagaan belum dibangun karena
+// kelembagaanSkippedTanpaSumber mencatat form bulanan kelembagaan belum dibangun karena
 // sumbernya belum dirangkai pada ekspor ini.
 func kelembagaanSkippedTanpaSumber(reason string) []OJKFormDefinition {
 	out := make([]OJKFormDefinition, 0, len(formKelembagaanBulanan))

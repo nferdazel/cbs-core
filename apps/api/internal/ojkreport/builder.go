@@ -386,6 +386,15 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			kelembagaanTables, kelembagaanSkipped := buildKelembagaanMonthlyTables(report)
 			tables = append(tables, kelembagaanTables...)
 			skipped = append(skipped, kelembagaanSkipped...)
+
+			// Form 00.09/00.10/00.12 berbasis PERISTIWA (berhenti menjabat/penutupan
+			// kantor): hanya terbit bila ada peristiwa pada bulan periode. Peristiwa
+			// bulan lain tidak muncul lagi, mencegah pelaporan ganda. Form tanpa
+			// peristiwa dicatat pada SkippedForms, bukan ditampilkan kosong.
+			periodStart := time.Date(periodEnd.Year(), periodEnd.Month(), 1, 0, 0, 0, 0, time.UTC)
+			peristiwaTables, peristiwaSkipped := buildKelembagaanPeristiwaTables(report, periodStart)
+			tables = append(tables, peristiwaTables...)
+			skipped = append(skipped, peristiwaSkipped...)
 		}
 	} else {
 		skipped = append(skipped, kelembagaanSkippedTanpaSumber(
