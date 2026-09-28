@@ -82,14 +82,17 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 2. **`00.02`/`00.03`/`00.04` sudah dibangun tetapi tidak ikut bundel bulanan.** Ketiganya
    terbit di dalam `LAPORAN_KELEMBAGAAN` (`kelembagaan.go:70-88`) tetapi tidak masuk
    `ExportMonthly` (`ojk_report_handler.go:317`).
-3. **Kolom "Sandi Kantor" belum punya sumber** untuk form yang bersumber saldo COA
-   bank-wide — sudah terlihat di `form09.go:69` dan `form01_01.go:80`, dan akan menimpa
-   `08.00`/`09.01`/`10.00`/`14.00`. Pemeriksaan 28 Sep 2026: `journal_lines` tanpa atribut
-   cabang, tetapi `journal_entries.branch_id` ada (`000021:17`); `branches.code` ber-3 digit
-   tetapi **tidak didokumentasikan sebagai sandi OJK** (`000081:67` menyebutnya kode
-   penomoran rekening), sedangkan `bank_offices.code` memang didefinisikan "sandi kantor
-   (Form 00.04 kolom I, 3 angka)" (`000112:75`) tanpa FK ke `branches`; `BalanceSheet`
-   menerima `asOf` tetapi selalu bank-wide (`reporting_repo.go:168`).
+3. **Kolom "Sandi Kantor" — SELESAI (28 Sep 2026).** Sumbernya `bank_offices.code`
+   (migrasi `000112`: "Sandi kantor Form 00.04 kolom I, 3 angka; kosong = laporan menulis
+   `-`"), dibaca lewat `RepoSource.ReportingOffice` (`repo_source.go:348`). Aturan pemilihan
+   kantor pelapor: hanya kantor `AKTIF` ber-`code`; **tepat satu** → dipakai, **nol** atau
+   **lebih dari satu** → kolom tetap `-` + alasan (sistem tidak memilih kantor pelapor
+   sendiri, `office_type` adalah teks bebas bank jadi tidak ditebak). Sudah dipakai Form
+   `09.00` dan `01.01`; form berikutnya (`08.00`/`09.01`/`10.00`/`14.00`) tinggal meneruskan
+   `kantor` yang sama. Pemeriksaan sebelumnya tetap relevan: `journal_lines` tanpa atribut
+   cabang, `journal_entries.branch_id` ada (`000021:17`), `branches.code` tidak
+   didokumentasikan sebagai sandi OJK (`000081:67`), `BalanceSheet` menerima `asOf` tetapi
+   selalu bank-wide (`reporting_repo.go:168`).
 4. **Tidak ada snapshot saldo akhir bulan.** `11.00`/`12.00` membaca keadaan saat ekspor
    (`bank_deposit_repo.go:16`); bila ekspor ditunda, angka berbeda dari posisi bulan itu.
 5. **`00.17`/`00.18` hanya untuk posisi Desember** (`PDF #293`, `#296-297`) — builder punya
