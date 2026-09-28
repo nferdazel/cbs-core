@@ -3381,6 +3381,64 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/system/ckpn-pabl:
+    get:
+      tags: [Sistem]
+      operationId: getCKPNPABLActivation
+      summary: Pengaturan CKPN PABL
+      description: >-
+        Izin: `system:config:read`. Menyajikan nilai enam kunci `ckpn.pabl.*` (fraksi
+        PD golongan 1/3/5, LGD kolektif, bentuk CKPN aset baik, saklar
+        `ckpn.pabl.enabled`), beserta sisa penahan penyalakan. Baca-saja. Rute ini
+        terpisah dari pengaturan aktivasi CKPN utama.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Sistem]
+      operationId: updateCKPNPABLActivation
+      summary: Ubah pengaturan CKPN PABL
+      description: >-
+        Izin: `system:config`. Hanya bidang yang dikirim yang diubah; teraudit satu
+        transaksi. Semua bidang opsional: `pd_frac_gol_1`, `pd_frac_gol_3`,
+        `pd_frac_gol_5`, `lgd_frac` (string; absen/null tidak diubah, "" mengosongkan,
+        selain itu divalidasi sebagai fraksi (0,1]), `aset_baik_bentuk_ckpn` dan
+        `enabled` (boolean). Permintaan tanpa satu bidang pun ditolak 400. Menolak 422
+        bila fraksi nol/di luar (0,1], atau `enabled=true` selama masih ada penahan
+        (fraksi PABL belum lengkap atau parameter CKPN utama belum FINAL/diratifikasi).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                pd_frac_gol_1: { type: string, nullable: true }
+                pd_frac_gol_3: { type: string, nullable: true }
+                pd_frac_gol_5: { type: string, nullable: true }
+                lgd_frac: { type: string, nullable: true }
+                aset_baik_bentuk_ckpn: { type: boolean, nullable: true }
+                enabled: { type: boolean, nullable: true }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/v1/ojk/loan-codes/{loanId}:
     parameters:

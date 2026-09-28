@@ -73,6 +73,10 @@ type RouterParams struct {
 	// syariah, status SEMENTARA/FINAL, bukti ratifikasi, saklar ckpn.enabled) agar bank
 	// mengisinya tanpa SQL. Menyalakan CKPN tetap keputusan manusia.
 	CKPNActivationHandler *CKPNActivationHandler
+	// CKPNPABLActivationHandler mengelola pengaturan CKPN per penempatan pada bank lain
+	// (fraksi PD/LGD kolektif, bentuk CKPN aset baik, saklar ckpn.pabl.enabled) lewat
+	// rute terpisah dari jalur aktivasi utama agar setelan lanjutan tidak tertimpa.
+	CKPNPABLActivationHandler *CKPNPABLActivationHandler
 	// OJKLoanCodesHandler mengelola sandi referensi/inline OJK per kredit (Form 06.00
 	// kolom VIII/XI/XXII) agar bank mengisinya tanpa SQL. Rutenya tidak dipasang bila nil.
 	OJKLoanCodesHandler *OJKLoanCodesHandler
@@ -444,6 +448,14 @@ func NewRouter(p RouterParams) *chi.Mux {
 			// yang menolak penyalakan prematur dan audit satu transaksi.
 			if p.CKPNActivationHandler != nil {
 				p.CKPNActivationHandler.RegisterRoutes(r)
+			}
+			// ── Pengaturan CKPN PABL (Form 05.00 kolom XII/XXI) ──
+			// Rute TERPISAH dari jalur aktivasi CKPN utama: kunci ckpn.pabl.* tidak
+			// boleh tertimpa oleh penyetelan dasar. Izin sama (baca system:config:read,
+			// ubah system:config), dengan penolakan penyalakan prematur dan audit satu
+			// transaksi.
+			if p.CKPNPABLActivationHandler != nil {
+				p.CKPNPABLActivationHandler.RegisterRoutes(r)
 			}
 			// ── Sandi referensi/inline OJK per kredit ──
 			// Melengkapi jalur pengisian sandi OJK nasabah (lewat PUT /customers/{id})

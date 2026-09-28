@@ -215,6 +215,12 @@ const (
 	MsgCKPNActivationRatificationIncomplete Code = "ckpn_activation_ratification_incomplete"
 	MsgCKPNActivationNotReady               Code = "ckpn_activation_not_ready"
 	MsgCKPNActivationDateInvalid            Code = "ckpn_activation_date_invalid"
+	// Pengaturan CKPN per penempatan pada bank lain (Form 05.00 kolom XII/XXI):
+	// enam kunci ckpn.pabl.* sebelumnya hanya bisa diisi lewat SQL.
+	MsgCKPNPABLActivation         Code = "ckpn_pabl_activation"
+	MsgCKPNPABLActivationUpdated  Code = "ckpn_pabl_activation_updated"
+	MsgCKPNPABLActivationEmpty    Code = "ckpn_pabl_activation_empty"
+	MsgCKPNPABLActivationNotReady Code = "ckpn_pabl_activation_not_ready"
 	// Sandi referensi/inline OJK (Form 06.00) yang sebelumnya hanya bisa diisi lewat
 	// SQL/seed. Galat inline/referensi memuat nama kolom sebagai placeholder.
 	MsgOJKLoanCodesUpdated     Code = "ojk_loan_codes_updated"
@@ -576,6 +582,10 @@ var codeList = []Code{
 	MsgCKPNActivationRatificationIncomplete,
 	MsgCKPNActivationNotReady,
 	MsgCKPNActivationDateInvalid,
+	MsgCKPNPABLActivation,
+	MsgCKPNPABLActivationUpdated,
+	MsgCKPNPABLActivationEmpty,
+	MsgCKPNPABLActivationNotReady,
 	MsgOJKLoanCodesUpdated,
 	MsgOJKLoanCodesEmpty,
 	MsgOJKInlineCodeInvalid,
@@ -1521,6 +1531,22 @@ var catalog = map[Code]map[Lang]string{
 	MsgCKPNActivationDateInvalid: {
 		ID: "tanggal harus format YYYY-MM-DD dan tidak boleh di masa depan",
 		EN: "date must be YYYY-MM-DD and must not be in the future",
+	},
+	MsgCKPNPABLActivation: {
+		ID: "pengaturan CKPN PABL",
+		EN: "CKPN PABL settings",
+	},
+	MsgCKPNPABLActivationUpdated: {
+		ID: "pengaturan CKPN PABL diperbarui",
+		EN: "CKPN PABL settings updated",
+	},
+	MsgCKPNPABLActivationEmpty: {
+		ID: "tidak ada bidang pengaturan CKPN PABL yang dikirim",
+		EN: "no CKPN PABL settings field was submitted",
+	},
+	MsgCKPNPABLActivationNotReady: {
+		ID: "CKPN PABL belum boleh dinyalakan: masih ada penahan yang harus diselesaikan",
+		EN: "CKPN PABL cannot be enabled yet: blocking items remain",
 	},
 	MsgOJKLoanCodesUpdated: {
 		ID: "sandi OJK kredit diperbarui",

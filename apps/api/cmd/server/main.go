@@ -220,6 +220,9 @@ func main() {
 	// Identitas Form 00.00 di luar tabel bank_profile (kunci system_config ojk.*).
 	ojkProfileSvc := service.NewOJKProfileService(db, postgres.NewOJKProfileRepository(db), auditRepo)
 	ckpnActivationSvc := service.NewCKPNActivationService(db, postgres.NewCKPNActivationRepository(db), configSvc, auditRepo)
+	// Pengaturan CKPN PABL (enam kunci ckpn.pabl.*) lewat rute terpisah: jalur aktivasi
+	// utama sengaja tidak menyentuhnya.
+	ckpnPABLActivationSvc := service.NewCKPNPABLActivationService(db, postgres.NewCKPNPABLActivationRepository(db), configSvc, auditRepo)
 
 	// 5. HTTP Handlers
 	cookies := middleware.CookieConfig{
@@ -304,6 +307,7 @@ func main() {
 	bankProfileHandler := httpHandler.NewBankProfileHandler(bankProfileSvc)
 	ojkProfileHandler := httpHandler.NewOJKProfileHandler(ojkProfileSvc)
 	ckpnActivationHandler := httpHandler.NewCKPNActivationHandler(ckpnActivationSvc)
+	ckpnPABLActivationHandler := httpHandler.NewCKPNPABLActivationHandler(ckpnPABLActivationSvc)
 	// Sandi referensi/inline OJK per kredit (Form 06.00 VIII/XI/XXII) kini dapat
 	// diisi bank tanpa SQL; layanan sempit ini hanya menyentuh atribut laporan.
 	ojkLoanCodesHandler := httpHandler.NewOJKLoanCodesHandler(
@@ -342,40 +346,41 @@ func main() {
 
 	// 6. Router
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
-		CustomerHandler:          custHandler,
-		AccountHandler:           accHandler,
-		BranchHandler:            branchHandler,
-		ProductHandler:           productHandler,
-		LedgerHandler:            ledHandler,
-		AuthHandler:              authHandler,
-		StaffHandler:             staffHandler,
-		LoanHandler:              loanHandler,
-		MakerCheckerHandler:      mcHandler,
-		ReportHandler:            reportHandler,
-		OJKReportHandler:         ojkReportHandler,
-		KPMMHandler:              kpmmHandler,
-		CollectionHandler:        collectionHandler,
-		IntegrationHandler:       integrationHandler,
-		BatchProcessHandler:      batchHandler,
-		EODDefinitionHandler:     eodDefinitionHandler,
-		DocumentHandler:          docHandler,
-		DepositHandler:           depositHandler,
-		PPAPHandler:              ppapHandler,
-		CKPNHandler:              ckpnHandler,
-		LPSPlacementHandler:      lpsPlacementHandler,
-		AuditHandler:             httpHandler.NewAuditHandler(auditRepo, limitSvc),
-		CollateralHandler:        httpHandler.NewCollateralHandler(collateralSvc),
-		CollateralWeightHandler:  httpHandler.NewCollateralWeightHandler(collateralWeightSvc, mcSvc),
-		AppInfoHandler:           appInfoHandler,
-		BankProfileHandler:       bankProfileHandler,
-		OJKProfileHandler:        ojkProfileHandler,
-		CKPNActivationHandler:    ckpnActivationHandler,
-		OJKLoanCodesHandler:      ojkLoanCodesHandler,
-		OJKPlacementCodesHandler: ojkPlacementCodesHandler,
-		PermissionHandler:        permissionHandler,
-		MonitoringHandler:        monitoringHandler,
-		AuthService:              authSvc,
-		ConfigService:            configSvc,
+		CustomerHandler:           custHandler,
+		AccountHandler:            accHandler,
+		BranchHandler:             branchHandler,
+		ProductHandler:            productHandler,
+		LedgerHandler:             ledHandler,
+		AuthHandler:               authHandler,
+		StaffHandler:              staffHandler,
+		LoanHandler:               loanHandler,
+		MakerCheckerHandler:       mcHandler,
+		ReportHandler:             reportHandler,
+		OJKReportHandler:          ojkReportHandler,
+		KPMMHandler:               kpmmHandler,
+		CollectionHandler:         collectionHandler,
+		IntegrationHandler:        integrationHandler,
+		BatchProcessHandler:       batchHandler,
+		EODDefinitionHandler:      eodDefinitionHandler,
+		DocumentHandler:           docHandler,
+		DepositHandler:            depositHandler,
+		PPAPHandler:               ppapHandler,
+		CKPNHandler:               ckpnHandler,
+		LPSPlacementHandler:       lpsPlacementHandler,
+		AuditHandler:              httpHandler.NewAuditHandler(auditRepo, limitSvc),
+		CollateralHandler:         httpHandler.NewCollateralHandler(collateralSvc),
+		CollateralWeightHandler:   httpHandler.NewCollateralWeightHandler(collateralWeightSvc, mcSvc),
+		AppInfoHandler:            appInfoHandler,
+		BankProfileHandler:        bankProfileHandler,
+		OJKProfileHandler:         ojkProfileHandler,
+		CKPNActivationHandler:     ckpnActivationHandler,
+		CKPNPABLActivationHandler: ckpnPABLActivationHandler,
+		OJKLoanCodesHandler:       ojkLoanCodesHandler,
+		OJKPlacementCodesHandler:  ojkPlacementCodesHandler,
+		PermissionHandler:         permissionHandler,
+		MonitoringHandler:         monitoringHandler,
+		AuthService:               authSvc,
+		ConfigService:             configSvc,
 		// Cakupan unit organisasi (cabang/area/wilayah) diresolusi per permintaan
 		// dari tabel branches, sama seperti cakupan buku dibaca dari konfigurasi.
 		BranchScopeResolver: branchRepo,
