@@ -92,9 +92,11 @@ Bukan "bank harus memberi daftar"; dasar hukumnya dapat dibaca siapa pun:
 - Penyampaian daring lewat **APOLO**; Lampiran II memuat sandi form (antara lain
   Form 00.00 Informasi Pokok BPR, 05.00 Penempatan pada Bank Lain, 06.00 Daftar
   Kredit yang Diberikan, 09.00 Rincian Aset Lainnya, 13.00 Simpanan dari Bank
-  Lain, 00.08 Rasio Keuangan Triwulanan, 00.13 Dokumen Pendukung, 00.14/00.15
-  data nasabah dan risiko TPPU), disampaikan sebagai berkas teks dan dalam
-  rupiah penuh.
+  Lain, 00.08 Rasio Keuangan Triwulanan, 00.13 Dokumen Pendukung, 00.15
+  data risiko TPPU), disampaikan sebagai berkas teks dan dalam
+  rupiah penuh. **Koreksi 28 Sep 2026:** nomor `00.14` tidak ada di
+  SEOJK 16/2024 — form itu hanya ada di SEOJK 12/2022 yang sudah dicabut; lihat
+  `CELAH-FORM-OJK.md` §6.
 - **Laporan berkala bulanan** (batas **tanggal 10** bulan berikutnya; koreksi
   sampai tanggal 15): Laporan Bulanan BPR, Laporan Kelembagaan, Laporan BMPK,
   Laporan Keuangan Publikasi, Laporan Perbedaan Kualitas Aset Produktif, Laporan

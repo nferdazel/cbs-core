@@ -26,8 +26,8 @@ terdaftar sama sekali** — itulah isi triase ini.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 1 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 13 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 2 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 12 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 11 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 6 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -51,7 +51,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 00.12 | Penutupan Kantor & TPE | `KONDISIONAL` | `bank_offices.closed_at` + `status='TUTUP'`; kurang sandi Jenis OJK, sandi induk, koordinat; **tak ada perakit 00.12** | 276–280 |
 | 00.16 | Daftar Pihak Lawan | `SEBAGIAN` | `customers` + `customers.ojk_pihak_lawan_code` (`000104:26`) + `counterparty_cif` (`000106:37`); kurang jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, pemeringkat | 286–292 |
 | 00.17 | Laporan Perubahan Ekuitas | `BELUM DIMODELKAN` | 15 baris sandi × 9 komponen ekuitas × 3 tahun; COA ekuitas hanya 5 (`000005:211`) tanpa Cadangan Tujuan/Surplus Revaluasi/DSM/Dividen | 293–294 |
-| 00.18 | Laporan Arus Kas | `SEBAGIAN` | `GetCashFlow` sudah menghitung O/I/F + baris jurnal (`report_service.go:215`); kurang pemetaan ke sandi OJK 14010000–60000000, kolom pembanding T-1 | 295–297 |
+| 00.18 | Laporan Arus Kas | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form18.go` + `COAMapping18Draft`): 41 sandi ditranskrip dari PDF, kolom T dan T-1 dihitung dari jurnal, neto per aktivitas dijaga test invarian; hanya posisi Desember, baris tanpa sumber ditulis `-`. Sebelumnya cuma `GetCashFlow` yang belum dipetakan ke sandi OJK | 295–297 |
 | 00.19 | Struktur Organisasi | `DOKUMEN` | Berkas PDF; **bahan sudah ada** (`bank_offices`, `bank_management`, `branches`) sehingga PDF-nya bisa dirakit otomatis | 298 |
 | 00.20 | Struktur Kelompok Usaha | `DOKUMEN` | Berkas PDF; bahan hanya satu string `ojk.report.ultimate_shareholders` (`000096:40`) | 299 |
 | 00.21 | Dokumen Penilaian Risiko TPPU/TPPT/PPSPM | `DOKUMEN` | `LAPORAN_TPPU_TPPT_PPSPM` sudah terdaftar `Buildable=false` "disusun manual di luar sistem" (`definitions.go:105`) | 300, 60 |
@@ -84,7 +84,12 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
    `ExportMonthly` (`ojk_report_handler.go:317`).
 3. **Kolom "Sandi Kantor" belum punya sumber** untuk form yang bersumber saldo COA
    bank-wide — sudah terlihat di `form09.go:69` dan `form01_01.go:80`, dan akan menimpa
-   `08.00`/`09.01`/`10.00`/`14.00`.
+   `08.00`/`09.01`/`10.00`/`14.00`. Pemeriksaan 28 Sep 2026: `journal_lines` tanpa atribut
+   cabang, tetapi `journal_entries.branch_id` ada (`000021:17`); `branches.code` ber-3 digit
+   tetapi **tidak didokumentasikan sebagai sandi OJK** (`000081:67` menyebutnya kode
+   penomoran rekening), sedangkan `bank_offices.code` memang didefinisikan "sandi kantor
+   (Form 00.04 kolom I, 3 angka)" (`000112:75`) tanpa FK ke `branches`; `BalanceSheet`
+   menerima `asOf` tetapi selalu bank-wide (`reporting_repo.go:168`).
 4. **Tidak ada snapshot saldo akhir bulan.** `11.00`/`12.00` membaca keadaan saat ekspor
    (`bank_deposit_repo.go:16`); bila ekspor ditunda, angka berbeda dari posisi bulan itu.
 5. **`00.17`/`00.18` hanya untuk posisi Desember** (`PDF #293`, `#296-297`) — builder punya
@@ -103,28 +108,31 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 |---|---|---|
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan | prasyarat banyak form |
-| A3 | Bentuk form `SEBAGIAN` yang paling dekat datanya: `11.00`, `12.00`, `06.01`, `14.00`, `00.18` | perlu kolom tambahan + keputusan kolom tanpa sumber |
+| A3 | Bentuk form `SEBAGIAN` yang paling dekat datanya: `11.00`, `12.00`, `06.01`, `14.00` | perlu kolom tambahan + keputusan kolom tanpa sumber |
 | A4 | Modul baru untuk `BELUM DIMODELKAN`: `04.00`, `08.00`, `07.00`, `10.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`, `00.17` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | Bentuk `KONDISIONAL` setelah induknya ada (`09.01`, `14.01`, `00.09`, `00.10`, `00.12`, `03.00`) | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual | keputusan bank |
 
-## 6. Selisih: Form 00.14 tidak ada di SEOJK 16/2024
+## 6. Selisih: Form 00.14 — TERVERIFIKASI, bukan form SEOJK 16/2024
 
-Pemindaian seluruh 528 halaman PDF resmi menemukan **nol** kemunculan `00.14`,
-"Daftar Data Jenis Nasabah", maupun "Produk Simpanan" — sementara `00.13` muncul 5 kali
-dan `00.15` 6 kali, jadi pemindaian teksnya berfungsi. Regulasi berisi **45** kode form
-unik; `00.14` bukan salah satunya, padahal sistem membangunnya (`form00_14.go`,
-`definitions.go:169`, `savings_customer_repo.go`).
+**Kesimpulan: `00.14` ada di SEOJK No. 12/SEOJK.03/2022 (halaman PDF 231), bukan di
+SEOJK No. 16/SEOJK.03/2024** — dan SEOJK 12/2022 justru dicabut oleh SEOJK 16/2024
+(`KEPUTUSAN.md:88-91`). Pemindaian 528 halaman PDF 16/2024: `00.14` nol kemunculan
+(bandingkan `00.13` 5 kali, `00.15` 6 kali); daftar formnya melompat dari `00.13` ke `00.15`.
 
-Satu-satunya sumber klaim di repo adalah `docs/KEPUTUSAN.md:95` ("00.14/00.15 data
-nasabah dan risiko TPPU") **tanpa halaman rujukan** — statusnya belum terverifikasi.
-Kemungkinan: (a) tertinggal dari SEOJK 12/2022 yang sudah dicabut, (b) salah ketik nomor
-form, atau (c) berasal dari dokumen lain di luar PDF ini.
+Bukti tambahan: **isi formnya juga tidak cocok.** Form 00.14-1 resmi (SEOJK 12/2022
+halaman PDF 231) memakai sandi tetap TPPU/APU-PPT — `1000` PEP, `2000` jenis nasabah
+penyimpan (`2100`/`2200`), `3000` komposisi risiko (`3100`/`3200`/`3300`), `4000` jenis
+simpanan (`4100`/`4200`) — kolom *Jenis Nasabah/Simpanan · Sandi · Nominal · Jumlah
+Nasabah/Rekening*. Sementara `form00_14.go` membangun rincian **per produk** dengan
+kolom *Jenis/Kode/Nama Produk + Golongan Nasabah (Lampiran 02) + Jumlah Rekening + Total
+Nominal* — format yang berbeda.
 
-**Belum diambil tindakan.** Mematikan form yang berfungsi hanya karena sumbernya tidak
-ditemukan berisiko menghapus kewajiban yang nyata. Yang dibutuhkan: verifikasi terhadap
-dokumen sumbernya (SEOJK 12/2022 atau pedoman APOLO) untuk memutuskan apakah `00.14`
-tetap dilaporkan, nomornya diganti, atau ditarik.
+**Keputusan:** (1) klaim sitasi di `KEPUTUSAN.md:95` sudah dikoreksi; (2) label "Form
+00.14" untuk agregasi jenis nasabah per produk **ditarik dari pelaporan OJK** — nomor itu
+tidak dipakai regulasi yang berlaku; agregasi tetap berguna sebagai data internal, tetapi
+tidak boleh disebut nomor form OJK; (3) `CELAH-LAPORAN-OJK.md` tetap mencatatnya sebagai
+kemampuan sistem, bukan kewajiban.
 
 ## 5. Yang menjadi milik bank (bukan celah kode)
 
