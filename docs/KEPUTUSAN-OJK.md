@@ -33,6 +33,8 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
     kelembagaan (kantor + direksi/komisaris/pejabat).
   - `GET/PUT/DELETE /api/v1/reports/ojk/off-balance/items` — register rekening
     administratif (komitmen/kontinjensi).
+  - `GET/PUT /api/v1/system/ckpn-pabl` (izin `system:config` / `:read`) — enam kunci
+    `ckpn.pabl.*` (saklar + PD/LGD per golongan + aturan aset baik), sebelumnya SQL-only.
 - Semuanya punya layar di `pengaturan/ojk` (Kelembagaan, Rekening Administratif,
   BMPK, Penempatan, plus OJK Reference Codes yang kini memuat 17 bidang kredit)
   sehingga **28 field** terisi tanpa SQL.
@@ -43,7 +45,10 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
 - `ckpn.enabled` tetap **false** sampai parameter `FINAL` + ratifikasi Direksi/akuntan lengkap
   dan mode bayangan berjalan. **Nilai SEMENTARA dilarang masuk laporan OJK** (aturan panel
   §1.5 — keputusan ini mengikat, jangan dilonggarkan ronde implementasi apa pun).
-- `ckpn.pabl.enabled` menyala hanya setelah bank mengisi PD/LGD per golongan.
+- `ckpn.pabl.enabled` menyala hanya setelah bank mengisi PD/LGD per golongan **dan**
+  kesiapan CKPN utama terpenuhi (parameter `FINAL` + ratifikasi lengkap). Syarat itu
+  ditegakkan mesin lewat `PUT /api/v1/system/ckpn-pabl` (gap ditolak `422`) sehingga
+  Form 05 kolom XII/XXI tidak pernah membawa nilai dari parameter SEMENTARA.
 - Akun pemulihan mengikuti keputusan 12.5.b; akun pendapatan tersendiri tidak dibangun.
 
 ## 4. Butir DK (definisi) — diputuskan
