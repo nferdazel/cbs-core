@@ -22,7 +22,10 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
 ## 2. Jalur tulis data OJK
 
 - **API-first**, bukan SQL/seed jangka panjang. Sudah tersedia:
-  - `PUT /api/v1/ojk/loan-codes/{loanId}` (izin `system:config`) — Form 06 VIII/XI/XXII.
+  - `PUT /api/v1/ojk/loan-codes/{loanId}` (izin `system:config`) — **17 kolom Form 06**
+    yang harus diisi bank (sandi inline, tanggal, nominal amortisasi/agunan/kelonggaran).
+  - `PUT/GET /api/v1/ojk/placement-codes/{placementId}` + `GET .../reports/ojk/placements`
+    (izin `system:config`) — **8 kolom Form 05** penempatan, termasuk baca nilai tersimpan.
   - `PUT /customers/{id}` — Form 06 IX/XVIII/XX.
   - `GET/PUT/DELETE /api/v1/reports/ojk/bmpk/master|related-parties|limits` — pihak
     terkait & batas BMPK (izin `system:config`, teraudit satu transaksi).
@@ -30,8 +33,9 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
     kelembagaan (kantor + direksi/komisaris/pejabat).
   - `GET/PUT/DELETE /api/v1/reports/ojk/off-balance/items` — register rekening
     administratif (komitmen/kontinjensi).
-- Ketiganya juga punya layar di `pengaturan/ojk` (kartu Kelembagaan, Rekening
-  Administratif, BMPK, plus OJK Reference Codes) sehingga tak perlu SQL.
+- Semuanya punya layar di `pengaturan/ojk` (Kelembagaan, Rekening Administratif,
+  BMPK, Penempatan, plus OJK Reference Codes yang kini memuat 17 bidang kredit)
+  sehingga **28 field** terisi tanpa SQL.
 - **SQL/seed hanya untuk backfill sekali**; data berkelanjutan wajib lewat API teraudit.
 
 ## 3. CKPN
