@@ -32,6 +32,11 @@ import "github.com/shopspring/decimal"
 //   - Kolom I "Sandi Kantor" diambil dari kantor pelapor tunggal pada bank_offices
 //     (migrasi 000112); saldo COA-nya sendiri bank-wide. Aturan pemilihan ada di
 //     selectReportingOffice (repo_source.go).
+//   - Aturan redirect PDF #page 188/#190: bila pos Lainnya (1299990000) melebihi 25%
+//     dari jumlah aset lainnya, pos itu wajib dirinci pada Form 09.01. Form 09.01
+//     dibangun sebagai form kondisional (form09_01.go) dengan baris per akun COA dan
+//     penyebut pos 1299000000 Form 01.00; bila tidak terlampaui, form memang tidak
+//     berlaku sehingga tidak di-append ke bundel.
 
 // form09Lines adalah susunan resmi Form 09.00. Sandi dan nama pos diambil apa adanya
 // dari PDF #page 187; Reason diisi hanya untuk pos yang belum punya akun COA.

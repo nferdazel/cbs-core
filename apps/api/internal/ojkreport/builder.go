@@ -254,7 +254,7 @@ func (b *Builder) GenerateMonthlyForActor(ctx context.Context, period time.Time,
 		loanRows[i].BMPKStatus = bmpkStatuses[loanRows[i].CustomerID]
 	}
 
-	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses, amounts09, amounts14, amounts10)
+	tables, runtimeSkipped, err := b.buildTables(ctx, periodEnd, actor, loanRows, bmpkStatuses, amounts01, amounts09, amounts14, amounts10, bs.Rows)
 	if err != nil {
 		return nil, err
 	}
@@ -321,10 +321,12 @@ func (b *Builder) rataRataTotalAset(ctx context.Context, period time.Time, book 
 
 // buildTables menyusun form daftar 00.00/05.00/06.00 dan mencatat form yang belum
 // dapat dibangun pada sumber ini. bmpkStatuses (UUID nasabah -> status BMPK) dipakai
-// mengisi kolom Status BMPK; nil berarti modul BMPK tidak tersedia. amounts09,
-// amounts14, dan amounts10 adalah saldo per sandi Form 09.00/14.00/10.00, yang selalu
-// tersedia karena dibaca dari saldo COA.
-func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow, bmpkStatuses map[string]string, amounts09, amounts14, amounts10 map[string]decimal.Decimal) ([]TableSection, []OJKFormDefinition, error) {
+// mengisi kolom Status BMPK; nil berarti modul BMPK tidak tersedia. amounts01,
+// amounts09, amounts14, dan amounts10 adalah saldo per sandi Form 01.00/09.00/14.00/
+// 10.00, yang selalu tersedia karena dibaca dari saldo COA. amounts01 dipakai sebagai
+// penyebut ambang 25% Form 09.01/14.01; balanceRows adalah baris neraca periodEnd yang
+// sama, dipakai menyusun rincian per akun form kondisional itu.
+func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor domain.Actor, loanRows []LoanRow, bmpkStatuses map[string]string, amounts01, amounts09, amounts14, amounts10 map[string]decimal.Decimal, balanceRows []domain.ReportRow) ([]TableSection, []OJKFormDefinition, error) {
 	var tables []TableSection
 	var skipped []OJKFormDefinition
 
@@ -454,10 +456,32 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 	// tersedia; pos tanpa akun COA ditulis tidak tersedia di dalam form.
 	tables = append(tables, buildForm09(amounts09, kantor))
 
+	// Form 09.01 Rincian Aset Lainnya - Lain-lain: form KONDISIONAL, hanya terbit bila
+	// pos Lainnya (1299990000) Form 09.00 melebihi 25% dari jumlah aset lainnya (pos
+	// 1299000000 Form 01.00). Penyebutnya pos Form 01.00, bukan banyaknya baris Form
+	// 09.00 yang terisi (tiga pos anaknya ber-Reason). Bila tidak terlampaui, form
+	// memang tidak berlaku untuk periode itu sehingga TIDAK di-append sama sekali dan
+	// tidak ditulis "TIDAK DIBANGUN" - ketidaktepatan itu aturan, bukan kegagalan data.
+	if melebihi25Persen(amounts09["1299990000"], amounts01["1299000000"]) {
+		rincian := collectRincianLainnya(COAMapping09Draft, "1299990000", balanceRows)
+		tables = append(tables, buildForm09_01(rincian, kantor))
+	}
+
 	// Form 14.00 Rincian Liabilitas Lainnya: pecahan pos Liabilitas Lainnya (COA
 	// 2299000000) dari saldo COA yang sama dengan Form 01.00. Selalu dibangun karena
 	// saldo COA selalu tersedia; pos tanpa akun COA ditulis tidak tersedia di dalam form.
 	tables = append(tables, buildForm14(amounts14, kantor))
+
+	// Form 14.01 Rincian Liabilitas Lainnya - Lain-lain: form KONDISIONAL, hanya terbit
+	// bila pos Lainnya (2299990000) Form 14.00 melebihi 25% dari jumlah liabilitas
+	// lainnya (pos 2299000000 Form 01.00). Penyebutnya pos Form 01.00, bukan jumlah
+	// baris Form 14.00 (jumlah baris itu hanya 20500+20700 sehingga ambang akan
+	// terlampaui palsu). Bila tidak terlampaui, form TIDAK di-append sama sekali dan
+	// tidak ditulis "TIDAK DIBANGUN" - itu aturan, bukan kegagalan data.
+	if melebihi25Persen(amounts14["2299990000"], amounts01["2299000000"]) {
+		rincian := collectRincianLainnya(COAMapping14Draft, "2299990000", balanceRows)
+		tables = append(tables, buildForm14_01(rincian, kantor))
+	}
 
 	// Form 10.00 Rincian Liabilitas Segera: pecahan pos Liabilitas Segera (COA
 	// 2101000000) dari saldo COA yang sama dengan Form 01.00. Selalu dibangun karena

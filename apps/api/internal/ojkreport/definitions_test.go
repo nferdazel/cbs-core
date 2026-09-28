@@ -86,13 +86,37 @@ func TestDefinisiLengkap(t *testing.T) {
 
 func TestBuildableForms(t *testing.T) {
 	forms := BuildableForms()
-	if len(forms) != 14 {
-		t.Fatalf("ingin 14 form buildable, dapat %d", len(forms))
+	if len(forms) != 16 {
+		t.Fatalf("ingin 16 form buildable, dapat %d", len(forms))
 	}
-	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "13.00", "00.18", "10.00", "11.00", "12.00", "14.00"}
+	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "09.01", "13.00", "00.18", "10.00", "11.00", "12.00", "14.00", "14.01"}
 	for i, w := range want {
 		if forms[i].Form != w {
 			t.Fatalf("form buildable[%d] = %s, ingin %s", i, forms[i].Form, w)
+		}
+	}
+}
+
+// Form 09.01/14.01 kini buildable sebagai form KONDISIONAL: pendaftarannya tidak boleh
+// menyimpan alasan "belum dibangun" karena perakitnya memang hanya terbit saat ambang
+// 25% terlampaui (bukan karena kekurangan data).
+func TestForm09_01Dan14_01Buildable(t *testing.T) {
+	for _, form := range []string{"09.01", "14.01"} {
+		var def *OJKFormDefinition
+		for i := range OJKBulananForms {
+			if OJKBulananForms[i].Form == form {
+				def = &OJKBulananForms[i]
+				break
+			}
+		}
+		if def == nil {
+			t.Fatalf("Form %s tidak terdaftar", form)
+		}
+		if !def.Buildable {
+			t.Fatalf("Form %s harus buildable", form)
+		}
+		if def.UnavailableReason != "" {
+			t.Fatalf("Form %s buildable tidak boleh menyimpan alasan: %q", form, def.UnavailableReason)
 		}
 	}
 }

@@ -40,7 +40,8 @@ import "github.com/shopspring/decimal"
 //     disalahartikan sebagai total.
 //   - Aturan redirect PDF #page 215: bila pos Lainnya (2299990000) melebihi 25% dari
 //     jumlah liabilitas lainnya, pos itu wajib dirinci pada Form 14.01. Form 14.01
-//     belum dibangun; aturannya dicatat pada Notes Form 14.00.
+//     kini dibangun sebagai form kondisional (form14_01.go); aturannya juga dicatat
+//     pada Notes Form 14.00.
 //   - Kolom I "Sandi Kantor" diambil dari kantor pelapor tunggal pada bank_offices
 //     (migrasi 000112); saldo COA-nya sendiri bank-wide. Aturan pemilihan ada di
 //     selectReportingOffice (repo_source.go).
@@ -110,7 +111,7 @@ func buildForm14(amounts map[string]decimal.Decimal, kantor ReportingOffice) Tab
 			"Pos Utang Bunga hanyalah header grup tanpa sandi sendiri; yang dilaporkan adalah komponen 2299010100 sampai 2299019900 (PDF #page 213).",
 			"Pos 2299020000 Utang Pajak diisi akun 20500 yang pada Form 01.00 masih dipetakan ke Liabilitas Segera (2101000000); sampai pedoman konversi bank menetapkan tempatnya, angka ini dapat muncul pada dua form.",
 			"Pos yang belum punya akun COA ditulis \"-\" beserta alasannya, bukan nol. Karena itu baris JUMLAH hanya diisi bila seluruh pos sudah punya akun; bila belum, JUMLAH ditulis \"-\" karena angka sebagian akan menyesatkan.",
-			"Aturan PDF #page 215: bila jumlah pos Lainnya (2299990000) melebihi 25% dari jumlah liabilitas lainnya, pos itu wajib dirinci pada Form 14.01 - Rincian Liabilitas Lainnya - Lain-lain. Form 14.01 belum dibangun.",
+			"Aturan PDF #page 215: bila jumlah pos Lainnya (2299990000) melebihi 25% dari jumlah liabilitas lainnya, pos itu wajib dirinci pada Form 14.01 - Rincian Liabilitas Lainnya - Lain-lain. Form 14.01 dibangun sebagai form kondisional (form14_01.go) dengan penyebut pos 2299000000 Form 01.00 dan baris per akun COA; bila ambang tidak terlampaui, form memang tidak berlaku dan tidak ikut bundel.",
 			"Kolom I Sandi Kantor diambil dari kantor pelapor tunggal pada bank_offices (migrasi 000112); bila jumlah kantor aktif ber-sandi bukan tepat satu, kolom dinyatakan tidak tersedia, bukan dikarang.",
 		},
 	}
