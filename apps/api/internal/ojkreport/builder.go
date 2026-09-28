@@ -386,6 +386,43 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber simpanan/deposito bank lawan belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 11.00 Daftar Tabungan: baris per rekening tabungan pada posisi AKHIR
+	// PERIODE (saldo direkonstruksi dari jurnal). Bila tidak ada rekening, form
+	// dinyatakan belum tersedia, bukan ditulis kosong.
+	if sa, ok := b.source.(SavingsAccountDataSource); ok {
+		rows, err := sa.ListSavingsAccountsForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "11.00", Name: formName("11.00"),
+				UnavailableReason: "belum ada rekening tabungan (produk keluarga SAVINGS) bersaldo pada akhir periode"})
+		} else {
+			tables = append(tables, buildForm11(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "11.00", Name: formName("11.00"),
+			UnavailableReason: "sumber data tabungan belum dikonfigurasi pada ekspor ini"})
+	}
+
+	// Form 12.00 Daftar Deposito: baris per kontrak deposito berjangka pada posisi
+	// AKHIR PERIODE (kontrak sudah ditempatkan dan belum ditutup saat itu).
+	if td, ok := b.source.(TimeDepositDataSource); ok {
+		rows, err := td.ListTimeDepositsForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "12.00", Name: formName("12.00"),
+				UnavailableReason: "belum ada kontrak deposito berjangka berstatus berjalan pada akhir periode"})
+		} else {
+			tables = append(tables, buildForm12(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "12.00", Name: formName("12.00"),
+			UnavailableReason: "sumber data deposito belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 09.00 Rincian Aset Lainnya: pecahan pos Aset Lainnya (COA 1299000000) dari
 	// saldo COA yang sama dengan Form 01.00. Selalu dibangun karena saldo COA selalu
 	// tersedia; pos tanpa akun COA ditulis tidak tersedia di dalam form.

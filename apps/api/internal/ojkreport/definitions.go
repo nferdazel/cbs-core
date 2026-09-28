@@ -229,10 +229,15 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "hanya diwajibkan bila minimal 25% dari jumlah aset lainnya; Form 09.00 sudah ada (pos 1299990000 dari COA 10305/10999/11700), tetapi register baris 'Uraian' belum ada (PDF #190, #188-189)"},
 	{Form: "10.00", Name: "Rincian Liabilitas Segera", Buildable: false,
 		UnavailableReason: "hanya agregat 2101000000 yang diisi 4 COA (coa_mapping.go:142); 8 pos rincian 2101010000-2101990000 belum punya akun COA sama sekali (PDF #191-192, #106)"},
-	{Form: "11.00", Name: "Daftar Tabungan", Buildable: false,
-		UnavailableReason: "blok angka sudah dipakai Form 13.00, tetapi kolom PEP, Risiko Nasabah, Status Data, alasan diblokir, biaya transaksi belum diamortisasi, dan snapshot saldo akhir bulan belum ada (PDF #193-199)"},
-	{Form: "12.00", Name: "Daftar Deposito", Buildable: false,
-		UnavailableReason: "sumber time_deposits (migrasi 000013:24) ada, tetapi kolom 'diblokir' tidak punya sumber (kontrak deposito menyumbang 0, bank_deposit_repo.go:30) dan kolom PEP/Risiko Nasabah/Status Data/snapshot saldo akhir bulan belum ada (PDF #200-206)"},
+	// Form 11.00 dibangun dari baris per rekening tabungan (produk keluarga SAVINGS)
+	// pada posisi akhir periode (form11.go). Kolom tanpa sumber (Nomor Identitas,
+	// Jenis, Jangka Waktu, diblokir/alasan, biaya transaksi belum diamortisasi, PEP,
+	// Risiko Nasabah, Status Data) ditulis tidak tersedia di dalam form, bukan nol.
+	{Form: "11.00", Name: "Daftar Tabungan", Buildable: true},
+	// Form 12.00 dibangun dari baris per kontrak deposito berjangka (time_deposits)
+	// pada posisi akhir periode (form12.go). Kolom tanpa sumber ditulis tidak tersedia
+	// di dalam form, bukan nol.
+	{Form: "12.00", Name: "Daftar Deposito", Buildable: true},
 	{Form: "14.00", Name: "Rincian Liabilitas Lainnya", Buildable: false,
 		UnavailableReason: "dari 16 pos resmi 2299010100-2299990000 hanya 4 COA (20400-20700) yang tersedia dan tidak ada satu pun entri coa_mapping.go bersandi pos itu (PDF #213-215)"},
 	{Form: "14.01", Name: "Rincian Liabilitas Lainnya - Lain-lain", Buildable: false,

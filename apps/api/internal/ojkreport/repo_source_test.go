@@ -128,6 +128,97 @@ func TestRepoSourceListBankDeposits(t *testing.T) {
 	}
 }
 
+// savingsAccountRepoStub mengimplementasikan domain.SavingsAccountReportRepository
+// untuk menguji adaptor Form 11.00 tanpa basis data.
+type savingsAccountRepoStub struct {
+	rows     []domain.SavingsAccountAggregate
+	lastAsOf time.Time
+}
+
+func (s *savingsAccountRepoStub) ListSavingsAccountsForOJK(_ context.Context, asOf time.Time) ([]domain.SavingsAccountAggregate, error) {
+	s.lastAsOf = asOf
+	return s.rows, nil
+}
+
+var _ domain.SavingsAccountReportRepository = (*savingsAccountRepoStub)(nil)
+
+// timeDepositRepoStub mengimplementasikan domain.TimeDepositReportRepository untuk
+// menguji adaptor Form 12.00 tanpa basis data.
+type timeDepositRepoStub struct {
+	rows     []domain.TimeDepositAggregate
+	lastAsOf time.Time
+}
+
+func (s *timeDepositRepoStub) ListTimeDepositsForOJK(_ context.Context, asOf time.Time) ([]domain.TimeDepositAggregate, error) {
+	s.lastAsOf = asOf
+	return s.rows, nil
+}
+
+var _ domain.TimeDepositReportRepository = (*timeDepositRepoStub)(nil)
+
+// TestRepoSourceListSavingsAccountsForOJK memastikan adaptor Form 11.00 memetakan
+// baris tabungan, meneruskan posisi akhir periode ke repositori, menegakkan kebijakan
+// bank-wide, dan mengembalikan nil (bukan angka nol) bila repositori tidak dirangkai.
+func TestRepoSourceListSavingsAccountsForOJK(t *testing.T) {
+	stub := &savingsAccountRepoStub{rows: []domain.SavingsAccountAggregate{{
+		AccountNumber: "TAB-1", CounterpartyCIF: "CIF-1", CustomerTypeCode: "860",
+		ProfitScheme: "INTEREST", InterestRateAnnual: decimal.RequireFromString("3.00"),
+		Balance: decimal.NewFromInt(1_000_000),
+	}}}
+	src := RepoSource{SavingsAccounts: stub}
+	asOf := time.Date(2026, time.June, 30, 0, 0, 0, 0, time.UTC)
+
+	rows, err := src.ListSavingsAccountsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("ListSavingsAccountsForOJK: %v", err)
+	}
+	if len(rows) != 1 || rows[0].AccountNumber != "TAB-1" || !rows[0].Balance.Equal(decimal.NewFromInt(1_000_000)) {
+		t.Fatalf("baris = %+v", rows)
+	}
+	if !stub.lastAsOf.Equal(asOf) {
+		t.Fatalf("asOf yang diteruskan = %v, ingin %v", stub.lastAsOf, asOf)
+	}
+	if _, err := src.ListSavingsAccountsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleTeller}); !errors.Is(err, ErrOJKBankWide) {
+		t.Fatalf("aktor non-lintas cabang: error = %v, ingin ErrOJKBankWide", err)
+	}
+	kosong, err := (RepoSource{}).ListSavingsAccountsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil || kosong != nil {
+		t.Fatalf("tanpa repositori: rows=%v err=%v", kosong, err)
+	}
+}
+
+// TestRepoSourceListTimeDepositsForOJK menutup adaptor Form 12.00 dengan aturan yang
+// sama seperti Form 11.00.
+func TestRepoSourceListTimeDepositsForOJK(t *testing.T) {
+	stub := &timeDepositRepoStub{rows: []domain.TimeDepositAggregate{{
+		AccountNumber: "DEP-1", CounterpartyCIF: "CIF-1", CustomerTypeCode: "860",
+		ProfitType: "INTEREST", PlacementAmount: decimal.NewFromInt(5_000_000),
+		StartDate:    time.Date(2026, time.January, 10, 0, 0, 0, 0, time.UTC),
+		MaturityDate: time.Date(2026, time.July, 10, 0, 0, 0, 0, time.UTC),
+		ProfitRate:   decimal.RequireFromString("4.00"),
+	}}}
+	src := RepoSource{TimeDeposits: stub}
+	asOf := time.Date(2026, time.June, 30, 0, 0, 0, 0, time.UTC)
+
+	rows, err := src.ListTimeDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil {
+		t.Fatalf("ListTimeDepositsForOJK: %v", err)
+	}
+	if len(rows) != 1 || rows[0].AccountNumber != "DEP-1" || !rows[0].PlacementAmount.Equal(decimal.NewFromInt(5_000_000)) {
+		t.Fatalf("baris = %+v", rows)
+	}
+	if !stub.lastAsOf.Equal(asOf) {
+		t.Fatalf("asOf yang diteruskan = %v, ingin %v", stub.lastAsOf, asOf)
+	}
+	if _, err := src.ListTimeDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleTeller}); !errors.Is(err, ErrOJKBankWide) {
+		t.Fatalf("aktor non-lintas cabang: error = %v, ingin ErrOJKBankWide", err)
+	}
+	kosong, err := (RepoSource{}).ListTimeDepositsForOJK(context.Background(), asOf, domain.Actor{Role: domain.RoleSuperAdmin})
+	if err != nil || kosong != nil {
+		t.Fatalf("tanpa repositori: rows=%v err=%v", kosong, err)
+	}
+}
+
 // customerBatchStub menangkap pemanggilan GetByIDs agar uji dapat memastikan sandi
 // referensi OJK dibaca sebagai SATU query agregat, bukan per kredit.
 type customerBatchStub struct {

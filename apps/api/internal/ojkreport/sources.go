@@ -365,6 +365,67 @@ type BankDepositSource interface {
 	ListBankDepositsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]BankDepositRow, error)
 }
 
+// SavingsAccountRow adalah satu baris Form 11.00 "Daftar Tabungan": satu rekening
+// tabungan pada posisi akhir periode. Field di sini hanya yang benar-benar punya
+// sumber; kolom tanpa sumber dinyatakan belum tersedia di form11.go, bukan diisi nol.
+type SavingsAccountRow struct {
+	// AccountNumber adalah nomor rekening tabungan, sumber kolom III No. Rekening.
+	AccountNumber string
+	// CounterpartyCIF adalah ID Pihak Lawan kolom II: nomor CIF internal nasabah
+	// (sama dengan SLIK), bukan sandi OJK. Kosong berarti nasabah tak terbaca.
+	CounterpartyCIF string
+	// CustomerTypeCode adalah sandi Lampiran 02 Golongan Nasabah, sumber kolom VI.
+	CustomerTypeCode string
+	// HubunganBankCode adalah sandi inline Hubungan dengan Bank (12/20), kolom V.
+	HubunganBankCode string
+	// LocationCode adalah sandi Kabupaten/Kota nasabah (Lampiran 03), kolom VII.
+	LocationCode string
+	// ProfitScheme adalah skema imbal hasil produk. Hanya INTEREST yang dinyatakan
+	// sebagai suku bunga persen; skema lain membuat kolom IX ditulis "-".
+	ProfitScheme string
+	// InterestRateAnnual adalah rate_annual produk dalam persen per tahun.
+	InterestRateAnnual decimal.Decimal
+	// Balance adalah saldo tabungan pada akhir periode (jurnal).
+	Balance decimal.Decimal
+}
+
+// SavingsAccountDataSource menyediakan baris per rekening tabungan bank-wide pada
+// posisi akhir periode (asOf), bukan keadaan saat ekspor dijalankan.
+type SavingsAccountDataSource interface {
+	ListSavingsAccountsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]SavingsAccountRow, error)
+}
+
+// TimeDepositRow adalah satu baris Form 12.00 "Daftar Deposito": satu kontrak deposito
+// berjangka pada posisi akhir periode.
+type TimeDepositRow struct {
+	// AccountNumber adalah nomor rekening deposito, sumber kolom III No. Rekening.
+	AccountNumber string
+	// CounterpartyCIF adalah ID Pihak Lawan kolom II: nomor CIF internal nasabah.
+	CounterpartyCIF string
+	// CustomerTypeCode adalah sandi Lampiran 02 Golongan Nasabah, sumber kolom V.
+	CustomerTypeCode string
+	// HubunganBankCode adalah sandi inline Hubungan dengan Bank (12/20), kolom IV.
+	HubunganBankCode string
+	// LocationCode adalah sandi Kabupaten/Kota nasabah (Lampiran 03), kolom VI.
+	LocationCode string
+	// ProfitType adalah jenis imbal hasil kontrak. Hanya INTEREST yang dinyatakan
+	// sebagai suku bunga persen; MARGIN/BAGI_HASIL membuat kolom VIII ditulis "-".
+	ProfitType string
+	// PlacementAmount adalah pokok penempatan, sumber kolom IX Nominal.
+	PlacementAmount decimal.Decimal
+	// StartDate dan MaturityDate adalah sumber kolom VII Jangka Waktu.
+	StartDate    time.Time
+	MaturityDate time.Time
+	// ProfitRate adalah bunga (%) untuk INTEREST atau nisbah untuk bagi hasil.
+	ProfitRate decimal.Decimal
+}
+
+// TimeDepositDataSource menyediakan baris per kontrak deposito berjangka bank-wide
+// pada posisi akhir periode (asOf).
+type TimeDepositDataSource interface {
+	ListTimeDepositsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]TimeDepositRow, error)
+}
+
 // ReportingOffice adalah kantor pelapor yang dipakai mengisi kolom I "Sandi Kantor"
 // pada form bank-wide (09.00, 01.01). Sumbernya bank_offices (migrasi 000112):
 // Code = sandi kantor yang bank pakai, Name = nama kantor. Reason terisi berarti

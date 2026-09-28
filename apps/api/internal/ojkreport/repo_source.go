@@ -45,6 +45,13 @@ type RepoSource struct {
 	// tabungan/giro dan deposito berjangka milik nasabah bergolongan bank). Bila nil,
 	// form dinyatakan belum tersedia; tidak ada angka yang dikarang.
 	BankDeposits domain.BankDepositRepository
+	// SavingsAccounts menyediakan baris per rekening tabungan Form 11.00 pada posisi
+	// akhir periode. Bila nil, form dinyatakan belum tersedia; tidak ada angka yang
+	// dikarang.
+	SavingsAccounts domain.SavingsAccountReportRepository
+	// TimeDeposits menyediakan baris per kontrak deposito berjangka Form 12.00 pada
+	// posisi akhir periode. Bila nil, form dinyatakan belum tersedia.
+	TimeDeposits domain.TimeDepositReportRepository
 	// OffBalance menyediakan agregat Form 01.01 rekening administratif (pos komitmen/
 	// kontinjensi off-balance). Bila nil, form dinyatakan belum tersedia; tidak ada
 	// angka yang dikarang.
@@ -322,6 +329,68 @@ func (s RepoSource) ListBankDepositsForOJK(ctx context.Context, asOf time.Time, 
 			Jenis:            a.Jenis,
 			AccountCount:     a.AccountCount,
 			TotalNominal:     a.TotalNominal,
+		})
+	}
+	return out, nil
+}
+
+// ListSavingsAccountsForOJK membaca baris per rekening tabungan bank-wide pada posisi
+// akhir periode asOf dan memetakannya ke baris ekspor Form 11.00. Kebijakan bank-wide
+// ditegakkan di lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListSavingsAccountsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]SavingsAccountRow, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.SavingsAccounts == nil {
+		return nil, nil
+	}
+	aggregates, err := s.SavingsAccounts.ListSavingsAccountsForOJK(ctx, asOf)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SavingsAccountRow, 0, len(aggregates))
+	for _, a := range aggregates {
+		out = append(out, SavingsAccountRow{
+			AccountNumber:      a.AccountNumber,
+			CounterpartyCIF:    a.CounterpartyCIF,
+			CustomerTypeCode:   a.CustomerTypeCode,
+			HubunganBankCode:   a.HubunganBankCode,
+			LocationCode:       a.LocationCode,
+			ProfitScheme:       a.ProfitScheme,
+			InterestRateAnnual: a.InterestRateAnnual,
+			Balance:            a.Balance,
+		})
+	}
+	return out, nil
+}
+
+// ListTimeDepositsForOJK membaca baris per kontrak deposito berjangka bank-wide pada
+// posisi akhir periode asOf dan memetakannya ke baris ekspor Form 12.00. Kebijakan
+// bank-wide ditegakkan di lapisan data: aktor non-lintas cabang ditolak.
+func (s RepoSource) ListTimeDepositsForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]TimeDepositRow, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.TimeDeposits == nil {
+		return nil, nil
+	}
+	aggregates, err := s.TimeDeposits.ListTimeDepositsForOJK(ctx, asOf)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TimeDepositRow, 0, len(aggregates))
+	for _, a := range aggregates {
+		out = append(out, TimeDepositRow{
+			AccountNumber:    a.AccountNumber,
+			CounterpartyCIF:  a.CounterpartyCIF,
+			CustomerTypeCode: a.CustomerTypeCode,
+			HubunganBankCode: a.HubunganBankCode,
+			LocationCode:     a.LocationCode,
+			ProfitType:       a.ProfitType,
+			PlacementAmount:  a.PlacementAmount,
+			StartDate:        a.StartDate,
+			MaturityDate:     a.MaturityDate,
+			ProfitRate:       a.ProfitRate,
 		})
 	}
 	return out, nil

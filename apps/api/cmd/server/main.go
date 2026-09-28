@@ -287,18 +287,20 @@ func main() {
 	// dan jalur tulis sandi OJK penempatan.
 	ojkPlacementRepo := postgres.NewLPSPlacementRepository(db)
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
-		Source:       reportSvc,
-		Loans:        loanRepo,
-		Profile:      bankProfileRepo,
-		Config:       configRepo,
-		Placements:   ojkPlacementRepo,
-		Customers:    customerRepo,
-		KPMM:         kpmmSvc,
-		BMPK:         bmpkSvc,
-		Savings:      postgres.NewSavingsCustomerRepository(db),
-		BankDeposits: postgres.NewBankDepositRepository(db),
-		OffBalance:   offBalanceRepo,
-		Kelembagaan:  kelembagaanRepo,
+		Source:          reportSvc,
+		Loans:           loanRepo,
+		Profile:         bankProfileRepo,
+		Config:          configRepo,
+		Placements:      ojkPlacementRepo,
+		Customers:       customerRepo,
+		KPMM:            kpmmSvc,
+		BMPK:            bmpkSvc,
+		Savings:         postgres.NewSavingsCustomerRepository(db),
+		BankDeposits:    postgres.NewBankDepositRepository(db),
+		SavingsAccounts: postgres.NewSavingsAccountRepository(db),
+		TimeDeposits:    postgres.NewTimeDepositReportRepository(db),
+		OffBalance:      offBalanceRepo,
+		Kelembagaan:     kelembagaanRepo,
 	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
