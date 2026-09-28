@@ -87,4 +87,25 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
 5. Klasifikasi SAK EP, stage CKPN, pendapatan bunga dalam penyelesaian.
 6. Membuka NIK/NPWP ke keluaran laporan.
 
-Semua butir implementable kini dikerjakan; sisa hanya modul K2 (lihat `CELAH-LAPORAN-OJK.md §4`).
+## 8. Form 09.00 — Rincian Aset Lainnya
+
+- **Sumber nilai = saldo COA saja**, lewat `COAMapping09Draft` terpisah dari
+  `COAMappingDraft` (satu kode COA = satu entri, jadi pemetaan rincian tidak boleh
+  menimpa pemetaan neraca). Konsekuensinya total Form 09.00 selalu **sama persis** dengan
+  pos Aset Lainnya (`1299000000`) Form 01.00 — dijaga test invarian.
+- Pos 1.a (Penempatan pada Bank Lain), 1.c (Surat Berharga), dan 1.d (Lainnya) ditulis
+  `-` + alasan: tidak ada akun COA untuk akruan pos itu. **Data Form 05.00/06.00 tidak
+  dipakai** meski Form 05.00 punya kolom akruan — memakainya membuat total Form 09.00
+  meleset dari Form 01.00, dan kekonsistenan dua form resmi lebih penting daripada
+  mengisi satu baris.
+- Enam akun baru `10310`–`10360` (migrasi `000114`) menyediakan tempat mencatat premi
+  LPS dibayar di muka, uang muka pajak, aset pajak tangguhan, biaya dibayar di muka,
+  tagihan asuransi, dan uang muka kegiatan operasional; keduanya juga dipetakan ke pos
+  Aset Lainnya Form 01.00.
+- Pemetaan tetap `DRAF-BELUM-TERVERIFIKASI` — status yang sama dengan Form 01.00/02.00
+  yang sejak lama buildable; verifikasi bank/akuntan tetap diperlukan, tetapi bukan lagi
+  penghalang pembangunan form.
+
+Semua butir implementable kini dikerjakan; tidak ada lagi celah kode — sisa hanya
+keputusan milik bank (verifikasi pemetaan, ratifikasi parameter, partisipasi program;
+lihat `CELAH-LAPORAN-OJK.md §4`).

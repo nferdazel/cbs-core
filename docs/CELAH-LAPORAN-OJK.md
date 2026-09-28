@@ -129,7 +129,7 @@ XXIX–XXXIII sudah dikerjakan (migrasi 000111, bukti di §2f).
 | LAPORAN_KEUANGAN_PUBLIKASI | Bukti pengumuman keuangan | LX | Dokumen dari luar sistem |
 | LAPORAN_BUKTI_PENGUMUMAN_TAHUNAN | Bukti pengumuman tahunan | LX | Dokumen dari luar sistem |
 | LAPORAN_TPPU_TPPT_PPSPM | Penilaian risiko TPPU | LX | Dokumen manual |
-| Form 09.00 | Rincian Aset Lainnya | **Terblokir** | Bergantung pemetaan COA→pos 09.00 yang masih `DRAF-BELUM-TERVERIFIKASI` (`coa_mapping.go`); verifikasi bank/akuntan, bukan celah kode |
+| Form 09.00 | Rincian Aset Lainnya | Selesai | Dibangun lewat `COAMapping09Draft` + migrasi `000114` (enam akun `10310`–`10360`); total dijaga sama dengan pos Aset Lainnya Form 01.00. Pos 1.a/1.c/1.d tetap `-` karena belum ada akun COA-nya; seluruh pemetaan tetap `DRAF-BELUM-TERVERIFIKASI` (verifikasi bank/akuntan) |
 | Form 00.13 | Dokumen Pendukung | LX | Berkas PDF, bukan angka |
 | Form 00.15 | Rincian Transaksi TPPU/TPPT | KB | Hanya bila bank punya kewajiban pelaporan ini |
 
@@ -138,14 +138,14 @@ XXIX–XXXIII sudah dikerjakan (migrasi 000111, bukti di §2f).
 Kolom form: **46** (Form 05.00 = 10, Form 06.00 = 36) — **35 selesai**, **9 diputuskan/
 kondisional** (KB 4, DK 5), **2 tidak dapat diimplementasikan** (Sandi Bank APOLO: Form 05 II,
 Form 06 XIX). **Tidak ada kolom tersisa.** Laporan/berkas: **14** — **6 selesai** (BMPK;
-Perbedaan Kualitas; Form 00.14; Form 13.00; Laporan Kelembagaan; Form 01.01), **7 diputuskan/
-di luar cakupan** (KB 2, LX 5), **1 terblokir** (Form 09.00 — pemetaan COA→pos 09.00 masih
-`DRAF-BELUM-TERVERIFIKASI`, verifikasi bank/akuntan). **Pekerjaan implementable tersisa: 0.**
+Perbedaan Kualitas; Form 00.14; Form 13.00; Laporan Kelembagaan; Form 01.01; Form
+09.00), **7 diputuskan/di luar cakupan** (KB 2, LX 5), **0 terblokir**. **Pekerjaan
+implementable tersisa: 0.**
 
 | Kategori | Kolom | Laporan | Total sisa |
 |---|---|---|---|
 | K1 — bisa, kecil | 0 | 0 | 0 |
-| K2 — butuh modul | 0 | 1 | 1 |
+| K2 — butuh modul | 0 | 0 | 0 |
 | KB — kondisional (kebijakan: bukan peserta bawaan) | 0 | 0 | 0 |
 | NI — tidak dapat diimplementasikan (APOLO/SPOJK) | 0 | 0 | 0 |
 | RO — referensi OJK | 0 | 0 | 0 |
