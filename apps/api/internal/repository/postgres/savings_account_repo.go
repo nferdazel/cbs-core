@@ -32,9 +32,11 @@ func NewSavingsAccountRepository(db *sql.DB) *SavingsAccountRepository {
 // Keluarga produk dibatasi SAVINGS agar giro (CURRENT_ACCOUNT) dan rekening deposito
 // (produk TIME_DEPOSIT, yang memakai accounts row sendiri) tidak ikut sebagai tabungan.
 // Rekening tanpa product_id (data lama) tidak dapat dipastikan keluarganya sehingga
-// dilewati. Rekening yang belum ada pada asOf (created_at setelah asOf), yang sudah
-// ditutup saat itu (closed_at <= asOf), dan yang saldonya nol pada asOf tidak
-// dilaporkan.
+// dilewati. Rekening yang belum ada pada asOf (created_at setelah asOf) dan yang
+// saldonya nol pada asOf tidak dilaporkan. Filter `closed_at` pada query saat ini
+// tidak menjamin apa pun: kolom `accounts.closed_at` tidak pernah ditulis aplikasi
+// (penutupan hanya menyetel status dan mewajibkan saldo nol), jadi pengaman
+// sebenarnya adalah syarat saldo nol di atas.
 //
 // Suku bunga diambil dari produk (rate_annual) dan hanya bermakna sebagai persen bila
 // skema imbal hasilnya INTEREST; form yang memutuskan pemakaiannya.

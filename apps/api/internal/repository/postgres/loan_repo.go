@@ -292,7 +292,9 @@ func (r *LoanRepository) List(ctx context.Context, limit, offset int, actor doma
 	if where != "" {
 		query += " WHERE " + where
 	}
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
+	// id DESC sebagai pemecah seri: tanpa itu, kredit dengan created_at kembar bisa
+	// terlewat atau terulang antar halaman saat loop pemanggil menjelajahi OFFSET.
+	query += fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT $%d OFFSET $%d", len(whereArgs)+1, len(whereArgs)+2)
 	args := append(append([]any{}, whereArgs...), limit, offset)
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
