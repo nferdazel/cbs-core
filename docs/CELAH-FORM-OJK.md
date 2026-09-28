@@ -18,9 +18,8 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **16 di antaranya `Buildable:true`**
-(18 entri `Buildable: true` termasuk entri non-form — yang penting angka resmi ada di
-`definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **19 di antaranya `Buildable:true`**
+(angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
 waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
@@ -81,12 +80,13 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
    + alasan, `skippedForms()` (`builder.go:567`) mengumpulkannya, dan `format.go:124`
    menulis baris `# FORM <kode> TIDAK DIBANGUN: <alasan>` ke berkas ekspor — bank tidak lagi
    mengira bundelnya lengkap. Sebelumnya: 12 entri, 34 form hilang tanpa keterangan.
-2. **`00.02`/`00.03`/`00.04` terbit di `LAPORAN_KELEMBAGAAN`, bukan di bundel bulanan —
-   padahal daftar resmi menempatkan mereka di Laporan Gabungan (`PDF #59` butir 3–5).**
-   Ini cacat kelengkapan bundel, bukan sekadar pilihan desain: `kelembagaan.go:70-88`
-   membangunnya, `ExportMonthly` (`ojk_report_handler.go:317`) tidak memasukkannya.
-   Konsekuensinya komentar di `definitions.go` yang menyebut ketiganya "tidak ikut bundel
-   bulanan" bertentangan dengan daftar resmi — harus diperbaiki bersama perakitannya.
+2. **`00.02`/`00.03`/`00.04` ikut bundel bulanan — SELESAI (28 Sep 2026).** Daftar resmi
+   Laporan Gabungan (`PDF #59` butir 3–5) menempatkan ketiganya di laporan bulanan, jadi
+   ketidakhadiran mereka dulu memang cacat kelengkapan. Kini `buildTables` memanggil sumber
+   kelembagaan (`RepoSource.KelembagaanReport`) dan meng-append bagian yang berisi data;
+   bagian kosong dicatat di `SkippedForms` dengan alasan, bukan muncul sebagai tabel kosong.
+   `LAPORAN_KELEMBAGAAN` tidak berubah; komentar "tidak ikut bundel" dan angka `00.17`
+   (17 baris × 12 kolom, diverifikasi di `PDF #293`) di `definitions.go` sudah diperbaiki.
 3. **Kolom "Sandi Kantor" — SELESAI (28 Sep 2026).** Sumbernya `bank_offices.code`
    (migrasi `000112`: "Sandi kantor Form 00.04 kolom I, 3 angka; kosong = laporan menulis
    `-`"), dibaca lewat `RepoSource.ReportingOffice` (`repo_source.go:348`). Aturan pemilihan
