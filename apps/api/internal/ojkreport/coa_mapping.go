@@ -301,6 +301,42 @@ var COAMapping14Draft = []MappingEntry{
 		Note: "Utang Lainnya -> Lainnya; sudah dipetakan ke Liabilitas Lainnya Form 01.00 (2299000000)"},
 }
 
+// COAMapping10Draft adalah pemetaan tersendiri kode COA ke baris Form 10.00 "RINCIAN
+// LIABILITAS SEGERA" (PDF #page 191-192). Slice ini SENGAJA terpisah dari
+// COAMappingDraft: satu kode COA memang muncul pada beberapa form (mis. 20400/20600 ada
+// di Form 00.18), sedangkan DuplicateCOACodes/defaultMappingIndex mewajibkan satu entri
+// per kode di COAMappingDraft. Setiap entri di sini tidak menggantikan entri Form 01.00.
+//
+// Form 10.00 adalah rincian pos Liabilitas Segera (2101000000) Form 01.00, yang saat
+// ini diisi empat akun: 20400 Bunga Deposito yang Masih Harus Dibayar, 20500 Utang
+// Pajak, 20600 Utang Bunga, dan 12400 Bagi Hasil Masih Harus Dibayar.
+//
+// Hanya akun yang tidak ambigu atau tidak punya pos resmi lain yang dipetakan:
+//   - 20400 "Bunga Deposito yang Masih Harus Dibayar", 20600 "Utang Bunga", dan 12400
+//     "Bagi Hasil Masih Harus Dibayar" -> 2101990000 "Lainnya": ketiganya komponen
+//     Liabilitas Segera Form 01.00, tetapi bagan akun tidak punya pos Form 10.00 yang
+//     bernama lebih spesifik; "Lainnya" adalah penampung resminya (PDF #page 192:
+//     "antara lain ...").
+//   - 20500 "Utang Pajak" SENGAJA TIDAK dipetakan. Secara nama pos 1 (2101010000
+//     "Liabilitas kepada Pemerintah yang Harus Dibayar") adalah rumahnya, tetapi
+//     definisi PDF #page 192 menuntut pajak "untuk periode sebelum bulan laporan yang
+//     dibayarkan pada bulan laporan" (arus pembayaran bulan berjalan), sedangkan yang
+//     tersedia hanyalah SALDO periodEnd. Saldo itu tidak sepadan, jadi tidak dipaksa
+//     ke pos 1; memindahkannya ke "Lainnya" juga akan salah golong (bukan penampung
+//     tanpa pos) dan menggandakan laporan karena 20500 sudah menjadi pos Utang Pajak
+//     (2299020000) Form 14.00.
+//
+// Pos 2101020000-2101070000 tidak dipetakan karena bagan akun belum punya akunnya;
+// buildForm10 menuliskannya sebagai baris tidak tersedia beserta alasannya, bukan nol.
+var COAMapping10Draft = []MappingEntry{
+	{COACode: "20400", Form: "10.00", Sandi: "2101990000", Sign: 1, Verified: false,
+		Note: "Bunga Deposito yang Masih Harus Dibayar -> Lainnya; komponen Liabilitas Segera Form 01.00 tetapi tidak ada pos Form 10.00 yang lebih spesifik"},
+	{COACode: "20600", Form: "10.00", Sandi: "2101990000", Sign: 1, Verified: false,
+		Note: "Utang Bunga -> Lainnya; tidak ada baris utang bunga pada Form 10.00"},
+	{COACode: "12400", Form: "10.00", Sandi: "2101990000", Sign: 1, Verified: false,
+		Note: "Bagi Hasil Masih Harus Dibayar -> Lainnya; tidak ada baris bagi hasil pada Form 10.00"},
+}
+
 // COAMapping18Draft adalah pemetaan tersendiri kode COA ke baris arus kas Form 00.18
 // "LAPORAN ARUS KAS" menurut susunan Form 00.18 – 1 (PDF #page 295-296). Slice ini
 // SENGAJA terpisah dari COAMappingDraft: satu kode COA memang muncul pada beberapa form
