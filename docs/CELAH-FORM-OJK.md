@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **27 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **28 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,9 +26,9 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 13 | sudah terbit (dengan catatan cakupan) |
+| `SUDAH ADA` | 14 | sudah terbit (dengan catatan cakupan) |
 | `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
-| `BELUM DIMODELKAN` | 6 | tidak ada tabel/kolom/sumber sama sekali |
+| `BELUM DIMODELKAN` | 5 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
@@ -60,7 +60,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 06.01 | Daftar Agunan | `SEBAGIAN` | `loan_collaterals` (`000036:31`) + `ojk_agunan_ppka_amount` (`000109:31`); kurang alamat agunan, **nilai yang diagunkan**, sandi jenis agunan Lampiran 01 (kini enum 5 nilai), PPKA per agunan | 169–172, 301 |
 | 06.02 | Daftar Kredit Sindikasi | `BELUM DIMODELKAN` | Tidak ada tabel/kolom sindikasi (grep nihil); builder sendiri menyatakan kanal penyaluran belum dimodelkan (`form06.go:99`) | 173–177 |
 | 07.00 | Daftar Agunan yang Diambil Alih | `SUDAH ADA` | **Register pertama — dibangun 28 Sep 2026** (`ayda_register`, migrasi `000115`, pola `off_balance_items`) dengan API `reports/ojk/ayda` + `form07.go`. Kolom II–VI dan VIII dari register bank; **VII Jumlah dihitung** `min(NRV, Nilai Pengakuan Awal − Akumulasi KPN)`; JUMLAH hanya bila seluruh baris lengkap. Tie ke COA `10500`/pos `1201000000` **tidak otomatis** — dinyatakan di `Notes`. Hanya saldo agregat COA `10500` → `coa_mapping.go:110`; tidak ada register AYDA (tanggal, nilai pengakuan awal, akum. kerugian, NRV) | 179–181, 104 |
-| 08.00 | Daftar Aset Tetap, Inventaris, AT Berwujud | `BELUM DIMODELKAN` | Hanya agregat `10600`/`10700` → `forms.go:136-137`; tidak ada register aset, COA per jenis, sumber perolehan, metode pengukuran. Struktur 9 kolom kini ditranskrip (`docs/transkrip-form-08-10-11-12-14.md`); penjelasannya di **#184–186**, bukan 182–184 | 182–186, 60 |
+| 08.00 | Daftar Aset Tetap, Inventaris, AT Berwujud | `SUDAH ADA` | **Register kelima — dibangun 29 Sep 2026** (`aset_tetap_register`, migrasi `000119`) dengan API `reports/ojk/aset-tetap` + `form08_00.go`. Bank mengisi **per aset**, builder **mengelompokkan** per kombinasi Jenis×Sumber×Status×Metode (aturan gabung PDF); kolom VIII Nilai Tercatat **turunan** `V−VI−VII` (negatif → `-`); Status Aset nullable — 2xx (tidak berwujud) selalu kosong, 1xx kosong → `-`+alasan; JUMLAH hanya bila lengkap; tie ke `1202010000`/`1202020000` tidak dipaksa (di-Notes) — penjelasan sebelumnya soal "hanya agregat `10600`/`10700`" kini tergantikan register ini. Hanya agregat `10600`/`10700` → `forms.go:136-137`; tidak ada register aset, COA per jenis, sumber perolehan, metode pengukuran. Struktur 9 kolom kini ditranskrip (`docs/transkrip-form-08-10-11-12-14.md`); penjelasannya di **#184–186**, bukan 182–184 | 182–186, 60 |
 | 09.01 | Rincian Aset Lainnya – Lain-lain | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form09_01.go`): kondisional — terbit hanya bila pos Lainnya >25% dari total aset lainnya (penyebut = pos `1299000000` Form 01.00, ambang persis 25% tidak memicu); baris per akun COA sehingga total dijamin sama dengan pos Lainnya Form 09.00; Syarat **25%** dari jumlah aset lainnya; Form 09.00 sudah ada, pos `1299990000` dari COA 10305/10999/11700; kurang register baris "Uraian" | **190**, 188–189 |
 | 10.00 | Rincian Liabilitas Segera | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form10.go`): baris tetap 8 pos + JUMLAH, `COAMapping10Draft` hanya memetakan `20400`/`20600`/`12400` ke pos "Lainnya" (`2101990000`); 7 pos lain belum punya akun → alasan. **Pos 1 (pajak) sengaja `-`**: definisinya "pajak periode sebelum bulan laporan **yang dibayarkan pada bulan laporan**" (arus), sedangkan yang tersedia hanya saldo akhir periode — tidak dipaksa; `20500` juga tidak dipindah ke "Lainnya" agar tidak menggandakan pos Utang Pajak Form 14.00. JUMLAH `-` selama sebagian pos ber-alasan | 191–192, 106 |
 | 11.00 | Daftar Tabungan | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form11.go`): baris per-rekening dari `accounts`×`banking_products`(SAVINGS)×`customers` pada `periodEnd`, saldo dari jurnal. 11 dari 18 kolom bersumber; sisanya `-` + alasan: IV Jenis, VIII Jangka Waktu, XI–XII blokir, XIII biaya, XV NIK (privasi), XVI–XVIII PEP/Risiko/Status Data. **Keputusan:** IV dan VIII tetap `-` (jangan diturunkan dari tenor — berisiko salah kelas); **Jumlah = Nominal** karena biaya belum disimpan, keterbatasan ini ditulis di `Notes` | 193–199 |
@@ -146,7 +146,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN` — **pola register kini terbukti empat kali** (`ayda_register`, `kepemilikan_bpr_register`, `pinjaman_diterima_register`, `properti_terbengkalai_register`; AYDA + Kepemilikan + Pinjaman sudah punya UI di `pengaturan/ojk`), jadi sisa form tinggal mengulang pola yang sama: `04.00`, `08.00`, `16.00`, `18.00`. Peringkat nilai÷biaya ada di catatan riset; transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN` — **pola register kini terbukti lima kali** (`ayda_register`, `kepemilikan_bpr_register`, `pinjaman_diterima_register`, `properti_terbengkalai_register`, `aset_tetap_register`; AYDA + Kepemilikan + Pinjaman + Properti sudah punya UI di `pengaturan/ojk`), jadi sisa form tinggal mengulang pola yang sama: `04.00`, `16.00`, `18.00`. Peringkat nilai÷biaya ada di catatan riset; transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
