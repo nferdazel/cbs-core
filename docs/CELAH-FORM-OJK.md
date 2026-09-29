@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **31 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **32 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,10 +26,10 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 17 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 18 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 9 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 1 | tidak ada tabel/kolom/sumber sama sekali |
-| `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
+| `KONDISIONAL` | 3 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
 Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
@@ -55,7 +55,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 00.19 | Struktur Organisasi | `DOKUMEN` | Berkas PDF; **bahan sudah ada** (`bank_offices`, `bank_management`, `branches`) sehingga PDF-nya bisa dirakit otomatis | 298 |
 | 00.20 | Struktur Kelompok Usaha | `DOKUMEN` | Berkas PDF; bahan hanya satu string `ojk.report.ultimate_shareholders` (`000096:40`) | 299 |
 | 00.21 | Dokumen Penilaian Risiko TPPU/TPPT/PPSPM | `DOKUMEN` | `LAPORAN_TPPU_TPPT_PPSPM` sudah terdaftar `Buildable=false` "disusun manual di luar sistem" (`definitions.go:105`) | 300, 60 |
-| 03.00 | Daftar Kas dalam Valuta Asing | `KONDISIONAL` | Hanya valas sebagai **pedagang valuta asing**; tidak ada tabel kas valas/tabel kurs; pos `1101020000` sengaja tanpa sumber COA (`mapping_review_test.go:54`); status PVA sudah dicatat di `ojk.report.pva_status` (`000096:28`) | 126–128, 102 |
+| 03.00 | Daftar Kas dalam Valuta Asing | `SUDAH ADA` | **Register kesembilan — dibangun 29 Sep 2026** (`kas_valas_register`, migrasi `000123`) dengan API `reports/ojk/kas-valas` + `form03_00.go`. 5 kolom, **ADA baris JUMLAH**; kolom V Nilai Rupiah **turunan III x IV** (bila salah satu kosong → `-`+alasan, JUMLAH pun tidak dihitung sebagian). Nominal/Kurs 2 desimal; II sandi Lampiran 04 (teks apa adanya, daftar lampiran tidak disalin ke kode); tidak ada nomor unik → hapus DELETE fisik. **Pemicu**: form hanya relevan bila bank berstatus PVA (`ojk.report.pva_status`); register kosong → `SkippedForms` dengan alasan yang menyebut PVA. Hanya valas sebagai **pedagang valuta asing**; tidak ada tabel kas valas/tabel kurs; pos `1101020000` sengaja tanpa sumber COA (`mapping_review_test.go:54`); status PVA sudah dicatat di `ojk.report.pva_status` (`000096:28`) | 126–128, 102 |
 | 04.00 | Daftar Surat Berharga | `SUDAH ADA` | **Register ketujuh — dibangun 29 Sep 2026** (`surat_berharga_register`, migrasi `000122`) dengan API `reports/ojk/surat-berharga` + `form04_00.go`. 25 kolom, **ADA baris JUMLAH** (kolom angka dijumlahkan; kolom sandi/tanggal/teks `-`). Tidak ada nomor register unik → hapus = DELETE fisik. XII ISIN teks bebas; XVII/XVIII sandi Lampiran 08/09 dengan sentinel resmi 9/99; XI isian bank (form memberi dua kemungkinan: amortized cost atau nilai wajar, tanpa rumus pengikat); XXIV boleh kosong (hanya bila penawaran umum efek). Tidak ada register surat berharga (25 kolom) dan tidak ada akun COA "Surat Berharga"; pos `1102000000` hanya sandi (`forms.go:122`) | 129–134 |
 | 06.01 | Daftar Agunan | `SEBAGIAN` | `loan_collaterals` (`000036:31`) + `ojk_agunan_ppka_amount` (`000109:31`); kurang alamat agunan, **nilai yang diagunkan**, sandi jenis agunan Lampiran 01 (kini enum 5 nilai), PPKA per agunan | 169–172, 301 |
 | 06.02 | Daftar Kredit Sindikasi | `BELUM DIMODELKAN` | Tidak ada tabel/kolom sindikasi (grep nihil); builder sendiri menyatakan kanal penyaluran belum dimodelkan (`form06.go:99`) | 173–177 |
@@ -147,7 +147,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
 | A4 | Modul baru untuk `BELUM DIMODELKAN` — **SELESAI untuk `04.00` dan `18.00` (29 Sep 2026)**: pola register kini terbukti delapan kali (`ayda`, `kepemilikan_bpr`, `pinjaman_diterima`, `properti_terbengkalai`, `aset_tetap`, `penyertaan_modal`, `surat_berharga`, `aset_keuangan_lainnya`). Sisa `BELUM DIMODELKAN` tinggal `06.02` (kredit sindikasi: tidak ada tabel/kolom sindikasi). Transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
-| A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
+| A5 | **SELESAI 29 Sep 2026**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). `03.00` kini selesai lewat register kas valas (migrasi `000123`, pola A4). Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
 ## 7. Anomali transkrip A4/A5/A6 — SEMUA TERPECAHKAN DARI PDF (28 Sep 2026)
