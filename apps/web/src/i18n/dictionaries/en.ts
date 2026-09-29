@@ -2617,6 +2617,55 @@ export const dictionaryEN: Dictionary = {
       validationTanggalPenilaian: "Appraisal Date is required.",
       validationPPKA: "PPKA value must not be negative.",
     },
+    pihakTerkait: {
+      title: "Other Related Party Data (Form 00.05)",
+      description:
+        'Related parties of the BPR other than shareholders, directors, commissioners, and executive officers. They need not be customers, so this register is kept separate from BMPK related-party tagging. Enter name, address, type (01/02/03), and relationship (01-06) using the official codes. Identity number (NIK/NPWP) is not requested and not stored; on the report that column is written "-" for privacy reasons.',
+      loadError: "Failed to load the Form 00.05 related party list.",
+      forbidden:
+        "You do not have permission to read the related party list (403).",
+      itemsTitle: "Related parties",
+      empty: "No related parties recorded yet.",
+      saved: "Form 00.05 related party data saved.",
+      deleted: "Form 00.05 related party data deleted.",
+      addTitle: "Add related party",
+      editTitle: "Edit related party",
+      deleteConfirm:
+        "Delete this related party row? This action cannot be undone.",
+      colNama: "Related Party Name",
+      colAlamat: "Related Party Address",
+      colJenis: "Related Party Type",
+      colHubungan: "Related Party Relationship",
+      fieldNama: "Related Party Name",
+      fieldNamaHint:
+        "Full name of the related party other than shareholders/directors/commissioners/executive officers. Required, up to 255 characters.",
+      fieldAlamat: "Related Party Address",
+      fieldAlamatHint: "Full address of the related party.",
+      fieldJenis: "Related Party Type",
+      fieldJenisHint:
+        "Form 00.05 column IV code: 01 Individual, 02 Company or Entity, 03 Regional or Central Government.",
+      fieldHubungan: "Related Party Relationship",
+      fieldHubunganHint:
+        "Form 00.05 column V code: 01 controller/family, 02 non-bank company owned by management, 03 other BPR/BPRS owned, 04 other BPR/BPRS with concurrent commissioner, 05 company with concurrent commissioner, 06 borrower guaranteed by management.",
+      fieldNote: "Internal note",
+      fieldNoteHint: "The bank's own note; it does not become a form column.",
+      jenisPlaceholder: "Select a type",
+      hubunganPlaceholder: "Select a relationship",
+      jenisPerorangan: "01 - Individual",
+      jenisBadan: "02 - Company or Entity",
+      jenisPemerintah: "03 - Regional or Central Government",
+      hubunganPengendaliKeluarga: "01 - Controller/Family",
+      hubunganPerusahaanBukanBank: "02 - Non-Bank Company Owned by Management",
+      hubunganBPRLainDimiliki: "03 - Other BPR/BPRS Owned",
+      hubunganBPRRangkapKomisaris:
+        "04 - Other BPR/BPRS with Concurrent Commissioner",
+      hubunganPerusahaanRangkap: "05 - Company with Concurrent Commissioner",
+      hubunganPeminjamDijamin: "06 - Borrower Guaranteed by Management",
+      validationNama: "Related Party Name is required.",
+      validationNamaLength: "Related Party Name is up to 255 characters.",
+      validationJenis: "Select a related party type.",
+      validationHubungan: "Select a related party relationship.",
+    },
     form0011: {
       title: "Office Network & EDC/ATM (Form 00.11)",
       description:

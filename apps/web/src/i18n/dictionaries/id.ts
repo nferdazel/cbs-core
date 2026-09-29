@@ -2611,6 +2611,55 @@ export const dictionaryID = {
       validationTanggalPenilaian: "Tanggal Penilaian wajib diisi.",
       validationPPKA: "Nilai untuk PPKA tidak boleh negatif.",
     },
+    pihakTerkait: {
+      title: "Data Pihak Terkait Lainnya (Form 00.05)",
+      description:
+        'Daftar pihak terkait BPR selain pemegang saham, anggota direksi, anggota dewan komisaris, dan pejabat eksekutif. Mereka tidak harus nasabah, jadi dipisahkan dari penandaan pihak terkait BMPK. Isi nama, alamat, jenis (01/02/03), dan hubungan (01-06) sesuai sandi PDF resmi. Nomor identitas (NIK/NPWP) tidak diminta dan tidak disimpan; pada laporan kolom itu ditulis "-" karena alasan privasi.',
+      loadError: "Gagal memuat daftar pihak terkait Form 00.05.",
+      forbidden: "Anda tidak memiliki izin membaca daftar pihak terkait (403).",
+      itemsTitle: "Daftar pihak terkait",
+      empty: "Belum ada pihak terkait yang tercatat.",
+      saved: "Data pihak terkait Form 00.05 tersimpan.",
+      deleted: "Data pihak terkait Form 00.05 dihapus.",
+      addTitle: "Tambah pihak terkait",
+      editTitle: "Ubah pihak terkait",
+      deleteConfirm:
+        "Hapus baris pihak terkait ini? Tindakan ini tidak dapat dibatalkan.",
+      colNama: "Nama Pihak Terkait",
+      colAlamat: "Alamat Pihak Terkait",
+      colJenis: "Jenis Pihak Terkait",
+      colHubungan: "Hubungan Pihak Terkait",
+      fieldNama: "Nama Pihak Terkait",
+      fieldNamaHint:
+        "Nama lengkap pihak terkait selain pemegang saham/direksi/komisaris/pejabat eksekutif. Wajib, maksimal 255 karakter.",
+      fieldAlamat: "Alamat Pihak Terkait",
+      fieldAlamatHint: "Alamat lengkap pihak terkait.",
+      fieldJenis: "Jenis Pihak Terkait",
+      fieldJenisHint:
+        "Sandi Form 00.05 kolom IV: 01 Perorangan, 02 Perusahaan atau Badan, 03 Pemerintah Daerah atau Pemerintah Pusat.",
+      fieldHubungan: "Hubungan Pihak Terkait",
+      fieldHubunganHint:
+        "Sandi Form 00.05 kolom V: 01 pengendali/keluarga, 02 perusahaan bukan bank milik pengurus, 03 BPR/BPRS lain yang dimiliki, 04 BPR/BPRS lain dengan rangkap komisaris, 05 perusahaan dengan rangkap komisaris, 06 peminjam yang dijamin pengurus.",
+      fieldNote: "Catatan internal",
+      fieldNoteHint:
+        "Catatan bank untuk diri sendiri; tidak ikut menjadi kolom form.",
+      jenisPlaceholder: "Pilih jenis",
+      hubunganPlaceholder: "Pilih hubungan",
+      jenisPerorangan: "01 - Perorangan",
+      jenisBadan: "02 - Perusahaan atau Badan",
+      jenisPemerintah: "03 - Pemerintah Daerah atau Pemerintah Pusat",
+      hubunganPengendaliKeluarga: "01 - Pengendali/Keluarga",
+      hubunganPerusahaanBukanBank: "02 - Perusahaan Bukan Bank Milik Pengurus",
+      hubunganBPRLainDimiliki: "03 - BPR/BPRS Lain yang Dimiliki",
+      hubunganBPRRangkapKomisaris:
+        "04 - BPR/BPRS Lain dengan Rangkap Komisaris",
+      hubunganPerusahaanRangkap: "05 - Perusahaan dengan Rangkap Komisaris",
+      hubunganPeminjamDijamin: "06 - Peminjam yang Dijamin Pengurus",
+      validationNama: "Nama Pihak Terkait wajib diisi.",
+      validationNamaLength: "Nama Pihak Terkait maksimal 255 karakter.",
+      validationJenis: "Pilih jenis pihak terkait.",
+      validationHubungan: "Pilih hubungan pihak terkait.",
+    },
     form0011: {
       title: "Jaringan Kantor & TPE (Form 00.11)",
       description:

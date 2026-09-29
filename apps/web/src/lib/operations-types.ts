@@ -871,3 +871,36 @@ export interface UpdateAgunanPayload {
   tanggal_penilaian: string;
   ppka_amount: number;
 }
+
+/**
+ * domain.PihakTerkaitItem (form00_05_pihak_terkait.go), Form 00.05 Data Pihak Terkait
+ * Lainnya. Register berdiri sendiri (bukan bmpk_related_parties): memuat pihak terkait
+ * BPR selain pemegang saham/direksi/komisaris/pejabat eksekutif, yang tidak harus
+ * nasabah. Kolom II No. Identitas (NIK/NPWP) sengaja tidak disimpan (keputusan privasi).
+ * Seluruh kolom isian bank; form TIDAK punya baris JUMLAH.
+ */
+export interface PihakTerkaitItem {
+  id: string;
+  nama: string;
+  alamat: string;
+  jenis_code: string;
+  hubungan_code: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/pihak-terkait/items (kontrak pengisian Form 00.05). */
+export interface PihakTerkaitItemsData {
+  items: PihakTerkaitItem[] | null;
+}
+
+/** Payload PUT /reports/ojk/pihak-terkait/items (Form 00.05). id kosong = buat baru. */
+export interface UpdatePihakTerkaitPayload {
+  id?: string;
+  nama: string;
+  alamat: string;
+  jenis_code: string;
+  hubungan_code: string;
+  note: string;
+}
