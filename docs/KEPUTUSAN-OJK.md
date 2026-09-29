@@ -179,10 +179,28 @@ menegakkannya di kode.
 - **Konsekuensi**: ketiadaan `as_of` pada BMPK adalah **benar**, bukan celah. Tidak ada
   perubahan kode.
 
+### 9.5 Form 06.01 — "Likuid | Non Likuid" bukan kolom kesembilan (SELESAI)
+
+- **Inkonsistensi yang dulu ditahan**: sel "Likuid | Non Likuid" tampak di kolom VIII pada
+  halaman susunan (`PDF #169`), tetapi penjelasan (`PDF #171`) meletakkannya di bawah kolom
+  IV Jenis Agunan. Triase lama menahan `06.01` menunggu konfirmasi OJK.
+- **Keputusan (membaca ulang PDF langsung)**: ini **bukan** inkonsistensi yang butuh OJK.
+  **Daftar sandi resmi (`PDF #170`) berhenti di kolom VIII**, dan kolom VIII adalah "Nilai
+  yang Diperhitungkan untuk PPKA". Penjelasan (`PDF #171`) menulis "IV. Jenis Agunan …
+  1. Likuid … 2. Non Likuid". Jadi Likuid/Non Likuid adalah **kategori induk** sandi 3 digit
+  Lampiran 01 (`PDF #page 301`: 101–103 Likuid, 201+ Non Likuid), **bukan kolom tersendiri**.
+  Sel di halaman susunan adalah artefak tata letak header kolom IV yang membentang.
+- **Aksi**: `06.01` dibangun (migrasi `000125` + kolom Form 06.01 pada `loan_collaterals`,
+  perakit `form06_01.go`, rute `reports/ojk/agunan`). Kolom IV menyimpan sandi Lampiran 01
+  apa adanya; kategori Likuid/Non Likuid **tidak** disimpan terpisah karena turunan digit
+  pertama. **Konfirmasi OJK tidak lagi diperlukan.**
+- **Sisa milik bank**: mengisi kode register (wajib unik, no-reuse), jenis, alamat, nilai,
+  penilai, dan PPKA per agunan.
+
 **Ringkas**: 9.1 = invarian tabel ditegakkan di kode (guard menolak duplikat penempatan
 logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa perubahan
-kode. Verifikasi pemetaan COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan
-tidak diklaim selesai di sini.
+kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri. Verifikasi pemetaan COA &
+ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
 
 ---
 
