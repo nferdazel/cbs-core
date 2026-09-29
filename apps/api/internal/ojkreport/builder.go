@@ -634,6 +634,27 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register properti terbengkalai belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 08.00 Daftar Aset Tetap, Inventaris, dan Aset Tidak Berwujud: register aset
+	// per aset yang bank catat (migrasi 000119). Baris dikelompokkan per kombinasi
+	// jenis/sumber/status/metode dan kolom VIII dihitung dari V - VI - VII. Bila belum
+	// ada baris AKTIF pada bulan periode, form dinyatakan belum tersedia, bukan ditulis
+	// kosong.
+	if as, ok := b.source.(AsetTetapRegisterSource); ok {
+		rows, err := as.ListAsetTetapForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "08.00", Name: formName("08.00"),
+				UnavailableReason: "belum ada register aset tetap berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm08_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "08.00", Name: formName("08.00"),
+			UnavailableReason: "sumber register aset tetap belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

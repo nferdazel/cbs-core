@@ -77,6 +77,10 @@ type OJKReportHandler struct {
 	// upsert/soft-delete-nya. Boleh nil pada uji; tanpa itu rute register properti tetap
 	// terpasang tetapi gagal saat dipanggil.
 	properti domain.PropertiRegisterService
+	// asetTetap menyediakan register aset tetap, inventaris, dan aset tidak berwujud
+	// (Form 08.00) sekaligus operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute
+	// register aset tetap tetap terpasang tetapi gagal saat dipanggil.
+	asetTetap domain.AsetTetapRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -96,7 +100,9 @@ type OJKReportHandler struct {
 // BMPK; boleh nil dengan perilaku yang sama. placements menyediakan daftar penempatan
 // untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama. properti menyediakan
 // register properti terbengkalai (Form 17.00) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// asetTetap menyediakan register aset tetap, inventaris, dan aset tidak berwujud
+// (Form 08.00) dan boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -109,6 +115,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		kepemilikan: kepemilikan,
 		pinjaman:    pinjaman,
 		properti:    properti,
+		asetTetap:   asetTetap,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
 	}
@@ -222,6 +229,18 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/properti/items", h.UpsertPropertiItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/properti/items/{id}", h.DeletePropertiItem)
+		// Register aset tetap, inventaris, dan aset tidak berwujud (Form 08.00): baca
+		// cukup reports:export; pengisian dan daftar mentah UI memakai system:config dan
+		// teraudit di service. Empat rute saja. Penghapusan adalah DELETE fisik karena
+		// form ini tidak mengatur no reuse/no recycle nomor register.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/aset-tetap", h.ExportAsetTetap)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/aset-tetap/items", h.ListAsetTetapItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/aset-tetap/items", h.UpsertAsetTetapItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/aset-tetap/items/{id}", h.DeleteAsetTetapItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -1502,6 +1521,143 @@ func writePropertiError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrPropertiNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrPropertiBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportAsetTetap menyajikan register aset tetap, inventaris, dan aset tidak berwujud
+// (Form 08.00) sebagai JSON untuk periode YYYY-MM: baris register beserta tabel
+// Form 08.00. Register bank-wide; aktor non-lintas cabang ditolak 403 oleh layanan.
+// Builder mengelompokkan baris per kombinasi jenis/sumber/status/metode; kolom VIII
+// Nilai Tercatat dihitung dari V - VI - VII dan kolom I Sandi Kantor diambil dari
+// kantor pelapor.
+func (h *OJKReportHandler) ExportAsetTetap(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.asetTetap == nil {
+		InternalError(w, r, errors.New("sumber register aset tetap belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.asetTetap.AsetTetapReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrAsetTetapBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	// Kolom I Sandi Kantor diambil dari kantor pelapor tunggal bila sumbernya tersedia
+	// (RepoSource); tanpa itu tetap dinyatakan tidak tersedia, bukan "-" tanpa alasan.
+	kantor := ojkreport.ReportingOffice{Reason: "register aset tetap dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgAsetTetapReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm08_00(report.Items, kantor)},
+	})
+}
+
+// ListAsetTetapItems menyajikan baris mentah register aset untuk UI edit
+// (GET /reports/ojk/aset-tetap/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListAsetTetapItems(w http.ResponseWriter, r *http.Request) {
+	if h.asetTetap == nil {
+		InternalError(w, r, errors.New("sumber register aset tetap belum dikonfigurasi"))
+		return
+	}
+	items, err := h.asetTetap.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register aset tetap: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAsetTetapItemsListed, map[string]any{"items": items})
+}
+
+// UpsertAsetTetapItem membuat/memperbarui satu aset
+// (PUT /reports/ojk/aset-tetap/items). Decoder menolak bidang tak dikenal agar payload
+// di luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config; teraudit
+// di service.
+func (h *OJKReportHandler) UpsertAsetTetapItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateAsetTetapItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.asetTetap == nil {
+		InternalError(w, r, errors.New("sumber register aset tetap belum dikonfigurasi"))
+		return
+	}
+	item, err := h.asetTetap.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeAsetTetapError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAsetTetapSaved, item)
+}
+
+// DeleteAsetTetapItem menghapus satu aset menurut id (DELETE fisik; form ini tidak
+// mengatur no reuse/no recycle nomor register).
+func (h *OJKReportHandler) DeleteAsetTetapItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAsetTetapIDInvalid)
+		return
+	}
+	if h.asetTetap == nil {
+		InternalError(w, r, errors.New("sumber register aset tetap belum dikonfigurasi"))
+		return
+	}
+	if err := h.asetTetap.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeAsetTetapError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAsetTetapDeleted, map[string]any{"id": id.String()})
+}
+
+// writeAsetTetapError memetakan galat register aset: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak internal
+// otomatis disembunyikan Fail).
+func writeAsetTetapError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrAsetTetapNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrAsetTetapBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

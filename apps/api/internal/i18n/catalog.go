@@ -290,15 +290,27 @@ const (
 	// Register properti terbengkalai (Form 17.00). Galat berkode harus selaras dengan
 	// pesan domain (uji errors_localized_test menegakkan ID/EN-nya). Nomor register
 	// bersifat no reuse/no recycle sehingga penghapusan adalah soft-delete.
-	MsgPropertiReport                     Code = "properti_report"
-	MsgPropertiSaved                      Code = "properti_saved"
-	MsgPropertiDeleted                    Code = "properti_deleted"
-	MsgPropertiIDInvalid                  Code = "properti_id_invalid"
-	MsgPropertiBankWide                   Code = "properti_bank_wide"
-	MsgPropertiInputInvalid               Code = "properti_input_invalid"
-	MsgPropertiNotFound                   Code = "properti_not_found"
-	MsgPropertiNoRegisterUsed             Code = "properti_no_register_used"
-	MsgPropertiItemsListed                Code = "properti_items_listed"
+	MsgPropertiReport         Code = "properti_report"
+	MsgPropertiSaved          Code = "properti_saved"
+	MsgPropertiDeleted        Code = "properti_deleted"
+	MsgPropertiIDInvalid      Code = "properti_id_invalid"
+	MsgPropertiBankWide       Code = "properti_bank_wide"
+	MsgPropertiInputInvalid   Code = "properti_input_invalid"
+	MsgPropertiNotFound       Code = "properti_not_found"
+	MsgPropertiNoRegisterUsed Code = "properti_no_register_used"
+	MsgPropertiItemsListed    Code = "properti_items_listed"
+	// Register aset tetap, inventaris, dan aset tidak berwujud (Form 08.00). Galat
+	// berkode harus selaras dengan pesan domain (uji errors_localized_test menegakkan
+	// ID/EN-nya). Form ini tidak mengatur no reuse/no recycle sehingga penghapusan
+	// adalah DELETE fisik.
+	MsgAsetTetapReport                    Code = "aset_tetap_report"
+	MsgAsetTetapSaved                     Code = "aset_tetap_saved"
+	MsgAsetTetapDeleted                   Code = "aset_tetap_deleted"
+	MsgAsetTetapIDInvalid                 Code = "aset_tetap_id_invalid"
+	MsgAsetTetapBankWide                  Code = "aset_tetap_bank_wide"
+	MsgAsetTetapInputInvalid              Code = "aset_tetap_input_invalid"
+	MsgAsetTetapNotFound                  Code = "aset_tetap_not_found"
+	MsgAsetTetapItemsListed               Code = "aset_tetap_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -687,6 +699,14 @@ var codeList = []Code{
 	MsgPropertiNotFound,
 	MsgPropertiNoRegisterUsed,
 	MsgPropertiItemsListed,
+	MsgAsetTetapReport,
+	MsgAsetTetapSaved,
+	MsgAsetTetapDeleted,
+	MsgAsetTetapIDInvalid,
+	MsgAsetTetapBankWide,
+	MsgAsetTetapInputInvalid,
+	MsgAsetTetapNotFound,
+	MsgAsetTetapItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1858,6 +1878,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgPropertiItemsListed: {
 		ID: "daftar baris register properti terbengkalai",
 		EN: "abandoned property register items listed",
+	},
+	MsgAsetTetapReport: {
+		ID: "register aset tetap",
+		EN: "fixed asset register",
+	},
+	MsgAsetTetapSaved: {
+		ID: "data register aset tetap disimpan",
+		EN: "fixed asset register data saved",
+	},
+	MsgAsetTetapDeleted: {
+		ID: "data register aset tetap dihapus",
+		EN: "fixed asset register data deleted",
+	},
+	MsgAsetTetapIDInvalid: {
+		ID: "id register aset tetap bukan UUID yang sah",
+		EN: "fixed asset register id is not a valid UUID",
+	},
+	MsgAsetTetapBankWide: {
+		ID: "register aset tetap bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the fixed asset register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgAsetTetapInputInvalid: {
+		ID: "data register aset tetap tidak valid",
+		EN: "fixed asset register data is invalid",
+	},
+	MsgAsetTetapNotFound: {
+		ID: "data register aset tetap tidak ditemukan",
+		EN: "fixed asset register data was not found",
+	},
+	MsgAsetTetapItemsListed: {
+		ID: "daftar baris register aset tetap",
+		EN: "fixed asset register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

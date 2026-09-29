@@ -254,8 +254,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	// yang bank isi lewat API; bukan dari saldo agregat COA 10500. Bila belum ada baris
 	// AKTIF, builder mencatatnya pada SkippedForms dengan alasan spesifik.
 	{Form: "07.00", Name: "Daftar Agunan yang Diambil Alih", Buildable: true},
-	{Form: "08.00", Name: "Daftar Aset Tetap, Inventaris, dan Aset Tidak Berwujud", Buildable: false,
-		UnavailableReason: "hanya agregat COA 10600/10700 (forms.go:136-137); belum ada register aset per jenis, COA per jenis, sumber perolehan, dan metode pengukuran (PDF #182-184, #60)"},
+	// Form 08.00 dibangun dari register aset per aset (aset_tetap_register, migrasi
+	// 000119) yang bank isi lewat API; bukan dari saldo agregat COA 10600/10700. Builder
+	// mengelompokkan baris per kombinasi jenis/sumber/status/metode dan menghitung kolom
+	// VIII Nilai Tercatat dari V - VI - VII; baris JUMLAH hanya diisi bila seluruh baris
+	// lengkap. Bila belum ada baris AKTIF, builder mencatatnya pada SkippedForms dengan
+	// alasan spesifik. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
+	{Form: "08.00", Name: "Daftar Aset Tetap, Inventaris, dan Aset Tidak Berwujud", Buildable: true},
 	// Form 10.00 "Rincian Liabilitas Segera" (PDF #page 191-192): posisinya dipecah
 	// dari saldo COA yang dipetakan ke pos Liabilitas Segera Form 01.00 (sandi
 	// 2101000000). Pemetaannya masih DRAF dan dipisah di COAMapping10Draft; pos tanpa

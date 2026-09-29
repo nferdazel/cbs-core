@@ -306,6 +306,14 @@ func main() {
 	propertiRepo := postgres.NewPropertiRegisterRepository(db)
 	propertiSvc := service.NewPropertiRegisterService(db, propertiRepo, auditRepo)
 
+	// Register aset tetap, inventaris, dan aset tidak berwujud (Form 08.00): baca
+	// bank-wide + jalur tulis berizin system:config yang teraudit (migrasi 000119).
+	// Disimpan per aset; builder laporan mengelompokkan per kombinasi dan kolom VIII
+	// Nilai Tercatat dihitung dari V - VI - VII. Tidak menyentuh angka jurnal maupun
+	// bagan akun.
+	asetTetapRepo := postgres.NewAsetTetapRegisterRepository(db)
+	asetTetapSvc := service.NewAsetTetapRegisterService(db, asetTetapRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -329,11 +337,12 @@ func main() {
 		Kepemilikan:     kepemilikanRepo,
 		Pinjaman:        pinjamanRepo,
 		Properti:        propertiRepo,
+		AsetTetap:       asetTetapRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
