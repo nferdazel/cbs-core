@@ -3704,6 +3704,115 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-terkait:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportPihakTerkait
+      summary: Data Pihak Terkait Lainnya Form 00.05 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan register pihak terkait beserta
+        tabel Form 00.05 (5 kolom, TANPA baris JUMLAH). Form ini memuat pihak terkait BPR
+        SELAIN pemegang saham, anggota direksi, anggota dewan komisaris, dan pejabat
+        eksekutif; mereka tidak harus nasabah. Seluruh kolom isian bank. Kolom II No.
+        Identitas (NIK/NPWP) sengaja tidak disimpan (keputusan privasi) dan selalu ditulis
+        "-" beralasan. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-terkait/items:
+    get:
+      tags: [Laporan]
+      operationId: listPihakTerkaitItems
+      summary: Daftar baris register pihak terkait Form 00.05 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `pihak_terkait_lainnya_register`
+        untuk UI edit dengan urutan deterministik, bukan tabel laporan. Kolom II No.
+        Identitas tidak ada karena sengaja tidak disimpan (keputusan privasi).
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertPihakTerkaitItem
+      summary: Simpan satu baris register pihak terkait Form 00.05
+      description: >-
+        Izin: `system:config`. Menyimpan satu baris: `nama` (kolom I, wajib), `alamat`
+        (kolom III), `jenis_code` (kolom IV, sandi PDF #97: 01 Perorangan, 02 Perusahaan
+        atau Badan, 03 Pemerintah Daerah atau Pusat), `hubungan_code` (kolom V, sandi PDF
+        #97: 01-06), `note` internal. Tanpa `id` berarti membuat baris baru. Kolom II No.
+        Identitas sengaja tidak disimpan. Teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid, description: "Kosong = buat baru." }
+                nama: { type: string, description: "Kolom I Nama Pihak Terkait; wajib, maksimal 255 karakter." }
+                alamat: { type: string, description: "Kolom III Alamat Pihak Terkait." }
+                jenis_code: { type: string, enum: ["01", "02", "03"], description: "Kolom IV: 01 Perorangan, 02 Perusahaan atau Badan, 03 Pemerintah Daerah atau Pusat." }
+                hubungan_code: { type: string, enum: ["01", "02", "03", "04", "05", "06"], description: "Kolom V: sandi PDF #97/98, isian bank." }
+                note: { type: string, description: "Catatan internal bank; bukan kolom form." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-terkait/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deletePihakTerkaitItem
+      summary: Hapus baris register pihak terkait Form 00.05
+      description: >-
+        Izin: `system:config`. DELETE FISIK: Form 00.05 tidak menetapkan nomor register
+        unik, sehingga baris tidak perlu dipertahankan untuk mencegah pemakaian ulang.
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]

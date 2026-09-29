@@ -97,6 +97,10 @@ type RepoSource struct {
 	// Agunan menyediakan agunan untuk Form 06.01 (loan_collaterals + kolom OJK migrasi
 	// 000125). Bila nil, form dinyatakan belum tersedia; tidak ada angka yang dikarang.
 	Agunan domain.AgunanRepository
+	// PihakTerkait menyediakan register pihak terkait lainnya Form 00.05
+	// (pihak_terkait_lainnya_register, migrasi 000127). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada data yang dikarang. Pembacaan bersifat bank-wide.
+	PihakTerkait domain.PihakTerkaitRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -605,6 +609,16 @@ func (s RepoSource) ListAgunanForOJK(ctx context.Context, actor domain.Actor) ([
 		return nil, nil
 	}
 	return s.Agunan.ListAgunanForOJK(ctx)
+}
+
+// ListPihakTerkaitForOJK membaca register pihak terkait lainnya untuk Form 00.05.
+// Register ini bank-wide; rute pengaturan yang menyajikannya dijaga system:config,
+// sehingga tidak ada gerbang peran di sini.
+func (s RepoSource) ListPihakTerkaitForOJK(ctx context.Context) ([]domain.PihakTerkaitItem, error) {
+	if s.PihakTerkait == nil {
+		return nil, nil
+	}
+	return s.PihakTerkait.ListPihakTerkaitForOJK(ctx)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

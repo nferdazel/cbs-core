@@ -198,8 +198,15 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "00.02", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR", Buildable: true},
 	{Form: "00.03", Name: "Data Pejabat Eksekutif BPR", Buildable: true},
 	{Form: "00.04", Name: "Data Kantor BPR", Buildable: true},
-	{Form: "00.05", Name: "Data Pihak Terkait Lainnya", Buildable: false,
-		UnavailableReason: "sumber bmpk_related_parties + customers (migrasi 000103:27, 000001:24) sudah ada, tetapi sandi Jenis dan Hubungan masih teks bebas serta kolom NPWP dan pihak terkait bukan nasabah belum ada (PDF #96-98)"},
+	// Form 00.05 dibangun dari register pihak terkait lainnya per baris
+	// (pihak_terkait_lainnya_register, migrasi 000127) yang bank isi lewat API. Register
+	// berdiri sendiri karena form memuat pihak terkait BPR selain pemegang saham/direksi/
+	// komisaris/pejabat eksekutif, yang tidak harus nasabah — bukan bmpk_related_parties
+	// yang menandai nasabah untuk BMPK. Sandi IV (01-03) dan V (01-06) dari PDF #97 sudah
+	// disimpan sebagai sandi. Bila belum ada baris, builder mencatatnya pada SkippedForms
+	// dengan alasan spesifik. Kolom II No. Identitas sengaja tidak disimpan (keputusan
+	// privasi) dan laporan menulisnya "-" beralasan.
+	{Form: "00.05", Name: "Data Pihak Terkait Lainnya", Buildable: true},
 	{Form: "00.06", Name: "Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas", Buildable: false,
 		UnavailableReason: "hanya saldo COA 30100/13100 yang dipetakan (coa_mapping.go:166,174); akun Modal Sumbangan dan Dana Setoran Modal serta kolom Jenis dan Tanggal Persetujuan OJK belum ada (PDF #245-247)"},
 	// Form 00.07 dibangun dari register pinjaman per kreditur (pinjaman_diterima_register,

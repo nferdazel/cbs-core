@@ -735,6 +735,27 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber agunan belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 00.05 Data Pihak Terkait Lainnya: register pihak_terkait_lainnya_register
+	// (migrasi 000127). Memuat pihak terkait BPR selain pemegang saham/direksi/komisaris/
+	// pejabat eksekutif; tidak harus nasabah. Tanpa baris register, form dinyatakan belum
+	// tersedia, bukan ditulis kosong. Tidak ada baris JUMLAH dan tidak ada nilai turunan:
+	// seluruh kolom adalah isian bank; kolom II No. Identitas tidak disimpan (privasi).
+	if pt, ok := b.source.(PihakTerkaitOJKSource); ok {
+		rows, err := pt.ListPihakTerkaitForOJK(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.05", Name: formName("00.05"),
+				UnavailableReason: "belum ada register pihak terkait lainnya yang diisi bank"})
+		} else {
+			tables = append(tables, BuildForm00_05(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.05", Name: formName("00.05"),
+			UnavailableReason: "sumber register pihak terkait lainnya belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

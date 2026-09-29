@@ -378,6 +378,14 @@ const (
 	MsgAgunanItemsListed                  Code = "agunan_items_listed"
 	MsgAgunanSaved                        Code = "agunan_saved"
 	MsgAgunanIDInvalid                    Code = "agunan_id_invalid"
+	MsgPihakTerkaitInputInvalid           Code = "pihak_terkait_input_invalid"
+	MsgPihakTerkaitNotFound               Code = "pihak_terkait_not_found"
+	MsgPihakTerkaitBankWide               Code = "pihak_terkait_bank_wide"
+	MsgPihakTerkaitReport                 Code = "pihak_terkait_report"
+	MsgPihakTerkaitItemsListed            Code = "pihak_terkait_items_listed"
+	MsgPihakTerkaitSaved                  Code = "pihak_terkait_saved"
+	MsgPihakTerkaitDeleted                Code = "pihak_terkait_deleted"
+	MsgPihakTerkaitIDInvalid              Code = "pihak_terkait_id_invalid"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -828,6 +836,14 @@ var codeList = []Code{
 	MsgAgunanItemsListed,
 	MsgAgunanSaved,
 	MsgAgunanIDInvalid,
+	MsgPihakTerkaitInputInvalid,
+	MsgPihakTerkaitNotFound,
+	MsgPihakTerkaitBankWide,
+	MsgPihakTerkaitReport,
+	MsgPihakTerkaitItemsListed,
+	MsgPihakTerkaitSaved,
+	MsgPihakTerkaitDeleted,
+	MsgPihakTerkaitIDInvalid,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2247,6 +2263,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgAgunanIDInvalid: {
 		ID: "id agunan bukan UUID yang sah",
 		EN: "collateral id is not a valid UUID",
+	},
+	MsgPihakTerkaitInputInvalid: {
+		ID: "data pihak terkait Form 00.05 tidak valid",
+		EN: "related party Form 00.05 data is invalid",
+	},
+	MsgPihakTerkaitNotFound: {
+		ID: "data pihak terkait tidak ditemukan",
+		EN: "related party data was not found",
+	},
+	MsgPihakTerkaitBankWide: {
+		ID: "register pihak terkait bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the related party register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgPihakTerkaitReport: {
+		ID: "daftar pihak terkait Form 00.05",
+		EN: "related party list Form 00.05",
+	},
+	MsgPihakTerkaitItemsListed: {
+		ID: "daftar pihak terkait untuk pengisian Form 00.05",
+		EN: "related party list for Form 00.05 entry",
+	},
+	MsgPihakTerkaitSaved: {
+		ID: "data pihak terkait Form 00.05 disimpan",
+		EN: "related party Form 00.05 data saved",
+	},
+	MsgPihakTerkaitDeleted: {
+		ID: "data pihak terkait Form 00.05 dihapus",
+		EN: "related party Form 00.05 data deleted",
+	},
+	MsgPihakTerkaitIDInvalid: {
+		ID: "id pihak terkait bukan UUID yang sah",
+		EN: "related party id is not a valid UUID",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

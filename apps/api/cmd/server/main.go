@@ -355,6 +355,13 @@ func main() {
 	agunanRepo := postgres.NewAgunanRepository(db)
 	agunanSvc := service.NewAgunanService(db, agunanRepo, auditRepo)
 
+	// Register pihak terkait lainnya Form 00.05: register berdiri sendiri
+	// (pihak_terkait_lainnya_register, migrasi 000127), baca bank-wide + jalur tulis
+	// berizin system:config yang teraudit. Bukan bmpk_related_parties: pihak terkait di
+	// sini tidak harus nasabah. Kolom II No. Identitas tidak disimpan (keputusan privasi).
+	pihakTerkaitRepo := postgres.NewPihakTerkaitRepository(db)
+	pihakTerkaitSvc := service.NewPihakTerkaitService(db, pihakTerkaitRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -388,11 +395,12 @@ func main() {
 		KasValas:        kasValasRepo,
 		KreditSindikasi: kreditSindikasiRepo,
 		Agunan:          agunanRepo,
+		PihakTerkait:    pihakTerkaitRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, pihakTerkaitSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
