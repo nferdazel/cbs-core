@@ -594,6 +594,42 @@ export interface AsetTetapItemsData {
   items: AsetTetapItem[] | null;
 }
 
+/**
+ * domain.PenyertaanItem (penyertaan.go), Form 16.00 daftar penyertaan modal.
+ * Kolom I Sandi Kantor tidak diserialisasi (diambil dari kantor pelapor tunggal).
+ * Tidak ada kolom turunan: kolom X "Jumlah Bulan Laporan" walaupun namanya begitu
+ * adalah nilai tercatat penyertaan pada bulan laporan, rupiah penuh yang diisi bank;
+ * blok CKPN juga isian bank. Nominal datang sebagai string/number desimal shopspring,
+ * tanggal sebagai RFC3339.
+ */
+export interface PenyertaanItem {
+  id: string;
+  no_register: string;
+  counterparty_id: string;
+  metode_penyertaan_code: string;
+  kualitas_code: string;
+  tujuan_penyertaan_code: string;
+  tanggal_mulai: string;
+  persentase_penyertaan: string | number;
+  nominal: string | number;
+  jumlah_bulan_laporan: string | number;
+  cadangan_kerugian_penurunan_nilai: string | number;
+  ckpn_aset_baik: string | number;
+  ckpn_aset_kurang_baik: string | number;
+  ckpn_aset_tidak_baik: string | number;
+  jenis_ckpn_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/penyertaan/items (kontrak pengisian). */
+export interface PenyertaanItemsData {
+  items: PenyertaanItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;

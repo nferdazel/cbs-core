@@ -8,6 +8,7 @@ import { OJKBMPKCard } from "@/components/settings/OJKBMPKCard";
 import { OJKKepemilikanCard } from "@/components/settings/OJKKepemilikanCard";
 import { OJKKelembagaanCard } from "@/components/settings/OJKKelembagaanCard";
 import { OJKOffBalanceCard } from "@/components/settings/OJKOffBalanceCard";
+import { OJKPenyertaanModalCard } from "@/components/settings/OJKPenyertaanModalCard";
 import { OJKPinjamanDiterimaCard } from "@/components/settings/OJKPinjamanDiterimaCard";
 import { OJKPlacementCodesCard } from "@/components/settings/OJKPlacementCodesCard";
 import { OJKPropertiTerbengkalaiCard } from "@/components/settings/OJKPropertiTerbengkalaiCard";
@@ -38,6 +39,7 @@ export default function OjkIdentityPage() {
       <OJKPinjamanDiterimaCard />
       <OJKPropertiTerbengkalaiCard />
       <OJKAsetTetapCard />
+      <OJKPenyertaanModalCard />
       <OJKBMPKCard />
     </>
   );
