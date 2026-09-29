@@ -66,6 +66,10 @@ type RepoSource struct {
 	// Indonesia/pihak ketiga bukan bank). Bila nil, form dinyatakan belum tersedia;
 	// tidak ada angka yang dikarang.
 	Pinjaman domain.PinjamanRegisterRepository
+	// Properti menyediakan register properti terbengkalai Form 17.00 (properti
+	// terbengkalai yang bank catat). Bila nil, form dinyatakan belum tersedia; tidak ada
+	// angka yang dikarang.
+	Properti domain.PropertiRegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -471,6 +475,19 @@ func (s RepoSource) ListPinjamanForOJK(ctx context.Context, asOf time.Time, acto
 		return nil, nil
 	}
 	return s.Pinjaman.ListPinjamanForOJK(ctx, asOf)
+}
+
+// ListPropertiForOJK membaca baris register properti terbengkalai bank-wide yang
+// as_of-nya pada bulan asOf (kandidat Form 17.00). Kebijakan bank-wide ditegakkan di
+// lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListPropertiForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.PropertiItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.Properti == nil {
+		return nil, nil
+	}
+	return s.Properti.ListPropertiForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

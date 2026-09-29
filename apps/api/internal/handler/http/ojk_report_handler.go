@@ -73,6 +73,10 @@ type OJKReportHandler struct {
 	// operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register pinjaman
 	// tetap terpasang tetapi gagal saat dipanggil.
 	pinjaman domain.PinjamanRegisterService
+	// properti menyediakan register properti terbengkalai (Form 17.00) sekaligus operasi
+	// upsert/soft-delete-nya. Boleh nil pada uji; tanpa itu rute register properti tetap
+	// terpasang tetapi gagal saat dipanggil.
+	properti domain.PropertiRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -90,8 +94,9 @@ type OJKReportHandler struct {
 // pinjaman menyediakan register pinjaman yang diterima (Form 00.07) dan boleh nil
 // dengan perilaku yang sama. bmpkAdmin menyediakan pengaturan pihak terkait/batas
 // BMPK; boleh nil dengan perilaku yang sama. placements menyediakan daftar penempatan
-// untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama. properti menyediakan
+// register properti terbengkalai (Form 17.00) dan boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -103,6 +108,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		ayda:        ayda,
 		kepemilikan: kepemilikan,
 		pinjaman:    pinjaman,
+		properti:    properti,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
 	}
@@ -204,6 +210,18 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/pinjaman/items", h.UpsertPinjamanItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/pinjaman/items/{id}", h.DeletePinjamanItem)
+		// Register properti terbengkalai (Form 17.00): baca cukup reports:export;
+		// pengisian dan daftar mentah UI memakai system:config dan teraudit di service.
+		// Empat rute saja. Penghapusan adalah soft-delete (NONAKTIF) demi aturan no
+		// reuse/no recycle nomor register.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/properti", h.ExportProperti)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/properti/items", h.ListPropertiItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/properti/items", h.UpsertPropertiItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/properti/items/{id}", h.DeletePropertiItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -1347,6 +1365,143 @@ func writePinjamanError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrPinjamanNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrPinjamanBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportProperti menyajikan register properti terbengkalai (Form 17.00) sebagai JSON
+// untuk periode YYYY-MM: daftar properti terbengkalai beserta tabel Form 17.00. Register
+// bank-wide; aktor non-lintas cabang ditolak 403 oleh layanan. Form ini tidak punya
+// baris JUMLAH; kolom IX Jumlah dihitung dari VII - VIII dan kolom I Sandi Kantor
+// diambil dari kantor pelapor.
+func (h *OJKReportHandler) ExportProperti(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.properti == nil {
+		InternalError(w, r, errors.New("sumber register properti terbengkalai belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.properti.PropertiReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrPropertiBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	// Kolom I Sandi Kantor diambil dari kantor pelapor tunggal bila sumbernya tersedia
+	// (RepoSource); tanpa itu tetap dinyatakan tidak tersedia, bukan "-" tanpa alasan.
+	kantor := ojkreport.ReportingOffice{Reason: "register properti terbengkalai dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgPropertiReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm17_00(report.Items, kantor)},
+	})
+}
+
+// ListPropertiItems menyajikan baris mentah register properti terbengkalai untuk UI edit
+// (GET /reports/ojk/properti/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListPropertiItems(w http.ResponseWriter, r *http.Request) {
+	if h.properti == nil {
+		InternalError(w, r, errors.New("sumber register properti terbengkalai belum dikonfigurasi"))
+		return
+	}
+	items, err := h.properti.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register properti terbengkalai: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPropertiItemsListed, map[string]any{"items": items})
+}
+
+// UpsertPropertiItem membuat/memperbarui satu properti
+// (PUT /reports/ojk/properti/items). Decoder menolak bidang tak dikenal agar payload di
+// luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config; teraudit di
+// service. No. Register yang sudah pernah dipakai ditolak 422 dengan kode
+// properti_no_register_used.
+func (h *OJKReportHandler) UpsertPropertiItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdatePropertiItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.properti == nil {
+		InternalError(w, r, errors.New("sumber register properti terbengkalai belum dikonfigurasi"))
+		return
+	}
+	item, err := h.properti.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writePropertiError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPropertiSaved, item)
+}
+
+// DeletePropertiItem menonaktifkan satu properti menurut id (soft-delete; baris tetap
+// ada agar nomor register tidak dapat dipakai ulang).
+func (h *OJKReportHandler) DeletePropertiItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgPropertiIDInvalid)
+		return
+	}
+	if h.properti == nil {
+		InternalError(w, r, errors.New("sumber register properti terbengkalai belum dikonfigurasi"))
+		return
+	}
+	if err := h.properti.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writePropertiError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPropertiDeleted, map[string]any{"id": id.String()})
+}
+
+// writePropertiError memetakan galat register properti: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; termasuk nomor register
+// yang sudah dipakai; galat berjejak internal otomatis disembunyikan Fail).
+func writePropertiError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPropertiNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrPropertiBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

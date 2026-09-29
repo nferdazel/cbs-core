@@ -86,10 +86,10 @@ func TestDefinisiLengkap(t *testing.T) {
 
 func TestBuildableForms(t *testing.T) {
 	forms := BuildableForms()
-	if len(forms) != 26 {
-		t.Fatalf("ingin 26 form buildable, dapat %d", len(forms))
+	if len(forms) != 27 {
+		t.Fatalf("ingin 27 form buildable, dapat %d", len(forms))
 	}
-	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "09.01", "13.00", "00.01", "00.02", "00.03", "00.04", "00.07", "00.09", "00.10", "00.12", "00.17", "00.18", "07.00", "10.00", "11.00", "12.00", "14.00", "14.01"}
+	want := []string{"00.00", "00.08", "01.00", "01.01", "02.00", "05.00", "06.00", "09.00", "09.01", "13.00", "00.01", "00.02", "00.03", "00.04", "00.07", "00.09", "00.10", "00.12", "00.17", "00.18", "07.00", "10.00", "11.00", "12.00", "14.00", "14.01", "17.00"}
 	for i, w := range want {
 		if forms[i].Form != w {
 			t.Fatalf("form buildable[%d] = %s, ingin %s", i, forms[i].Form, w)

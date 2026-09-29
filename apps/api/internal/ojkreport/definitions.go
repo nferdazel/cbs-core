@@ -289,8 +289,12 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "status WRITTEN_OFF + written_off_amount ada (migrasi 000085:29), tetapi tanggal hapus buku tidak ada, nominal gabungan (pokok+bunga+denda) tidak bisa dipisah per kolom, dan penempatan belum punya status hapus buku (PDF #218-221)"},
 	{Form: "16.00", Name: "Daftar Penyertaan Modal", Buildable: false,
 		UnavailableReason: "belum ada tabel register penyertaan dan akun COA 'Penyertaan Modal' (PDF #223-227)"},
-	{Form: "17.00", Name: "Daftar Properti Terbengkalai", Buildable: false,
-		UnavailableReason: "belum ada tabel/flag properti terbengkalai; kata kuncinya hanya disebut dokumentatif (PDF #229-231)"},
+	// Form 17.00 dibangun dari register properti terbengkalai per properti
+	// (properti_terbengkalai_register, migrasi 000118) yang bank isi lewat API. Bila
+	// belum ada baris AKTIF, builder mencatatnya pada SkippedForms dengan alasan
+	// spesifik. Kolom IX Jumlah dihitung laporan dari VII - VIII dan form ini tidak
+	// punya baris JUMLAH. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
+	{Form: "17.00", Name: "Daftar Properti Terbengkalai", Buildable: true},
 	{Form: "18.00", Name: "Daftar Aset Keuangan Lainnya", Buildable: false,
 		UnavailableReason: "belum ada register per rekening, akun COA, dan jejak 'fraud' belum ada di kode (PDF #233-237)"},
 	{Form: "19.00", Name: "Daftar Perbedaan Kualitas Aset Produktif", Buildable: false,

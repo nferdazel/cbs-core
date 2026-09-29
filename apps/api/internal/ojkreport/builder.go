@@ -614,6 +614,26 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register pinjaman yang diterima belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 17.00 Daftar Properti Terbengkalai: register properti per baris yang bank
+	// catat (migrasi 000118). Bila belum ada baris AKTIF pada bulan periode, form
+	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini tanpa baris JUMLAH dan
+	// kolom IX Jumlah dihitung laporan dari VII - VIII.
+	if ps, ok := b.source.(PropertiRegisterSource); ok {
+		rows, err := ps.ListPropertiForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "17.00", Name: formName("17.00"),
+				UnavailableReason: "belum ada register properti terbengkalai berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm17_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "17.00", Name: formName("17.00"),
+			UnavailableReason: "sumber register properti terbengkalai belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

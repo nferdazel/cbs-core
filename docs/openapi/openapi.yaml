@@ -2723,6 +2723,119 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/properti:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportProperti
+      summary: Register properti terbengkalai Form 17.00 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar properti terbengkalai
+        beserta tabel Form 17.00. Kolom IX Jumlah dihitung sebagai VII - VIII, bukan
+        disimpan; form ini tidak punya baris JUMLAH. Kolom I Sandi Kantor diambil dari
+        kantor pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/properti/items:
+    get:
+      tags: [Laporan]
+      operationId: listPropertiItems
+      summary: Daftar baris register properti terbengkalai Form 17.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah
+        `properti_terbengkalai_register` untuk UI edit dengan urutan deterministik,
+        bukan tabel laporan. Kolom IX Jumlah tidak ada karena turunan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertPropertiItem
+      summary: Simpan baris register properti terbengkalai Form 17.00
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        properti. `jenis_properti_code` 1/2/3; `metode_pengukuran_code` 1/2. Tanggal
+        berformat YYYY-MM-DD. `no_register` unik dan tidak boleh dipakai ulang (no
+        reuse/no recycle); nomor yang sudah pernah dipakai, termasuk baris NONAKTIF,
+        ditolak 422 `properti_no_register_used`. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                no_register: { type: string, description: "No. Register unik, mandatory, no reuse/no recycle." }
+                jenis_properti_code: { type: string, enum: ["1", "2", "3"], description: "1 Tanah, 2 Bangunan, 3 Tanah dan Bangunan." }
+                alamat_properti: { type: string }
+                koordinat: { type: string }
+                tanggal_penetapan: { type: string, description: "Format YYYY-MM-DD." }
+                biaya_perolehan_atau_nilai_wajar: { type: number }
+                akumulasi_penyusutan_atau_amortisasi: { type: number }
+                metode_pengukuran_code: { type: string, enum: ["1", "2"], description: "1 Model Biaya, 2 Model Revaluasi." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/properti/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deletePropertiItem
+      summary: Nonaktifkan baris register properti terbengkalai Form 17.00
+      description: >-
+        Izin: `system:config`. Soft-delete: baris diubah menjadi NONAKTIF dan tetap
+        tersimpan agar nomor register tidak dapat dipakai ulang (no reuse/no recycle).
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]

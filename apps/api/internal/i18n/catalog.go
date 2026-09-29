@@ -279,14 +279,26 @@ const (
 	MsgKepemilikanItemsListed  Code = "kepemilikan_items_listed"
 	// Register pinjaman yang diterima (Form 00.07). Galat berkode harus selaras dengan
 	// pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
-	MsgPinjamanReport                     Code = "pinjaman_report"
-	MsgPinjamanSaved                      Code = "pinjaman_saved"
-	MsgPinjamanDeleted                    Code = "pinjaman_deleted"
-	MsgPinjamanIDInvalid                  Code = "pinjaman_id_invalid"
-	MsgPinjamanBankWide                   Code = "pinjaman_bank_wide"
-	MsgPinjamanInputInvalid               Code = "pinjaman_input_invalid"
-	MsgPinjamanNotFound                   Code = "pinjaman_not_found"
-	MsgPinjamanItemsListed                Code = "pinjaman_items_listed"
+	MsgPinjamanReport       Code = "pinjaman_report"
+	MsgPinjamanSaved        Code = "pinjaman_saved"
+	MsgPinjamanDeleted      Code = "pinjaman_deleted"
+	MsgPinjamanIDInvalid    Code = "pinjaman_id_invalid"
+	MsgPinjamanBankWide     Code = "pinjaman_bank_wide"
+	MsgPinjamanInputInvalid Code = "pinjaman_input_invalid"
+	MsgPinjamanNotFound     Code = "pinjaman_not_found"
+	MsgPinjamanItemsListed  Code = "pinjaman_items_listed"
+	// Register properti terbengkalai (Form 17.00). Galat berkode harus selaras dengan
+	// pesan domain (uji errors_localized_test menegakkan ID/EN-nya). Nomor register
+	// bersifat no reuse/no recycle sehingga penghapusan adalah soft-delete.
+	MsgPropertiReport                     Code = "properti_report"
+	MsgPropertiSaved                      Code = "properti_saved"
+	MsgPropertiDeleted                    Code = "properti_deleted"
+	MsgPropertiIDInvalid                  Code = "properti_id_invalid"
+	MsgPropertiBankWide                   Code = "properti_bank_wide"
+	MsgPropertiInputInvalid               Code = "properti_input_invalid"
+	MsgPropertiNotFound                   Code = "properti_not_found"
+	MsgPropertiNoRegisterUsed             Code = "properti_no_register_used"
+	MsgPropertiItemsListed                Code = "properti_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -666,6 +678,15 @@ var codeList = []Code{
 	MsgPinjamanInputInvalid,
 	MsgPinjamanNotFound,
 	MsgPinjamanItemsListed,
+	MsgPropertiReport,
+	MsgPropertiSaved,
+	MsgPropertiDeleted,
+	MsgPropertiIDInvalid,
+	MsgPropertiBankWide,
+	MsgPropertiInputInvalid,
+	MsgPropertiNotFound,
+	MsgPropertiNoRegisterUsed,
+	MsgPropertiItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1801,6 +1822,42 @@ var catalog = map[Code]map[Lang]string{
 	MsgPinjamanItemsListed: {
 		ID: "daftar baris register pinjaman yang diterima",
 		EN: "received loan register items listed",
+	},
+	MsgPropertiReport: {
+		ID: "register properti terbengkalai",
+		EN: "abandoned property register",
+	},
+	MsgPropertiSaved: {
+		ID: "data register properti terbengkalai disimpan",
+		EN: "abandoned property register data saved",
+	},
+	MsgPropertiDeleted: {
+		ID: "data register properti terbengkalai dinonaktifkan",
+		EN: "abandoned property register data deactivated",
+	},
+	MsgPropertiIDInvalid: {
+		ID: "id register properti terbengkalai bukan UUID yang sah",
+		EN: "abandoned property register id is not a valid UUID",
+	},
+	MsgPropertiBankWide: {
+		ID: "register properti terbengkalai bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the abandoned property register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgPropertiInputInvalid: {
+		ID: "data register properti terbengkalai tidak valid",
+		EN: "abandoned property register data is invalid",
+	},
+	MsgPropertiNotFound: {
+		ID: "data register properti terbengkalai tidak ditemukan",
+		EN: "abandoned property register data was not found",
+	},
+	MsgPropertiNoRegisterUsed: {
+		ID: "nomor register properti terbengkalai sudah pernah dipakai dan tidak boleh dipakai ulang",
+		EN: "the abandoned property register number has already been used and cannot be reused",
+	},
+	MsgPropertiItemsListed: {
+		ID: "daftar baris register properti terbengkalai",
+		EN: "abandoned property register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

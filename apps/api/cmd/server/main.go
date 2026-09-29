@@ -299,6 +299,13 @@ func main() {
 	pinjamanRepo := postgres.NewPinjamanRegisterRepository(db)
 	pinjamanSvc := service.NewPinjamanRegisterService(db, pinjamanRepo, auditRepo)
 
+	// Register properti terbengkalai (Form 17.00): baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit (migrasi 000118). Kolom IX Jumlah tidak disimpan; nomor
+	// register no reuse/no recycle sehingga penghapusan adalah soft-delete NONAKTIF.
+	// Tidak menyentuh angka jurnal maupun bagan akun.
+	propertiRepo := postgres.NewPropertiRegisterRepository(db)
+	propertiSvc := service.NewPropertiRegisterService(db, propertiRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -321,11 +328,12 @@ func main() {
 		AYDA:            aydaRepo,
 		Kepemilikan:     kepemilikanRepo,
 		Pinjaman:        pinjamanRepo,
+		Properti:        propertiRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
