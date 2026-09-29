@@ -246,8 +246,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "04.00", Name: "Daftar Surat Berharga", Buildable: true},
 	{Form: "06.01", Name: "Daftar Agunan", Buildable: false,
 		UnavailableReason: "sumber loan_collaterals (migrasi 000036:31) + ojk_agunan_ppka_amount (000109:31) ada, tetapi kolom alamat agunan, nilai yang diagunkan, sandi jenis agunan Lampiran 01, dan PPKA per agunan belum ada (PDF #169-172, #301)"},
-	{Form: "06.02", Name: "Daftar Kredit Sindikasi", Buildable: false,
-		UnavailableReason: "belum ada tabel/kolom sindikasi; builder sendiri menyatakan kanal penyaluran belum dimodelkan (form06.go:99) (PDF #173-177)"},
+	// Form 06.02 dibangun dari register kredit sindikasi per rekening fasilitas
+	// (kredit_sindikasi_register, migrasi 000124) yang bank isi lewat API. Kolom III
+	// No. Identitas sengaja tidak disimpan (keputusan privasi) dan laporan menulisnya
+	// "-" beralasan. Bila belum ada baris AKTIF, builder mencatatnya pada SkippedForms
+	// dengan alasan spesifik. Form ini tidak punya baris JUMLAH; kolom I Sandi Kantor
+	// diambil dari kantor pelapor tunggal.
+	{Form: "06.02", Name: "Daftar Kredit Sindikasi", Buildable: true},
 	// Form 07.00 dibangun dari register AYDA per kasus (ayda_register, migrasi 000115)
 	// yang bank isi lewat API; bukan dari saldo agregat COA 10500. Bila belum ada baris
 	// AKTIF, builder mencatatnya pada SkippedForms dengan alasan spesifik.

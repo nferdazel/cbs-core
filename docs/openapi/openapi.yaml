@@ -3438,6 +3438,128 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kredit-sindikasi:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportKreditSindikasi
+      summary: Register kredit sindikasi Form 06.02 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar fasilitas kredit sindikasi
+        beserta tabel Form 06.02 (13 kolom, TANPA baris JUMLAH). Seluruh kolom angka adalah
+        isian bank dan laporan tidak menurunkannya. Kolom III No. Identitas (NIK/NPWP
+        debitur) sengaja tidak disimpan (keputusan privasi) dan selalu ditulis "-"
+        beralasan. Kolom IV No. Rekening unik dan "tidak boleh sama". Kolom I Sandi Kantor
+        diambil dari kantor pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kredit-sindikasi/items:
+    get:
+      tags: [Laporan]
+      operationId: listKreditSindikasiItems
+      summary: Daftar baris register kredit sindikasi Form 06.02 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `kredit_sindikasi_register` untuk
+        UI edit dengan urutan deterministik, bukan tabel laporan. Kolom III No. Identitas
+        tidak ada karena sengaja tidak disimpan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertKreditSindikasiItem
+      summary: Simpan baris register kredit sindikasi Form 06.02
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        rekening fasilitas kredit sindikasi. No. Rekening (IV) unik dan "tidak boleh sama";
+        bila pendanaan_di_bank_pelapor_code = "2" (tidak) maka no_rekening WAJIB kosong, dan
+        bila "1" (ya) WAJIB diisi (PDF #page 177). Seluruh kolom angka adalah isian bank.
+        Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                counterparty_id: { type: string, description: "ID Pihak Lawan (kolom II); teks apa adanya." }
+                no_rekening: { type: string, description: "No. Rekening (kolom IV); unik bila terisi, kosong bila kolom X = 2." }
+                jumlah_pendanaan_sindikasi: { type: number, description: "Kolom V: jumlah pendanaan seluruh anggota sindikasi, rupiah penuh; isian bank." }
+                bagian_pendanaan: { type: number, description: "Kolom VI: bagian BPR pelapor, rupiah penuh; isian bank." }
+                sandi_bank_peserta: { type: string, description: "Kolom VII: sandi bank peserta mengacu SPOJK; teks apa adanya." }
+                plafon: { type: number, description: "Kolom VII sub Plafon, rupiah penuh; isian bank." }
+                baki_debet: { type: number, description: "Kolom VII sub Baki Debet, rupiah penuh; isian bank." }
+                status_kepesertaan_code: { type: string, enum: ["1", "2"], description: "Kolom VIII: 1 Arranger, 2 Anggota sindikasi." }
+                nomor_perjanjian_induk: { type: string, description: "Kolom IX: nomor perjanjian induk awal tanpa spasi." }
+                pendanaan_di_bank_pelapor_code: { type: string, enum: ["1", "2"], description: "Kolom X: 1 Ya, 2 Tidak." }
+                kualitas_code: { type: string, enum: ["1", "2", "3", "4", "5"], description: "Kolom XI: 1 Lancar s/d 5 Macet." }
+                tunggakan_pokok: { type: number, description: "Kolom XII tunggakan pokok, rupiah penuh; isian bank." }
+                tunggakan_bunga: { type: number, description: "Kolom XII tunggakan bunga, rupiah penuh; isian bank." }
+                hari_tunggakan_pokok: { type: integer, description: "Kolom XIII hari tunggakan pokok, paling singkat 0." }
+                hari_tunggakan_bunga: { type: integer, description: "Kolom XIII hari tunggakan bunga, paling singkat 0." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kredit-sindikasi/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteKreditSindikasiItem
+      summary: Nonaktifkan baris register kredit sindikasi Form 06.02
+      description: >-
+        Izin: `system:config`. SOFT-DELETE (status -> NONAKTIF): Form 06.02 menetapkan No.
+        Rekening unik yang tidak boleh sama, sehingga nomor tetap terkunci dan tidak dapat
+        dipakai ulang. Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]

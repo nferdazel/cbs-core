@@ -105,6 +105,10 @@ type OJKReportHandler struct {
 	// upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register kas valas tetap
 	// terpasang tetapi gagal saat dipanggil.
 	kasValas domain.KasValasRegisterService
+	// kreditSindikasi menyediakan register kredit sindikasi (Form 06.02) sekaligus operasi
+	// upsert/soft-delete-nya. Boleh nil pada uji; tanpa itu rute register kredit sindikasi
+	// tetap terpasang tetapi gagal saat dipanggil.
+	kreditSindikasi domain.SindikasiRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -132,28 +136,30 @@ type OJKReportHandler struct {
 // (Form 08.00) dan boleh nil dengan perilaku yang sama. penyertaan menyediakan register
 // penyertaan modal (Form 16.00) dan boleh nil dengan perilaku yang sama. reference
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
-// dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+// dengan perilaku yang sama. kreditSindikasi menyediakan register kredit sindikasi
+// (Form 06.02) dan boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
-		builder:       ojkreport.NewBuilder(source),
-		source:        source,
-		coa:           coa,
-		reviews:       reviews,
-		config:        config,
-		kelembagaan:   kelembagaan,
-		offBalance:    offBalance,
-		ayda:          ayda,
-		kepemilikan:   kepemilikan,
-		pinjaman:      pinjaman,
-		properti:      properti,
-		asetTetap:     asetTetap,
-		penyertaan:    penyertaan,
-		asetKeuangan:  asetKeuangan,
-		suratBerharga: suratBerharga,
-		kasValas:      kasValas,
-		bmpkAdmin:     bmpkAdmin,
-		placements:    placements,
-		reference:     reference,
+		builder:         ojkreport.NewBuilder(source),
+		source:          source,
+		coa:             coa,
+		reviews:         reviews,
+		config:          config,
+		kelembagaan:     kelembagaan,
+		offBalance:      offBalance,
+		ayda:            ayda,
+		kepemilikan:     kepemilikan,
+		pinjaman:        pinjaman,
+		properti:        properti,
+		asetTetap:       asetTetap,
+		penyertaan:      penyertaan,
+		asetKeuangan:    asetKeuangan,
+		suratBerharga:   suratBerharga,
+		kasValas:        kasValas,
+		kreditSindikasi: kreditSindikasi,
+		bmpkAdmin:       bmpkAdmin,
+		placements:      placements,
+		reference:       reference,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -324,6 +330,18 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kas-valas/items", h.UpsertKasValasItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kas-valas/items/{id}", h.DeleteKasValasItem)
+		// Register kredit sindikasi (Form 06.02): baca cukup reports:export; pengisian dan
+		// daftar mentah UI memakai system:config dan teraudit di service. Empat rute saja.
+		// Form 06.02 menetapkan No. Rekening unik dan "tidak boleh sama" (PDF #page 177),
+		// sehingga penghapusan adalah soft-delete NONAKTIF — nomor rekening tetap terkunci.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/kredit-sindikasi", h.ExportKreditSindikasi)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/kredit-sindikasi/items", h.ListKreditSindikasiItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kredit-sindikasi/items", h.UpsertKreditSindikasiItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kredit-sindikasi/items/{id}", h.DeleteKreditSindikasiItem)
 		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
 		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
 		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
@@ -2330,6 +2348,143 @@ func writeKasValasError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrKasValasNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrKasValasBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportKreditSindikasi menyajikan register kredit sindikasi (Form 06.02) sebagai JSON
+// untuk periode YYYY-MM: daftar fasilitas kredit sindikasi beserta tabel Form 06.02.
+// Register bank-wide; aktor non-lintas cabang ditolak 403 oleh layanan. Form ini tidak
+// memiliki baris JUMLAH dan tidak menurunkan angka: seluruh nilai adalah isian bank.
+// Kolom III No. Identitas tidak disimpan (keputusan privasi) dan kolom I Sandi Kantor
+// diambil dari kantor pelapor.
+func (h *OJKReportHandler) ExportKreditSindikasi(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.kreditSindikasi == nil {
+		InternalError(w, r, errors.New("sumber register kredit sindikasi belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.kreditSindikasi.SindikasiReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrSindikasiBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "register kredit sindikasi dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgKreditSindikasiReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm06_02(report.Items, kantor)},
+	})
+}
+
+// ListKreditSindikasiItems menyajikan baris mentah register kredit sindikasi untuk UI edit
+// (GET /reports/ojk/kredit-sindikasi/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListKreditSindikasiItems(w http.ResponseWriter, r *http.Request) {
+	if h.kreditSindikasi == nil {
+		InternalError(w, r, errors.New("sumber register kredit sindikasi belum dikonfigurasi"))
+		return
+	}
+	items, err := h.kreditSindikasi.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register kredit sindikasi: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKreditSindikasiItemsListed, map[string]any{"items": items})
+}
+
+// UpsertKreditSindikasiItem membuat/memperbarui satu baris
+// (PUT /reports/ojk/kredit-sindikasi/items). Decoder menolak bidang tak dikenal agar
+// payload di luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config;
+// teraudit di service.
+func (h *OJKReportHandler) UpsertKreditSindikasiItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateSindikasiItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kreditSindikasi == nil {
+		InternalError(w, r, errors.New("sumber register kredit sindikasi belum dikonfigurasi"))
+		return
+	}
+	item, err := h.kreditSindikasi.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKreditSindikasiError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKreditSindikasiSaved, item)
+}
+
+// DeleteKreditSindikasiItem menonaktifkan satu baris menurut id (soft-delete NONAKTIF;
+// Form 06.02 menetapkan nomor rekening unik yang tidak boleh sama, sehingga nomor tetap
+// terkunci).
+func (h *OJKReportHandler) DeleteKreditSindikasiItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKreditSindikasiIDInvalid)
+		return
+	}
+	if h.kreditSindikasi == nil {
+		InternalError(w, r, errors.New("sumber register kredit sindikasi belum dikonfigurasi"))
+		return
+	}
+	if err := h.kreditSindikasi.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKreditSindikasiError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKreditSindikasiDeleted, map[string]any{"id": id.String()})
+}
+
+// writeKreditSindikasiError memetakan galat register kredit sindikasi: baris tak ada 404,
+// pelanggaran bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak
+// internal otomatis disembunyikan Fail). Nomor rekening yang sudah dipakai tetap 422 karena
+// itu pelanggaran aturan isian yang harus diperbaiki bank, bukan galat internal.
+func writeKreditSindikasiError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrSindikasiNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrSindikasiBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

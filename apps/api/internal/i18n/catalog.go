@@ -360,6 +360,15 @@ const (
 	MsgKasValasInputInvalid               Code = "kas_valas_input_invalid"
 	MsgKasValasNotFound                   Code = "kas_valas_not_found"
 	MsgKasValasItemsListed                Code = "kas_valas_items_listed"
+	MsgKreditSindikasiReport              Code = "kredit_sindikasi_report"
+	MsgKreditSindikasiSaved               Code = "kredit_sindikasi_saved"
+	MsgKreditSindikasiDeleted             Code = "kredit_sindikasi_deleted"
+	MsgKreditSindikasiIDInvalid           Code = "kredit_sindikasi_id_invalid"
+	MsgKreditSindikasiBankWide            Code = "kredit_sindikasi_bank_wide"
+	MsgKreditSindikasiInputInvalid        Code = "kredit_sindikasi_input_invalid"
+	MsgKreditSindikasiNotFound            Code = "kredit_sindikasi_not_found"
+	MsgKreditSindikasiNoRekeningUsed      Code = "kredit_sindikasi_no_rekening_used"
+	MsgKreditSindikasiItemsListed         Code = "kredit_sindikasi_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -792,6 +801,15 @@ var codeList = []Code{
 	MsgKasValasInputInvalid,
 	MsgKasValasNotFound,
 	MsgKasValasItemsListed,
+	MsgKreditSindikasiReport,
+	MsgKreditSindikasiSaved,
+	MsgKreditSindikasiDeleted,
+	MsgKreditSindikasiIDInvalid,
+	MsgKreditSindikasiBankWide,
+	MsgKreditSindikasiInputInvalid,
+	MsgKreditSindikasiNotFound,
+	MsgKreditSindikasiNoRekeningUsed,
+	MsgKreditSindikasiItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2139,6 +2157,42 @@ var catalog = map[Code]map[Lang]string{
 	MsgKasValasItemsListed: {
 		ID: "daftar baris register kas valuta asing",
 		EN: "foreign currency cash register items listed",
+	},
+	MsgKreditSindikasiReport: {
+		ID: "register kredit sindikasi",
+		EN: "syndicated loan register",
+	},
+	MsgKreditSindikasiSaved: {
+		ID: "data register kredit sindikasi disimpan",
+		EN: "syndicated loan register data saved",
+	},
+	MsgKreditSindikasiDeleted: {
+		ID: "data register kredit sindikasi dinonaktifkan",
+		EN: "syndicated loan register data deactivated",
+	},
+	MsgKreditSindikasiIDInvalid: {
+		ID: "id register kredit sindikasi bukan UUID yang sah",
+		EN: "syndicated loan register id is not a valid UUID",
+	},
+	MsgKreditSindikasiBankWide: {
+		ID: "register kredit sindikasi bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the syndicated loan register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgKreditSindikasiInputInvalid: {
+		ID: "data register kredit sindikasi tidak valid",
+		EN: "syndicated loan register data is invalid",
+	},
+	MsgKreditSindikasiNotFound: {
+		ID: "data register kredit sindikasi tidak ditemukan",
+		EN: "syndicated loan register data was not found",
+	},
+	MsgKreditSindikasiNoRekeningUsed: {
+		ID: "nomor rekening sindikasi sudah pernah dipakai dan tidak boleh dipakai ulang",
+		EN: "the syndicated loan account number has been used and cannot be reused",
+	},
+	MsgKreditSindikasiItemsListed: {
+		ID: "daftar baris register kredit sindikasi",
+		EN: "syndicated loan register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

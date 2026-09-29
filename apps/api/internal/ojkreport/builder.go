@@ -696,6 +696,26 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register kas valuta asing belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 06.02 Daftar Kredit Sindikasi: register kredit sindikasi per rekening fasilitas
+	// (migrasi 000124). Tidak ada baris JUMLAH dan tidak ada nilai turunan: seluruh angka
+	// adalah isian bank. Tanpa baris AKTIF pada bulan periode, form dinyatakan belum
+	// tersedia, bukan ditulis kosong seolah tidak ada kredit sindikasi.
+	if ks, ok := b.source.(SindikasiRegisterSource); ok {
+		rows, err := ks.ListSindikasiForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "06.02", Name: formName("06.02"),
+				UnavailableReason: "belum ada register kredit sindikasi berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm06_02(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "06.02", Name: formName("06.02"),
+			UnavailableReason: "sumber register kredit sindikasi belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

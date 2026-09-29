@@ -90,6 +90,10 @@ type RepoSource struct {
 	// (kas_valas_register, migrasi 000123). Bila nil, form dinyatakan belum tersedia;
 	// tidak ada angka yang dikarang.
 	KasValas domain.KasValasRegisterRepository
+	// KreditSindikasi menyediakan register kredit sindikasi Form 06.02
+	// (kredit_sindikasi_register, migrasi 000124). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada angka yang dikarang.
+	KreditSindikasi domain.SindikasiRegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -573,6 +577,19 @@ func (s RepoSource) ListKasValasForOJK(ctx context.Context, asOf time.Time, acto
 		return nil, nil
 	}
 	return s.KasValas.ListKasValasForOJK(ctx, asOf)
+}
+
+// ListSindikasiForOJK membaca baris register kredit sindikasi bank-wide yang as_of-nya pada
+// bulan asOf (kandidat Form 06.02). Kebijakan bank-wide ditegakkan di lapisan data: aktor
+// non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListSindikasiForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.SindikasiItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.KreditSindikasi == nil {
+		return nil, nil
+	}
+	return s.KreditSindikasi.ListSindikasiForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,
