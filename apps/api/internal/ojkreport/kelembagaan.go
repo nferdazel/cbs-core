@@ -91,7 +91,7 @@ func BuildKelembagaanTables(report domain.KelembagaanReport) []TableSection {
 // dan ikut bundel bulanan. Dua di antaranya berbasis peristiwa (00.09/00.10/00.12):
 // saat peristiwanya tidak ada pada bulan periode, form tetap dicatat belum dibangun
 // dengan alasan spesifik supaya ketidakhadirannya terbaca.
-var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04", "00.09", "00.10", "00.12"}
+var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04", "00.09", "00.10", "00.11", "00.12"}
 
 // buildKelembagaanMonthlyTables memilih bagian kelembagaan yang benar-benar berisi
 // baris untuk ikut bundel bulanan. Bagian tanpa baris TIDAK di-append, tetapi dicatat
@@ -102,7 +102,10 @@ var formKelembagaanBulanan = []string{"00.02", "00.03", "00.04", "00.09", "00.10
 func buildKelembagaanMonthlyTables(report domain.KelembagaanReport) ([]TableSection, []OJKFormDefinition) {
 	var tables []TableSection
 	var skipped []OJKFormDefinition
-	for _, sec := range BuildKelembagaanTables(report) {
+	// LAPORAN_KELEMBAGAAN tetap tiga bagian (00.02/00.03/00.04). Form 00.11 dibangun
+	// khusus untuk bundel bulanan dari kantor yang bank tandai sandi Jenis.
+	sections := append(BuildKelembagaanTables(report), BuildForm00_11(report.Offices))
+	for _, sec := range sections {
 		if len(sec.Rows) > 0 {
 			tables = append(tables, sec)
 			continue
@@ -135,6 +138,8 @@ func kelembagaanKosongReason(form string) string {
 		return "belum ada data pejabat eksekutif pada bank_management (migrasi 000112); form tidak ditampilkan kosong agar tidak tampak lengkap"
 	case "00.04":
 		return "belum ada data kantor pada bank_offices (migrasi 000112); form tidak ditampilkan kosong agar tidak tampak lengkap"
+	case "00.11":
+		return "belum ada kantor selain pusat/cabang (kantor kas/kas keliling/titik pembayaran/ATM/EDC/kantor wilayah/SKK) yang bank tandai sandi Jenis Form 00.11 pada bank_offices (migrasi 000126); form tidak ditampilkan kosong agar tidak tampak lengkap"
 	default:
 		return "data kelembagaan belum diisi bank; form tidak ditampilkan kosong agar tidak tampak lengkap"
 	}

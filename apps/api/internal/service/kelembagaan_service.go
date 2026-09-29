@@ -87,6 +87,37 @@ func (s *kelembagaanService) UpsertOffice(ctx context.Context, input domain.Upda
 	return &office, nil
 }
 
+// UpdateOfficeForm00_11 menyimpan kolom Form 00.11 (migrasi 000126) satu kantor dan
+// menulis audit dalam satu transaksi. Kantor yang tidak ada ditolak ErrKelembagaanNotFound.
+// Kolom Form 00.04 yang tumpang tindih tidak disentuh.
+func (s *kelembagaanService) UpdateOfficeForm00_11(ctx context.Context, id uuid.UUID, input domain.UpdateOfficeForm00_11Input, actor domain.Actor) error {
+	value, err := domain.BuildOfficeForm00_11(input)
+	if err != nil {
+		return err
+	}
+	return s.runner.Run(ctx, func(tx any) error {
+		found, err := s.repo.UpdateForm00_11Tx(ctx, tx, id, value)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return domain.ErrKelembagaanNotFound
+		}
+		return writeAudit(ctx, s.audit, tx, actor, "UPDATE_OFFICE_FORM00_11", "bank_office",
+			id.String(), officeForm00_11AuditChanges(value))
+	})
+}
+
+// officeForm00_11AuditChanges membangun catatan audit ringkas kolom Form 00.11.
+func officeForm00_11AuditChanges(in domain.UpdateOfficeForm00_11Input) map[string]any {
+	return map[string]any{
+		"ojk_office_kind_code": in.OJKOfficeKindCode,
+		"parent_office_code":   in.ParentOfficeCode,
+		"ojk_change_code":      in.OJKChangeCode,
+		"control_office_code":  in.ControlOfficeCode,
+	}
+}
+
 // DeleteOffice menghapus satu kantor dan menulis audit. Baris yang tidak ada ditolak
 // ErrKelembagaanNotFound agar penghapusan tidak tampak berhasil.
 func (s *kelembagaanService) DeleteOffice(ctx context.Context, id uuid.UUID, actor domain.Actor) error {

@@ -218,6 +218,11 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kelembagaan/management", h.UpsertKelembagaanManagement)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kelembagaan/management/{id}", h.DeleteKelembagaanManagement)
+		// Form 00.11 kolom jaringan kantor selain pusat/cabang dan TPE: isi memakai
+		// system:config, teraudit di service. Satu rute saja; daftar kantor untuk UI
+		// memakai rute kelembagaan yang sudah ada.
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kelembagaan/offices/{id}/form00-11", h.UpdateOfficeForm00_11)
 		// Register rekening administratif (Form 01.01): baca cukup reports:export;
 		// pengisian dan daftar mentah UI memakai system:config dan teraudit di service.
 		// Empat rute saja.
@@ -976,6 +981,40 @@ func (h *OJKReportHandler) DeleteKelembagaanManagement(w http.ResponseWriter, r 
 		return
 	}
 	Success(w, http.StatusOK, i18n.MsgKelembagaanDeleted, map[string]any{"id": id.String()})
+}
+
+// UpdateOfficeForm00_11 menyimpan kolom Form 00.11 (migrasi 000126) satu kantor
+// (PUT /reports/ojk/kelembagaan/offices/{id}/form00-11). Decoder menolak bidang tak
+// dikenal agar payload di luar kontrak ditolak 422. Izin system:config; teraudit di
+// service. Hanya kolom Form 00.11 yang disentuh; kolom Form 00.04 tidak berubah.
+func (h *OJKReportHandler) UpdateOfficeForm00_11(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKelembagaanIDInvalid)
+		return
+	}
+	var input domain.UpdateOfficeForm00_11Input
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	if err := h.kelembagaan.UpdateOfficeForm00_11(r.Context(), id, input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanForm0011Saved, map[string]any{"id": id.String()})
 }
 
 // ExportOffBalance menyajikan register rekening administratif (Form 01.01) sebagai

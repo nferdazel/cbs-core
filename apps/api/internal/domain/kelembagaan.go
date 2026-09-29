@@ -77,6 +77,18 @@ type BankOffice struct {
 	Note             string     `json:"note,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	// Kolom Form 00.11 (migrasi 000126). OfficeType tetap teks bebas kebijakan bank untuk
+	// Form 00.04; OJKOfficeKindCode adalah sandi baku Form 00.11 kolom I yang terpisah.
+	OJKOfficeKindCode  string     `json:"ojk_office_kind_code,omitempty"`
+	ParentOfficeCode   string     `json:"parent_office_code,omitempty"`
+	PreviousOfficeCode string     `json:"previous_office_code,omitempty"`
+	Coordinates        string     `json:"coordinates,omitempty"`
+	HeadName           string     `json:"head_name,omitempty"`
+	PhoneNumber        string     `json:"phone_number,omitempty"`
+	OJKChangeCode      string     `json:"ojk_change_code,omitempty"`
+	ImplementationDate *time.Time `json:"implementation_date,omitempty"`
+	ControlOfficeCode  string     `json:"control_office_code,omitempty"`
+	OJKApprovalDate    *time.Time `json:"ojk_approval_date,omitempty"`
 }
 
 // BankManagement adalah satu orang pada direksi/dewan komisaris/pejabat eksekutif
@@ -279,6 +291,8 @@ type KelembagaanRepository interface {
 	DeleteOfficeTx(ctx context.Context, tx any, id uuid.UUID) (bool, error)
 	UpsertManagementTx(ctx context.Context, tx any, m BankManagement, actorID uuid.UUID) error
 	DeleteManagementTx(ctx context.Context, tx any, id uuid.UUID) (bool, error)
+	// UpdateForm00_11Tx menyimpan kolom Form 00.11 satu kantor; found=false bila tidak ada.
+	UpdateForm00_11Tx(ctx context.Context, tx any, id uuid.UUID, in UpdateOfficeForm00_11Input) (bool, error)
 }
 
 // KelembagaanService merakit LAPORAN_KELEMBAGAAN dan melayani pengisian berizin.
@@ -293,4 +307,6 @@ type KelembagaanService interface {
 	UpsertManagement(ctx context.Context, input UpdateBankManagementInput, actor Actor) (*BankManagement, error)
 	// DeleteManagement menghapus satu orang, teraudit.
 	DeleteManagement(ctx context.Context, id uuid.UUID, actor Actor) error
+	// UpdateOfficeForm00_11 menyimpan kolom Form 00.11 satu kantor, teraudit.
+	UpdateOfficeForm00_11(ctx context.Context, id uuid.UUID, in UpdateOfficeForm00_11Input, actor Actor) error
 }

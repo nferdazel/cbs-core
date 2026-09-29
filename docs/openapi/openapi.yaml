@@ -2280,6 +2280,59 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kelembagaan/offices/{id}/form00-11:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Laporan]
+      operationId: updateOfficeForm0011
+      summary: Simpan kolom Form 00.11 satu kantor
+      description: >-
+        Izin: `system:config`. Menyimpan kolom Form 00.11 (Data Kantor selain Kantor Pusat
+        dan Kantor Cabang dan TPE) pada satu kantor `bank_offices`: `ojk_office_kind_code`
+        (sandi Jenis 02-08/99, wajib — menentukan baris masuk form), `parent_office_code`,
+        `previous_office_code`, `coordinates`, `head_name`, `phone_number`,
+        `ojk_change_code` (1-7), `implementation_date` (YYYY-MM-DD), `control_office_code`,
+        `ojk_approval_date` (YYYY-MM-DD). Kolom Form 00.04 yang tumpang tindih tidak
+        diubah di sini. Teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ojk_office_kind_code: { type: string, enum: ["02", "03", "04", "05", "06", "07", "08", "99"], description: "Sandi Jenis Form 00.11 (wajib)." }
+                parent_office_code: { type: string, description: "Sandi Kantor Induk (maks 16 karakter)." }
+                previous_office_code: { type: string, description: "Sandi Kantor Sebelumnya (maks 16 karakter)." }
+                coordinates: { type: string, description: "Koordinat (maks 64 karakter)." }
+                head_name: { type: string, description: "Nama Pimpinan (maks 128 karakter)." }
+                phone_number: { type: string, description: "No. Telepon (maks 32 karakter)." }
+                ojk_change_code: { type: string, enum: ["1", "2", "3", "4", "5", "6", "7"], description: "Keterangan Data Kantor dan TPE." }
+                implementation_date: { type: string, description: "Tanggal Pelaksanaan, format YYYY-MM-DD." }
+                control_office_code: { type: string, description: "Sandi Kantor Kendali (hanya Kantor Wilayah/SKK)." }
+                ojk_approval_date: { type: string, description: "Tanggal Persetujuan OJK, format YYYY-MM-DD." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/off-balance:
     get:
       tags: [Laporan]

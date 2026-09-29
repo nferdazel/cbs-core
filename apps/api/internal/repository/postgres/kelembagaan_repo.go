@@ -24,11 +24,16 @@ func NewKelembagaanRepository(db *sql.DB) *KelembagaanRepository {
 const listBankOfficesQuery = `
 	SELECT id, office_type, code, name, address, city,
 	       COALESCE(ojk_kabupaten_code, ''), opened_at, closed_at,
-	       status, note, created_at, updated_at
+	       status, note, created_at, updated_at,
+	       COALESCE(ojk_office_kind_code, ''), COALESCE(parent_office_code, ''),
+	       COALESCE(previous_office_code, ''), COALESCE(coordinates, ''),
+	       COALESCE(head_name, ''), COALESCE(phone_number, ''),
+	       COALESCE(ojk_change_code, ''), implementation_date,
+	       COALESCE(control_office_code, ''), ojk_approval_date
 	FROM bank_offices
 	ORDER BY office_type, code, name`
 
-// ListOffices membaca seluruh kantor bank-wide.
+// ListOffices membaca seluruh kantor bank-wide, termasuk kolom Form 00.11 (migrasi 000126).
 func (r *KelembagaanRepository) ListOffices(ctx context.Context) ([]domain.BankOffice, error) {
 	rows, err := r.db.QueryContext(ctx, listBankOfficesQuery)
 	if err != nil {
@@ -41,11 +46,17 @@ func (r *KelembagaanRepository) ListOffices(ctx context.Context) ([]domain.BankO
 		var (
 			o                  domain.BankOffice
 			openedAt, closedAt sql.NullTime
+			implDate, apprDate sql.NullTime
 		)
 		if err := rows.Scan(
 			&o.ID, &o.OfficeType, &o.Code, &o.Name, &o.Address, &o.City,
 			&o.OJKKabupatenCode, &openedAt, &closedAt,
 			&o.Status, &o.Note, &o.CreatedAt, &o.UpdatedAt,
+			&o.OJKOfficeKindCode, &o.ParentOfficeCode,
+			&o.PreviousOfficeCode, &o.Coordinates,
+			&o.HeadName, &o.PhoneNumber,
+			&o.OJKChangeCode, &implDate,
+			&o.ControlOfficeCode, &apprDate,
 		); err != nil {
 			return nil, err
 		}
@@ -56,6 +67,14 @@ func (r *KelembagaanRepository) ListOffices(ctx context.Context) ([]domain.BankO
 		if closedAt.Valid {
 			t := closedAt.Time
 			o.ClosedAt = &t
+		}
+		if implDate.Valid {
+			t := implDate.Time
+			o.ImplementationDate = &t
+		}
+		if apprDate.Valid {
+			t := apprDate.Time
+			o.OJKApprovalDate = &t
 		}
 		out = append(out, o)
 	}
@@ -250,3 +269,62 @@ func nullableKelembagaanUUID(id uuid.UUID) any {
 }
 
 var _ domain.KelembagaanRepository = (*KelembagaanRepository)(nil)
+
+// UpdateForm00_11Tx menyimpan kolom Form 00.11 (migrasi 000126) satu kantor. Kolom
+// Form 00.04 yang tumpang tindih (code, name, address, ojk_kabupaten_code) TIDAK
+// disentuh agar laporan Form 00.04 tidak bergeser. found=false bila kantor tidak ada.
+func (r *KelembagaanRepository) UpdateForm00_11Tx(ctx context.Context, tx any, id uuid.UUID, in domain.UpdateOfficeForm00_11Input) (bool, error) {
+	sqlTx, err := requireKelembagaanTx(tx)
+	if err != nil {
+		return false, err
+	}
+	res, err := sqlTx.ExecContext(ctx, `
+		UPDATE bank_offices SET
+			ojk_office_kind_code = $2,
+			parent_office_code = $3,
+			previous_office_code = $4,
+			coordinates = $5,
+			head_name = $6,
+			phone_number = $7,
+			ojk_change_code = $8,
+			implementation_date = $9,
+			control_office_code = $10,
+			ojk_approval_date = $11,
+			updated_at = NOW()
+		WHERE id = $1`,
+		id, in.OJKOfficeKindCode, in.ParentOfficeCode, in.PreviousOfficeCode,
+		in.Coordinates, in.HeadName, in.PhoneNumber, nullableForm00_11Code(in.OJKChangeCode),
+		nullableForm00_11Date(in.ImplementationDate), in.ControlOfficeCode,
+		nullableForm00_11Date(in.OJKApprovalDate))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// nullableForm00_11Code menulis NULL untuk sandi Keterangan yang dikosongkan.
+func nullableForm00_11Code(code string) any {
+	if code == "" {
+		return nil
+	}
+	return code
+}
+
+// nullableForm00_11Date menulis NULL untuk tanggal yang dikosongkan; format dijamin
+// YYYY-MM-DD oleh domain.
+func nullableForm00_11Date(raw string) any {
+	if raw == "" {
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
+var _ domain.OfficeForm00_11Repository = (*KelembagaanRepository)(nil)

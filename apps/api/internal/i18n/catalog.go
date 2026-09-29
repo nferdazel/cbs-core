@@ -242,13 +242,14 @@ const (
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
-	MsgKelembagaanReport       Code = "kelembagaan_report"
-	MsgKelembagaanSaved        Code = "kelembagaan_saved"
-	MsgKelembagaanDeleted      Code = "kelembagaan_deleted"
-	MsgKelembagaanIDInvalid    Code = "kelembagaan_id_invalid"
-	MsgKelembagaanBankWide     Code = "kelembagaan_bank_wide"
-	MsgKelembagaanInputInvalid Code = "kelembagaan_input_invalid"
-	MsgKelembagaanNotFound     Code = "kelembagaan_not_found"
+	MsgKelembagaanReport        Code = "kelembagaan_report"
+	MsgKelembagaanSaved         Code = "kelembagaan_saved"
+	MsgKelembagaanDeleted       Code = "kelembagaan_deleted"
+	MsgKelembagaanForm0011Saved Code = "kelembagaan_form00_11_saved"
+	MsgKelembagaanIDInvalid     Code = "kelembagaan_id_invalid"
+	MsgKelembagaanBankWide      Code = "kelembagaan_bank_wide"
+	MsgKelembagaanInputInvalid  Code = "kelembagaan_input_invalid"
+	MsgKelembagaanNotFound      Code = "kelembagaan_not_found"
 	// Register rekening administratif (Form 01.01) pos komitmen/kontinjensi
 	// off-balance. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
@@ -722,6 +723,7 @@ var codeList = []Code{
 	MsgKelembagaanReport,
 	MsgKelembagaanSaved,
 	MsgKelembagaanDeleted,
+	MsgKelembagaanForm0011Saved,
 	MsgKelembagaanIDInvalid,
 	MsgKelembagaanBankWide,
 	MsgKelembagaanInputInvalid,
@@ -1826,7 +1828,11 @@ var catalog = map[Code]map[Lang]string{
 		ID: "data kelembagaan dihapus",
 		EN: "institutional data deleted",
 	},
-	MsgKelembagaanIDInvalid: {
+
+	MsgKelembagaanForm0011Saved: {
+		ID: "kolom Form 00.11 kantor disimpan",
+		EN: "office Form 00.11 columns saved",
+	}, MsgKelembagaanIDInvalid: {
 		ID: "id kelembagaan bukan UUID yang sah",
 		EN: "institutional id is not a valid UUID",
 	},

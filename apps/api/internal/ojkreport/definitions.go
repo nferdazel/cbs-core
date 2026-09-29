@@ -217,8 +217,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	// ditulis "-" beserta alasan; note teks bebas tidak pernah menjadi sandi.
 	{Form: "00.09", Name: "Data Anggota Direksi dan Anggota Dewan Komisaris BPR yang Berhenti Menjabat", Buildable: true},
 	{Form: "00.10", Name: "Data Pejabat Eksekutif BPR yang Berhenti Menjabat", Buildable: true},
-	{Form: "00.11", Name: "Data Kantor selain Kantor Pusat dan Kantor Cabang dan Terminal Perbankan Elektronik", Buildable: false,
-		UnavailableReason: "sumber bank_offices (office_type teks bebas) + branches.parent_id ada, tetapi belum ada perakit Form 00.11; sandi induk/pendahulu, koordinat, pimpinan, dan telepon belum ada (PDF #270-275)"},
+	// Form 00.11 dibangun dari kantor bank_offices yang bank TANDAI dengan sandi Jenis
+	// Form 00.11 (kolom ojk_office_kind_code, migrasi 000126): kantor kas, kas keliling,
+	// titik pembayaran, ATM, EDC, kantor wilayah, sentra keuangan khusus, lainnya.
+	// Kantor pusat/cabang tidak diberi sandi ini sehingga tidak masuk — form ini memang
+	// "selain kantor pusat dan kantor cabang". Penggolongan tidak ditebak dari teks bebas
+	// office_type. Bila belum ada baris, builder mencatatnya pada SkippedForms.
+	{Form: "00.11", Name: "Data Kantor selain Kantor Pusat dan Kantor Cabang dan Terminal Perbankan Elektronik", Buildable: true},
 	{Form: "00.12", Name: "Data Penutupan Kantor dan Terminal Perbankan Elektronik", Buildable: true},
 	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: false,
 		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
