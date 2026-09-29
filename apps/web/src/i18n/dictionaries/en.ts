@@ -2558,6 +2558,65 @@ export const dictionaryEN: Dictionary = {
       validationAsOf: "Position date is required.",
       validationStatus: "Register status is only AKTIF or NONAKTIF.",
     },
+    agunan: {
+      title: "Collateral List (Form 06.01)",
+      description:
+        "OJK reporting columns on collateral already recorded. This card does NOT create new collateral; it completes the Form 06.01 columns: register number, collateral type (Lampiran 01 code), address, bound value, appraisal value, appraiser, appraisal date, and PPKA value. The register number is required, unique, and must not be reused. Every figure is entered by the bank and not computed by the system.",
+      loadError: "Failed to load the Form 06.01 collateral list.",
+      forbidden:
+        "You do not have permission to read the Form 06.01 collateral list (403).",
+      itemsTitle: "Active collateral",
+      empty: "No active collateral yet.",
+      saved: "Collateral Form 06.01 columns saved.",
+      noKodeRegisterUsed:
+        "This register number is already used by another collateral and cannot be reused. Use a different register number.",
+      editTitle: "Fill Form 06.01 columns",
+      colLoanNumber: "Account No.",
+      colKodeRegister: "Register/Guarantee No.",
+      colJenisAgunan: "Collateral Type",
+      colAlamat: "Collateral Address",
+      colNilaiDiagunkan: "Bound Value",
+      colNilaiAgunan: "Collateral Value",
+      colPenilai: "Appraiser",
+      colTanggalPenilaian: "Last Appraisal Date",
+      colPPKA: "PPKA Value",
+      fieldKodeRegister: "Register/Guarantee No.",
+      fieldKodeRegisterHint:
+        "Unique code, 1 collateral = 1 code, matching SLIK. Required, must not be reused, and must not change while the facility is recorded. Up to 64 characters.",
+      fieldJenisAgunan: "Collateral Type (Lampiran 01 code)",
+      fieldJenisAgunanHint:
+        "3-digit Lampiran 01 code, e.g. 101 SBI/Government Securities, 202 land/building. The Liquid (1xx)/Non-Liquid (2xx) category is derived from the first digit, not a separate column.",
+      fieldAlamat: "Collateral Address",
+      fieldAlamatHint:
+        "Full address of the collateral pledged by the debtor to the BPR. Required.",
+      fieldNilaiDiagunkan: "Bound Value (full rupiah)",
+      fieldNilaiDiagunkanHint:
+        "Value bound as security. Different from the appraisal value (Collateral Value). Full rupiah, must not be negative.",
+      fieldNilaiAgunan: "Collateral Value / appraisal (full rupiah)",
+      fieldNilaiAgunanHint:
+        "Appraisal nominal of the collateral (column VII Nominal). Must be greater than zero.",
+      fieldPenilai: "Appraiser",
+      fieldPenilaiHint:
+        "Form 06.01 code, column VII.b: 1 independent appraiser, 2 BPR internal.",
+      fieldTanggalPenilaian: "Last Appraisal Date",
+      fieldTanggalPenilaianHint:
+        "Format YYYY-MM-DD. Required. The form writes this date as TT-MM-TTTT.",
+      fieldPPKA: "Value for PPKA (full rupiah)",
+      fieldPPKAHint:
+        "Entered by the bank; not computed from the appraisal or bound value because the form gives no binding formula. Full rupiah, must not be negative.",
+      penilaiPlaceholder: "Select an appraiser",
+      penilaiIndependen: "1 - Independent appraiser",
+      penilaiInternal: "2 - BPR internal",
+      validationKodeRegister: "Register/Guarantee No. is required.",
+      validationKodeRegisterLength: "Register No. is up to 64 characters.",
+      validationJenisAgunan: "Collateral Type (Lampiran 01 code) is required.",
+      validationAlamat: "Collateral Address is required.",
+      validationNilaiDiagunkan: "Bound Value must not be negative.",
+      validationNilaiAgunan: "Collateral Value must be greater than zero.",
+      validationPenilai: "Select an appraiser.",
+      validationTanggalPenilaian: "Appraisal Date is required.",
+      validationPPKA: "PPKA value must not be negative.",
+    },
   },
   collateralWeight: {
     title: "Collateral Weight Gate",

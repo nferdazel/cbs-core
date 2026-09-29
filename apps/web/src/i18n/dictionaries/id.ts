@@ -2552,6 +2552,65 @@ export const dictionaryID = {
       validationAsOf: "Tanggal posisi wajib diisi.",
       validationStatus: "Status register hanya AKTIF atau NONAKTIF.",
     },
+    agunan: {
+      title: "Daftar Agunan (Form 06.01)",
+      description:
+        "Kolom pelaporan OJK pada agunan yang sudah tercatat. Kartu ini TIDAK membuat agunan baru; ia melengkapi kolom Form 06.01: kode register, jenis agunan (sandi Lampiran 01), alamat, nilai yang diagunkan, taksasi, penilai, tanggal penilaian, dan nilai untuk PPKA. Kode register wajib, unik, dan tidak boleh dipakai ulang. Seluruh angka adalah isian bank dan tidak dihitung sistem.",
+      loadError: "Gagal memuat daftar agunan Form 06.01.",
+      forbidden:
+        "Anda tidak memiliki izin membaca daftar agunan Form 06.01 (403).",
+      itemsTitle: "Agunan aktif",
+      empty: "Belum ada agunan aktif.",
+      saved: "Kolom Form 06.01 agunan tersimpan.",
+      noKodeRegisterUsed:
+        "Kode register ini sudah dipakai agunan lain dan tidak bisa dipakai ulang. Gunakan kode register lain.",
+      editTitle: "Isi kolom Form 06.01",
+      colLoanNumber: "No. Rekening",
+      colKodeRegister: "Kode Register/Nomor Agunan",
+      colJenisAgunan: "Jenis Agunan",
+      colAlamat: "Alamat Agunan",
+      colNilaiDiagunkan: "Nilai yang Diagunkan",
+      colNilaiAgunan: "Nilai Agunan",
+      colPenilai: "Penilai",
+      colTanggalPenilaian: "Tanggal Penilaian Terakhir",
+      colPPKA: "Nilai untuk PPKA",
+      fieldKodeRegister: "Kode Register/Nomor Agunan",
+      fieldKodeRegisterHint:
+        "Kode unik 1 agunan = 1 kode, sama dengan SLIK. Wajib, tidak boleh dipakai ulang, dan tidak boleh berubah selama fasilitas tercatat. Maksimal 64 karakter.",
+      fieldJenisAgunan: "Jenis Agunan (sandi Lampiran 01)",
+      fieldJenisAgunanHint:
+        "Sandi 3 digit Lampiran 01, mis. 101 SBI/Surat Utang Pemerintah, 202 tanah/bangunan. Kategori Likuid (1xx)/Non Likuid (2xx) adalah turunan digit pertama, bukan kolom terpisah.",
+      fieldAlamat: "Alamat Agunan",
+      fieldAlamatHint:
+        "Alamat lengkap agunan yang dijaminkan debitur kepada BPR. Wajib diisi.",
+      fieldNilaiDiagunkan: "Nilai yang Diagunkan (rupiah penuh)",
+      fieldNilaiDiagunkanHint:
+        "Nilai yang diikat sebagai jaminan. Beda dari taksasi (Nilai Agunan). Rupiah penuh, tidak boleh negatif.",
+      fieldNilaiAgunan: "Nilai Agunan / taksasi (rupiah penuh)",
+      fieldNilaiAgunanHint:
+        "Nominal taksasi agunan (kolom VII Nominal). Harus lebih dari nol.",
+      fieldPenilai: "Penilai",
+      fieldPenilaiHint:
+        "Sandi Form 06.01 kolom VII.b: 1 penilai independen, 2 internal BPR.",
+      fieldTanggalPenilaian: "Tanggal Penilaian Terakhir",
+      fieldTanggalPenilaianHint:
+        "Format YYYY-MM-DD. Wajib diisi. Form menuliskan tanggal ini sebagai TT-BB-TTTT.",
+      fieldPPKA: "Nilai yang Diperhitungkan untuk PPKA (rupiah penuh)",
+      fieldPPKAHint:
+        "Isian bank; tidak dihitung dari taksasi atau nilai yang diagunkan karena form tidak memberi rumus pengikat. Rupiah penuh, tidak boleh negatif.",
+      penilaiPlaceholder: "Pilih penilai",
+      penilaiIndependen: "1 - Penilai Independen",
+      penilaiInternal: "2 - Internal BPR",
+      validationKodeRegister: "Kode Register/Nomor Agunan wajib diisi.",
+      validationKodeRegisterLength: "Kode Register maksimal 64 karakter.",
+      validationJenisAgunan: "Jenis Agunan (sandi Lampiran 01) wajib diisi.",
+      validationAlamat: "Alamat Agunan wajib diisi.",
+      validationNilaiDiagunkan: "Nilai yang Diagunkan tidak boleh negatif.",
+      validationNilaiAgunan: "Nilai Agunan harus lebih dari nol.",
+      validationPenilai: "Pilih penilai.",
+      validationTanggalPenilaian: "Tanggal Penilaian wajib diisi.",
+      validationPPKA: "Nilai untuk PPKA tidak boleh negatif.",
+    },
   },
   collateralWeight: {
     title: "Gerbang Bobot Agunan",

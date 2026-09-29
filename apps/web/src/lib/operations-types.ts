@@ -807,3 +807,41 @@ export interface OJKPlacementCodesData {
   accrued_interest_receivable: string | number | null;
   accrued_interest_pending: string | number | null;
 }
+
+/**
+ * domain.AgunanRow (form06_01_agunan.go), Form 06.01 daftar agunan. Ini proyeksi
+ * baca dari agunan operasional (loan_collaterals) beserta kolom pelaporan OJK;
+ * bukan tabel baru. Kolom I Sandi Kantor tidak diserialisasi. Seluruh angka adalah
+ * isian bank dan tidak diturunkan. Kode register wajib, unik, dan tidak boleh
+ * dipakai ulang.
+ */
+export interface AgunanRow {
+  id: string;
+  loan_number: string;
+  kode_register: string;
+  jenis_agunan_code: string;
+  alamat_agunan: string;
+  nilai_diagunkan: string | number;
+  nilai_agunan: string | number;
+  penilai_code: string;
+  tanggal_penilaian: string;
+  ppka_amount: string | number;
+  status: string;
+}
+
+/** Respons GET /reports/ojk/agunan/items (kontrak pengisian Form 06.01). */
+export interface AgunanItemsData {
+  items: AgunanRow[] | null;
+}
+
+/** Payload PUT /reports/ojk/agunan/items/{id} (kolom Form 06.01). */
+export interface UpdateAgunanPayload {
+  kode_register: string;
+  jenis_agunan_code: string;
+  alamat_agunan: string;
+  nilai_diagunkan: number;
+  nilai_agunan: number;
+  penilai_code: string;
+  tanggal_penilaian: string;
+  ppka_amount: number;
+}

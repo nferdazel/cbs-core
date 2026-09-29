@@ -2,6 +2,7 @@
 
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { OJKAgunanCard } from "@/components/settings/OJKAgunanCard";
 import { OJKAsetKeuanganLainnyaCard } from "@/components/settings/OJKAsetKeuanganLainnyaCard";
 import { OJKAsetTetapCard } from "@/components/settings/OJKAsetTetapCard";
 import { OJKAYDACard } from "@/components/settings/OJKAYDACard";
@@ -47,6 +48,7 @@ export default function OjkIdentityPage() {
       <OJKPenyertaanModalCard />
       <OJKAsetKeuanganLainnyaCard />
       <OJKKreditSindikasiCard />
+      <OJKAgunanCard />
       <OJKStrukturOrganisasiCard />
       <OJKBMPKCard />
     </>
