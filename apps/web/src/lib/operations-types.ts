@@ -473,6 +473,32 @@ export interface AYDAItemsData {
   items: AYDAItem[] | null;
 }
 
+/**
+ * domain.KepemilikanItem (kepemilikan.go) — Form 00.01 data kepemilikan BPR.
+ * Tidak ada bidang identitas: kolom IV No. Identitas sengaja tidak disimpan
+ * (keputusan privasi), jadi jangan menambahkannya di sisi klien.
+ */
+export interface KepemilikanItem {
+  id: string;
+  shareholder_name: string;
+  shareholder_address: string;
+  shareholder_type_code: string;
+  shareholder_status_code: string;
+  nominal_amount: string | number;
+  ownership_percentage: string | number;
+  change_status_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/kepemilikan/items (kontrak pengisian). */
+export interface KepemilikanItemsData {
+  items: KepemilikanItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;

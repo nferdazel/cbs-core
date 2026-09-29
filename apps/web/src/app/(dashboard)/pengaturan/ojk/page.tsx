@@ -4,6 +4,7 @@ import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { OJKAYDACard } from "@/components/settings/OJKAYDACard";
 import { OJKBMPKCard } from "@/components/settings/OJKBMPKCard";
+import { OJKKepemilikanCard } from "@/components/settings/OJKKepemilikanCard";
 import { OJKKelembagaanCard } from "@/components/settings/OJKKelembagaanCard";
 import { OJKOffBalanceCard } from "@/components/settings/OJKOffBalanceCard";
 import { OJKPlacementCodesCard } from "@/components/settings/OJKPlacementCodesCard";
@@ -30,6 +31,7 @@ export default function OjkIdentityPage() {
       <OJKKelembagaanCard />
       <OJKOffBalanceCard />
       <OJKAYDACard />
+      <OJKKepemilikanCard />
       <OJKBMPKCard />
     </>
   );
