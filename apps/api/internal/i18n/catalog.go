@@ -269,14 +269,24 @@ const (
 	MsgAYDAItemsListed  Code = "ayda_items_listed"
 	// Register pemegang saham BPR (Form 00.01) data kepemilikan. Galat berkode harus
 	// selaras dengan pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
-	MsgKepemilikanReport                  Code = "kepemilikan_report"
-	MsgKepemilikanSaved                   Code = "kepemilikan_saved"
-	MsgKepemilikanDeleted                 Code = "kepemilikan_deleted"
-	MsgKepemilikanIDInvalid               Code = "kepemilikan_id_invalid"
-	MsgKepemilikanBankWide                Code = "kepemilikan_bank_wide"
-	MsgKepemilikanInputInvalid            Code = "kepemilikan_input_invalid"
-	MsgKepemilikanNotFound                Code = "kepemilikan_not_found"
-	MsgKepemilikanItemsListed             Code = "kepemilikan_items_listed"
+	MsgKepemilikanReport       Code = "kepemilikan_report"
+	MsgKepemilikanSaved        Code = "kepemilikan_saved"
+	MsgKepemilikanDeleted      Code = "kepemilikan_deleted"
+	MsgKepemilikanIDInvalid    Code = "kepemilikan_id_invalid"
+	MsgKepemilikanBankWide     Code = "kepemilikan_bank_wide"
+	MsgKepemilikanInputInvalid Code = "kepemilikan_input_invalid"
+	MsgKepemilikanNotFound     Code = "kepemilikan_not_found"
+	MsgKepemilikanItemsListed  Code = "kepemilikan_items_listed"
+	// Register pinjaman yang diterima (Form 00.07). Galat berkode harus selaras dengan
+	// pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
+	MsgPinjamanReport                     Code = "pinjaman_report"
+	MsgPinjamanSaved                      Code = "pinjaman_saved"
+	MsgPinjamanDeleted                    Code = "pinjaman_deleted"
+	MsgPinjamanIDInvalid                  Code = "pinjaman_id_invalid"
+	MsgPinjamanBankWide                   Code = "pinjaman_bank_wide"
+	MsgPinjamanInputInvalid               Code = "pinjaman_input_invalid"
+	MsgPinjamanNotFound                   Code = "pinjaman_not_found"
+	MsgPinjamanItemsListed                Code = "pinjaman_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -648,6 +658,14 @@ var codeList = []Code{
 	MsgKepemilikanInputInvalid,
 	MsgKepemilikanNotFound,
 	MsgKepemilikanItemsListed,
+	MsgPinjamanReport,
+	MsgPinjamanSaved,
+	MsgPinjamanDeleted,
+	MsgPinjamanIDInvalid,
+	MsgPinjamanBankWide,
+	MsgPinjamanInputInvalid,
+	MsgPinjamanNotFound,
+	MsgPinjamanItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1751,6 +1769,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgKepemilikanItemsListed: {
 		ID: "daftar baris register kepemilikan BPR",
 		EN: "BPR ownership register items listed",
+	},
+	MsgPinjamanReport: {
+		ID: "register pinjaman yang diterima",
+		EN: "received loan register",
+	},
+	MsgPinjamanSaved: {
+		ID: "data register pinjaman yang diterima disimpan",
+		EN: "received loan register data saved",
+	},
+	MsgPinjamanDeleted: {
+		ID: "data register pinjaman yang diterima dihapus",
+		EN: "received loan register data deleted",
+	},
+	MsgPinjamanIDInvalid: {
+		ID: "id register pinjaman yang diterima bukan UUID yang sah",
+		EN: "received loan register id is not a valid UUID",
+	},
+	MsgPinjamanBankWide: {
+		ID: "register pinjaman yang diterima bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the received loan register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgPinjamanInputInvalid: {
+		ID: "data register pinjaman yang diterima tidak valid",
+		EN: "received loan register data is invalid",
+	},
+	MsgPinjamanNotFound: {
+		ID: "data register pinjaman yang diterima tidak ditemukan",
+		EN: "received loan register data was not found",
+	},
+	MsgPinjamanItemsListed: {
+		ID: "daftar baris register pinjaman yang diterima",
+		EN: "received loan register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

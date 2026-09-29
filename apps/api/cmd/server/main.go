@@ -293,6 +293,12 @@ func main() {
 	kepemilikanRepo := postgres.NewKepemilikanRegisterRepository(db)
 	kepemilikanSvc := service.NewKepemilikanRegisterService(db, kepemilikanRepo, auditRepo)
 
+	// Register pinjaman yang diterima (Form 00.07): baca bank-wide + jalur tulis
+	// berizin system:config yang teraudit (migrasi 000117). Kolom XV Baki Debet Neto
+	// tidak disimpan; tidak menyentuh angka jurnal maupun bagan akun.
+	pinjamanRepo := postgres.NewPinjamanRegisterRepository(db)
+	pinjamanSvc := service.NewPinjamanRegisterService(db, pinjamanRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -314,11 +320,12 @@ func main() {
 		OffBalance:      offBalanceRepo,
 		AYDA:            aydaRepo,
 		Kepemilikan:     kepemilikanRepo,
+		Pinjaman:        pinjamanRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

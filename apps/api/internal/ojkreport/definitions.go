@@ -202,8 +202,12 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "sumber bmpk_related_parties + customers (migrasi 000103:27, 000001:24) sudah ada, tetapi sandi Jenis dan Hubungan masih teks bebas serta kolom NPWP dan pihak terkait bukan nasabah belum ada (PDF #96-98)"},
 	{Form: "00.06", Name: "Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas", Buildable: false,
 		UnavailableReason: "hanya saldo COA 30100/13100 yang dipetakan (coa_mapping.go:166,174); akun Modal Sumbangan dan Dana Setoran Modal serta kolom Jenis dan Tanggal Persetujuan OJK belum ada (PDF #245-247)"},
-	{Form: "00.07", Name: "Daftar Pinjaman yang Diterima", Buildable: false,
-		UnavailableReason: "belum ada register pinjaman per kreditur; akun liabilitas 20100-20800 tidak menyimpan identitas kreditur (migrasi 000005:198) dan off_balance_items hanya mencatat komitmen belum ditarik (PDF #248-254)"},
+	// Form 00.07 dibangun dari register pinjaman per kreditur (pinjaman_diterima_register,
+	// migrasi 000117) yang bank isi lewat API, bukan dari akun liabilitas 20100-20800
+	// yang tidak menyimpan identitas kreditur. Bila belum ada baris AKTIF, builder
+	// mencatatnya pada SkippedForms dengan alasan spesifik. Kolom XV Baki Debet Neto
+	// dihitung laporan, tidak disimpan. Form tidak memakai kolom Sandi Kantor.
+	{Form: "00.07", Name: "Daftar Pinjaman yang Diterima", Buildable: true},
 	// Form 00.09/00.10/00.12 kini buildable sebagai form KONDISIONAL berbasis
 	// PERISTIWA: sumber bank_management.ended_at (00.09/00.10, migrasi 000112:89) dan
 	// bank_offices.closed_at (00.12, migrasi 000112:41), dirakit form_berhenti.go.

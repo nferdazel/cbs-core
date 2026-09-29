@@ -2604,6 +2604,125 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pinjaman:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportPinjaman
+      summary: Register pinjaman yang diterima Form 00.07 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar pinjaman yang diterima
+        dari bank, Bank Indonesia, dan/atau pihak ketiga bukan bank beserta tabel Form
+        00.07. Kolom XV Baki Debet Neto dihitung sebagai XII - (XIII + XIV), bukan
+        disimpan. Form ini tidak memakai kolom Sandi Kantor; Gol. Kreditur (II) dan
+        Lokasi Kreditur (IV) memakai sandi Lampiran 02/03 yang diverifikasi lewat FK.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pinjaman/items:
+    get:
+      tags: [Laporan]
+      operationId: listPinjamanItems
+      summary: Daftar baris register pinjaman yang diterima Form 00.07 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `pinjaman_diterima_register`
+        untuk UI edit dengan urutan deterministik, bukan tabel laporan. Kolom XV Baki
+        Debet Neto tidak ada karena turunan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertPinjamanItem
+      summary: Simpan baris register pinjaman yang diterima Form 00.07
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        pinjaman. `jenis_code` 10/20/31/32/41/42/99; `relationship_code` 12/20;
+        `interest_calc_code` 11/12/21/22; `bank_code` 6 digit. Tanggal berformat
+        YYYY-MM-DD. Aturan tanpa agunan ditegakkan: sandi 299 wajib bernominal 0, dan
+        nominal 0 hanya sah bila sandinya 299. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                counterparty_id: { type: string }
+                creditor_group_code: { type: string, description: "Sandi Lampiran 02 (ojk_pihak_lawan)." }
+                bank_code: { type: string, description: "Sandi bank kreditur 6 digit SPOJK." }
+                location_code: { type: string, description: "Sandi Lampiran 03 (ojk_kabupaten)." }
+                jenis_code: { type: string, enum: ["10", "20", "31", "32", "41", "42", "99"] }
+                relationship_code: { type: string, enum: ["12", "20"] }
+                start_date: { type: string, description: "Format YYYY-MM-DD." }
+                maturity_date: { type: string, description: "Format YYYY-MM-DD." }
+                interest_rate: { type: number }
+                interest_calc_code: { type: string, enum: ["11", "12", "21", "22"] }
+                plafon: { type: number }
+                collateral_type_code: { type: string, description: "Sandi Lampiran 01; tanpa agunan = 299." }
+                collateral_amount: { type: number, description: "Tanpa agunan = 0." }
+                baki_debet: { type: number }
+                unamortized_transaction_cost: { type: number }
+                unamortized_discount: { type: number }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pinjaman/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deletePinjamanItem
+      summary: Hapus baris register pinjaman yang diterima Form 00.07
+      description: "Izin: `system:config`. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]

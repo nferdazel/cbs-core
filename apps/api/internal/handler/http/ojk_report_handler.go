@@ -69,6 +69,10 @@ type OJKReportHandler struct {
 	// upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register kepemilikan tetap
 	// terpasang tetapi gagal saat dipanggil.
 	kepemilikan domain.KepemilikanRegisterService
+	// pinjaman menyediakan register pinjaman yang diterima (Form 00.07) sekaligus
+	// operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register pinjaman
+	// tetap terpasang tetapi gagal saat dipanggil.
+	pinjaman domain.PinjamanRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -83,10 +87,11 @@ type OJKReportHandler struct {
 // offBalance boleh nil dengan perilaku yang sama. ayda menyediakan register AYDA
 // (Form 07.00) dan boleh nil dengan perilaku yang sama. kepemilikan menyediakan
 // register pemegang saham (Form 00.01) dan boleh nil dengan perilaku yang sama.
-// bmpkAdmin menyediakan pengaturan pihak terkait/batas BMPK; boleh nil dengan
-// perilaku yang sama. placements menyediakan daftar penempatan untuk pemilih UI sandi
-// OJK; boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// pinjaman menyediakan register pinjaman yang diterima (Form 00.07) dan boleh nil
+// dengan perilaku yang sama. bmpkAdmin menyediakan pengaturan pihak terkait/batas
+// BMPK; boleh nil dengan perilaku yang sama. placements menyediakan daftar penempatan
+// untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -97,6 +102,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		offBalance:  offBalance,
 		ayda:        ayda,
 		kepemilikan: kepemilikan,
+		pinjaman:    pinjaman,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
 	}
@@ -187,6 +193,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kepemilikan/items", h.UpsertKepemilikanItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kepemilikan/items/{id}", h.DeleteKepemilikanItem)
+		// Register pinjaman yang diterima (Form 00.07): baca cukup reports:export;
+		// pengisian dan daftar mentah UI memakai system:config dan teraudit di service.
+		// Empat rute saja.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/pinjaman", h.ExportPinjaman)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/pinjaman/items", h.ListPinjamanItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/pinjaman/items", h.UpsertPinjamanItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/pinjaman/items/{id}", h.DeletePinjamanItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -1208,6 +1225,128 @@ func writeKepemilikanError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrKepemilikanNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrKepemilikanBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportPinjaman menyajikan register pinjaman yang diterima (Form 00.07) sebagai JSON
+// untuk periode YYYY-MM: daftar pinjaman dari bank/Bank Indonesia/pihak ketiga bukan
+// bank beserta tabel Form 00.07. Register bank-wide; aktor non-lintas cabang ditolak
+// 403 oleh layanan. Form ini tidak punya kolom Sandi Kantor. Kolom XV Baki Debet Neto
+// dihitung dari XII - (XIII + XIV).
+func (h *OJKReportHandler) ExportPinjaman(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.pinjaman == nil {
+		InternalError(w, r, errors.New("sumber register pinjaman yang diterima belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.pinjaman.PinjamanReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrPinjamanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgPinjamanReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm00_07(report.Items)},
+	})
+}
+
+// ListPinjamanItems menyajikan baris mentah register pinjaman yang diterima untuk UI
+// edit (GET /reports/ojk/pinjaman/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListPinjamanItems(w http.ResponseWriter, r *http.Request) {
+	if h.pinjaman == nil {
+		InternalError(w, r, errors.New("sumber register pinjaman yang diterima belum dikonfigurasi"))
+		return
+	}
+	items, err := h.pinjaman.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register pinjaman yang diterima: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPinjamanItemsListed, map[string]any{"items": items})
+}
+
+// UpsertPinjamanItem membuat/memperbarui satu pinjaman (PUT /reports/ojk/pinjaman/items).
+// Decoder menolak bidang tak dikenal agar payload di luar kontrak ditolak 422, bukan
+// diam-diam diabaikan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertPinjamanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdatePinjamanItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.pinjaman == nil {
+		InternalError(w, r, errors.New("sumber register pinjaman yang diterima belum dikonfigurasi"))
+		return
+	}
+	item, err := h.pinjaman.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writePinjamanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPinjamanSaved, item)
+}
+
+// DeletePinjamanItem menghapus satu pinjaman menurut id.
+func (h *OJKReportHandler) DeletePinjamanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgPinjamanIDInvalid)
+		return
+	}
+	if h.pinjaman == nil {
+		InternalError(w, r, errors.New("sumber register pinjaman yang diterima belum dikonfigurasi"))
+		return
+	}
+	if err := h.pinjaman.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writePinjamanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPinjamanDeleted, map[string]any{"id": id.String()})
+}
+
+// writePinjamanError memetakan galat register pinjaman: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak internal
+// otomatis disembunyikan Fail).
+func writePinjamanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPinjamanNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrPinjamanBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

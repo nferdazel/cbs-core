@@ -594,6 +594,26 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register kepemilikan BPR belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 00.07 Daftar Pinjaman yang Diterima: register pinjaman per kreditur yang
+	// bank catat (migrasi 000117). Bila belum ada baris AKTIF pada bulan periode, form
+	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini tidak memakai kolom
+	// Sandi Kantor; kolom XV Baki Debet Neto dihitung laporan dari XII - (XIII + XIV).
+	if ps, ok := b.source.(PinjamanRegisterSource); ok {
+		rows, err := ps.ListPinjamanForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.07", Name: formName("00.07"),
+				UnavailableReason: "belum ada register pinjaman yang diterima berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm00_07(rows))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.07", Name: formName("00.07"),
+			UnavailableReason: "sumber register pinjaman yang diterima belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 
