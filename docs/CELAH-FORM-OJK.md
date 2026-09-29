@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **24 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **25 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,9 +26,9 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 10 | sudah terbit (dengan catatan cakupan) |
+| `SUDAH ADA` | 11 | sudah terbit (dengan catatan cakupan) |
 | `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
-| `BELUM DIMODELKAN` | 9 | tidak ada tabel/kolom/sumber sama sekali |
+| `BELUM DIMODELKAN` | 8 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
@@ -38,7 +38,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 
 | Form | Nama resmi | Klasifikasi | Sumber & kekurangan utama | PDF #page |
 |---|---|---|---|---|
-| 00.01 | Data Kepemilikan BPR | `BELUM DIMODELKAN` | Tidak ada tabel pemegang saham sama sekali; yang ada hanya 3 kunci teks untuk Form 00.00 (`000096:25,38,40`) | 72–74 |
+| 00.01 | Data Kepemilikan BPR | `SUDAH ADA` | **Register kedua — dibangun 28 Sep 2026** (`kepemilikan_bpr_register`, migrasi `000116`, pola AYDA) dengan API `reports/ojk/kepemilikan` + `form00_01.go`; baris per pemegang tanpa JUMLAH, Σ persentase tidak divalidasi, alamat kosong ikut aturan <2% tanpa menghapus data. **Kolom IV No. Identitas selalu `-` + alasan** — keputusan privasi (NIK tidak disimpan) tetap berlaku; kolom itu butuh keputusan pemilik bila OJK menolak `-`. UI web menyusul (AYDA sudah punya di `pengaturan/ojk`). Tidak ada tabel pemegang saham sama sekali; yang ada hanya 3 kunci teks untuk Form 00.00 (`000096:25,38,40`) | 72–74 |
 | 00.02 | Data Anggota Direksi & DK | `SEBAGIAN` | **Terbit sebagai bagian `LAPORAN_KELEMBAGAAN`** (`kelembagaan.go:73`), sumber `bank_management` (`000112:89`); 5 blok kolom ditandai Unavailable (NIK, Alamat, sertifikat+pendidikan, komite, XIII–XVII) | 75–82 |
 | 00.03 | Data Pejabat Eksekutif | `SEBAGIAN` | Terbit di `LAPORAN_KELEMBAGAAN` (`kelembagaan.go:80`); kurang Alamat, NIK, fungsi, keanggotaan komite | 83–87 |
 | 00.04 | Data Kantor BPR | `SEBAGIAN` | Terbit di `LAPORAN_KELEMBAGAAN` (`kelembagaan.go:91`), sumber `bank_offices` (`000112:41`); **10 dari 15 blok** Unavailable | 88–95 |
@@ -139,7 +139,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN` (pola register **sudah mapan**: `ayda_register` + `off_balance_items`; peringkat nilai÷biaya ada di catatan riset — `00.01` Kepemilikan berikutnya): `04.00`, `08.00`, `16.00`, `17.00`, `18.00`, `00.07`, `00.01`. Transkrip struktur sudah ada di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN` — **pola register kini terbukti dua kali** (`ayda_register` + `kepemilikan_bpr_register`, masing-masing lengkap API; AYDA juga sudah punya UI di `pengaturan/ojk`), jadi sisa form tinggal mengulang pola yang sama: `04.00`, `08.00`, `16.00`, `17.00`, `18.00`, `00.07`. Peringkat nilai÷biaya ada di catatan riset; transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
