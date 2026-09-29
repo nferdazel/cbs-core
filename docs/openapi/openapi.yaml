@@ -2950,6 +2950,130 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/penyertaan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportPenyertaan
+      summary: Register penyertaan modal Form 16.00 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar penyertaan modal beserta
+        tabel Form 16.00. Satu baris = satu penyertaan modal kepada satu pihak lawan;
+        form ini tidak punya baris JUMLAH dan tidak punya kolom turunan. Kolom X "Jumlah
+        Bulan Laporan" menurut definisi PDF #page 228 adalah nilai tercatat (rupiah) pada
+        bulan laporan yang diisi bank, bukan jumlah bulan. Kolom I Sandi Kantor diambil
+        dari kantor pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/penyertaan/items:
+    get:
+      tags: [Laporan]
+      operationId: listPenyertaanItems
+      summary: Daftar baris register penyertaan modal Form 16.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `penyertaan_modal_register`
+        untuk UI edit dengan urutan deterministik, bukan tabel laporan. Form 16.00 tidak
+        punya kolom turunan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertPenyertaanItem
+      summary: Simpan baris register penyertaan modal Form 16.00
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        penyertaan modal. `metode_penyertaan_code` 1 Biaya Perolehan / 2 Metode Ekuitas;
+        `kualitas_code` 1/3/4/5; `tujuan_penyertaan_code` 1/9; `jenis_ckpn_code` 1
+        Individual / 2 Kolektif; `persentase_penyertaan` 0..100. Tanggal berformat
+        YYYY-MM-DD. Seluruh nilai dan sandi adalah isian bank. `no_register` unik dan
+        tidak boleh dipakai ulang (no reuse/no recycle); nomor yang sudah pernah dipakai,
+        termasuk baris NONAKTIF, ditolak 422 `penyertaan_no_register_used`. Perubahan
+        teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                no_register: { type: string, description: "No. Register unik, mandatory, no reuse/no recycle." }
+                counterparty_id: { type: string, description: "ID Pihak Lawan (kolom III), teks apa adanya." }
+                metode_penyertaan_code: { type: string, enum: ["1", "2"], description: "1 Biaya Perolehan, 2 Metode Ekuitas." }
+                kualitas_code: { type: string, enum: ["1", "3", "4", "5"], description: "1 Lancar, 3 Kurang Lancar, 4 Diragukan, 5 Macet." }
+                tujuan_penyertaan_code: { type: string, enum: ["1", "9"], description: "1 Lembaga Penunjang, 9 Lainnya." }
+                tanggal_mulai: { type: string, description: "Format YYYY-MM-DD." }
+                persentase_penyertaan: { type: number, description: "Persen 0..100." }
+                nominal: { type: number }
+                jumlah_bulan_laporan: { type: number, description: "Nilai tercatat (rupiah) pada bulan laporan; isian bank, bukan jumlah bulan." }
+                cadangan_kerugian_penurunan_nilai: { type: number }
+                ckpn_aset_baik: { type: number }
+                ckpn_aset_kurang_baik: { type: number }
+                ckpn_aset_tidak_baik: { type: number }
+                jenis_ckpn_code: { type: string, enum: ["1", "2"], description: "1 Individual, 2 Kolektif." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/penyertaan/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deletePenyertaanItem
+      summary: Nonaktifkan baris register penyertaan modal Form 16.00
+      description: >-
+        Izin: `system:config`. Soft-delete: baris diubah menjadi NONAKTIF dan tetap
+        tersimpan agar nomor register tidak dapat dipakai ulang (no reuse/no recycle).
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]
@@ -2959,6 +3083,44 @@ paths:
         Izin: `system:config`. Mengembalikan daftar penempatan pada bank lain sebagai
         pilihan UI pengisian sandi OJK (Form 05.00): `data.placements[].id` dan label
         terbaca (nama bank lawan + tanggal mulai). Daftar disaring cakupan cabang aktor.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/reference/creditor-groups:
+    get:
+      tags: [Laporan]
+      operationId: listOJKCreditorGroups
+      summary: Daftar sandi pihak lawan OJK Lampiran 02 (pemilih UI)
+      description: >-
+        Izin: `system:config:read`. Mengembalikan daftar sandi Lampiran 02 SEOJK
+        No. 16/SEOJK.03/2024 (`ojk_pihak_lawan`, migrasi 000102) sebagai `data.items[]`
+        dengan `code` dan `name`, urut menurut sandi. Baca-saja: tabel diisi seed
+        migrasi; endpoint ini menggantikan pengisian sandi sebagai teks bebas.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/reference/regencies:
+    get:
+      tags: [Laporan]
+      operationId: listOJKRegencies
+      summary: Daftar sandi kabupaten/kota OJK Lampiran 03 (pemilih UI)
+      description: >-
+        Izin: `system:config:read`. Mengembalikan daftar sandi Lampiran 03 SEOJK
+        No. 16/SEOJK.03/2024 (`ojk_kabupaten`, migrasi 000102) sebagai `data.items[]`
+        dengan `code`, `name`, dan `province`, urut menurut sandi. Baca-saja: tabel
+        diisi seed migrasi.
       responses:
         "200":
           $ref: "#/components/responses/OK"

@@ -314,11 +314,21 @@ func main() {
 	asetTetapRepo := postgres.NewAsetTetapRegisterRepository(db)
 	asetTetapSvc := service.NewAsetTetapRegisterService(db, asetTetapRepo, auditRepo)
 
+	// Register penyertaan modal (Form 16.00): baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit (migrasi 000120). Seluruh nilai dan sandi diisi bank;
+	// nomor register no reuse/no recycle sehingga penghapusan adalah soft-delete
+	// NONAKTIF. Tidak menyentuh angka jurnal maupun bagan akun.
+	penyertaanRepo := postgres.NewPenyertaanRegisterRepository(db)
+	penyertaanSvc := service.NewPenyertaanRegisterService(db, penyertaanRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
 	// dan jalur tulis sandi OJK penempatan.
 	ojkPlacementRepo := postgres.NewLPSPlacementRepository(db)
+	// Daftar sandi referensi OJK Lampiran 02/03 (pihak lawan, kabupaten/kota) untuk
+	// pemilih UI; baca-saja dari tabel seed migrasi 000102.
+	ojkReferenceRepo := postgres.NewOJKReferenceRepository(db)
 	ojkReportHandler := httpHandler.NewOJKReportHandler(ojkreport.RepoSource{
 		Source:          reportSvc,
 		Loans:           loanRepo,
@@ -338,11 +348,12 @@ func main() {
 		Pinjaman:        pinjamanRepo,
 		Properti:        propertiRepo,
 		AsetTetap:       asetTetapRepo,
+		Penyertaan:      penyertaanRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

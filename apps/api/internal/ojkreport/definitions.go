@@ -292,8 +292,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	{Form: "14.01", Name: "Rincian Liabilitas Lainnya - Lain-lain", Buildable: true},
 	{Form: "15.00", Name: "Daftar Aset Produktif yang Dihapus Buku", Buildable: false,
 		UnavailableReason: "status WRITTEN_OFF + written_off_amount ada (migrasi 000085:29), tetapi tanggal hapus buku tidak ada, nominal gabungan (pokok+bunga+denda) tidak bisa dipisah per kolom, dan penempatan belum punya status hapus buku (PDF #218-221)"},
-	{Form: "16.00", Name: "Daftar Penyertaan Modal", Buildable: false,
-		UnavailableReason: "belum ada tabel register penyertaan dan akun COA 'Penyertaan Modal' (PDF #223-227)"},
+	// Form 16.00 dibangun dari register penyertaan modal per pihak lawan
+	// (penyertaan_modal_register, migrasi 000120) yang bank isi lewat API. Bila belum ada
+	// baris AKTIF, builder mencatatnya pada SkippedForms dengan alasan spesifik. Form ini
+	// tanpa baris JUMLAH dan tanpa kolom turunan; sandi Kualitas/CKPN dan kolom X
+	// ("Jumlah Bulan Laporan" = nilai tercatat) adalah isian bank. Kolom I Sandi Kantor
+	// diambil dari kantor pelapor tunggal.
+	{Form: "16.00", Name: "Daftar Penyertaan Modal", Buildable: true},
 	// Form 17.00 dibangun dari register properti terbengkalai per properti
 	// (properti_terbengkalai_register, migrasi 000118) yang bank isi lewat API. Bila
 	// belum ada baris AKTIF, builder mencatatnya pada SkippedForms dengan alasan

@@ -32,6 +32,14 @@ type OJKPlacementLister interface {
 	ListPlacements(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.LPSPlacement, error)
 }
 
+// OJKReferenceLister menyediakan daftar sandi referensi OJK (Lampiran 02/03 SEOJK
+// No. 16/SEOJK.03/2024, tabel ojk_pihak_lawan/ojk_kabupaten) untuk pemilih UI. Daftar
+// ini baca-saja: tabel diisi seed migrasi 000102, bukan lewat API.
+type OJKReferenceLister interface {
+	ListOJKCreditorGroups(ctx context.Context) ([]domain.OJKReferenceOption, error)
+	ListOJKRegencies(ctx context.Context) ([]domain.OJKReferenceOption, error)
+}
+
 // OJKReportHandler melayani fondasi ekspor laporan OJK (APOLO). Angka diambil
 // dari laporan journal-based yang sudah ada; handler hanya menyajikan.
 type OJKReportHandler struct {
@@ -81,10 +89,18 @@ type OJKReportHandler struct {
 	// (Form 08.00) sekaligus operasi upsert/hapusnya. Boleh nil pada uji; tanpa itu rute
 	// register aset tetap tetap terpasang tetapi gagal saat dipanggil.
 	asetTetap domain.AsetTetapRegisterService
+	// penyertaan menyediakan register penyertaan modal (Form 16.00) sekaligus operasi
+	// upsert/soft-delete-nya. Boleh nil pada uji; tanpa itu rute register penyertaan tetap
+	// terpasang tetapi gagal saat dipanggil.
+	penyertaan domain.PenyertaanRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
 	placements OJKPlacementLister
+	// reference menyediakan daftar sandi referensi Lampiran 02/03 (pihak lawan dan
+	// kabupaten/kota) untuk pemilih UI. Boleh nil pada uji; tanpa itu rute referensi
+	// tetap terpasang tetapi gagal saat dipanggil.
+	reference OJKReferenceLister
 }
 
 // NewOJKReportHandler menyusun handler ekspor sekaligus peninjauan pemetaan. coa dan
@@ -101,8 +117,11 @@ type OJKReportHandler struct {
 // untuk pemilih UI sandi OJK; boleh nil dengan perilaku yang sama. properti menyediakan
 // register properti terbengkalai (Form 17.00) dan boleh nil dengan perilaku yang sama.
 // asetTetap menyediakan register aset tetap, inventaris, dan aset tidak berwujud
-// (Form 08.00) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// (Form 08.00) dan boleh nil dengan perilaku yang sama. penyertaan menyediakan register
+// penyertaan modal (Form 16.00) dan boleh nil dengan perilaku yang sama. reference
+// menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
+// dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -116,8 +135,10 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		pinjaman:    pinjaman,
 		properti:    properti,
 		asetTetap:   asetTetap,
+		penyertaan:  penyertaan,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
+		reference:   reference,
 	}
 	if bs, ok := source.(ojkreport.BMPKSource); ok {
 		h.bmpk = bs
@@ -241,10 +262,30 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/aset-tetap/items", h.UpsertAsetTetapItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/aset-tetap/items/{id}", h.DeleteAsetTetapItem)
+		// Register penyertaan modal (Form 16.00): baca cukup reports:export; pengisian
+		// dan daftar mentah UI memakai system:config dan teraudit di service. Empat rute
+		// saja. Penghapusan adalah soft-delete (NONAKTIF) demi aturan no reuse/no recycle
+		// nomor register.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/penyertaan", h.ExportPenyertaan)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/penyertaan/items", h.ListPenyertaanItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/penyertaan/items", h.UpsertPenyertaanItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/penyertaan/items/{id}", h.DeletePenyertaanItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Get("/placements", h.ListPlacements)
+		// Daftar sandi referensi OJK Lampiran 02/03 (pihak lawan dan kabupaten/kota)
+		// untuk pemilih UI pengisian sandi. Baca-saja: cukup system:config:read, izin
+		// baca konfigurasi yang tidak memberi wewenang mengubah apa pun — tidak ada
+		// izin baru. Daftar ini menggantikan pengisian sandi sebagai teks bebas.
+		r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+			Get("/reference/creditor-groups", h.ListCreditorGroups)
+		r.With(middleware.RequirePermission(domain.PermSystemConfigRead)).
+			Get("/reference/regencies", h.ListRegencies)
 		r.With(middleware.RequirePermission(domain.PermReportsExport)).
 			Get("/mapping", h.Mapping)
 		r.With(middleware.RequirePermission(domain.PermCOAManage)).
@@ -942,6 +983,44 @@ func (h *OJKReportHandler) ListPlacements(w http.ResponseWriter, r *http.Request
 		options = append(options, domain.OJKPlacementOption{ID: p.ID, Label: domain.LPSPlacementLabel(p)})
 	}
 	Success(w, http.StatusOK, i18n.MsgOJKPlacementsListed, map[string]any{"placements": options})
+}
+
+// ListCreditorGroups menyajikan daftar sandi Lampiran 02 (Daftar Sandi Pihak Lawan)
+// untuk pemilih UI (GET /reports/ojk/reference/creditor-groups). Urutan deterministik
+// menurut sandi. Izin system:config:read; tidak ada penulisan.
+func (h *OJKReportHandler) ListCreditorGroups(w http.ResponseWriter, r *http.Request) {
+	if h.reference == nil {
+		InternalError(w, r, errors.New("daftar sandi referensi OJK belum dikonfigurasi"))
+		return
+	}
+	items, err := h.reference.ListOJKCreditorGroups(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca daftar sandi pihak lawan: %w", err))
+		return
+	}
+	if items == nil {
+		items = []domain.OJKReferenceOption{}
+	}
+	Success(w, http.StatusOK, i18n.MsgOJKCreditorGroupsListed, map[string]any{"items": items})
+}
+
+// ListRegencies menyajikan daftar sandi Lampiran 03 (Daftar Sandi Kabupaten/Kota)
+// beserta provinsinya untuk pemilih UI (GET /reports/ojk/reference/regencies). Urutan
+// deterministik menurut sandi. Izin system:config:read; tidak ada penulisan.
+func (h *OJKReportHandler) ListRegencies(w http.ResponseWriter, r *http.Request) {
+	if h.reference == nil {
+		InternalError(w, r, errors.New("daftar sandi referensi OJK belum dikonfigurasi"))
+		return
+	}
+	items, err := h.reference.ListOJKRegencies(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca daftar sandi kabupaten/kota: %w", err))
+		return
+	}
+	if items == nil {
+		items = []domain.OJKReferenceOption{}
+	}
+	Success(w, http.StatusOK, i18n.MsgOJKRegenciesListed, map[string]any{"items": items})
 }
 
 // UpsertOffBalanceItem membuat/memperbarui satu pos rekening administratif
@@ -1658,6 +1737,142 @@ func writeAsetTetapError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrAsetTetapNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrAsetTetapBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportPenyertaan menyajikan register penyertaan modal (Form 16.00) sebagai JSON untuk
+// periode YYYY-MM: daftar penyertaan modal beserta tabel Form 16.00. Register bank-wide;
+// aktor non-lintas cabang ditolak 403 oleh layanan. Form ini tidak punya baris JUMLAH dan
+// tidak punya kolom turunan; kolom I Sandi Kantor diambil dari kantor pelapor.
+func (h *OJKReportHandler) ExportPenyertaan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.penyertaan == nil {
+		InternalError(w, r, errors.New("sumber register penyertaan modal belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.penyertaan.PenyertaanReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrPenyertaanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	// Kolom I Sandi Kantor diambil dari kantor pelapor tunggal bila sumbernya tersedia
+	// (RepoSource); tanpa itu tetap dinyatakan tidak tersedia, bukan "-" tanpa alasan.
+	kantor := ojkreport.ReportingOffice{Reason: "register penyertaan modal dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgPenyertaanReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm16_00(report.Items, kantor)},
+	})
+}
+
+// ListPenyertaanItems menyajikan baris mentah register penyertaan modal untuk UI edit
+// (GET /reports/ojk/penyertaan/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListPenyertaanItems(w http.ResponseWriter, r *http.Request) {
+	if h.penyertaan == nil {
+		InternalError(w, r, errors.New("sumber register penyertaan modal belum dikonfigurasi"))
+		return
+	}
+	items, err := h.penyertaan.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register penyertaan modal: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPenyertaanItemsListed, map[string]any{"items": items})
+}
+
+// UpsertPenyertaanItem membuat/memperbarui satu penyertaan
+// (PUT /reports/ojk/penyertaan/items). Decoder menolak bidang tak dikenal agar payload di
+// luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config; teraudit di
+// service. No. Register yang sudah pernah dipakai ditolak 422 dengan kode
+// penyertaan_no_register_used.
+func (h *OJKReportHandler) UpsertPenyertaanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdatePenyertaanItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.penyertaan == nil {
+		InternalError(w, r, errors.New("sumber register penyertaan modal belum dikonfigurasi"))
+		return
+	}
+	item, err := h.penyertaan.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writePenyertaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPenyertaanSaved, item)
+}
+
+// DeletePenyertaanItem menonaktifkan satu penyertaan menurut id (soft-delete; baris tetap
+// ada agar nomor register tidak dapat dipakai ulang).
+func (h *OJKReportHandler) DeletePenyertaanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgPenyertaanIDInvalid)
+		return
+	}
+	if h.penyertaan == nil {
+		InternalError(w, r, errors.New("sumber register penyertaan modal belum dikonfigurasi"))
+		return
+	}
+	if err := h.penyertaan.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writePenyertaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPenyertaanDeleted, map[string]any{"id": id.String()})
+}
+
+// writePenyertaanError memetakan galat register penyertaan: baris tak ada 404,
+// pelanggaran bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; termasuk
+// nomor register yang sudah dipakai; galat berjejak internal otomatis disembunyikan Fail).
+func writePenyertaanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPenyertaanNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrPenyertaanBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

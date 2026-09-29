@@ -655,6 +655,26 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register aset tetap belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 16.00 Daftar Penyertaan Modal: register penyertaan per pihak lawan yang bank
+	// catat (migrasi 000120). Bila belum ada baris AKTIF pada bulan periode, form
+	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini tanpa baris JUMLAH dan
+	// tidak punya kolom turunan: seluruh nilai diisi bank.
+	if ps, ok := b.source.(PenyertaanRegisterSource); ok {
+		rows, err := ps.ListPenyertaanForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "16.00", Name: formName("16.00"),
+				UnavailableReason: "belum ada register penyertaan modal berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm16_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "16.00", Name: formName("16.00"),
+			UnavailableReason: "sumber register penyertaan modal belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

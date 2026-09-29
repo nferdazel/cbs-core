@@ -233,9 +233,12 @@ const (
 	MsgOJKPlacementCodesEmpty   Code = "ojk_placement_codes_empty"
 	MsgOJKPlacementCodesRead    Code = "ojk_placement_codes_read"
 	MsgOJKPlacementsListed      Code = "ojk_placements_listed"
-	MsgOJKAmountInvalid         Code = "ojk_amount_invalid"
-	MsgOJKPercentageInvalid     Code = "ojk_percentage_invalid"
-	MsgOJKDateInvalid           Code = "ojk_date_invalid"
+	// Daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI (baca-saja).
+	MsgOJKCreditorGroupsListed Code = "ojk_creditor_groups_listed"
+	MsgOJKRegenciesListed      Code = "ojk_regencies_listed"
+	MsgOJKAmountInvalid        Code = "ojk_amount_invalid"
+	MsgOJKPercentageInvalid    Code = "ojk_percentage_invalid"
+	MsgOJKDateInvalid          Code = "ojk_date_invalid"
 	// Data kelembagaan (jaringan kantor, direksi/komisaris, pejabat eksekutif) untuk
 	// LAPORAN_KELEMBAGAAN. Galat berkode harus selaras dengan pesan domain (uji
 	// errors_localized_test menegakkan ID/EN-nya).
@@ -303,14 +306,26 @@ const (
 	// berkode harus selaras dengan pesan domain (uji errors_localized_test menegakkan
 	// ID/EN-nya). Form ini tidak mengatur no reuse/no recycle sehingga penghapusan
 	// adalah DELETE fisik.
-	MsgAsetTetapReport                    Code = "aset_tetap_report"
-	MsgAsetTetapSaved                     Code = "aset_tetap_saved"
-	MsgAsetTetapDeleted                   Code = "aset_tetap_deleted"
-	MsgAsetTetapIDInvalid                 Code = "aset_tetap_id_invalid"
-	MsgAsetTetapBankWide                  Code = "aset_tetap_bank_wide"
-	MsgAsetTetapInputInvalid              Code = "aset_tetap_input_invalid"
-	MsgAsetTetapNotFound                  Code = "aset_tetap_not_found"
-	MsgAsetTetapItemsListed               Code = "aset_tetap_items_listed"
+	MsgAsetTetapReport       Code = "aset_tetap_report"
+	MsgAsetTetapSaved        Code = "aset_tetap_saved"
+	MsgAsetTetapDeleted      Code = "aset_tetap_deleted"
+	MsgAsetTetapIDInvalid    Code = "aset_tetap_id_invalid"
+	MsgAsetTetapBankWide     Code = "aset_tetap_bank_wide"
+	MsgAsetTetapInputInvalid Code = "aset_tetap_input_invalid"
+	MsgAsetTetapNotFound     Code = "aset_tetap_not_found"
+	MsgAsetTetapItemsListed  Code = "aset_tetap_items_listed"
+	// Register penyertaan modal (Form 16.00). Galat berkode harus selaras dengan pesan
+	// domain (uji errors_localized_test menegakkan ID/EN-nya). Nomor register bersifat
+	// no reuse/no recycle sehingga penghapusan adalah soft-delete.
+	MsgPenyertaanReport                   Code = "penyertaan_report"
+	MsgPenyertaanSaved                    Code = "penyertaan_saved"
+	MsgPenyertaanDeleted                  Code = "penyertaan_deleted"
+	MsgPenyertaanIDInvalid                Code = "penyertaan_id_invalid"
+	MsgPenyertaanBankWide                 Code = "penyertaan_bank_wide"
+	MsgPenyertaanInputInvalid             Code = "penyertaan_input_invalid"
+	MsgPenyertaanNotFound                 Code = "penyertaan_not_found"
+	MsgPenyertaanNoRegisterUsed           Code = "penyertaan_no_register_used"
+	MsgPenyertaanItemsListed              Code = "penyertaan_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -648,6 +663,8 @@ var codeList = []Code{
 	MsgOJKPlacementCodesEmpty,
 	MsgOJKPlacementCodesRead,
 	MsgOJKPlacementsListed,
+	MsgOJKCreditorGroupsListed,
+	MsgOJKRegenciesListed,
 	MsgOJKAmountInvalid,
 	MsgOJKPercentageInvalid,
 	MsgOJKDateInvalid,
@@ -707,6 +724,15 @@ var codeList = []Code{
 	MsgAsetTetapInputInvalid,
 	MsgAsetTetapNotFound,
 	MsgAsetTetapItemsListed,
+	MsgPenyertaanReport,
+	MsgPenyertaanSaved,
+	MsgPenyertaanDeleted,
+	MsgPenyertaanIDInvalid,
+	MsgPenyertaanBankWide,
+	MsgPenyertaanInputInvalid,
+	MsgPenyertaanNotFound,
+	MsgPenyertaanNoRegisterUsed,
+	MsgPenyertaanItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1675,6 +1701,14 @@ var catalog = map[Code]map[Lang]string{
 		ID: "daftar penempatan OJK",
 		EN: "OJK placements listed",
 	},
+	MsgOJKCreditorGroupsListed: {
+		ID: "daftar sandi pihak lawan OJK (Lampiran 02)",
+		EN: "OJK counterparty code list (Appendix 02)",
+	},
+	MsgOJKRegenciesListed: {
+		ID: "daftar sandi kabupaten/kota OJK (Lampiran 03)",
+		EN: "OJK regency/municipality code list (Appendix 03)",
+	},
 	MsgOJKAmountInvalid: {
 		ID: "nominal %s tidak sah: harus angka dan tidak negatif",
 		EN: "amount %s is invalid: must be a number and not negative",
@@ -1910,6 +1944,42 @@ var catalog = map[Code]map[Lang]string{
 	MsgAsetTetapItemsListed: {
 		ID: "daftar baris register aset tetap",
 		EN: "fixed asset register items listed",
+	},
+	MsgPenyertaanReport: {
+		ID: "register penyertaan modal",
+		EN: "equity participation register",
+	},
+	MsgPenyertaanSaved: {
+		ID: "data register penyertaan modal disimpan",
+		EN: "equity participation register data saved",
+	},
+	MsgPenyertaanDeleted: {
+		ID: "data register penyertaan modal dihapus",
+		EN: "equity participation register data deleted",
+	},
+	MsgPenyertaanIDInvalid: {
+		ID: "id register penyertaan modal bukan UUID yang sah",
+		EN: "equity participation register id is not a valid UUID",
+	},
+	MsgPenyertaanBankWide: {
+		ID: "register penyertaan modal bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the equity participation register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgPenyertaanInputInvalid: {
+		ID: "data register penyertaan modal tidak valid",
+		EN: "equity participation register data is invalid",
+	},
+	MsgPenyertaanNotFound: {
+		ID: "data register penyertaan modal tidak ditemukan",
+		EN: "equity participation register data was not found",
+	},
+	MsgPenyertaanNoRegisterUsed: {
+		ID: "nomor register penyertaan modal sudah pernah dipakai dan tidak boleh dipakai ulang",
+		EN: "the equity participation register number has already been used and cannot be reused",
+	},
+	MsgPenyertaanItemsListed: {
+		ID: "daftar baris register penyertaan modal",
+		EN: "equity participation register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

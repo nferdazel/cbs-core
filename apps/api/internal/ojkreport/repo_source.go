@@ -74,6 +74,10 @@ type RepoSource struct {
 	// Form 08.00 (aset_tetap_register, migrasi 000119). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada angka yang dikarang.
 	AsetTetap domain.AsetTetapRegisterRepository
+	// Penyertaan menyediakan register penyertaan modal Form 16.00
+	// (penyertaan_modal_register, migrasi 000120). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada angka yang dikarang.
+	Penyertaan domain.PenyertaanRegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -505,6 +509,19 @@ func (s RepoSource) ListAsetTetapForOJK(ctx context.Context, asOf time.Time, act
 		return nil, nil
 	}
 	return s.AsetTetap.ListAsetTetapForOJK(ctx, asOf)
+}
+
+// ListPenyertaanForOJK membaca baris register penyertaan modal bank-wide yang as_of-nya
+// pada bulan asOf (kandidat Form 16.00). Kebijakan bank-wide ditegakkan di lapisan data:
+// aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListPenyertaanForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.PenyertaanItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.Penyertaan == nil {
+		return nil, nil
+	}
+	return s.Penyertaan.ListPenyertaanForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,
