@@ -349,6 +349,12 @@ func main() {
 	kreditSindikasiRepo := postgres.NewKreditSindikasiRegisterRepository(db)
 	kreditSindikasiSvc := service.NewKreditSindikasiRegisterService(db, kreditSindikasiRepo, auditRepo)
 
+	// Agunan Form 06.01: kolom pelaporan OJK pada loan_collaterals (migrasi 000125),
+	// baca bank-wide + jalur tulis berizin system:config yang teraudit. Bukan modul
+	// agunan operasional.
+	agunanRepo := postgres.NewAgunanRepository(db)
+	agunanSvc := service.NewAgunanService(db, agunanRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -381,11 +387,12 @@ func main() {
 		SuratBerharga:   suratBerhargaRepo,
 		KasValas:        kasValasRepo,
 		KreditSindikasi: kreditSindikasiRepo,
+		Agunan:          agunanRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

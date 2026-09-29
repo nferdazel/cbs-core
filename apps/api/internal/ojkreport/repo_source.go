@@ -94,6 +94,9 @@ type RepoSource struct {
 	// (kredit_sindikasi_register, migrasi 000124). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada angka yang dikarang.
 	KreditSindikasi domain.SindikasiRegisterRepository
+	// Agunan menyediakan agunan untuk Form 06.01 (loan_collaterals + kolom OJK migrasi
+	// 000125). Bila nil, form dinyatakan belum tersedia; tidak ada angka yang dikarang.
+	Agunan domain.AgunanRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -590,6 +593,18 @@ func (s RepoSource) ListSindikasiForOJK(ctx context.Context, asOf time.Time, act
 		return nil, nil
 	}
 	return s.KreditSindikasi.ListSindikasiForOJK(ctx, asOf)
+}
+
+// ListAgunanForOJK membaca agunan AKTIF untuk Form 06.01. Kebijakan bank-wide ditegakkan di
+// lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListAgunanForOJK(ctx context.Context, actor domain.Actor) ([]domain.AgunanRow, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.Agunan == nil {
+		return nil, nil
+	}
+	return s.Agunan.ListAgunanForOJK(ctx)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

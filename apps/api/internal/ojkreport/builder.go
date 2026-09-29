@@ -716,6 +716,25 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register kredit sindikasi belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 06.01 Daftar Agunan: agunan AKTIF dari loan_collaterals + kolom OJK (migrasi
+	// 000125). "Likuid/Non Likuid" adalah kategori di dalam kolom IV (sandi Lampiran 01),
+	// bukan kolom tersendiri. Punya baris JUMLAH; kolom angka isian bank.
+	if ag, ok := b.source.(AgunanOJKSource); ok {
+		rows, err := ag.ListAgunanForOJK(ctx, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "06.01", Name: formName("06.01"),
+				UnavailableReason: "belum ada agunan berstatus ACTIVE pada sistem"})
+		} else {
+			tables = append(tables, BuildForm06_01(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "06.01", Name: formName("06.01"),
+			UnavailableReason: "sumber agunan belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

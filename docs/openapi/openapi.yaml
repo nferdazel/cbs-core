@@ -3560,6 +3560,97 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/agunan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportAgunan
+      summary: Daftar Agunan Form 06.01 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan agunan AKTIF beserta tabel Form
+        06.01 (8 kolom, dengan baris JUMLAH). Seluruh kolom angka (VI Nilai yang Diagunkan,
+        VII Nilai Agunan, VIII Nilai untuk PPKA) adalah isian bank dan tidak diturunkan.
+        Kolom II Kode Register/Nomor Agunan wajib, unik, dan tidak boleh dipakai ulang.
+        "Likuid/Non Likuid" adalah kategori di dalam kolom IV (sandi Lampiran 01), bukan
+        kolom tersendiri. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/agunan/items:
+    get:
+      tags: [Laporan]
+      operationId: listAgunanItems
+      summary: Daftar agunan untuk pengisian Form 06.01 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan agunan AKTIF beserta kolom Form 06.01 untuk UI
+        pengisian, urutan deterministik, bukan tabel laporan. Bank-wide.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/agunan/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Laporan]
+      operationId: updateAgunanItem
+      summary: Simpan kolom Form 06.01 satu agunan
+      description: >-
+        Izin: `system:config`. Menyimpan kolom pelaporan OJK pada agunan operasional:
+        `kode_register` (wajib, unik, no reuse), `jenis_agunan_code` (sandi Lampiran 01),
+        `alamat_agunan`, `nilai_diagunkan`, `nilai_agunan` (taksasi), `penilai_code`
+        (1 independen / 2 internal), `tanggal_penilaian` (YYYY-MM-DD), `ppka_amount`.
+        Tidak membuat agunan baru. Teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                kode_register: { type: string, description: "Kolom II: wajib, unik, no reuse, maksimal 64 karakter." }
+                jenis_agunan_code: { type: string, description: "Kolom IV: sandi Lampiran 01 (3 digit), teks apa adanya." }
+                alamat_agunan: { type: string, description: "Kolom V." }
+                nilai_diagunkan: { type: number, description: "Kolom VI (rupiah penuh); isian bank." }
+                nilai_agunan: { type: number, description: "Kolom VII.a taksasi (rupiah penuh); isian bank." }
+                penilai_code: { type: string, enum: ["1", "2"], description: "Kolom VII.b: 1 Penilai Independen, 2 Internal BPR." }
+                tanggal_penilaian: { type: string, description: "Kolom VII.c: format YYYY-MM-DD." }
+                ppka_amount: { type: number, description: "Kolom VIII (rupiah penuh); isian bank, tidak diturunkan." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]

@@ -109,6 +109,9 @@ type OJKReportHandler struct {
 	// upsert/soft-delete-nya. Boleh nil pada uji; tanpa itu rute register kredit sindikasi
 	// tetap terpasang tetapi gagal saat dipanggil.
 	kreditSindikasi domain.SindikasiRegisterService
+	// agunan menyediakan kolom Form 06.01 pada agunan operasional (loan_collaterals).
+	// Boleh nil pada uji; tanpa itu rute agunan tetap terpasang tetapi gagal saat dipanggil.
+	agunan domain.AgunanService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -138,7 +141,7 @@ type OJKReportHandler struct {
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
 // dengan perilaku yang sama. kreditSindikasi menyediakan register kredit sindikasi
 // (Form 06.02) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:         ojkreport.NewBuilder(source),
 		source:          source,
@@ -157,6 +160,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		suratBerharga:   suratBerharga,
 		kasValas:        kasValas,
 		kreditSindikasi: kreditSindikasi,
+		agunan:          agunan,
 		bmpkAdmin:       bmpkAdmin,
 		placements:      placements,
 		reference:       reference,
@@ -342,6 +346,15 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kredit-sindikasi/items", h.UpsertKreditSindikasiItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kredit-sindikasi/items/{id}", h.DeleteKreditSindikasiItem)
+		// Form 06.01 Daftar Agunan: baca cukup reports:export; daftar untuk UI dan jalur
+		// tulis memakai system:config, teraudit di service. Dua rute saja. Ini mengisi
+		// kolom pelaporan OJK pada agunan operasional, bukan membuat agunan baru.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/agunan", h.ExportAgunan)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/agunan/items", h.ListAgunanItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/agunan/items/{id}", h.UpdateAgunanItem)
 		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
 		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
 		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
@@ -2486,6 +2499,122 @@ func writeKreditSindikasiError(w http.ResponseWriter, r *http.Request, err error
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrSindikasiBankWide):
 		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportAgunan menyajikan Form 06.01 "Daftar Agunan" sebagai JSON untuk periode YYYY-MM:
+// daftar agunan AKTIF beserta tabel Form 06.01. Bank-wide; aktor non-lintas cabang
+// ditolak 403 oleh lapisan data. Form ini punya baris JUMLAH; kolom angka isian bank dan
+// tidak diturunkan. "Likuid/Non Likuid" adalah kategori di dalam kolom IV (sandi
+// Lampiran 01), bukan kolom tersendiri.
+func (h *OJKReportHandler) ExportAgunan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.agunan == nil {
+		InternalError(w, r, errors.New("sumber agunan Form 06.01 belum dikonfigurasi"))
+		return
+	}
+
+	rows, err := h.agunan.ListAgunan(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrAgunanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "agunan dicatat per cabang; kolom Sandi Kantor belum punya sumber tunggal"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgAgunanReport, map[string]any{
+		"period": period,
+		"items":  rows,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm06_01(rows, kantor)},
+	})
+}
+
+// ListAgunanItems menyajikan agunan AKTIF beserta kolom Form 06.01 untuk UI pengisian
+// (GET /reports/ojk/agunan/items). Urutan deterministik dari repositori. Izin
+// system:config.
+func (h *OJKReportHandler) ListAgunanItems(w http.ResponseWriter, r *http.Request) {
+	if h.agunan == nil {
+		InternalError(w, r, errors.New("sumber agunan Form 06.01 belum dikonfigurasi"))
+		return
+	}
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	rows, err := h.agunan.ListAgunan(r.Context(),
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca agunan Form 06.01: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAgunanItemsListed, map[string]any{"items": rows})
+}
+
+// UpdateAgunanItem menyimpan kolom Form 06.01 satu agunan
+// (PUT /reports/ojk/agunan/items/{id}). Decoder menolak bidang tak dikenal agar payload
+// di luar kontrak ditolak 422. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpdateAgunanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgAgunanIDInvalid)
+		return
+	}
+	var input domain.UpdateAgunanInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.agunan == nil {
+		InternalError(w, r, errors.New("sumber agunan Form 06.01 belum dikonfigurasi"))
+		return
+	}
+	if err := h.agunan.UpdateAgunan(r.Context(), id, input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeAgunanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgAgunanSaved, map[string]any{"id": id.String()})
+}
+
+// writeAgunanError memetakan galat Form 06.01: agunan tak ada 404, sisanya 422 lewat Fail.
+// Kode register yang sudah dipakai tetap 422 karena itu pelanggaran aturan isian bank.
+func writeAgunanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrAgunanNotFound):
+		Fail(w, r, http.StatusNotFound, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 	}

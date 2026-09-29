@@ -244,8 +244,15 @@ var OJKBulananForms = []OJKFormDefinition{
 	// ── Laporan per Kantor (daftar resmi cetak -7-/-8-, PDF #59-60) ──
 	{Form: "03.00", Name: "Daftar Kas dalam Valuta Asing", Buildable: true},
 	{Form: "04.00", Name: "Daftar Surat Berharga", Buildable: true},
-	{Form: "06.01", Name: "Daftar Agunan", Buildable: false,
-		UnavailableReason: "sumber loan_collaterals (migrasi 000036:31) + ojk_agunan_ppka_amount (000109:31) ada, tetapi kolom alamat agunan, nilai yang diagunkan, sandi jenis agunan Lampiran 01, dan PPKA per agunan belum ada (PDF #169-172, #301)"},
+	// Form 06.01 dibangun dari agunan AKTIF di loan_collaterals (migrasi 000036) dengan
+	// kolom Form 06.01 ditambahkan migrasi 000125: nomor register unik (no reuse), alamat,
+	// nilai diagunkan, sandi jenis Lampiran 01, penilai 1/2, dan PPKA per agunan.
+	// KEPUTUSAN 29 Sep 2026: "Likuid/Non Likuid" pada PDF #169 BUKAN kolom kesembilan —
+	// daftar sandi berhenti di kolom VIII dan penjelasan meletakkannya sebagai rincian di
+	// dalam kolom IV (kategori induk sandi Lampiran 01). Konfirmasi OJK tidak lagi
+	// diperlukan untuk butir itu. Bila belum ada agunan ACTIVE, builder mencatatnya pada
+	// SkippedForms. Kolom I Sandi Kantor dari kantor pelapor tunggal.
+	{Form: "06.01", Name: "Daftar Agunan", Buildable: true},
 	// Form 06.02 dibangun dari register kredit sindikasi per rekening fasilitas
 	// (kredit_sindikasi_register, migrasi 000124) yang bank isi lewat API. Kolom III
 	// No. Identitas sengaja tidak disimpan (keputusan privasi) dan laporan menulisnya

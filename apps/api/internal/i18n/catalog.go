@@ -368,7 +368,15 @@ const (
 	MsgKreditSindikasiInputInvalid        Code = "kredit_sindikasi_input_invalid"
 	MsgKreditSindikasiNotFound            Code = "kredit_sindikasi_not_found"
 	MsgKreditSindikasiNoRekeningUsed      Code = "kredit_sindikasi_no_rekening_used"
+	MsgAgunanInputInvalid                 Code = "agunan_input_invalid"
+	MsgAgunanNotFound                     Code = "agunan_not_found"
+	MsgAgunanRegisterUsed                 Code = "agunan_register_used"
+	MsgAgunanBankWide                     Code = "agunan_bank_wide"
 	MsgKreditSindikasiItemsListed         Code = "kredit_sindikasi_items_listed"
+	MsgAgunanReport                       Code = "agunan_report"
+	MsgAgunanItemsListed                  Code = "agunan_items_listed"
+	MsgAgunanSaved                        Code = "agunan_saved"
+	MsgAgunanIDInvalid                    Code = "agunan_id_invalid"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -809,7 +817,15 @@ var codeList = []Code{
 	MsgKreditSindikasiInputInvalid,
 	MsgKreditSindikasiNotFound,
 	MsgKreditSindikasiNoRekeningUsed,
+	MsgAgunanInputInvalid,
+	MsgAgunanNotFound,
+	MsgAgunanRegisterUsed,
+	MsgAgunanBankWide,
 	MsgKreditSindikasiItemsListed,
+	MsgAgunanReport,
+	MsgAgunanItemsListed,
+	MsgAgunanSaved,
+	MsgAgunanIDInvalid,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2190,9 +2206,41 @@ var catalog = map[Code]map[Lang]string{
 		ID: "nomor rekening sindikasi sudah pernah dipakai dan tidak boleh dipakai ulang",
 		EN: "the syndicated loan account number has been used and cannot be reused",
 	},
+	MsgAgunanInputInvalid: {
+		ID: "data agunan Form 06.01 tidak valid",
+		EN: "collateral Form 06.01 data is invalid",
+	},
+	MsgAgunanNotFound: {
+		ID: "data agunan tidak ditemukan",
+		EN: "collateral data was not found",
+	},
+	MsgAgunanRegisterUsed: {
+		ID: "kode register/nomor agunan sudah dipakai agunan lain dan tidak boleh dipakai ulang",
+		EN: "the collateral register number has been used and cannot be reused",
+	},
+	MsgAgunanBankWide: {
+		ID: "daftar agunan bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the collateral list is bank-wide and can only be read by cross-branch roles",
+	},
 	MsgKreditSindikasiItemsListed: {
 		ID: "daftar baris register kredit sindikasi",
 		EN: "syndicated loan register items listed",
+	},
+	MsgAgunanReport: {
+		ID: "daftar agunan Form 06.01",
+		EN: "collateral list Form 06.01",
+	},
+	MsgAgunanItemsListed: {
+		ID: "daftar agunan untuk pengisian Form 06.01",
+		EN: "collateral list for Form 06.01 entry",
+	},
+	MsgAgunanSaved: {
+		ID: "kolom Form 06.01 agunan disimpan",
+		EN: "collateral Form 06.01 columns saved",
+	},
+	MsgAgunanIDInvalid: {
+		ID: "id agunan bukan UUID yang sah",
+		EN: "collateral id is not a valid UUID",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",
