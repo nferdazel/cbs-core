@@ -535,6 +535,34 @@ export interface PinjamanItemsData {
   items: PinjamanItem[] | null;
 }
 
+/**
+ * domain.PropertiItem (properti.go), Form 17.00 daftar properti terbengkalai.
+ * Kolom I Sandi Kantor tidak diserialisasi (diambil dari kantor pelapor tunggal);
+ * kolom IX Jumlah turunan (VII - VIII) dan tidak disimpan. Nominal datang sebagai
+ * string/number desimal shopspring, tanggal sebagai RFC3339.
+ */
+export interface PropertiItem {
+  id: string;
+  no_register: string;
+  jenis_properti_code: string;
+  alamat_properti: string;
+  koordinat: string;
+  tanggal_penetapan: string;
+  biaya_perolehan_atau_nilai_wajar: string | number;
+  akumulasi_penyusutan_atau_amortisasi: string | number;
+  metode_pengukuran_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/properti/items (kontrak pengisian). */
+export interface PropertiItemsData {
+  items: PropertiItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;
