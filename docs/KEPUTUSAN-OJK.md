@@ -106,6 +106,80 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
   yang sejak lama buildable; verifikasi bank/akuntan tetap diperlukan, tetapi bukan lagi
   penghalang pembangunan form.
 
+## 9. Audit as-of — diputuskan (29 Sep 2026, bertindak sebagai SME)
+
+Empat pertanyaan §8 `CELAH-FORM-OJK.md` sebelumnya ditahan "menunggu praktik bank".
+Ketiganya diputuskan tegas di sini dengan dasar tertulis; satu (9.1) ternyata menuntut
+keputusan produk yang tidak boleh dikarang, jadi diangkat sebagai pertanyaan tunggal.
+
+### 9.1 `lps_placements.as_of` = snapshot posisi per tanggal — **keputusan + satu pertanyaan produk**
+
+- **Fakta kode**: `ListPlacements` memakai `WHERE p.as_of <= $asOf` tanpa dedup
+  (`lps_placement_repo.go`). Tabel `lps_placements` **tidak punya kunci unik**, **tidak
+  punya jalur tulis INSERT di produksi** (hanya UPDATE per `id`), dan `as_of` bertipe
+  DATE. **Tidak ada identitas penempatan** (tidak ada nomor bilyet/nomor rekening
+  penempatan; `counterparty_cif` adalah CIF bank lawan, bukan identitas penempatan).
+- **Risiko**: bila bank menyimpan baris untuk penempatan yang sama pada dua tanggal,
+  `as_of <= asOf` membaca keduanya dan Form 05.00/ringkasan PPKA **dapat menghitung dua
+  kali**.
+- **Keputusan semantik (tegas)**: `as_of` adalah **posisi per tanggal laporan**; laporan
+  OJK memuat posisi ("Baki Debet"), bukan akumulasi riwayat. Ini penetapan cara baca,
+  bukan pengarang angka.
+- **Mengapa TIDAK langsung `DISTINCT ON`**: tanpa identitas penempatan, dedup hanya bisa
+  memakai `(coa_code, counterparty_bank, placement_type)`. Kunci itu **salah** — dua
+  deposito berjangka berbeda di bank yang sama dengan COA dan tipe sama adalah **dua
+  penempatan sah**, akan tersembunyi satu. Menutup bug dengan bug baru bukan perbaikan.
+- **Keputusan yang diambil**: **jangan** menambahkan dedup berbasis kunci yang salah.
+  Perbaikan benar menuntut **identitas penempatan** unik per penempatan dan tetap lintas
+  tanggal; menambah kolom + mewajibkannya diisi bank adalah keputusan produk yang tidak
+  boleh saya karang.
+- **Pertanyaan produk (satu-satunya yang saya angkat)**:
+  1. Apakah bank menyimpan **snapshot berulang** (baris baru tiap bulan) atau **satu baris
+     yang diperbarui** (`as_of` digeser)? Bila satu baris: tidak ada masalah sama sekali.
+  2. Bila snapshot berulang: boleh menambah kolom **identitas penempatan** (nomor bilyet/
+     rekening penempatan) sebagai kunci natural, dan dapatkah bank mengisinya?
+- **Sisa milik bank**: kapan snapshot disimpan (harian/bulanan) — bebas setelah 1–2
+  dijawab. Tidak ada kode diubah sebelum itu, agar tidak menyembunyikan data sah.
+
+### 9.2 `off_balance_items.status` = keadaan-kini, bukan snapshot per tanggal
+
+- **Keputusan**: baris rekening administratif dilaporkan menurut `status` **saat ini**
+  (`AKTIF` pada tanggal laporan); `as_of` menandai tanggal pembukuan baris, bukan
+  pemotretan ulang. Tidak ada pemotretan ganda.
+- **Dasar**: komitmen/kontinjensi Form 01.01 adalah saldo berjalan yang berakhir saat
+  direalisasi/dibatalkan; melaporkan versi historisnya menampilkan komitmen yang sudah
+  selesai. Perubahan status adalah peristiwa, bukan mutasi harian.
+- **Konsekuensi**: cukup satu baris per komitmen dengan `status` yang diperbarui; riwayat
+  sudah dijaga `audit_log`. Tidak ada perubahan kode.
+
+### 9.3 `time_deposits.start_date` tidak boleh ditimpa rollover
+
+- **Keputusan**: `start_date` adalah **tanggal mulai kontrak yang dilaporkan** dan
+  **tidak boleh ditimpa** perpanjangan otomatis (rollover). Perpanjangan adalah peristiwa
+  baru (baris/kolom tanggal jatuh tempo), bukan penggeseran `start_date`.
+- **Dasar**: form DPK memisahkan "tanggal mulai" dan "tanggal jatuh tempo"; menimpa
+  `start_date` menghapus fakta kontrak asal dan membuat jangka waktu laporan salah.
+- **Sisa milik bank**: kebijakan kapan kontrak dianggap kontrak baru secara hukum; kode
+  tidak menebak, hanya tidak menimpa. Tidak ada perubahan kode.
+
+### 9.4 BMPK **bukan** laporan as-of
+
+- **Keputusan**: BMPK dihitung dari **posisi terkini** batas per pihak
+  (`bmpk_limits.max_amount`) terhadap baki berjalan; **bukan** form posisi-per-tanggal dan
+  **tidak** memakai `as_of`. Penamaan internal netral `DALAM_BATAS`/`MELAMPAUI_BATAS` tetap.
+- **Dasar**: BMPK adalah **kepatuhan berjalan** (POJK 1/2024), diperiksa saat pemberian
+  kredit, bukan direkonstruksi per tanggal tutup buku. Memaksakan `as_of` akan
+  menyiratkan pelanggaran/pelampauan retroaktif yang tidak diminta regulator.
+- **Konsekuensi**: ketiadaan `as_of` pada BMPK adalah **benar**, bukan celah. Tidak ada
+  perubahan kode.
+
+**Ringkas**: 9.1 = keputusan semantik tegas + satu pertanyaan produk (perbaikan dedup
+ditahan sengaja agar tidak menyembunyikan baris sah); 9.2/9.3/9.4 = penetapan semantik
+tanpa perubahan kode. Verifikasi pemetaan COA & ratifikasi parameter CKPN tetap milik
+bank/akuntan dan tidak diklaim selesai di sini.
+
+---
+
 Semua butir implementable kini dikerjakan; tidak ada lagi celah kode — sisa hanya
-keputusan milik bank (verifikasi pemetaan, ratifikasi parameter, partisipasi program;
-lihat `CELAH-LAPORAN-OJK.md §4`).
+keputusan milik bank (verifikasi pemetaan, ratifikasi parameter, partisipasi program,
+jawaban 9.1) dan pertanyaan produk tunggal di §9.1.

@@ -180,7 +180,12 @@ Satu-satunya butir yang masih menunggu pihak luar adalah **§3 poin 6 (Form 06.0
 yaitu inkonsistensi internal PDF soal sel "Likuid | Non Likuid", bukan salah satu dari
 delapan anomali ini.
 
-## 8. Audit query as-of (28 Sep 2026) — mana yang aman, mana yang butuh keputusan
+## 8. Audit query as-of (28 Sep 2026) — mana yang aman, mana yang sudah diputuskan
+
+**Keempat butir di bawah kini DIPUTUSKAN (29 Sep 2026) di `KEPUTUSAN-OJK.md §9`.**
+Ringkas: 1 (`lps_placements`) = keputusan semantik tegas + satu pertanyaan produk
+(dedup ditahan sengaja agar tidak menyembunyikan baris sah); 2/3/4 = penetapan semantik
+tanpa perubahan kode. Bagian di bawah tetap dipertahankan sebagai catatan audit.
 
 Audit baca-saja terhadap seluruh sumber laporan yang memakai `asOf`/`periodEnd`,
 berfokus pada multiplicitas baris (ganda vs hilang). Ringkasnya:
@@ -195,23 +200,29 @@ per `loan_number`).
 **Perlu keputusan, bukan sekadar kode:**
 1. **`lps_placements` → Form 05.00.** `lps_placement_repo.go:146` hanya `as_of <= asOf`
    tanpa dedup; tabel tanpa UNIQUE selain PK (`000045:28-52`) dan **tabel ini tidak punya
-   jalur INSERT di aplikasi** — diisi bank lewat SQL. Dua skenario: bank **menimpa** baris
-   (menaikkan `as_of`) → penempatan **hilang** dari bulan-bulan sebelumnya; bank **menyimpan
-   snapshot per bulan** → semua baris terambil dan nominal **terlipat** (`form05.go:228-237`
-   tanpa dedup). Invarian tertulis di `docs/CKPN-SIAP-RILIS.md:350-353` menyebut pola
-   "satu baris ditimpa", tetapi tidak dicegah constraint apa pun. **Keputusan bank:** semantik
-   `as_of` (tanggal posisi vs tanggal input) — tanpa itu query tidak boleh diubah.
+   jalur INSERT di aplikasi** — diisi bank lewat SQL. Bila bank menyimpan snapshot per
+   bulan, semua baris terambil dan Form 05.00 menampilkan baris ganda (`form05.go:228-237`
+   tanpa dedup). **Keputusan 29 Sep 2026 (`KEPUTUSAN-OJK.md §9.1`):** `as_of` = posisi per
+   tanggal laporan. Dedup **tidak** dipasang sekarang karena tabel **tidak punya identitas
+   penempatan** — kunci `(coa_code, counterparty_bank, placement_type)` salah (dua deposito
+   berbeda di bank sama bisa sah). Satu pertanyaan produk diangkat: pola snapshot berulang
+   vs satu baris ditimpa, dan bolehkah menambah identitas penempatan.
 2. **`off_balance_items` → Form 01.01.** `off_balance_repo.go:69-70` memakai
-   `status='AKTIF'` (keadaan kini) untuk semua bulan, dan `:123` menimpa `as_of` saat edit
-   tanpa unique `(position_code, as_of)` → pos bisa hilang dari bulan lama atau terhitung
-   ganda dalam satu bulan.
+   `status='AKTIF'` (keadaan kini) untuk semua bulan, dan `:123` menimpa `as_of` saat edit.
+   **Keputusan 29 Sep 2026 (`§9.2`):** perilaku keadaan-kini itu **benar** — komitmen/
+   kontinjensi adalah saldo berjalan yang berakhir saat direalisasi/dibatalkan, bukan
+   dipotret ulang. Satu baris per komitmen dengan `status` diperbarui; riwayat dijaga
+   `audit_log`. Tidak ada perubahan kode.
 3. **Rollover deposito menulis ulang `start_date`** (`deposit_repo.go:233-246`) → kontrak
    ARO hilang dari bulan sebelumnya dan/atau nominal terbaca pasca-rollover (Form 12.00 dan
-   bagian Form 13.00). Sudah diakui di komentar repo; query tidak bisa merekonstruksi yang
-   sudah ditimpa — perubahan jalur tulis.
+   bagian Form 13.00). **Keputusan 29 Sep 2026 (`§9.3`):** `start_date` adalah tanggal
+   mulai kontrak yang dilaporkan dan **tidak boleh ditimpa** rollover; perpanjangan adalah
+   peristiwa baru, bukan penggeseran `start_date`. Kebijakan "kapan kontrak dianggap baru"
+   tetap milik bank. Tidak ada perubahan kode.
 4. **BMPK bukan as-of** (`bmpk_repo.go:30-59`, `bmpk_service.go:47-61`): `asOf` hanya
-   disalin, sedangkan eksposur/batas dibaca keadaan kini → kolom XV Form 05.00 dan XXXVII
-   Form 06.00 pada periode lampau memakai posisi kini.
+   disalin, sedangkan eksposur/batas dibaca keadaan kini. **Keputusan 29 Sep 2026
+   (`§9.4`):** BMPK adalah kepatuhan **berjalan** (POJK 1/2024), bukan laporan posisi-
+   per-tanggal; ketiadaan `as_of` **benar**, bukan celah. Tidak ada perubahan kode.
 
 **Sudah diperbaiki 28 Sep 2026:**
 - **Paginasi kredit tanpa pemecah seri** — `loan_repo.go` kini `ORDER BY created_at DESC,
