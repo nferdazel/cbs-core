@@ -199,8 +199,36 @@ menegakkannya di kode.
 
 **Ringkas**: 9.1 = invarian tabel ditegakkan di kode (guard menolak duplikat penempatan
 logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa perubahan
-kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri. Verifikasi pemetaan COA &
-ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
+kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri; 9.6 = `00.05` selesai
+dengan register baru (bukan menambah kolom di `bmpk_related_parties`). Verifikasi pemetaan
+COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
+
+### 9.6 Form 00.05 — register baru, bukan menambah kolom di `bmpk_related_parties` (SELESAI)
+
+- **Penilaian triase lama**: `00.05` diklasifikasi `SEBAGIAN` dengan alasan "kurang sandi
+  Jenis & Hubungan; NPWP; pihak terkait bukan nasabah". Bacaan itu menyiratkan cukup
+  menambah kolom sandi pada tabel `bmpk_related_parties`.
+- **Temuan (membaca migrasi `000103` + PDF #96–98)**: `bmpk_related_parties` menandai
+  **NASABAH** sebagai pihak terkait BMPK — kuncinya `customer_id UUID PRIMARY KEY
+  REFERENCES customers(id) ON DELETE CASCADE` — dan dipakai bersama `bmpk_limits` untuk
+  **batas paparan**. Form 00.05 justru memuat pihak terkait **selain** pemegang saham,
+  anggota direksi, anggota dewan komisaris, dan pejabat eksekutif (PDF #98), yang **bisa
+  bukan nasabah** (mis. pemerintah daerah, perusahaan pengendali, keluarga pengendali).
+- **Keputusan**: buat **register baru** `pihak_terkait_lainnya_register` (migrasi `000127`)
+  yang berdiri sendiri, dengan sandi IV (01/02/03) dan V (01–06) dari PDF #97. Memaksa
+  pihak terkait bukan nasabah masuk `bmpk_related_parties` akan menuntut baris `customers`
+  palsu dan mencampur dua maksud (pelaporan vs penegakan BMPK). Sandi yang dulu dianggap
+  "kurang" ternyata **sudah terdokumentasi** di PDF #97, jadi tidak ada yang dikarang.
+- **Privasi**: kolom II No. Identitas (NIK/NPWP) sengaja **tidak disimpan** (keputusan
+  privasi §4 dan §7 butir 6, pola Form 00.01/06.02/form berhenti); laporan menulisnya "-"
+  beralasan. Form **tanpa baris JUMLAH**.
+- **Aksi**: migrasi `000127`, `domain/form00_05_pihak_terkait.go`,
+  `repository/postgres/pihak_terkait_repo.go`, `service/pihak_terkait_service.go`,
+  `ojkreport/form00_05.go`, rute `GET /reports/ojk/pihak-terkait` (reports:export) +
+  `GET/PUT/DELETE /reports/ojk/pihak-terkait/items` (system:config), i18n, OpenAPI,
+  `definitions.go` `00.05` `Buildable:true` (35→36), kartu web `OJKPihakTerkaitCard.tsx`.
+- **Sisa milik bank**: mengisi baris register (nama, alamat, jenis, hubungan) per pihak
+  terkait.
 
 ---
 
