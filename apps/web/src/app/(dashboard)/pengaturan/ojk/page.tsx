@@ -2,6 +2,7 @@
 
 import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { OJKAsetKeuanganLainnyaCard } from "@/components/settings/OJKAsetKeuanganLainnyaCard";
 import { OJKAsetTetapCard } from "@/components/settings/OJKAsetTetapCard";
 import { OJKAYDACard } from "@/components/settings/OJKAYDACard";
 import { OJKBMPKCard } from "@/components/settings/OJKBMPKCard";
@@ -14,6 +15,7 @@ import { OJKPlacementCodesCard } from "@/components/settings/OJKPlacementCodesCa
 import { OJKPropertiTerbengkalaiCard } from "@/components/settings/OJKPropertiTerbengkalaiCard";
 import { OJKProfileCard } from "@/components/settings/OJKProfileCard";
 import { OJKReferenceCodesCard } from "@/components/settings/OJKReferenceCodesCard";
+import { OJKSuratBerhargaCard } from "@/components/settings/OJKSuratBerhargaCard";
 
 /**
  * Halaman identitas Form 00.00. Penjagaan sebenarnya ada di API
@@ -34,12 +36,14 @@ export default function OjkIdentityPage() {
       <OJKPlacementCodesCard />
       <OJKKelembagaanCard />
       <OJKOffBalanceCard />
+      <OJKSuratBerhargaCard />
       <OJKAYDACard />
       <OJKKepemilikanCard />
       <OJKPinjamanDiterimaCard />
       <OJKPropertiTerbengkalaiCard />
       <OJKAsetTetapCard />
       <OJKPenyertaanModalCard />
+      <OJKAsetKeuanganLainnyaCard />
       <OJKBMPKCard />
     </>
   );

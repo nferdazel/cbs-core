@@ -630,6 +630,91 @@ export interface PenyertaanItemsData {
   items: PenyertaanItem[] | null;
 }
 
+/**
+ * domain.AsetKeuanganItem (aset_keuangan_lainnya.go), Form 18.00 daftar aset
+ * keuangan lainnya. Satu baris adalah satu rekening unik. Kolom I Sandi Kantor
+ * tidak diserialisasi (diambil dari kantor pelapor tunggal). Tidak ada kolom
+ * turunan: seluruh nilai V-XIII adalah isian bank. Form memakai format tanggal
+ * TT-MM-TTTT pada laporan. Nominal datang sebagai string/number desimal
+ * shopspring, tanggal sebagai RFC3339.
+ */
+export interface AsetKeuanganItem {
+  id: string;
+  no_rekening: string;
+  counterparty_id: string;
+  jenis_code: string;
+  tanggal_mulai: string;
+  tanggal_jatuh_tempo: string;
+  suku_bunga: string | number;
+  nominal: string | number;
+  nilai_agunan_diperhitungkan: string | number;
+  cadangan_kerugian_penurunan_nilai: string | number;
+  ckpn_aset_baik: string | number;
+  ckpn_aset_kurang_baik: string | number;
+  ckpn_aset_tidak_baik: string | number;
+  klasifikasi_aset_keuangan_code: string;
+  jenis_ckpn_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/aset-keuangan/items (kontrak pengisian). */
+export interface AsetKeuanganItemsData {
+  items: AsetKeuanganItem[] | null;
+}
+
+/**
+ * domain.SuratBerhargaItem (surat_berharga.go), Form 04.00 daftar surat berharga.
+ * Kolom I Sandi Kantor tidak diserialisasi (diambil dari kantor pelapor tunggal).
+ * Tidak ada kolom turunan: XI "Biaya Perolehan Diamortisasi/Nilai Wajar" adalah
+ * isian bank karena form memberi dua kemungkinan (amortized cost atau nilai wajar).
+ * XVII/XVIII adalah sandi Lampiran 08/09 (sentinel 9/99 bila tanpa peringkat);
+ * persisnya diketik bank. XXIV boleh kosong (hanya bila penawaran umum efek).
+ * tanggal_pemeringkatan boleh null. Nominal datang sebagai string/number desimal
+ * shopspring, tanggal sebagai RFC3339.
+ */
+export interface SuratBerhargaItem {
+  id: string;
+  klasifikasi_code: string;
+  suku_bunga: string | number;
+  tanggal_mulai: string;
+  tanggal_jatuh_tempo: string;
+  nominal: string | number;
+  nominal_dijaminkan: string | number;
+  biaya_perolehan: string | number;
+  diskonto_premium_belum_diamortisasi: string | number;
+  biaya_transaksi_belum_diamortisasi: string | number;
+  laba_rugi_belum_direalisasi: string | number;
+  biaya_perolehan_diamortisasi: string | number;
+  nomor_surat_berharga: string;
+  counterparty_id: string;
+  jenis_code: string;
+  kualitas_code: string;
+  cadangan_kerugian_penurunan_nilai: string | number;
+  lembaga_pemeringkat_code: string;
+  peringkat_surat_berharga_code: string;
+  tanggal_pemeringkatan: string | null;
+  tanggal_penerbitan: string;
+  ckpn_aset_baik: string | number;
+  ckpn_aset_kurang_baik: string | number;
+  ckpn_aset_tidak_baik: string | number;
+  klasifikasi_aset_keuangan_code: string;
+  jenis_ckpn_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/surat-berharga/items (kontrak pengisian). */
+export interface SuratBerhargaItemsData {
+  items: SuratBerhargaItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;
