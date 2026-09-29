@@ -563,6 +563,37 @@ export interface PropertiItemsData {
   items: PropertiItem[] | null;
 }
 
+/**
+ * domain.AsetTetapItem (aset_tetap.go), Form 08.00 register aset tetap,
+ * inventaris, dan aset tidak berwujud. Satu baris adalah satu aset; penggabungan
+ * per kombinasi dilakukan builder laporan, bukan di sini. Kolom I Sandi Kantor
+ * tidak diserialisasi (diambil dari kantor pelapor tunggal); kolom VIII Nilai
+ * Tercatat turunan (V - VI - VII) dan tidak diserialisasi karena hanya berupa
+ * metode di domain. Nominal datang sebagai string/number desimal shopspring,
+ * tanggal sebagai RFC3339. status_aset_code boleh kosong untuk aset tidak
+ * berwujud (sandi jenis 2xx).
+ */
+export interface AsetTetapItem {
+  id: string;
+  jenis_aset_code: string;
+  sumber_perolehan_code: string;
+  status_aset_code: string;
+  biaya_perolehan: string | number;
+  akumulasi_penyusutan_amortisasi: string | number;
+  akumulasi_kerugian_penurunan_nilai: string | number;
+  metode_pengukuran_code: string;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/aset-tetap/items (kontrak pengisian). */
+export interface AsetTetapItemsData {
+  items: AsetTetapItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;
