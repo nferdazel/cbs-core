@@ -3438,6 +3438,34 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/struktur-organisasi:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportStrukturOrganisasi
+      summary: Form 00.19 Struktur Organisasi BPR (dokumen cetak HTML)
+      description: >-
+        Izin: `reports:export`. Mengembalikan dokumen cetak HTML (bukan tabel angka) berisi
+        struktur organisasi: jaringan kantor dari bank_offices dan susunan pengurus dari
+        bank_management. Bank mencetak/menyimpan sebagai PDF dari browser sebelum
+        disampaikan ke OJK. Bagian "divisi atau satuan kerja" yang belum dimodelkan pada
+        sistem ditandai di dalam dokumen, bukan dikosongkan diam-diam.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          description: Dokumen HTML siap cetak.
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]

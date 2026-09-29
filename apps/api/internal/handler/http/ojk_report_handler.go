@@ -324,6 +324,11 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kas-valas/items", h.UpsertKasValasItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kas-valas/items/{id}", h.DeleteKasValasItem)
+		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
+		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
+		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/struktur-organisasi", h.ExportStrukturOrganisasi)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -2329,6 +2334,70 @@ func writeKasValasError(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)
 	}
+}
+
+// ExportStrukturOrganisasi menyajikan Form 00.19 "Struktur Organisasi BPR" sebagai
+// dokumen cetak HTML untuk periode YYYY-MM. Ini berkas, bukan tabel angka: bank mencetak
+// dan menyimpannya sebagai PDF dari browser sebelum disampaikan ke OJK. Isi dokumen
+// dirakit dari laporan kelembagaan (bank_offices + bank_management); bagian yang belum
+// dimodelkan (divisi/satuan kerja) ditandai di dalam dokumen, bukan dikarang.
+func (h *OJKReportHandler) ExportStrukturOrganisasi(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+
+	// Laporan kelembagaan diambil lewat kontrak RepoSource; tanpa sumbernya dokumen tetap
+	// dibuat dengan peringatan, bukan digagalkan dan bukan diisi contoh.
+	var report domain.KelembagaanReport
+	report.AsOf = period
+	if ks, ok := h.source.(interface {
+		KelembagaanReport(context.Context, time.Time, domain.Actor) (domain.KelembagaanReport, error)
+	}); ok {
+		got, err := ks.KelembagaanReport(r.Context(), period, actor)
+		switch {
+		case err == nil:
+			report = got
+			report.AsOf = period
+		case errors.Is(err, ojkreport.ErrKelembagaanSourceUnavailable):
+			// Sumber belum dirangkai bukan kegagalan: dokumen tetap terbit dengan
+			// peringatan, sama seperti builder mencatat form kelembagaan belum dibangun.
+			report.Warnings = append(report.Warnings,
+				"sumber laporan kelembagaan belum dikonfigurasi pada ekspor ini; dokumen hanya memuat identitas bank")
+		default:
+			InternalError(w, r, fmt.Errorf("membaca laporan kelembagaan untuk Form 00.19: %w", err))
+			return
+		}
+	} else {
+		report.Warnings = append(report.Warnings,
+			"sumber laporan kelembagaan belum dikonfigurasi pada ekspor ini; dokumen hanya memuat identitas bank")
+	}
+
+	bankName := ""
+	if ps, ok := h.source.(ojkreport.BankProfileSource); ok {
+		cfg, err := ps.GetBankProfileConfig(r.Context())
+		if err != nil {
+			InternalError(w, r, fmt.Errorf("membaca profil bank untuk Form 00.19: %w", err))
+			return
+		}
+		if cfg != nil {
+			bankName = cfg.Name
+		}
+	}
+
+	doc := ojkreport.BuildForm00_19Document(report, bankName)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", middleware.DocumentCSP)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(doc))
 }
 
 // writeKelembagaanError memetakan galat kelembagaan: baris tak ada 404, pelanggaran

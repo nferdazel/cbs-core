@@ -235,7 +235,7 @@ var OJKBulananForms = []OJKFormDefinition{
 	// laporan posisi bulan Desember (Form 00.18 – 2, PDF #page 296-297). Baris yang
 	// belum punya akun COA sumber ditulis tidak tersedia di dalam form, bukan nol.
 	{Form: "00.19", Name: "Struktur Organisasi", Buildable: false,
-		UnavailableReason: "merupakan berkas PDF; bahan sudah ada (bank_offices, bank_management, branches) sehingga bisa dirakit otomatis, tetapi perakit dan bentuk berkasnya belum diputuskan (PDF #298)"},
+		UnavailableReason: "merupakan berkas PDF, bukan tabel angka, sehingga tidak ikut sebagai tabel bundel; dokumen siap cetaknya DISEDIAKAN lewat rute reports/ojk/struktur-organisasi (HTML cetak dari bank_offices + bank_management, PDF disimpan dari browser). Bagian divisi/satuan kerja belum dimodelkan dan ditandai di dalam dokumen (PDF #298)"},
 	{Form: "00.20", Name: "Struktur Kelompok Usaha", Buildable: false,
 		UnavailableReason: "merupakan berkas PDF; bahan hanya satu string ojk.report.ultimate_shareholders (migrasi 000096:40), tanpa relasi kelompok usaha (PDF #299)"},
 	{Form: "00.21", Name: "Laporan Dokumen Penilaian Risiko TPPU, TPPT, dan/atau PPSPM", Buildable: false,
