@@ -499,6 +499,42 @@ export interface KepemilikanItemsData {
   items: KepemilikanItem[] | null;
 }
 
+/**
+ * domain.PinjamanItem (pinjaman.go) — Form 00.07 daftar pinjaman yang diterima.
+ * Lima belas kolom, kecuali kolom XV Baki Debet Neto yang turunan (XII - XIII -
+ * XIV) dan tidak disimpan. Nominal datang sebagai string/number desimal
+ * shopspring, tanggal sebagai RFC3339.
+ */
+export interface PinjamanItem {
+  id: string;
+  counterparty_id: string;
+  creditor_group_code: string;
+  bank_code: string;
+  location_code: string;
+  jenis_code: string;
+  relationship_code: string;
+  start_date: string;
+  maturity_date: string;
+  interest_rate: string | number;
+  interest_calc_code: string;
+  plafon: string | number;
+  collateral_type_code: string;
+  collateral_amount: string | number;
+  baki_debet: string | number;
+  unamortized_transaction_cost: string | number;
+  unamortized_discount: string | number;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/pinjaman/items (kontrak pengisian). */
+export interface PinjamanItemsData {
+  items: PinjamanItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;
