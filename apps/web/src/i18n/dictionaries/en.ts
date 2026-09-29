@@ -2250,6 +2250,14 @@ export const dictionaryEN: Dictionary = {
       validationAsOf: "Position date is required.",
       validationStatus: "Register status is only AKTIF or NONAKTIF.",
     },
+    strukturOrganisasi: {
+      title: "BPR Organisational Structure (Form 00.19)",
+      description:
+        "Form 00.19 is not a numeric table but a PDF document submitted separately to OJK. The button below opens the printable document assembled from network office data and the management line-up; save it as PDF from the browser print dialog before submitting. The division or work unit section is not yet modelled in the system and is flagged inside the document to be completed manually.",
+      forbidden:
+        "You do not have permission to download report documents (403).",
+      print: "Open organisational structure document",
+    },
     suratBerharga: {
       title: "Marketable Securities Register (Form 04.00)",
       description:

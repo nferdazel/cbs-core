@@ -15,6 +15,7 @@ import { OJKPlacementCodesCard } from "@/components/settings/OJKPlacementCodesCa
 import { OJKPropertiTerbengkalaiCard } from "@/components/settings/OJKPropertiTerbengkalaiCard";
 import { OJKProfileCard } from "@/components/settings/OJKProfileCard";
 import { OJKReferenceCodesCard } from "@/components/settings/OJKReferenceCodesCard";
+import { OJKStrukturOrganisasiCard } from "@/components/settings/OJKStrukturOrganisasiCard";
 import { OJKSuratBerhargaCard } from "@/components/settings/OJKSuratBerhargaCard";
 
 /**
@@ -44,6 +45,7 @@ export default function OjkIdentityPage() {
       <OJKAsetTetapCard />
       <OJKPenyertaanModalCard />
       <OJKAsetKeuanganLainnyaCard />
+      <OJKStrukturOrganisasiCard />
       <OJKBMPKCard />
     </>
   );

@@ -2245,6 +2245,13 @@ export const dictionaryID = {
       validationAsOf: "Tanggal posisi wajib diisi.",
       validationStatus: "Status register hanya AKTIF atau NONAKTIF.",
     },
+    strukturOrganisasi: {
+      title: "Struktur Organisasi BPR (Form 00.19)",
+      description:
+        "Form 00.19 bukan tabel angka, melainkan berkas PDF yang disampaikan tersendiri ke OJK. Tombol di bawah membuka dokumen cetak yang dirakit dari data jaringan kantor dan susunan pengurus; simpan sebagai PDF dari dialog cetak browser sebelum dikirim. Bagian divisi atau satuan kerja belum dimodelkan pada sistem dan ditandai di dalam dokumen untuk dilengkapi manual.",
+      forbidden: "Anda tidak memiliki izin mengunduh dokumen laporan (403).",
+      print: "Buka dokumen struktur organisasi",
+    },
     suratBerharga: {
       title: "Register Surat Berharga (Form 04.00)",
       description:
