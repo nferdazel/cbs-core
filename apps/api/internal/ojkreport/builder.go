@@ -675,6 +675,46 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register penyertaan modal belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
+	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
+	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan
+	// tidak punya kolom turunan: seluruh nilai diisi bank.
+	if sb, ok := b.source.(SuratBerhargaRegisterSource); ok {
+		rows, err := sb.ListSuratBerhargaForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "04.00", Name: formName("04.00"),
+				UnavailableReason: "belum ada register surat berharga berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm04_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "04.00", Name: formName("04.00"),
+			UnavailableReason: "sumber register surat berharga belum dikonfigurasi pada ekspor ini"})
+	}
+
+	// Form 18.00 Daftar Aset Keuangan Lainnya: register aset keuangan lainnya per
+	// rekening unik yang bank catat (migrasi 000121). Bila belum ada baris AKTIF pada
+	// bulan periode, form dinyatakan belum tersedia, bukan ditulis kosong. Form ini tanpa
+	// baris JUMLAH dan tidak punya kolom turunan: seluruh nilai diisi bank.
+	if ak, ok := b.source.(AsetKeuanganRegisterSource); ok {
+		rows, err := ak.ListAsetKeuanganForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "18.00", Name: formName("18.00"),
+				UnavailableReason: "belum ada register aset keuangan lainnya berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm18_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "18.00", Name: formName("18.00"),
+			UnavailableReason: "sumber register aset keuangan lainnya belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

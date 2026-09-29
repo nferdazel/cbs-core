@@ -321,6 +321,20 @@ func main() {
 	penyertaanRepo := postgres.NewPenyertaanRegisterRepository(db)
 	penyertaanSvc := service.NewPenyertaanRegisterService(db, penyertaanRepo, auditRepo)
 
+	// Register aset keuangan lainnya (Form 18.00): baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit (migrasi 000121). Seluruh nilai dan sandi diisi bank;
+	// nomor rekening unik dan tidak boleh sama sehingga penghapusan adalah soft-delete
+	// NONAKTIF. Tidak menyentuh angka jurnal maupun bagan akun.
+	asetKeuanganRepo := postgres.NewAsetKeuanganRegisterRepository(db)
+	asetKeuanganSvc := service.NewAsetKeuanganRegisterService(db, asetKeuanganRepo, auditRepo)
+
+	// Register surat berharga (Form 04.00): baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit (migrasi 000122). Seluruh nilai dan sandi diisi bank;
+	// form tidak menetapkan nomor register unik sehingga penghapusan adalah DELETE fisik.
+	// Tidak menyentuh angka jurnal maupun bagan akun.
+	suratBerhargaRepo := postgres.NewSuratBerhargaRegisterRepository(db)
+	suratBerhargaSvc := service.NewSuratBerhargaRegisterService(db, suratBerhargaRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -349,11 +363,13 @@ func main() {
 		Properti:        propertiRepo,
 		AsetTetap:       asetTetapRepo,
 		Penyertaan:      penyertaanRepo,
+		AsetKeuangan:    asetKeuanganRepo,
+		SuratBerharga:   suratBerhargaRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

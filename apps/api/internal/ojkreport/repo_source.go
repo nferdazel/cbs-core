@@ -78,6 +78,14 @@ type RepoSource struct {
 	// (penyertaan_modal_register, migrasi 000120). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada angka yang dikarang.
 	Penyertaan domain.PenyertaanRegisterRepository
+	// AsetKeuangan menyediakan register aset keuangan lainnya Form 18.00
+	// (aset_keuangan_lainnya_register, migrasi 000121). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada angka yang dikarang.
+	AsetKeuangan domain.AsetKeuanganRegisterRepository
+	// SuratBerharga menyediakan register surat berharga Form 04.00
+	// (surat_berharga_register, migrasi 000122). Bila nil, form dinyatakan belum
+	// tersedia; tidak ada angka yang dikarang.
+	SuratBerharga domain.SuratBerhargaRegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -522,6 +530,32 @@ func (s RepoSource) ListPenyertaanForOJK(ctx context.Context, asOf time.Time, ac
 		return nil, nil
 	}
 	return s.Penyertaan.ListPenyertaanForOJK(ctx, asOf)
+}
+
+// ListAsetKeuanganForOJK membaca baris register aset keuangan lainnya bank-wide yang
+// as_of-nya pada bulan asOf (kandidat Form 18.00). Kebijakan bank-wide ditegakkan di
+// lapisan data: aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListAsetKeuanganForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.AsetKeuanganItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.AsetKeuangan == nil {
+		return nil, nil
+	}
+	return s.AsetKeuangan.ListAsetKeuanganForOJK(ctx, asOf)
+}
+
+// ListSuratBerhargaForOJK membaca baris register surat berharga bank-wide yang as_of-nya
+// pada bulan asOf (kandidat Form 04.00). Kebijakan bank-wide ditegakkan di lapisan data:
+// aktor non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListSuratBerhargaForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.SuratBerhargaItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.SuratBerharga == nil {
+		return nil, nil
+	}
+	return s.SuratBerharga.ListSuratBerhargaForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

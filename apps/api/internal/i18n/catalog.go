@@ -317,15 +317,38 @@ const (
 	// Register penyertaan modal (Form 16.00). Galat berkode harus selaras dengan pesan
 	// domain (uji errors_localized_test menegakkan ID/EN-nya). Nomor register bersifat
 	// no reuse/no recycle sehingga penghapusan adalah soft-delete.
-	MsgPenyertaanReport                   Code = "penyertaan_report"
-	MsgPenyertaanSaved                    Code = "penyertaan_saved"
-	MsgPenyertaanDeleted                  Code = "penyertaan_deleted"
-	MsgPenyertaanIDInvalid                Code = "penyertaan_id_invalid"
-	MsgPenyertaanBankWide                 Code = "penyertaan_bank_wide"
-	MsgPenyertaanInputInvalid             Code = "penyertaan_input_invalid"
-	MsgPenyertaanNotFound                 Code = "penyertaan_not_found"
-	MsgPenyertaanNoRegisterUsed           Code = "penyertaan_no_register_used"
-	MsgPenyertaanItemsListed              Code = "penyertaan_items_listed"
+	MsgPenyertaanReport         Code = "penyertaan_report"
+	MsgPenyertaanSaved          Code = "penyertaan_saved"
+	MsgPenyertaanDeleted        Code = "penyertaan_deleted"
+	MsgPenyertaanIDInvalid      Code = "penyertaan_id_invalid"
+	MsgPenyertaanBankWide       Code = "penyertaan_bank_wide"
+	MsgPenyertaanInputInvalid   Code = "penyertaan_input_invalid"
+	MsgPenyertaanNotFound       Code = "penyertaan_not_found"
+	MsgPenyertaanNoRegisterUsed Code = "penyertaan_no_register_used"
+	MsgPenyertaanItemsListed    Code = "penyertaan_items_listed"
+
+	// Register aset keuangan lainnya (Form 18.00). Galat berkode harus selaras dengan
+	// pemetaan HTTP di ojk_report_handler.go.
+	MsgAsetKeuanganReport         Code = "aset_keuangan_report"
+	MsgAsetKeuanganSaved          Code = "aset_keuangan_saved"
+	MsgAsetKeuanganDeleted        Code = "aset_keuangan_deleted"
+	MsgAsetKeuanganIDInvalid      Code = "aset_keuangan_id_invalid"
+	MsgAsetKeuanganBankWide       Code = "aset_keuangan_bank_wide"
+	MsgAsetKeuanganInputInvalid   Code = "aset_keuangan_input_invalid"
+	MsgAsetKeuanganNotFound       Code = "aset_keuangan_not_found"
+	MsgAsetKeuanganNoRekeningUsed Code = "aset_keuangan_no_rekening_used"
+	MsgAsetKeuanganItemsListed    Code = "aset_keuangan_items_listed"
+
+	// Register surat berharga (Form 04.00). Galat berkode harus selaras dengan pemetaan
+	// HTTP di ojk_report_handler.go.
+	MsgSuratBerhargaReport                Code = "surat_berharga_report"
+	MsgSuratBerhargaSaved                 Code = "surat_berharga_saved"
+	MsgSuratBerhargaDeleted               Code = "surat_berharga_deleted"
+	MsgSuratBerhargaIDInvalid             Code = "surat_berharga_id_invalid"
+	MsgSuratBerhargaBankWide              Code = "surat_berharga_bank_wide"
+	MsgSuratBerhargaInputInvalid          Code = "surat_berharga_input_invalid"
+	MsgSuratBerhargaNotFound              Code = "surat_berharga_not_found"
+	MsgSuratBerhargaItemsListed           Code = "surat_berharga_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -733,6 +756,23 @@ var codeList = []Code{
 	MsgPenyertaanNotFound,
 	MsgPenyertaanNoRegisterUsed,
 	MsgPenyertaanItemsListed,
+	MsgAsetKeuanganReport,
+	MsgAsetKeuanganSaved,
+	MsgAsetKeuanganDeleted,
+	MsgAsetKeuanganIDInvalid,
+	MsgAsetKeuanganBankWide,
+	MsgAsetKeuanganInputInvalid,
+	MsgAsetKeuanganNotFound,
+	MsgAsetKeuanganNoRekeningUsed,
+	MsgAsetKeuanganItemsListed,
+	MsgSuratBerhargaReport,
+	MsgSuratBerhargaSaved,
+	MsgSuratBerhargaDeleted,
+	MsgSuratBerhargaIDInvalid,
+	MsgSuratBerhargaBankWide,
+	MsgSuratBerhargaInputInvalid,
+	MsgSuratBerhargaNotFound,
+	MsgSuratBerhargaItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1980,6 +2020,74 @@ var catalog = map[Code]map[Lang]string{
 	MsgPenyertaanItemsListed: {
 		ID: "daftar baris register penyertaan modal",
 		EN: "equity participation register items listed",
+	},
+	MsgAsetKeuanganReport: {
+		ID: "register aset keuangan lainnya",
+		EN: "other financial assets register",
+	},
+	MsgAsetKeuanganSaved: {
+		ID: "data register aset keuangan lainnya disimpan",
+		EN: "other financial assets register data saved",
+	},
+	MsgAsetKeuanganDeleted: {
+		ID: "data register aset keuangan lainnya dihapus",
+		EN: "other financial assets register data deleted",
+	},
+	MsgAsetKeuanganIDInvalid: {
+		ID: "id register aset keuangan lainnya bukan UUID yang sah",
+		EN: "other financial assets register id is not a valid UUID",
+	},
+	MsgAsetKeuanganBankWide: {
+		ID: "register aset keuangan lainnya bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the other financial assets register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgAsetKeuanganInputInvalid: {
+		ID: "data register aset keuangan lainnya tidak valid",
+		EN: "other financial assets register data is invalid",
+	},
+	MsgAsetKeuanganNotFound: {
+		ID: "data register aset keuangan lainnya tidak ditemukan",
+		EN: "other financial assets register data was not found",
+	},
+	MsgAsetKeuanganNoRekeningUsed: {
+		ID: "nomor rekening aset keuangan lainnya sudah pernah dipakai dan tidak boleh dipakai ulang",
+		EN: "the other financial assets account number has already been used and cannot be reused",
+	},
+	MsgAsetKeuanganItemsListed: {
+		ID: "daftar baris register aset keuangan lainnya",
+		EN: "other financial assets register items listed",
+	},
+	MsgSuratBerhargaReport: {
+		ID: "register surat berharga",
+		EN: "marketable securities register",
+	},
+	MsgSuratBerhargaSaved: {
+		ID: "data register surat berharga disimpan",
+		EN: "marketable securities register data saved",
+	},
+	MsgSuratBerhargaDeleted: {
+		ID: "data register surat berharga dihapus",
+		EN: "marketable securities register data deleted",
+	},
+	MsgSuratBerhargaIDInvalid: {
+		ID: "id register surat berharga bukan UUID yang sah",
+		EN: "marketable securities register id is not a valid UUID",
+	},
+	MsgSuratBerhargaBankWide: {
+		ID: "register surat berharga bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the marketable securities register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgSuratBerhargaInputInvalid: {
+		ID: "data register surat berharga tidak valid",
+		EN: "marketable securities register data is invalid",
+	},
+	MsgSuratBerhargaNotFound: {
+		ID: "data register surat berharga tidak ditemukan",
+		EN: "marketable securities register data was not found",
+	},
+	MsgSuratBerhargaItemsListed: {
+		ID: "daftar baris register surat berharga",
+		EN: "marketable securities register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

@@ -244,8 +244,7 @@ var OJKBulananForms = []OJKFormDefinition{
 	// ── Laporan per Kantor (daftar resmi cetak -7-/-8-, PDF #59-60) ──
 	{Form: "03.00", Name: "Daftar Kas dalam Valuta Asing", Buildable: false,
 		UnavailableReason: "hanya tersedia valas sebagai pedagang valuta asing; belum ada tabel kas valas/tabel kurs dan pos 1101020000 sengaja tanpa sumber COA (mapping_review_test.go:54); status PVA sudah dicatat di ojk.report.pva_status (migrasi 000096:28) (PDF #126-128, #102)"},
-	{Form: "04.00", Name: "Daftar Surat Berharga", Buildable: false,
-		UnavailableReason: "belum ada register surat berharga (25 kolom) dan akun COA 'Surat Berharga'; pos 1102000000 baru berupa sandi (forms.go:122) (PDF #129-134)"},
+	{Form: "04.00", Name: "Daftar Surat Berharga", Buildable: true},
 	{Form: "06.01", Name: "Daftar Agunan", Buildable: false,
 		UnavailableReason: "sumber loan_collaterals (migrasi 000036:31) + ojk_agunan_ppka_amount (000109:31) ada, tetapi kolom alamat agunan, nilai yang diagunkan, sandi jenis agunan Lampiran 01, dan PPKA per agunan belum ada (PDF #169-172, #301)"},
 	{Form: "06.02", Name: "Daftar Kredit Sindikasi", Buildable: false,
@@ -305,8 +304,7 @@ var OJKBulananForms = []OJKFormDefinition{
 	// spesifik. Kolom IX Jumlah dihitung laporan dari VII - VIII dan form ini tidak
 	// punya baris JUMLAH. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
 	{Form: "17.00", Name: "Daftar Properti Terbengkalai", Buildable: true},
-	{Form: "18.00", Name: "Daftar Aset Keuangan Lainnya", Buildable: false,
-		UnavailableReason: "belum ada register per rekening, akun COA, dan jejak 'fraud' belum ada di kode (PDF #233-237)"},
+	{Form: "18.00", Name: "Daftar Aset Keuangan Lainnya", Buildable: true},
 	{Form: "19.00", Name: "Daftar Perbedaan Kualitas Aset Produktif", Buildable: false,
 		UnavailableReason: "terbit sebagai LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF (kolom I-X, cakupan kredit saja), tetapi kolom XI-XIX 'Pada BPR Lain' belum ada sumber di perbedaan_kualitas.go:95 dan form tidak ikut bundel bulanan (PDF #239-243)"},
 

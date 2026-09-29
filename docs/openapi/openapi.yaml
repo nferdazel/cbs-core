@@ -3074,6 +3074,261 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/aset-keuangan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportAsetKeuangan
+      summary: Register aset keuangan lainnya Form 18.00 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar aset keuangan lainnya
+        beserta tabel Form 18.00. Satu baris = satu rekening unik; form ini tidak punya
+        baris JUMLAH dan tidak punya kolom turunan (seluruh nilai VII-XIII diisi bank).
+        Tanggal form ini berformat TT-MM-TTTT pada laporan (PDF #page 235). Kolom I Sandi
+        Kantor diambil dari kantor pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/aset-keuangan/items:
+    get:
+      tags: [Laporan]
+      operationId: listAsetKeuanganItems
+      summary: Daftar baris register aset keuangan lainnya Form 18.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `aset_keuangan_lainnya_register`
+        untuk UI edit dengan urutan deterministik, bukan tabel laporan. Form 18.00 tidak
+        punya kolom turunan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertAsetKeuanganItem
+      summary: Simpan baris register aset keuangan lainnya Form 18.00
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        rekening aset keuangan lainnya. `jenis_code` 10 Tagihan fraud / 99 Tagihan
+        lainnya; `klasifikasi_aset_keuangan_code` 1 VW laba rugi / 2 VW PKL / 3 biaya
+        perolehan diamortisasi; `jenis_ckpn_code` 1 Individual / 2 Kolektif; `suku_bunga`
+        persen. Tanggal (tanggal_mulai, tanggal_jatuh_tempo, as_of) berformat YYYY-MM-DD.
+        Seluruh nilai dan sandi adalah isian bank. `no_rekening` unik dan tidak boleh
+        sama; nomor yang sudah pernah dipakai, termasuk baris NONAKTIF, ditolak 422
+        `aset_keuangan_no_rekening_used`. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                no_rekening: { type: string, description: "No. Rekening unik, tidak boleh sama." }
+                counterparty_id: { type: string, description: "ID Pihak Lawan (kolom III), teks apa adanya." }
+                jenis_code: { type: string, enum: ["10", "99"], description: "10 Tagihan fraud, 99 Tagihan lainnya." }
+                tanggal_mulai: { type: string, description: "Format YYYY-MM-DD." }
+                tanggal_jatuh_tempo: { type: string, description: "Format YYYY-MM-DD." }
+                suku_bunga: { type: number, description: "Persen." }
+                nominal: { type: number }
+                nilai_agunan_diperhitungkan: { type: number, description: "Nilai agunan yang dapat diperhitungkan sebagai pengurang PPKA." }
+                cadangan_kerugian_penurunan_nilai: { type: number }
+                ckpn_aset_baik: { type: number }
+                ckpn_aset_kurang_baik: { type: number }
+                ckpn_aset_tidak_baik: { type: number }
+                klasifikasi_aset_keuangan_code: { type: string, enum: ["1", "2", "3"], description: "1 VW laba rugi, 2 VW PKL, 3 biaya perolehan diamortisasi." }
+                jenis_ckpn_code: { type: string, enum: ["1", "2"], description: "1 Individual, 2 Kolektif." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/aset-keuangan/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteAsetKeuanganItem
+      summary: Nonaktifkan baris register aset keuangan lainnya Form 18.00
+      description: >-
+        Izin: `system:config`. Soft-delete: baris diubah menjadi NONAKTIF dan tetap
+        tersimpan agar nomor rekening tidak dapat dipakai ulang ("tidak boleh sama").
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/surat-berharga:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportSuratBerharga
+      summary: Register surat berharga Form 04.00 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar surat berharga beserta
+        tabel Form 04.00 (25 kolom, dengan baris JUMLAH). Seluruh nilai dan sandi adalah
+        isian bank; kolom XI "Biaya Perolehan Diamortisasi/Nilai Wajar" tidak dihitung
+        karena form memberi dua kemungkinan. Kolom I Sandi Kantor diambil dari kantor
+        pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/surat-berharga/items:
+    get:
+      tags: [Laporan]
+      operationId: listSuratBerhargaItems
+      summary: Daftar baris register surat berharga Form 04.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `surat_berharga_register` untuk
+        UI edit dengan urutan deterministik, bukan tabel laporan. Form 04.00 tidak punya
+        kolom turunan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertSuratBerhargaItem
+      summary: Simpan baris register surat berharga Form 04.00
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu surat
+        berharga. `klasifikasi_code` 1/2; `jenis_code` 1 BI / 2 Pemerintah / 3 Pemerintah
+        Daerah; `kualitas_code` 1/3/5; `klasifikasi_aset_keuangan_code` 1/2/3 atau kosong
+        (hanya bila penawaran umum efek); `jenis_ckpn_code` 1/2. XVII/XVIII memakai sandi
+        Lampiran 08/09 dengan sentinel 9/99 untuk keadaan tanpa peringkat.
+        `tanggal_pemeringkatan` boleh kosong. Tanggal berformat YYYY-MM-DD. Seluruh nilai
+        adalah isian bank. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                klasifikasi_code: { type: string, enum: ["1", "2"], description: "1 Tersedia untuk dijual, 2 Dimiliki hingga jatuh tempo." }
+                suku_bunga: { type: number, description: "Persen." }
+                tanggal_mulai: { type: string, description: "Format YYYY-MM-DD." }
+                tanggal_jatuh_tempo: { type: string, description: "Format YYYY-MM-DD." }
+                nominal: { type: number }
+                nominal_dijaminkan: { type: number }
+                biaya_perolehan: { type: number }
+                diskonto_premium_belum_diamortisasi: { type: number, description: "Boleh negatif untuk premium." }
+                biaya_transaksi_belum_diamortisasi: { type: number }
+                laba_rugi_belum_direalisasi: { type: number, description: "Boleh negatif (rugi)." }
+                biaya_perolehan_diamortisasi: { type: number, description: "Kolom XI; isian bank." }
+                nomor_surat_berharga: { type: string, description: "ISIN, teks apa adanya." }
+                counterparty_id: { type: string }
+                jenis_code: { type: string, enum: ["1", "2", "3"], description: "1 BI, 2 Pemerintah, 3 Pemerintah Daerah." }
+                kualitas_code: { type: string, enum: ["1", "3", "5"], description: "1 Lancar, 3 Kurang Lancar, 5 Macet." }
+                cadangan_kerugian_penurunan_nilai: { type: number }
+                lembaga_pemeringkat_code: { type: string, description: "Sandi Lampiran 08; 9 = tanpa peringkat." }
+                peringkat_surat_berharga_code: { type: string, description: "Sandi Lampiran 09; 99 = tanpa peringkat." }
+                tanggal_pemeringkatan: { type: string, description: "Format YYYY-MM-DD; boleh kosong." }
+                tanggal_penerbitan: { type: string, description: "Format YYYY-MM-DD." }
+                ckpn_aset_baik: { type: number }
+                ckpn_aset_kurang_baik: { type: number }
+                ckpn_aset_tidak_baik: { type: number }
+                klasifikasi_aset_keuangan_code: { type: string, enum: ["1", "2", "3"], description: "Boleh kosong; hanya bila penawaran umum efek." }
+                jenis_ckpn_code: { type: string, enum: ["1", "2"], description: "1 Individual, 2 Kolektif." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/surat-berharga/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteSuratBerhargaItem
+      summary: Hapus baris register surat berharga Form 04.00
+      description: >-
+        Izin: `system:config`. DELETE fisik: Form 04.00 tidak menetapkan nomor register
+        unik (tidak ada aturan no reuse/no recycle). Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]
