@@ -28,7 +28,7 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 |---|---:|---|
 | `SUDAH ADA` | 17 | sudah terbit (dengan catatan cakupan) |
 | `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
-| `BELUM DIMODELKAN` | 2 | tidak ada tabel/kolom/sumber sama sekali |
+| `BELUM DIMODELKAN` | 1 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
@@ -146,7 +146,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN` — **SELESAI untuk `04.00` dan `18.00` (29 Sep 2026)**: pola register kini terbukti delapan kali (`ayda`, `kepemilikan_bpr`, `pinjaman_diterima`, `properti_terbengkalai`, `aset_tetap`, `penyertaan_modal`, `surat_berharga`, `aset_keuangan_lainnya`). Sisa `BELUM DIMODELKAN` tinggal `06.02` (kredit sindikasi) dan `19.00` (perbedaan kualitas aset produktif, kolom XI-XIX "Pada BPR Lain" tanpa sumber). Transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN` — **SELESAI untuk `04.00` dan `18.00` (29 Sep 2026)**: pola register kini terbukti delapan kali (`ayda`, `kepemilikan_bpr`, `pinjaman_diterima`, `properti_terbengkalai`, `aset_tetap`, `penyertaan_modal`, `surat_berharga`, `aset_keuangan_lainnya`). Sisa `BELUM DIMODELKAN` tinggal `06.02` (kredit sindikasi: tidak ada tabel/kolom sindikasi). Transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
