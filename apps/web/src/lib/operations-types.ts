@@ -395,6 +395,32 @@ export interface BankOffice {
   note?: string;
   created_at?: string;
   updated_at?: string;
+  // Kolom Form 00.11 (migrasi 000126). office_type tetap teks bebas untuk Form 00.04;
+  // ojk_office_kind_code adalah sandi baku Form 00.11 kolom I yang terpisah.
+  ojk_office_kind_code?: string;
+  parent_office_code?: string;
+  previous_office_code?: string;
+  coordinates?: string;
+  head_name?: string;
+  phone_number?: string;
+  ojk_change_code?: string;
+  implementation_date?: string;
+  control_office_code?: string;
+  ojk_approval_date?: string;
+}
+
+/** Payload PUT /reports/ojk/kelembagaan/offices/{id}/form00-11 (kolom Form 00.11). */
+export interface UpdateOfficeForm0011Payload {
+  ojk_office_kind_code: string;
+  parent_office_code: string;
+  previous_office_code: string;
+  coordinates: string;
+  head_name: string;
+  phone_number: string;
+  ojk_change_code: string;
+  implementation_date: string;
+  control_office_code: string;
+  ojk_approval_date: string;
 }
 
 /** domain.BankManagement (kelembagaan.go) — Form 00.02/00.03 pengurus. */
