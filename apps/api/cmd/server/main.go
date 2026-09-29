@@ -287,6 +287,12 @@ func main() {
 	aydaRepo := postgres.NewAYDARegisterRepository(db)
 	aydaSvc := service.NewAYDARegisterService(db, aydaRepo, auditRepo)
 
+	// Register pemegang saham (data kepemilikan BPR) untuk Form 00.01: baca bank-wide +
+	// jalur tulis berizin system:config yang teraudit (migrasi 000116). Kolom IV No.
+	// Identitas sengaja tidak disimpan (keputusan privasi); tidak menyentuh angka jurnal.
+	kepemilikanRepo := postgres.NewKepemilikanRegisterRepository(db)
+	kepemilikanSvc := service.NewKepemilikanRegisterService(db, kepemilikanRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -307,11 +313,12 @@ func main() {
 		TimeDeposits:    postgres.NewTimeDepositReportRepository(db),
 		OffBalance:      offBalanceRepo,
 		AYDA:            aydaRepo,
+		Kepemilikan:     kepemilikanRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, bmpkSvc, ojkPlacementRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, bmpkSvc, ojkPlacementRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

@@ -575,6 +575,25 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register AYDA belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 00.01 Data Kepemilikan BPR: register pemegang saham yang bank catat
+	// (migrasi 000116). Bila belum ada baris AKTIF pada bulan periode, form dinyatakan
+	// belum tersedia, bukan ditulis kosong. Form ini tidak memakai kolom Sandi Kantor.
+	if ks, ok := b.source.(KepemilikanRegisterSource); ok {
+		rows, err := ks.ListKepemilikanForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.01", Name: formName("00.01"),
+				UnavailableReason: "belum ada register pemegang saham berstatus AKTIF pada bulan periode"})
+		} else {
+			tables = append(tables, BuildForm00_01(rows))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.01", Name: formName("00.01"),
+			UnavailableReason: "sumber register kepemilikan BPR belum dikonfigurasi pada ekspor ini"})
+	}
+
 	return tables, skipped, nil
 }
 

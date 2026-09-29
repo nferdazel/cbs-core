@@ -259,14 +259,24 @@ const (
 	MsgOffBalanceItemsListed  Code = "off_balance_items_listed"
 	// Register AYDA (Form 07.00) agunan yang diambil alih. Galat berkode harus selaras
 	// dengan pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
-	MsgAYDAReport                         Code = "ayda_report"
-	MsgAYDASaved                          Code = "ayda_saved"
-	MsgAYDADeleted                        Code = "ayda_deleted"
-	MsgAYDAIDInvalid                      Code = "ayda_id_invalid"
-	MsgAYDABankWide                       Code = "ayda_bank_wide"
-	MsgAYDAInputInvalid                   Code = "ayda_input_invalid"
-	MsgAYDANotFound                       Code = "ayda_not_found"
-	MsgAYDAItemsListed                    Code = "ayda_items_listed"
+	MsgAYDAReport       Code = "ayda_report"
+	MsgAYDASaved        Code = "ayda_saved"
+	MsgAYDADeleted      Code = "ayda_deleted"
+	MsgAYDAIDInvalid    Code = "ayda_id_invalid"
+	MsgAYDABankWide     Code = "ayda_bank_wide"
+	MsgAYDAInputInvalid Code = "ayda_input_invalid"
+	MsgAYDANotFound     Code = "ayda_not_found"
+	MsgAYDAItemsListed  Code = "ayda_items_listed"
+	// Register pemegang saham BPR (Form 00.01) data kepemilikan. Galat berkode harus
+	// selaras dengan pesan domain (uji errors_localized_test menegakkan ID/EN-nya).
+	MsgKepemilikanReport                  Code = "kepemilikan_report"
+	MsgKepemilikanSaved                   Code = "kepemilikan_saved"
+	MsgKepemilikanDeleted                 Code = "kepemilikan_deleted"
+	MsgKepemilikanIDInvalid               Code = "kepemilikan_id_invalid"
+	MsgKepemilikanBankWide                Code = "kepemilikan_bank_wide"
+	MsgKepemilikanInputInvalid            Code = "kepemilikan_input_invalid"
+	MsgKepemilikanNotFound                Code = "kepemilikan_not_found"
+	MsgKepemilikanItemsListed             Code = "kepemilikan_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -630,6 +640,14 @@ var codeList = []Code{
 	MsgAYDAInputInvalid,
 	MsgAYDANotFound,
 	MsgAYDAItemsListed,
+	MsgKepemilikanReport,
+	MsgKepemilikanSaved,
+	MsgKepemilikanDeleted,
+	MsgKepemilikanIDInvalid,
+	MsgKepemilikanBankWide,
+	MsgKepemilikanInputInvalid,
+	MsgKepemilikanNotFound,
+	MsgKepemilikanItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -1701,6 +1719,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgAYDAItemsListed: {
 		ID: "daftar baris register AYDA",
 		EN: "AYDA register items listed",
+	},
+	MsgKepemilikanReport: {
+		ID: "register kepemilikan BPR",
+		EN: "BPR ownership register",
+	},
+	MsgKepemilikanSaved: {
+		ID: "data register kepemilikan BPR disimpan",
+		EN: "BPR ownership register data saved",
+	},
+	MsgKepemilikanDeleted: {
+		ID: "data register kepemilikan BPR dihapus",
+		EN: "BPR ownership register data deleted",
+	},
+	MsgKepemilikanIDInvalid: {
+		ID: "id register kepemilikan BPR bukan UUID yang sah",
+		EN: "BPR ownership register id is not a valid UUID",
+	},
+	MsgKepemilikanBankWide: {
+		ID: "register kepemilikan BPR bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the BPR ownership register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgKepemilikanInputInvalid: {
+		ID: "data register kepemilikan BPR tidak valid",
+		EN: "BPR ownership register data is invalid",
+	},
+	MsgKepemilikanNotFound: {
+		ID: "data register kepemilikan BPR tidak ditemukan",
+		EN: "BPR ownership register data was not found",
+	},
+	MsgKepemilikanItemsListed: {
+		ID: "daftar baris register kepemilikan BPR",
+		EN: "BPR ownership register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

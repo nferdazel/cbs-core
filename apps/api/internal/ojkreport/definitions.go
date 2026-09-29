@@ -181,8 +181,12 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "data transaksi terkait penilaian risiko TPPU/TPPT belum tersedia"},
 
 	// ── Laporan Gabungan (daftar resmi cetak -7-, PDF #59) ──
-	{Form: "00.01", Name: "Data Kepemilikan BPR", Buildable: false,
-		UnavailableReason: "belum ada tabel pemegang saham BPR; yang tersedia hanya tiga kunci teks pemegang saham Form 00.00 (migrasi 000096:25,38,40), tanpa komposisi kepemilikan (PDF #72-74)"},
+	// Form 00.01 dibangun dari register pemegang saham per baris (kepemilikan_bpr_register,
+	// migrasi 000116) yang bank isi lewat API, bukan dari tiga kunci teks Form 00.00.
+	// Bila belum ada baris AKTIF, builder mencatatnya pada SkippedForms dengan alasan
+	// spesifik. Kolom IV No. Identitas sengaja tidak disimpan (keputusan privasi) dan
+	// laporan menulisnya "-" beralasan; form tidak memakai kolom Sandi Kantor.
+	{Form: "00.01", Name: "Data Kepemilikan BPR", Buildable: true},
 	// Form 00.02/00.03/00.04 (Laporan Gabungan) ikut bundel bulanan. Sumbernya data
 	// kelembagaan yang bank isi lewat API reports/ojk/kelembagaan/* — bank_management
 	// (migrasi 000112:89) untuk 00.02/00.03 dan bank_offices (migrasi 000112:41) untuk

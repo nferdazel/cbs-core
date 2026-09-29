@@ -2493,6 +2493,117 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kepemilikan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportKepemilikan
+      summary: Register pemegang saham Form 00.01 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar pemegang saham BPR
+        yang bank catat beserta tabel Form 00.01. Kolom IV No. Identitas sengaja tidak
+        disimpan (keputusan privasi NIK/NPWP) dan ditulis `-` beralasan; kolom Alamat
+        boleh kosong untuk kepemilikan kurang dari 2%. Sistem tidak memvalidasi
+        jumlah persentase = 100%.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kepemilikan/items:
+    get:
+      tags: [Laporan]
+      operationId: listKepemilikanItems
+      summary: Daftar baris register pemegang saham Form 00.01 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `kepemilikan_bpr_register`
+        untuk UI edit dengan urutan deterministik, bukan tabel laporan. Tidak ada
+        kolom identitas karena tidak pernah disimpan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertKepemilikanItem
+      summary: Simpan baris register pemegang saham Form 00.01
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu
+        pemegang saham. `shareholder_type_code` 01/02/03/04; `shareholder_status_code`
+        01/02; `change_status_code` 1/2/3/9; `as_of` berformat YYYY-MM-DD. `ownership_percentage`
+        dijaga 0-100 per baris, tetapi jumlah seluruh baris tidak divalidasi = 100%.
+        Kolom IV No. Identitas tidak ada di kontrak karena keputusan privasi. Perubahan
+        teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                shareholder_name: { type: string }
+                shareholder_address: { type: string }
+                shareholder_type_code: { type: string, enum: ["01", "02", "03", "04"] }
+                shareholder_status_code: { type: string, enum: ["01", "02"] }
+                nominal_amount: { type: number }
+                ownership_percentage: { type: number }
+                change_status_code: { type: string, enum: ["1", "2", "3", "9"] }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kepemilikan/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteKepemilikanItem
+      summary: Hapus baris register pemegang saham Form 00.01
+      description: "Izin: `system:config`. Terdokumentasi di audit log."
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]

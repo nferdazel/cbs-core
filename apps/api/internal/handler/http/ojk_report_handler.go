@@ -65,6 +65,10 @@ type OJKReportHandler struct {
 	// Boleh nil pada uji; tanpa itu rute register AYDA tetap terpasang tetapi gagal
 	// saat dipanggil.
 	ayda domain.AYDARegisterService
+	// kepemilikan menyediakan register pemegang saham (Form 00.01) sekaligus operasi
+	// upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register kepemilikan tetap
+	// terpasang tetapi gagal saat dipanggil.
+	kepemilikan domain.KepemilikanRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -77,11 +81,12 @@ type OJKReportHandler struct {
 // Sumber BMPK diambil dari source bila memenuhi kontraknya (RepoSource). kelembagaan
 // boleh nil; tanpa itu endpoint kelembagaan gagal saat dipanggil, bukan saat didaftarkan.
 // offBalance boleh nil dengan perilaku yang sama. ayda menyediakan register AYDA
-// (Form 07.00) dan boleh nil dengan perilaku yang sama. bmpkAdmin menyediakan
-// pengaturan pihak terkait/batas BMPK; boleh nil dengan perilaku yang sama. placements
-// menyediakan daftar penempatan untuk pemilih UI sandi OJK; boleh nil dengan perilaku
-// yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
+// (Form 07.00) dan boleh nil dengan perilaku yang sama. kepemilikan menyediakan
+// register pemegang saham (Form 00.01) dan boleh nil dengan perilaku yang sama.
+// bmpkAdmin menyediakan pengaturan pihak terkait/batas BMPK; boleh nil dengan
+// perilaku yang sama. placements menyediakan daftar penempatan untuk pemilih UI sandi
+// OJK; boleh nil dengan perilaku yang sama.
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:     ojkreport.NewBuilder(source),
 		source:      source,
@@ -91,6 +96,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		kelembagaan: kelembagaan,
 		offBalance:  offBalance,
 		ayda:        ayda,
+		kepemilikan: kepemilikan,
 		bmpkAdmin:   bmpkAdmin,
 		placements:  placements,
 	}
@@ -170,6 +176,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/ayda/items", h.UpsertAYDAItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/ayda/items/{id}", h.DeleteAYDAItem)
+		// Register pemegang saham (Form 00.01): baca cukup reports:export; pengisian
+		// dan daftar mentah UI memakai system:config dan teraudit di service. Empat
+		// rute saja.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/kepemilikan", h.ExportKepemilikan)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/kepemilikan/items", h.ListKepemilikanItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kepemilikan/items", h.UpsertKepemilikanItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kepemilikan/items/{id}", h.DeleteKepemilikanItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -1067,6 +1084,130 @@ func writeAYDAError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrAYDANotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrAYDABankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportKepemilikan menyajikan register pemegang saham (Form 00.01) sebagai JSON
+// untuk periode YYYY-MM: daftar pemegang saham beserta tabel Form 00.01 dan kolom
+// yang belum tersedia. Register bank-wide; aktor non-lintas cabang ditolak 403 oleh
+// layanan. Kolom IV No. Identitas tidak disimpan (keputusan privasi) dan selalu
+// ditulis "-" beralasan.
+func (h *OJKReportHandler) ExportKepemilikan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.kepemilikan == nil {
+		InternalError(w, r, errors.New("sumber register kepemilikan BPR belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.kepemilikan.KepemilikanReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrKepemilikanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	Success(w, http.StatusOK, i18n.MsgKepemilikanReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm00_01(report.Items)},
+	})
+}
+
+// ListKepemilikanItems menyajikan baris mentah register pemegang saham untuk UI edit
+// (GET /reports/ojk/kepemilikan/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListKepemilikanItems(w http.ResponseWriter, r *http.Request) {
+	if h.kepemilikan == nil {
+		InternalError(w, r, errors.New("sumber register kepemilikan BPR belum dikonfigurasi"))
+		return
+	}
+	items, err := h.kepemilikan.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register kepemilikan BPR: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKepemilikanItemsListed, map[string]any{"items": items})
+}
+
+// UpsertKepemilikanItem membuat/memperbarui satu pemegang saham
+// (PUT /reports/ojk/kepemilikan/items). Decoder menolak bidang tak dikenal agar
+// payload di luar kontrak ditolak 422, bukan diam-diam diabaikan; kolom IV No.
+// Identitas tidak ada di kontrak karena tidak disimpan. Izin system:config; teraudit
+// di service.
+func (h *OJKReportHandler) UpsertKepemilikanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateKepemilikanItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kepemilikan == nil {
+		InternalError(w, r, errors.New("sumber register kepemilikan BPR belum dikonfigurasi"))
+		return
+	}
+	item, err := h.kepemilikan.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKepemilikanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKepemilikanSaved, item)
+}
+
+// DeleteKepemilikanItem menghapus satu pemegang saham menurut id.
+func (h *OJKReportHandler) DeleteKepemilikanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKepemilikanIDInvalid)
+		return
+	}
+	if h.kepemilikan == nil {
+		InternalError(w, r, errors.New("sumber register kepemilikan BPR belum dikonfigurasi"))
+		return
+	}
+	if err := h.kepemilikan.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKepemilikanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKepemilikanDeleted, map[string]any{"id": id.String()})
+}
+
+// writeKepemilikanError memetakan galat register pemegang saham: baris tak ada 404,
+// pelanggaran bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat
+// berjejak internal otomatis disembunyikan Fail).
+func writeKepemilikanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrKepemilikanNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrKepemilikanBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)
