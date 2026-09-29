@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **28 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **29 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,9 +26,9 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 14 | sudah terbit (dengan catatan cakupan) |
+| `SUDAH ADA` | 15 | sudah terbit (dengan catatan cakupan) |
 | `SEBAGIAN` | 8 | sebagian sumber sudah ada, sebagian kolom belum |
-| `BELUM DIMODELKAN` | 5 | tidak ada tabel/kolom/sumber sama sekali |
+| `BELUM DIMODELKAN` | 4 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 4 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
 
@@ -68,7 +68,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 14.00 | Rincian Liabilitas Lainnya | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14.go`): 17 pos tetap (koreksi dari catatan lama "16 pos"). `COAMapping14Draft` hanya memetakan `20500`→`2299020000` Utang Pajak dan `20700`→`2299990000` Lainnya; 15 pos lain belum punya akun COA → alasan, bukan nol, dan `20300`/`12500`/`12900` sengaja tidak ditebak ke pos mana pun. Akibatnya **tidak ada tie otomatis ke `2299000000` Form 01.00** — hal ini ditulis eksplisit di `Notes` bersama aturan >25% → Form 14.01 | 213–215 |
 | 14.01 | Rincian Liabilitas Lainnya – Lain-lain | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14_01.go`): kondisional, penyebut = pos `2299000000` Form 01.00; PDF tidak menegaskan ikatan total seperti 09.01 — dicatat di `Notes`; Syarat **25%** dari jumlah liabilitas lainnya; bergantung Form 14.00 lebih dulu | **217**, 216 |
 | 15.00 | Daftar Aset Produktif yang Dihapus Buku | `SEBAGIAN` | Status `WRITTEN_OFF` + `written_off_amount` (`000085:29`); **tidak ada tanggal hapus buku**, nominal gabungan (pokok+bunga+denda) tak bisa dipisah per kolom; penempatan tak punya status hapus buku | 218–221 |
-| 16.00 | Daftar Penyertaan Modal | `BELUM DIMODELKAN` | Tidak ada tabel register penyertaan dan tidak ada akun COA "Penyertaan Modal" | 223–227 |
+| 16.00 | Daftar Penyertaan Modal | `SUDAH ADA` | **Register keenam — dibangun 29 Sep 2026** (`penyertaan_modal_register`, migrasi `000120`) dengan API `reports/ojk/penyertaan` + `form16_00.go`. **No. Register no-reuse** (UNIQUE + soft-delete, sama dengan 17.00); sandi Kualitas/Metode/Tujuan/blok CKPN/Jenis CKPN **diisi bank** (aturan "Desember 2024 = Kolektif 2" tidak diterapkan — masa berlakunya lewat); kolom X "Jumlah Bulan Laporan" ternyata didefinisikan PDF sebagai **nilai tercatat pada bulan laporan tanpa rumus** → isian bank, bukan turunan; tanpa baris JUMLAH; label kolom mengikuti tabel sandi `#225` (header `#224` typo `XII` dua kali). Tidak ada tabel register penyertaan dan tidak ada akun COA "Penyertaan Modal" | 223–227 |
 | 17.00 | Daftar Properti Terbengkalai | `SUDAH ADA` | **Register keempat — dibangun 29 Sep 2026** (`properti_terbengkalai_register`, migrasi `000118`) dengan API `reports/ojk/properti` + `form17_00.go`. **No. Register unik & no-reuse**: `UNIQUE` penuh + hapus = soft-delete (`NONAKTIF`), baris NONAKTIF tetap memegang nomor (diuji guard + integrasi). Kolom I Sandi Kantor dan IX Jumlah (`VII−VIII`) turunan; tanpa baris JUMLAH (sesuai PDF). Tidak ada tabel/flag properti terbengkalai (grep nihil; hanya penyebutan dokumentatif) | 229–231 |
 | 18.00 | Daftar Aset Keuangan Lainnya | `BELUM DIMODELKAN` | Tidak ada register per rekening, tidak ada akun COA, kata "fraud" tidak muncul di kode | 233–237 |
 | 19.00 | Daftar Perbedaan Kualitas Aset Produktif | `SUDAH ADA` | `LAPORAN_PERBEDAAN_KUALITAS_ASET_PRODUKTIF` + `GET /reports/ojk/perbedaan-kualitas`; **cakupan kredit saja, kolom I–X saja** — XI–XIX "Pada BPR Lain" Unavailable (`perbedaan_kualitas.go:95`) | 239–243 |
@@ -132,12 +132,12 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
    format kunci) dan snapshot + riwayat kolektibilitas (butuh migrasi ganda; catat langkah
    EOD terjadwal masih nonaktif, `000077:127-131`) — hanya bila OJK menuntut periode lampau.
 
-9. **Data referensi Lampiran belum punya endpoint** (temuan 29 Sep). Tabel `ojk_pihak_lawan`
-   (Lampiran 02) dan `ojk_kabupaten` (Lampiran 03) ada di DB, tetapi tidak ada endpoint yang
-   menyajikannya ke web — semua UI (termasuk kartu Pinjaman yang baru) mengisi sandi sebagai
-   **teks bebas + hint**, tanpa mengarang daftar. Bila ingin dropdown, perlu endpoint read-only
-   terpisah (mis. `GET /reports/ojk/reference/…`, izin `system:config:read`); daftar Lampiran 01
-   (jenis agunan) dan Lampiran 04 (valuta) bahkan belum ada sebagai tabel.
+9. **Endpoint referensi Lampiran 02/03 — SELESAI (29 Sep 2026).** `GET /reports/ojk/reference/
+   creditor-groups` dan `GET /reports/ojk/reference/regencies` kini menyajikan `ojk_pihak_lawan`
+   dan `ojk_kabupaten`, izin `system:config:read`, urut `code`, terdokumentasi di OpenAPI.
+   Kartu Pinjaman masih memakai teks bebas dan bisa dinaikkan ke dropdown pada putaran
+   berikutnya. **Masih belum ada**: tabel daftar Lampiran 01 (jenis agunan) dan Lampiran 04
+   (valuta) — keduanya jadi prasyarat bila `03.00` (valuta asing) dibangun.
 
 ## 4. Aksi berikutnya (diurutkan)
 
@@ -146,7 +146,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI 28 Sep 2026 untuk `11.00`, `12.00`, `14.00`**; sisa `06.01` ditahan menunggu konfirmasi OJK (§3 poin 6). Transkrip: `docs/transkrip-form-08-10-11-12-14.md` | perlu kolom tambahan + keputusan kolom tanpa sumber |
-| A4 | Modul baru untuk `BELUM DIMODELKAN` — **pola register kini terbukti lima kali** (`ayda_register`, `kepemilikan_bpr_register`, `pinjaman_diterima_register`, `properti_terbengkalai_register`, `aset_tetap_register`; AYDA + Kepemilikan + Pinjaman + Properti sudah punya UI di `pengaturan/ojk`), jadi sisa form tinggal mengulang pola yang sama: `04.00`, `16.00`, `18.00`. Peringkat nilai÷biaya ada di catatan riset; transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
+| A4 | Modul baru untuk `BELUM DIMODELKAN` — **pola register kini terbukti enam kali** (`ayda_register`, `kepemilikan_bpr_register`, `pinjaman_diterima_register`, `properti_terbengkalai_register`, `aset_tetap_register`, `penyertaan_modal_register`; AYDA + Kepemilikan + Pinjaman + Properti + Aset Tetap sudah punya UI di `pengaturan/ojk`), jadi sisa form tinggal mengulang pola yang sama: `04.00`, `18.00`. Peringkat nilai÷biaya ada di catatan riset; transkrip di `docs/transkrip-form-a4-a5-a6.md` | skema baru; urutkan menurut kebutuhan bank |
 | A5 | **SELESAI 28 Sep 2026 kecuali `03.00`**: `09.01` + `14.01` (ambang 25%, baris per akun COA) dan `00.09` + `00.10` + `00.12` (jendela peristiwa dalam bulan periode dari `bank_management`/`bank_offices`; NIK, komite, penyebab, sandi jenis/induk/koordinat tetap `-` + alasan). Sisa `03.00` butuh register valas + kurs + Lampiran 04 → jalur A4. Transkrip: `docs/transkrip-form-a4-a5-a6.md` | turunan |
 | A6 | `DOKUMEN` (`00.19`, `00.20`, `00.21`) — `00.19` bisa dirakit otomatis dari data kelembagaan, dua lainnya tetap manual. Rujukan: `docs/transkrip-form-a4-a5-a6.md` | keputusan bank |
 
