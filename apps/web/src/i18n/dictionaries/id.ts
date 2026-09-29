@@ -2245,6 +2245,134 @@ export const dictionaryID = {
       validationAsOf: "Tanggal posisi wajib diisi.",
       validationStatus: "Status register hanya AKTIF atau NONAKTIF.",
     },
+    kreditSindikasi: {
+      title: "Register Kredit Sindikasi (Form 06.02)",
+      description:
+        "Daftar kredit sindikasi per rekening fasilitas kredit, satu baris per rekening. Form ini tidak punya baris JUMLAH dan tidak menurunkan nilai apa pun: seluruh angka adalah isian bank. No. Rekening unik dan tidak boleh sama; kolom ini dikosongkan bila pendanaan bukan di bank pelapor (pilih \u201c2 - Tidak\u201d). No. Identitas debitur (NIK/NPWP) sengaja tidak disimpan karena alasan privasi. Sandi Kantor diambil dari kantor pelapor, bukan baris ini. Hapus berarti menonaktifkan (status NONAKTIF): nomor rekening tetap terkunci dan tidak bisa dipakai ulang.",
+      loadError: "Gagal memuat register kredit sindikasi.",
+      forbidden:
+        "Anda tidak memiliki izin membaca register kredit sindikasi (403).",
+      itemsTitle: "Baris kredit sindikasi",
+      empty: "Belum ada baris kredit sindikasi.",
+      add: "Tambah kredit sindikasi",
+      newTitle: "Kredit sindikasi baru",
+      editTitle: "Ubah kredit sindikasi",
+      saved: "Register kredit sindikasi tersimpan.",
+      deleted:
+        "Baris kredit sindikasi dinonaktifkan. Nomor rekening tetap terkunci dan tidak bisa dipakai ulang.",
+      deleteConfirmTitle: "Nonaktifkan baris ini?",
+      deleteConfirmBody:
+        "Baris dinonaktifkan (status NONAKTIF), bukan dihapus permanen. Karena form mewajibkan nomor rekening unik (tidak boleh sama), nomor rekening tetap terkunci dan tidak bisa dipakai ulang oleh baris lain.",
+      deactivate: "Nonaktifkan",
+      deactivating: "Menonaktifkan...",
+      noRekeningUsed:
+        "Nomor rekening ini sudah pernah dipakai dan tidak bisa dipakai ulang, termasuk oleh baris yang sudah NONAKTIF. Pakai nomor rekening lain.",
+      colCounterparty: "ID Pihak Lawan",
+      colNoRekening: "No. Rekening",
+      colJumlahPendanaan: "Jumlah Pendanaan Sindikasi",
+      colBagianPendanaan: "Bagian Pendanaan",
+      colSandiBankPeserta: "Sandi Bank Peserta",
+      colPlafon: "Plafon",
+      colBakiDebet: "Baki Debet",
+      colKepesertaan: "Status Kepesertaan",
+      colNomorPerjanjian: "Nomor Perjanjian Kredit Sindikasi",
+      colPendanaan: "Pendanaan di Bank Pelapor",
+      colKualitas: "Kualitas",
+      colTunggakanPokok: "Tunggakan Pokok",
+      colTunggakanBunga: "Tunggakan Bunga",
+      colHariTunggakanPokok: "Hari Tunggakan Pokok",
+      colHariTunggakanBunga: "Hari Tunggakan Bunga",
+      colAsOf: "Posisi",
+      colStatus: "Status",
+      fieldCounterparty: "ID Pihak Lawan",
+      fieldCounterpartyHint:
+        "Pengenal pihak lawan yang bank catat (kolom II). Teks bebas, wajib diisi, maksimal 64 karakter.",
+      fieldNoRekening: "No. Rekening",
+      fieldNoRekeningHint:
+        "Nomor rekening fasilitas kredit (kolom IV). Wajib diisi bila pendanaan di bank pelapor, dan harus dikosongkan bila tidak. Unik dan tidak boleh sama, maksimal 64 karakter.",
+      fieldJumlahPendanaan: "Jumlah Pendanaan Sindikasi (rupiah penuh)",
+      fieldJumlahPendanaanHint:
+        "Jumlah pendanaan yang dibiayai SELURUH anggota sindikasi menurut perjanjian kredit (kolom V). Rupiah penuh, tidak boleh negatif. Isian bank, sistem tidak menghitungnya.",
+      fieldBagianPendanaan: "Bagian Pendanaan (rupiah penuh)",
+      fieldBagianPendanaanHint:
+        "Bagian pendanaan yang dibiayai BPR pelapor menurut perjanjian kredit (kolom VI). Rupiah penuh, tidak boleh negatif. Isian bank.",
+      fieldSandiBankPeserta: "Sandi Bank Peserta Sindikasi",
+      fieldSandiBankPesertaHint:
+        "Sandi bank peserta mengacu Sistem Pelaporan OJK (kolom VII). Teks apa adanya, maksimal 16 karakter.",
+      fieldPlafon: "Plafon (rupiah penuh)",
+      fieldPlafonHint:
+        "Plafon pada kolom VII. Rupiah penuh, tidak boleh negatif. Isian bank.",
+      fieldBakiDebet: "Baki Debet (rupiah penuh)",
+      fieldBakiDebetHint:
+        "Baki debet pada kolom VII. Rupiah penuh, tidak boleh negatif. Isian bank.",
+      fieldKepesertaan: "Status Kepesertaan",
+      fieldKepesertaanHint:
+        "Sandi Form 06.02, isian bank: 1 arranger/leader, 2 anggota sindikasi. Tidak diturunkan dari kolom lain.",
+      fieldNomorPerjanjian: "Nomor Perjanjian Kredit Sindikasi",
+      fieldNomorPerjanjianHint:
+        "Nomor perjanjian INDUK awal (perjanjian pertama) tanpa spasi (kolom IX). Wajib diisi, maksimal 64 karakter.",
+      fieldPendanaan: "Pendanaan di Bank Pelapor",
+      fieldPendanaanHint:
+        "Sandi Form 06.02, isian bank: 1 ya (dibiayai BPR pelapor), 2 tidak (dibiayai peserta lain). Bila 2, No. Rekening harus dikosongkan.",
+      fieldKualitas: "Kualitas",
+      fieldKualitasHint:
+        "Sandi Form 06.02, isian bank: 1 lancar, 2 dalam perhatian khusus, 3 kurang lancar, 4 diragukan, 5 macet.",
+      fieldTunggakanPokok: "Nominal Tunggakan Pokok (rupiah penuh)",
+      fieldTunggakanPokokHint:
+        "Nominal tunggakan pokok (kolom XII). Rupiah penuh, tidak boleh negatif. Isian bank.",
+      fieldTunggakanBunga: "Nominal Tunggakan Bunga (rupiah penuh)",
+      fieldTunggakanBungaHint:
+        "Nominal tunggakan bunga (kolom XII). Rupiah penuh, tidak boleh negatif. Isian bank.",
+      fieldHariTunggakanPokok: "Hari Tunggakan Pokok",
+      fieldHariTunggakanPokokHint:
+        "Jumlah hari tunggakan pokok (kolom XIII), paling singkat 0. Isian bank.",
+      fieldHariTunggakanBunga: "Hari Tunggakan Bunga",
+      fieldHariTunggakanBungaHint:
+        "Jumlah hari tunggakan bunga (kolom XIII), paling singkat 0. Isian bank.",
+      fieldAsOf: "Tanggal posisi",
+      fieldAsOfHint: "Format YYYY-MM-DD. Wajib diisi.",
+      fieldStatus: "Status",
+      fieldNote: "Catatan",
+      kepesertaanPlaceholder: "Pilih status kepesertaan",
+      kepesertaanArranger: "1 - Arranger",
+      kepesertaanAnggota: "2 - Anggota sindikasi",
+      pendanaanPlaceholder: "Pilih pendanaan",
+      pendanaanYa: "1 - Ya",
+      pendanaanTidak: "2 - Tidak",
+      kualitasPlaceholder: "Pilih kualitas",
+      kualitasLancar: "1 - Lancar",
+      kualitasDalamPerhatianKhusus: "2 - Dalam Perhatian Khusus",
+      kualitasKurangLancar: "3 - Kurang Lancar",
+      kualitasDiragukan: "4 - Diragukan",
+      kualitasMacet: "5 - Macet",
+      statusAktif: "Aktif",
+      statusNonaktif: "Nonaktif",
+      validationCounterparty: "ID Pihak Lawan wajib diisi.",
+      validationCounterpartyLength: "ID Pihak Lawan maksimal 64 karakter.",
+      validationNoRekeningRequired:
+        "No. Rekening wajib diisi bila pendanaan di bank pelapor = 1 (ya).",
+      validationNoRekeningMustBeEmpty:
+        "No. Rekening harus dikosongkan bila pendanaan di bank pelapor = 2 (tidak).",
+      validationNoRekeningLength: "No. Rekening maksimal 64 karakter.",
+      validationJumlahPendanaan:
+        "Jumlah pendanaan sindikasi tidak boleh negatif.",
+      validationBagianPendanaan: "Bagian pendanaan tidak boleh negatif.",
+      validationSandiBankPesertaLength:
+        "Sandi bank peserta maksimal 16 karakter.",
+      validationPlafon: "Plafon tidak boleh negatif.",
+      validationBakiDebet: "Baki debet tidak boleh negatif.",
+      validationKepesertaan: "Pilih status kepesertaan.",
+      validationNomorPerjanjian: "Nomor Perjanjian wajib diisi.",
+      validationNomorPerjanjianLength: "Nomor Perjanjian maksimal 64 karakter.",
+      validationPendanaan: "Pilih pendanaan di bank pelapor.",
+      validationKualitas: "Pilih kualitas.",
+      validationTunggakanPokok: "Tunggakan pokok tidak boleh negatif.",
+      validationTunggakanBunga: "Tunggakan bunga tidak boleh negatif.",
+      validationHariTunggakanPokok: "Hari tunggakan pokok paling singkat 0.",
+      validationHariTunggakanBunga: "Hari tunggakan bunga paling singkat 0.",
+      validationAsOf: "Tanggal posisi wajib diisi.",
+      validationStatus: "Status register hanya AKTIF atau NONAKTIF.",
+    },
     strukturOrganisasi: {
       title: "Struktur Organisasi BPR (Form 00.19)",
       description:

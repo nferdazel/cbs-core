@@ -7,6 +7,7 @@ import { OJKAsetTetapCard } from "@/components/settings/OJKAsetTetapCard";
 import { OJKAYDACard } from "@/components/settings/OJKAYDACard";
 import { OJKBMPKCard } from "@/components/settings/OJKBMPKCard";
 import { OJKKepemilikanCard } from "@/components/settings/OJKKepemilikanCard";
+import { OJKKreditSindikasiCard } from "@/components/settings/OJKKreditSindikasiCard";
 import { OJKKelembagaanCard } from "@/components/settings/OJKKelembagaanCard";
 import { OJKOffBalanceCard } from "@/components/settings/OJKOffBalanceCard";
 import { OJKPenyertaanModalCard } from "@/components/settings/OJKPenyertaanModalCard";
@@ -45,6 +46,7 @@ export default function OjkIdentityPage() {
       <OJKAsetTetapCard />
       <OJKPenyertaanModalCard />
       <OJKAsetKeuanganLainnyaCard />
+      <OJKKreditSindikasiCard />
       <OJKStrukturOrganisasiCard />
       <OJKBMPKCard />
     </>

@@ -667,6 +667,45 @@ export interface AsetKeuanganItemsData {
 }
 
 /**
+ * domain.SindikasiItem (kredit_sindikasi.go), Form 06.02 daftar kredit sindikasi.
+ * Satu baris adalah satu rekening fasilitas kredit sindikasi; form tidak punya baris
+ * JUMLAH. Kolom I Sandi Kantor tidak diserialisasi (diambil dari kantor pelapor
+ * tunggal). Kolom III No. Identitas sengaja tidak ada: tidak disimpan (keputusan
+ * privasi) dan laporan menulis "-" beralasan. Tidak ada kolom turunan: seluruh angka
+ * adalah isian bank. No. Rekening kosong sah bila pendanaan bukan di bank pelapor
+ * (kolom X = sandi "2"). Nominal datang sebagai string/number desimal shopspring,
+ * tanggal sebagai RFC3339.
+ */
+export interface SindikasiItem {
+  id: string;
+  counterparty_id: string;
+  no_rekening?: string;
+  jumlah_pendanaan_sindikasi: string | number;
+  bagian_pendanaan: string | number;
+  sandi_bank_peserta: string;
+  plafon: string | number;
+  baki_debet: string | number;
+  status_kepesertaan_code: string;
+  nomor_perjanjian_induk: string;
+  pendanaan_di_bank_pelapor_code: string;
+  kualitas_code: string;
+  tunggakan_pokok: string | number;
+  tunggakan_bunga: string | number;
+  hari_tunggakan_pokok: number;
+  hari_tunggakan_bunga: number;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/kredit-sindikasi/items (kontrak pengisian). */
+export interface SindikasiItemsData {
+  items: SindikasiItem[] | null;
+}
+
+/**
  * domain.SuratBerhargaItem (surat_berharga.go), Form 04.00 daftar surat berharga.
  * Kolom I Sandi Kantor tidak diserialisasi (diambil dari kantor pelapor tunggal).
  * Tidak ada kolom turunan: XI "Biaya Perolehan Diamortisasi/Nilai Wajar" adalah

@@ -2250,6 +2250,135 @@ export const dictionaryEN: Dictionary = {
       validationAsOf: "Position date is required.",
       validationStatus: "Register status is only AKTIF or NONAKTIF.",
     },
+    kreditSindikasi: {
+      title: "Syndicated Loan Register (Form 06.02)",
+      description:
+        "List of syndicated loans per credit facility account, one row per account. This form has no JUMLAH (total) row and derives no value: every figure is entered by the bank. The account number is unique and must not be duplicated; leave it empty when the funding is not at the reporting bank (choose \u201c2 - Tidak\u201d). The debtor identity number (NIK/NPWP) is deliberately not stored for privacy. The office code comes from the reporting office, not this row. Delete means deactivate (status NONAKTIF): the account number stays locked and cannot be reused.",
+      loadError: "Failed to load the syndicated loan register.",
+      forbidden:
+        "You do not have permission to read the syndicated loan register (403).",
+      itemsTitle: "Syndicated loan rows",
+      empty: "No syndicated loans yet.",
+      add: "Add syndicated loan",
+      newTitle: "New syndicated loan",
+      editTitle: "Edit syndicated loan",
+      saved: "Syndicated loan register saved.",
+      deleted:
+        "The row was deactivated. The account number stays locked and cannot be reused.",
+      deleteConfirmTitle: "Deactivate this row?",
+      deleteConfirmBody:
+        "The row is deactivated (status NONAKTIF), not permanently deleted. Because the form requires a unique account number (must not be duplicated), the account number stays locked and cannot be reused by another row.",
+      deactivate: "Deactivate",
+      deactivating: "Deactivating...",
+      noRekeningUsed:
+        "This account number has already been used and cannot be reused, including by a NONAKTIF row. Use a different account number.",
+      colCounterparty: "Counterparty ID",
+      colNoRekening: "Account No.",
+      colJumlahPendanaan: "Total Syndication Funding",
+      colBagianPendanaan: "Funded Share",
+      colSandiBankPeserta: "Participant Bank Code",
+      colPlafon: "Plafond",
+      colBakiDebet: "Outstanding",
+      colKepesertaan: "Participation Status",
+      colNomorPerjanjian: "Syndicated Loan Agreement No.",
+      colPendanaan: "Funding at Reporting Bank",
+      colKualitas: "Quality",
+      colTunggakanPokok: "Principal Arrears",
+      colTunggakanBunga: "Interest Arrears",
+      colHariTunggakanPokok: "Principal Arrears Days",
+      colHariTunggakanBunga: "Interest Arrears Days",
+      colAsOf: "Position",
+      colStatus: "Status",
+      fieldCounterparty: "Counterparty ID",
+      fieldCounterpartyHint:
+        "Identifier of the counterparty the bank records (column II). Free text, required, up to 64 characters.",
+      fieldNoRekening: "Account No.",
+      fieldNoRekeningHint:
+        "Credit facility account number (column IV). Required when the funding is at the reporting bank, and must be empty when it is not. Unique and must not be duplicated, up to 64 characters.",
+      fieldJumlahPendanaan: "Total Syndication Funding (full rupiah)",
+      fieldJumlahPendanaanHint:
+        "Funding financed by ALL syndicate members under the loan agreement (column V). Full rupiah, must not be negative. Entered by the bank, not computed by the system.",
+      fieldBagianPendanaan: "Funded Share (full rupiah)",
+      fieldBagianPendanaanHint:
+        "Funding share financed by the reporting BPR under the loan agreement (column VI). Full rupiah, must not be negative. Entered by the bank.",
+      fieldSandiBankPeserta: "Participant Bank Code",
+      fieldSandiBankPesertaHint:
+        "Participant bank code referring to the OJK Reporting System (column VII). Verbatim text, up to 16 characters.",
+      fieldPlafon: "Plafond (full rupiah)",
+      fieldPlafonHint:
+        "Plafond in column VII. Full rupiah, must not be negative. Entered by the bank.",
+      fieldBakiDebet: "Outstanding (full rupiah)",
+      fieldBakiDebetHint:
+        "Outstanding balance in column VII. Full rupiah, must not be negative. Entered by the bank.",
+      fieldKepesertaan: "Participation Status",
+      fieldKepesertaanHint:
+        "Form 06.02 code, entered by the bank: 1 arranger/leader, 2 syndicate member. Not derived from other columns.",
+      fieldNomorPerjanjian: "Syndicated Loan Agreement No.",
+      fieldNomorPerjanjianHint:
+        "Number of the initial master agreement (the first agreement) without spaces (column IX). Required, up to 64 characters.",
+      fieldPendanaan: "Funding at Reporting Bank",
+      fieldPendanaanHint:
+        "Form 06.02 code, entered by the bank: 1 yes (financed by the reporting BPR), 2 no (financed by another participant). When 2, the Account No. must be empty.",
+      fieldKualitas: "Quality",
+      fieldKualitasHint:
+        "Form 06.02 code, entered by the bank: 1 current, 2 special mention, 3 substandard, 4 doubtful, 5 loss.",
+      fieldTunggakanPokok: "Principal Arrears (full rupiah)",
+      fieldTunggakanPokokHint:
+        "Principal arrears (column XII). Full rupiah, must not be negative. Entered by the bank.",
+      fieldTunggakanBunga: "Interest Arrears (full rupiah)",
+      fieldTunggakanBungaHint:
+        "Interest arrears (column XII). Full rupiah, must not be negative. Entered by the bank.",
+      fieldHariTunggakanPokok: "Principal Arrears Days",
+      fieldHariTunggakanPokokHint:
+        "Number of days of principal arrears (column XIII), at least 0. Entered by the bank.",
+      fieldHariTunggakanBunga: "Interest Arrears Days",
+      fieldHariTunggakanBungaHint:
+        "Number of days of interest arrears (column XIII), at least 0. Entered by the bank.",
+      fieldAsOf: "Position date",
+      fieldAsOfHint: "Format YYYY-MM-DD. Required.",
+      fieldStatus: "Status",
+      fieldNote: "Note",
+      kepesertaanPlaceholder: "Select a participation status",
+      kepesertaanArranger: "1 - Arranger",
+      kepesertaanAnggota: "2 - Syndicate member",
+      pendanaanPlaceholder: "Select funding",
+      pendanaanYa: "1 - Yes",
+      pendanaanTidak: "2 - No",
+      kualitasPlaceholder: "Select quality",
+      kualitasLancar: "1 - Current",
+      kualitasDalamPerhatianKhusus: "2 - Special mention",
+      kualitasKurangLancar: "3 - Substandard",
+      kualitasDiragukan: "4 - Doubtful",
+      kualitasMacet: "5 - Loss",
+      statusAktif: "Active",
+      statusNonaktif: "Inactive",
+      validationCounterparty: "Counterparty ID is required.",
+      validationCounterpartyLength: "Counterparty ID is up to 64 characters.",
+      validationNoRekeningRequired:
+        "Account No. is required when funding at the reporting bank = 1 (yes).",
+      validationNoRekeningMustBeEmpty:
+        "Account No. must be empty when funding at the reporting bank = 2 (no).",
+      validationNoRekeningLength: "Account No. is up to 64 characters.",
+      validationJumlahPendanaan:
+        "Total syndication funding must not be negative.",
+      validationBagianPendanaan: "Funded share must not be negative.",
+      validationSandiBankPesertaLength:
+        "Participant bank code is up to 16 characters.",
+      validationPlafon: "Plafond must not be negative.",
+      validationBakiDebet: "Outstanding must not be negative.",
+      validationKepesertaan: "Select a participation status.",
+      validationNomorPerjanjian: "Agreement No. is required.",
+      validationNomorPerjanjianLength: "Agreement No. is up to 64 characters.",
+      validationPendanaan: "Select funding at the reporting bank.",
+      validationKualitas: "Select quality.",
+      validationTunggakanPokok: "Principal arrears must not be negative.",
+      validationTunggakanBunga: "Interest arrears must not be negative.",
+      validationHariTunggakanPokok:
+        "Principal arrears days must be at least 0.",
+      validationHariTunggakanBunga: "Interest arrears days must be at least 0.",
+      validationAsOf: "Position date is required.",
+      validationStatus: "Register status is only AKTIF or NONAKTIF.",
+    },
     strukturOrganisasi: {
       title: "BPR Organisational Structure (Form 00.19)",
       description:
