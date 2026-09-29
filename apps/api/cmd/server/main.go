@@ -335,6 +335,13 @@ func main() {
 	suratBerhargaRepo := postgres.NewSuratBerhargaRegisterRepository(db)
 	suratBerhargaSvc := service.NewSuratBerhargaRegisterService(db, suratBerhargaRepo, auditRepo)
 
+	// Register kas valuta asing (Form 03.00): baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit (migrasi 000123). Kolom V Nilai Rupiah turunan III x IV;
+	// form relevan hanya bila BPR berstatus pedagang valuta asing. Tidak menyentuh angka
+	// jurnal maupun bagan akun.
+	kasValasRepo := postgres.NewKasValasRegisterRepository(db)
+	kasValasSvc := service.NewKasValasRegisterService(db, kasValasRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -365,11 +372,12 @@ func main() {
 		Penyertaan:      penyertaanRepo,
 		AsetKeuangan:    asetKeuanganRepo,
 		SuratBerharga:   suratBerhargaRepo,
+		KasValas:        kasValasRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

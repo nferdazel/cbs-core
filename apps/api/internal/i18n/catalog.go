@@ -341,14 +341,25 @@ const (
 
 	// Register surat berharga (Form 04.00). Galat berkode harus selaras dengan pemetaan
 	// HTTP di ojk_report_handler.go.
-	MsgSuratBerhargaReport                Code = "surat_berharga_report"
-	MsgSuratBerhargaSaved                 Code = "surat_berharga_saved"
-	MsgSuratBerhargaDeleted               Code = "surat_berharga_deleted"
-	MsgSuratBerhargaIDInvalid             Code = "surat_berharga_id_invalid"
-	MsgSuratBerhargaBankWide              Code = "surat_berharga_bank_wide"
-	MsgSuratBerhargaInputInvalid          Code = "surat_berharga_input_invalid"
-	MsgSuratBerhargaNotFound              Code = "surat_berharga_not_found"
-	MsgSuratBerhargaItemsListed           Code = "surat_berharga_items_listed"
+	MsgSuratBerhargaReport       Code = "surat_berharga_report"
+	MsgSuratBerhargaSaved        Code = "surat_berharga_saved"
+	MsgSuratBerhargaDeleted      Code = "surat_berharga_deleted"
+	MsgSuratBerhargaIDInvalid    Code = "surat_berharga_id_invalid"
+	MsgSuratBerhargaBankWide     Code = "surat_berharga_bank_wide"
+	MsgSuratBerhargaInputInvalid Code = "surat_berharga_input_invalid"
+	MsgSuratBerhargaNotFound     Code = "surat_berharga_not_found"
+	MsgSuratBerhargaItemsListed  Code = "surat_berharga_items_listed"
+
+	// Register kas valuta asing (Form 03.00). Galat berkode harus selaras dengan pemetaan
+	// HTTP di ojk_report_handler.go.
+	MsgKasValasReport                     Code = "kas_valas_report"
+	MsgKasValasSaved                      Code = "kas_valas_saved"
+	MsgKasValasDeleted                    Code = "kas_valas_deleted"
+	MsgKasValasIDInvalid                  Code = "kas_valas_id_invalid"
+	MsgKasValasBankWide                   Code = "kas_valas_bank_wide"
+	MsgKasValasInputInvalid               Code = "kas_valas_input_invalid"
+	MsgKasValasNotFound                   Code = "kas_valas_not_found"
+	MsgKasValasItemsListed                Code = "kas_valas_items_listed"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -773,6 +784,14 @@ var codeList = []Code{
 	MsgSuratBerhargaInputInvalid,
 	MsgSuratBerhargaNotFound,
 	MsgSuratBerhargaItemsListed,
+	MsgKasValasReport,
+	MsgKasValasSaved,
+	MsgKasValasDeleted,
+	MsgKasValasIDInvalid,
+	MsgKasValasBankWide,
+	MsgKasValasInputInvalid,
+	MsgKasValasNotFound,
+	MsgKasValasItemsListed,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2088,6 +2107,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgSuratBerhargaItemsListed: {
 		ID: "daftar baris register surat berharga",
 		EN: "marketable securities register items listed",
+	},
+	MsgKasValasReport: {
+		ID: "register kas valuta asing",
+		EN: "foreign currency cash register",
+	},
+	MsgKasValasSaved: {
+		ID: "data register kas valuta asing disimpan",
+		EN: "foreign currency cash register data saved",
+	},
+	MsgKasValasDeleted: {
+		ID: "data register kas valuta asing dihapus",
+		EN: "foreign currency cash register data deleted",
+	},
+	MsgKasValasIDInvalid: {
+		ID: "id register kas valuta asing bukan UUID yang sah",
+		EN: "foreign currency cash register id is not a valid UUID",
+	},
+	MsgKasValasBankWide: {
+		ID: "register kas valuta asing bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the foreign currency cash register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgKasValasInputInvalid: {
+		ID: "data register kas valuta asing tidak valid",
+		EN: "foreign currency cash register data is invalid",
+	},
+	MsgKasValasNotFound: {
+		ID: "data register kas valuta asing tidak ditemukan",
+		EN: "foreign currency cash register data was not found",
+	},
+	MsgKasValasItemsListed: {
+		ID: "daftar baris register kas valuta asing",
+		EN: "foreign currency cash register items listed",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

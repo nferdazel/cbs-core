@@ -675,6 +675,27 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register penyertaan modal belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 03.00 Daftar Kas dalam Valuta Asing: register kas valas per jenis valas yang
+	// bank perdagangkan (migrasi 000123). Hanya relevan bila BPR berstatus pedagang
+	// valuta asing; tanpa baris AKTIF pada bulan periode, form dinyatakan belum tersedia,
+	// bukan ditulis kosong. Form ini punya baris JUMLAH; kolom V Nilai Rupiah turunan
+	// III x IV.
+	if kv, ok := b.source.(KasValasRegisterSource); ok {
+		rows, err := kv.ListKasValasForOJK(ctx, periodEnd, actor)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "03.00", Name: formName("03.00"),
+				UnavailableReason: "belum ada register kas valuta asing berstatus AKTIF pada bulan periode (form hanya relevan bila BPR berstatus pedagang valuta asing)"})
+		} else {
+			tables = append(tables, BuildForm03_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "03.00", Name: formName("03.00"),
+			UnavailableReason: "sumber register kas valuta asing belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

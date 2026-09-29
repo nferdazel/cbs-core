@@ -86,6 +86,10 @@ type RepoSource struct {
 	// (surat_berharga_register, migrasi 000122). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada angka yang dikarang.
 	SuratBerharga domain.SuratBerhargaRegisterRepository
+	// KasValas menyediakan register kas valuta asing Form 03.00
+	// (kas_valas_register, migrasi 000123). Bila nil, form dinyatakan belum tersedia;
+	// tidak ada angka yang dikarang.
+	KasValas domain.KasValasRegisterRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -556,6 +560,19 @@ func (s RepoSource) ListSuratBerhargaForOJK(ctx context.Context, asOf time.Time,
 		return nil, nil
 	}
 	return s.SuratBerharga.ListSuratBerhargaForOJK(ctx, asOf)
+}
+
+// ListKasValasForOJK membaca baris register kas valas bank-wide yang as_of-nya pada bulan
+// asOf (kandidat Form 03.00). Kebijakan bank-wide ditegakkan di lapisan data: aktor
+// non-lintas cabang ditolak, bukan diberi sebagian.
+func (s RepoSource) ListKasValasForOJK(ctx context.Context, asOf time.Time, actor domain.Actor) ([]domain.KasValasItem, error) {
+	if err := pastikanLintasCabang(actor); err != nil {
+		return nil, err
+	}
+	if s.KasValas == nil {
+		return nil, nil
+	}
+	return s.KasValas.ListKasValasForOJK(ctx, asOf)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

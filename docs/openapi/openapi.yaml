@@ -3329,6 +3329,115 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kas-valas:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportKasValas
+      summary: Register kas valuta asing Form 03.00 (JSON)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan daftar kas valuta asing beserta
+        tabel Form 03.00 (5 kolom, dengan baris JUMLAH). Kolom V Nilai Rupiah adalah
+        turunan III x IV. Kolom II memakai sandi Lampiran 04. Form hanya relevan bila BPR
+        berstatus pedagang valuta asing (PVA). Kolom I Sandi Kantor diambil dari kantor
+        pelapor tunggal (bank_offices), bukan dari register.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kas-valas/items:
+    get:
+      tags: [Laporan]
+      operationId: listKasValasItems
+      summary: Daftar baris register kas valuta asing Form 03.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `kas_valas_register` untuk UI
+        edit dengan urutan deterministik, bukan tabel laporan. Kolom V Nilai Rupiah tidak
+        diserialisasi karena turunan III x IV.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertKasValasItem
+      summary: Simpan baris register kas valuta asing Form 03.00
+      description: >-
+        Izin: `system:config`. Membuat (id kosong) atau memperbarui (id terisi) satu jenis
+        valuta asing. `jenis_valas_code` adalah sandi Lampiran 04 (teks, maksimal 16
+        karakter). `nominal` adalah nilai valas original currency (2 desimal);
+        `kurs_tengah` adalah kurs tengah Bank Indonesia pada tanggal laporan atau
+        rata-rata kurs beli/jual (2 desimal). Kolom V Nilai Rupiah dihitung laporan.
+        `as_of` berformat YYYY-MM-DD. Perubahan teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid }
+                jenis_valas_code: { type: string, description: "Sandi Lampiran 04; teks apa adanya, maksimal 16 karakter." }
+                nominal: { type: number, description: "Nilai valas original currency, 2 desimal; isian bank." }
+                kurs_tengah: { type: number, description: "Kurs tengah (Rp), 2 desimal; isian bank." }
+                as_of: { type: string, description: "Format YYYY-MM-DD." }
+                status: { type: string, enum: [AKTIF, NONAKTIF] }
+                note: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/kas-valas/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteKasValasItem
+      summary: Hapus baris register kas valuta asing Form 03.00
+      description: >-
+        Izin: `system:config`. DELETE fisik: Form 03.00 tidak menetapkan nomor register
+        unik (tidak ada aturan no reuse/no recycle). Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/placements:
     get:
       tags: [Laporan]

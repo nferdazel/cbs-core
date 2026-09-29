@@ -242,8 +242,7 @@ var OJKBulananForms = []OJKFormDefinition{
 		UnavailableReason: "sudah terdaftar sebagai LAPORAN_TPPU_TPPT_PPSPM berstatus manual (definitions.go:105); dokumen PDF disusun di luar sistem dan tidak ikut bundel bulanan (PDF #300, #60)"},
 
 	// ── Laporan per Kantor (daftar resmi cetak -7-/-8-, PDF #59-60) ──
-	{Form: "03.00", Name: "Daftar Kas dalam Valuta Asing", Buildable: false,
-		UnavailableReason: "hanya tersedia valas sebagai pedagang valuta asing; belum ada tabel kas valas/tabel kurs dan pos 1101020000 sengaja tanpa sumber COA (mapping_review_test.go:54); status PVA sudah dicatat di ojk.report.pva_status (migrasi 000096:28) (PDF #126-128, #102)"},
+	{Form: "03.00", Name: "Daftar Kas dalam Valuta Asing", Buildable: true},
 	{Form: "04.00", Name: "Daftar Surat Berharga", Buildable: true},
 	{Form: "06.01", Name: "Daftar Agunan", Buildable: false,
 		UnavailableReason: "sumber loan_collaterals (migrasi 000036:31) + ojk_agunan_ppka_amount (000109:31) ada, tetapi kolom alamat agunan, nilai yang diagunkan, sandi jenis agunan Lampiran 01, dan PPKA per agunan belum ada (PDF #169-172, #301)"},

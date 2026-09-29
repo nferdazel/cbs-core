@@ -101,6 +101,10 @@ type OJKReportHandler struct {
 	// upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register surat berharga tetap
 	// terpasang tetapi gagal saat dipanggil.
 	suratBerharga domain.SuratBerhargaRegisterService
+	// kasValas menyediakan register kas valuta asing (Form 03.00) sekaligus operasi
+	// upsert/hapusnya. Boleh nil pada uji; tanpa itu rute register kas valas tetap
+	// terpasang tetapi gagal saat dipanggil.
+	kasValas domain.KasValasRegisterService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -129,7 +133,7 @@ type OJKReportHandler struct {
 // penyertaan modal (Form 16.00) dan boleh nil dengan perilaku yang sama. reference
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
 // dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:       ojkreport.NewBuilder(source),
 		source:        source,
@@ -146,6 +150,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		penyertaan:    penyertaan,
 		asetKeuangan:  asetKeuangan,
 		suratBerharga: suratBerharga,
+		kasValas:      kasValas,
 		bmpkAdmin:     bmpkAdmin,
 		placements:    placements,
 		reference:     reference,
@@ -308,6 +313,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/surat-berharga/items", h.UpsertSuratBerhargaItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/surat-berharga/items/{id}", h.DeleteSuratBerhargaItem)
+		// Register kas valuta asing (Form 03.00): baca cukup reports:export; pengisian dan
+		// daftar mentah UI memakai system:config dan teraudit di service. Empat rute saja.
+		// Form 03.00 tidak menetapkan nomor unik, sehingga penghapusan adalah DELETE fisik.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/kas-valas", h.ExportKasValas)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/kas-valas/items", h.ListKasValasItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kas-valas/items", h.UpsertKasValasItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kas-valas/items/{id}", h.DeleteKasValasItem)
 		// Pemilih penempatan pada bank lain untuk pengisian sandi OJK (Form 05.00):
 		// daftar id + label memakai system:config, sama seperti jalur tulisnya.
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
@@ -2176,6 +2192,139 @@ func writeSuratBerhargaError(w http.ResponseWriter, r *http.Request, err error) 
 	case errors.Is(err, domain.ErrSuratBerhargaNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	case errors.Is(err, domain.ErrSuratBerhargaBankWide):
+		Fail(w, r, http.StatusForbidden, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportKasValas menyajikan register kas valuta asing (Form 03.00) sebagai JSON untuk
+// periode YYYY-MM: daftar kas valas beserta tabel Form 03.00. Register bank-wide; aktor
+// non-lintas cabang ditolak 403 oleh layanan. Form ini punya baris JUMLAH; kolom V Nilai
+// Rupiah turunan III x IV; kolom I Sandi Kantor diambil dari kantor pelapor.
+func (h *OJKReportHandler) ExportKasValas(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.kasValas == nil {
+		InternalError(w, r, errors.New("sumber register kas valuta asing belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.kasValas.KasValasReport(r.Context(), period, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrKasValasBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "register kas valuta asing dicatat bank-wide (tidak menyimpan kantor); kolom Sandi Kantor belum punya sumber dan tidak dikarang"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgKasValasReport, map[string]any{
+		"report": report,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm03_00(report.Items, kantor)},
+	})
+}
+
+// ListKasValasItems menyajikan baris mentah register kas valas untuk UI edit
+// (GET /reports/ojk/kas-valas/items). Urutan deterministik dari repositori. Izin
+// system:config; tidak ada penegakan bank-wide karena ini pengaturan.
+func (h *OJKReportHandler) ListKasValasItems(w http.ResponseWriter, r *http.Request) {
+	if h.kasValas == nil {
+		InternalError(w, r, errors.New("sumber register kas valuta asing belum dikonfigurasi"))
+		return
+	}
+	items, err := h.kasValas.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register kas valuta asing: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKasValasItemsListed, map[string]any{"items": items})
+}
+
+// UpsertKasValasItem membuat/memperbarui satu baris
+// (PUT /reports/ojk/kas-valas/items). Decoder menolak bidang tak dikenal agar payload di
+// luar kontrak ditolak 422, bukan diam-diam diabaikan. Izin system:config; teraudit di
+// service.
+func (h *OJKReportHandler) UpsertKasValasItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateKasValasItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kasValas == nil {
+		InternalError(w, r, errors.New("sumber register kas valuta asing belum dikonfigurasi"))
+		return
+	}
+	item, err := h.kasValas.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKasValasError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKasValasSaved, item)
+}
+
+// DeleteKasValasItem menghapus satu baris menurut id (DELETE fisik; Form 03.00 tidak
+// menetapkan nomor register unik).
+func (h *OJKReportHandler) DeleteKasValasItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKasValasIDInvalid)
+		return
+	}
+	if h.kasValas == nil {
+		InternalError(w, r, errors.New("sumber register kas valuta asing belum dikonfigurasi"))
+		return
+	}
+	if err := h.kasValas.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKasValasError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKasValasDeleted, map[string]any{"id": id.String()})
+}
+
+// writeKasValasError memetakan galat register kas valas: baris tak ada 404, pelanggaran
+// bank-wide 403, sisanya 422 lewat Fail (validasi/pesan bisnis; galat berjejak internal
+// otomatis disembunyikan Fail).
+func writeKasValasError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrKasValasNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	case errors.Is(err, domain.ErrKasValasBankWide):
 		Fail(w, r, http.StatusForbidden, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)
