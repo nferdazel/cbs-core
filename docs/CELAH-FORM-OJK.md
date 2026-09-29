@@ -182,10 +182,10 @@ delapan anomali ini.
 
 ## 8. Audit query as-of (28 Sep 2026) — mana yang aman, mana yang sudah diputuskan
 
-**Keempat butir di bawah kini DIPUTUSKAN (29 Sep 2026) di `KEPUTUSAN-OJK.md §9`.**
-Ringkas: 1 (`lps_placements`) = keputusan semantik tegas + satu pertanyaan produk
-(dedup ditahan sengaja agar tidak menyembunyikan baris sah); 2/3/4 = penetapan semantik
-tanpa perubahan kode. Bagian di bawah tetap dipertahankan sebagai catatan audit.
+**Keempat butir di bawah kini DITUNTASKAN (29 Sep 2026) di `KEPUTUSAN-OJK.md §9`.**
+Ringkas: 1 (`lps_placements`) = invarian tabel ditegakkan di kode (guard menolak duplikat
+penempatan logis); 2/3/4 = penetapan semantik tanpa perubahan kode. Tidak ada pertanyaan
+produk tersisa. Bagian di bawah tetap dipertahankan sebagai catatan audit.
 
 Audit baca-saja terhadap seluruh sumber laporan yang memakai `asOf`/`periodEnd`,
 berfokus pada multiplicitas baris (ganda vs hilang). Ringkasnya:
@@ -203,10 +203,11 @@ per `loan_number`).
    jalur INSERT di aplikasi** — diisi bank lewat SQL. Bila bank menyimpan snapshot per
    bulan, semua baris terambil dan Form 05.00 menampilkan baris ganda (`form05.go:228-237`
    tanpa dedup). **Keputusan 29 Sep 2026 (`KEPUTUSAN-OJK.md §9.1`):** `as_of` = posisi per
-   tanggal laporan. Dedup **tidak** dipasang sekarang karena tabel **tidak punya identitas
-   penempatan** — kunci `(coa_code, counterparty_bank, placement_type)` salah (dua deposito
-   berbeda di bank sama bisa sah). Satu pertanyaan produk diangkat: pola snapshot berulang
-   vs satu baris ditimpa, dan bolehkah menambah identitas penempatan.
+   tanggal laporan. Invarian "satu baris per penempatan" (sudah tertulis di
+   `CKPN-SIAP-RILIS.md`) kini **ditegakkan**: `ListPlacements` menolak dengan galat jelas
+   bila penempatan logis muncul lebih dari sekali, alih-alih menghitung dobel atau
+   menyembunyikan baris. `DISTINCT ON` tidak dipakai; dua penempatan berbeda di bank sama
+   tetap dua baris sah.
 2. **`off_balance_items` → Form 01.01.** `off_balance_repo.go:69-70` memakai
    `status='AKTIF'` (keadaan kini) untuk semua bulan, dan `:123` menimpa `as_of` saat edit.
    **Keputusan 29 Sep 2026 (`§9.2`):** perilaku keadaan-kini itu **benar** — komitmen/

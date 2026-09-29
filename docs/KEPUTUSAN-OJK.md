@@ -109,8 +109,9 @@ Rujukan: `docs/CELAH-LAPORAN-OJK.md` (triase), `docs/LAMPIRAN-OJK.md` (sumber sa
 ## 9. Audit as-of — diputuskan (29 Sep 2026, bertindak sebagai SME)
 
 Empat pertanyaan §8 `CELAH-FORM-OJK.md` sebelumnya ditahan "menunggu praktik bank".
-Ketiganya diputuskan tegas di sini dengan dasar tertulis; satu (9.1) ternyata menuntut
-keputusan produk yang tidak boleh dikarang, jadi diangkat sebagai pertanyaan tunggal.
+**Keempatnya kini diputuskan tegas** dengan dasar tertulis; tidak ada yang dikembalikan ke
+bank sebagai "terserah". 9.1 menemukan invarian tabel yang sudah tertulis dan
+menegakkannya di kode.
 
 ### 9.1 `lps_placements.as_of` = snapshot posisi per tanggal — **keputusan + satu pertanyaan produk**
 
@@ -126,20 +127,25 @@ keputusan produk yang tidak boleh dikarang, jadi diangkat sebagai pertanyaan tun
   OJK memuat posisi ("Baki Debet"), bukan akumulasi riwayat. Ini penetapan cara baca,
   bukan pengarang angka.
 - **Mengapa TIDAK langsung `DISTINCT ON`**: tanpa identitas penempatan, dedup hanya bisa
-  memakai `(coa_code, counterparty_bank, placement_type)`. Kunci itu **salah** — dua
-  deposito berjangka berbeda di bank yang sama dengan COA dan tipe sama adalah **dua
-  penempatan sah**, akan tersembunyi satu. Menutup bug dengan bug baru bukan perbaikan.
-- **Keputusan yang diambil**: **jangan** menambahkan dedup berbasis kunci yang salah.
-  Perbaikan benar menuntut **identitas penempatan** unik per penempatan dan tetap lintas
-  tanggal; menambah kolom + mewajibkannya diisi bank adalah keputusan produk yang tidak
-  boleh saya karang.
-- **Pertanyaan produk (satu-satunya yang saya angkat)**:
-  1. Apakah bank menyimpan **snapshot berulang** (baris baru tiap bulan) atau **satu baris
-     yang diperbarui** (`as_of` digeser)? Bila satu baris: tidak ada masalah sama sekali.
-  2. Bila snapshot berulang: boleh menambah kolom **identitas penempatan** (nomor bilyet/
-     rekening penempatan) sebagai kunci natural, dan dapatkah bank mengisinya?
-- **Sisa milik bank**: kapan snapshot disimpan (harian/bulanan) — bebas setelah 1–2
-  dijawab. Tidak ada kode diubah sebelum itu, agar tidak menyembunyikan data sah.
+  memakai `(coa_code, counterparty_bank, placement_type)`. Kunci itu **salah untuk
+  menggabungkan baris** — dua deposito berjangka berbeda di bank yang sama dengan COA dan
+  tipe sama adalah **dua penempatan sah**, akan tersembunyi satu. Menutup bug dengan bug
+  baru bukan perbaikan.
+- **Koreksi (sumber ditemukan)**: invarian tabel **sudah tertulis** di
+  `docs/CKPN-SIAP-RILIS.md`: "satu baris per penempatan, `as_of` adalah keadaan terkini
+  (diperbarui bank saat barisnya diubah); histori asesmen CKPN tersimpan di
+  `pabl_ckpn_assessments`, bukan dengan menduplikasi baris". Artinya pertanyaan "snapshot
+  berulang vs satu baris ditimpa" **tidak perlu diajukan**: jawabannya satu baris ditimpa.
+  Dua baris untuk penempatan logis yang sama adalah **pelanggaran invarian**, bukan variasi
+  sah.
+- **Keputusan (final)**: invarian di atas **ditegakkan di kode**. `ListPlacements` menolak
+  pembacaan dengan galat jelas bila mendapati penempatan logis yang sama muncul lebih dari
+  sekali, alih-alih menghitung dobel atau menyembunyikan salah satunya. `DISTINCT ON` tetap
+  **tidak** dipakai (guard mendeteksi, bukan menggabungkan). Dua penempatan berbeda di bank
+  sama tetap dua baris sah dan tidak ditandai.
+- **Sisa milik bank**: kapan bank memperbarui `as_of` — bebas; invarian hanya menuntut satu
+  baris per penempatan. Kolom identitas penempatan **tidak** diperlukan dan **tidak**
+  ditambahkan.
 
 ### 9.2 `off_balance_items.status` = keadaan-kini, bukan snapshot per tanggal
 
@@ -173,13 +179,13 @@ keputusan produk yang tidak boleh dikarang, jadi diangkat sebagai pertanyaan tun
 - **Konsekuensi**: ketiadaan `as_of` pada BMPK adalah **benar**, bukan celah. Tidak ada
   perubahan kode.
 
-**Ringkas**: 9.1 = keputusan semantik tegas + satu pertanyaan produk (perbaikan dedup
-ditahan sengaja agar tidak menyembunyikan baris sah); 9.2/9.3/9.4 = penetapan semantik
-tanpa perubahan kode. Verifikasi pemetaan COA & ratifikasi parameter CKPN tetap milik
-bank/akuntan dan tidak diklaim selesai di sini.
+**Ringkas**: 9.1 = invarian tabel ditegakkan di kode (guard menolak duplikat penempatan
+logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa perubahan
+kode. Verifikasi pemetaan COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan
+tidak diklaim selesai di sini.
 
 ---
 
-Semua butir implementable kini dikerjakan; tidak ada lagi celah kode — sisa hanya
-keputusan milik bank (verifikasi pemetaan, ratifikasi parameter, partisipasi program,
-jawaban 9.1) dan pertanyaan produk tunggal di §9.1.
+Semua butir implementable kini dikerjakan; tidak ada lagi celah kode dan tidak ada
+pertanyaan produk tersisa dari audit as-of — sisa hanya milik bank (verifikasi pemetaan,
+ratifikasi parameter CKPN, partisipasi program).

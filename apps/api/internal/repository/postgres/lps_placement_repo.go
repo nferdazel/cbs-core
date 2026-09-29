@@ -161,7 +161,46 @@ func (r *LPSPlacementRepository) ListPlacements(ctx context.Context, asOf time.T
 		}
 		list = append(list, *p)
 	}
-	return list, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Invarian tabel (docs/CKPN-SIAP-RILIS.md): satu baris per penempatan, as_of adalah
+	// keadaan terkini yang diperbarui bank saat baris berubah. Bila karena sebab apa pun
+	// muncul dua baris untuk penempatan logis yang sama, laporan TIDAK boleh diam-diam
+	// menghitung keduanya (dobel) maupun menyembunyikan salah satunya. Ditolak dengan
+	// galat jelas supaya pelanggaran invarian terlihat dan diperbaiki di sumbernya.
+	if dup, ok := firstDuplicatePlacement(list); ok {
+		return nil, fmt.Errorf(
+			"invarian penempatan LPS dilanggar: %s di bank %q tipe %s punya lebih dari satu baris; tabel harus menyimpan satu baris per penempatan (as_of diperbarui, bukan diduplikasi)",
+			dup.coaCode, dup.counterpartyBank, dup.placementType)
+	}
+	return list, nil
+}
+
+// duplicatePlacementKey adalah identitas logis satu penempatan: akun COA, bank lawan, dan
+// jenis penempatan. Dipakai HANYA untuk mendeteksi pelanggaran invarian, bukan untuk
+// menggabungkan baris (penggabungan akan menyembunyikan data).
+type duplicatePlacementKey struct {
+	coaCode          string
+	counterpartyBank string
+	placementType    string
+}
+
+// firstDuplicatePlacement mengembalikan kunci pertama yang muncul lebih dari sekali.
+func firstDuplicatePlacement(list []domain.LPSPlacement) (duplicatePlacementKey, bool) {
+	seen := make(map[duplicatePlacementKey]struct{}, len(list))
+	for _, p := range list {
+		key := duplicatePlacementKey{
+			coaCode:          p.COACode,
+			counterpartyBank: p.CounterpartyBank,
+			placementType:    string(p.PlacementType),
+		}
+		if _, exists := seen[key]; exists {
+			return key, true
+		}
+		seen[key] = struct{}{}
+	}
+	return duplicatePlacementKey{}, false
 }
 
 // LockPlacementTx membaca satu penempatan dengan SELECT ... FOR UPDATE di dalam
