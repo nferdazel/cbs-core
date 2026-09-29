@@ -452,6 +452,27 @@ export interface OffBalanceItemsData {
   items: OffBalanceItem[] | null;
 }
 
+/** domain.AYDAItem (ayda.go) — Form 07.00 daftar agunan yang diambil alih. */
+export interface AYDAItem {
+  id: string;
+  collateral_type_code: string;
+  collateral_address: string;
+  acquisition_date: string;
+  initial_recognition_value: string | number;
+  accumulated_impairment: string | number;
+  net_realizable_value: string | number;
+  as_of: string;
+  status: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/ayda/items (kontrak pengisian). */
+export interface AYDAItemsData {
+  items: AYDAItem[] | null;
+}
+
 /** domain.BMPKRelatedParty (bmpk.go) — penandaan pihak terkait per nasabah. */
 export interface BMPKRelatedParty {
   customer_id: string;
