@@ -2705,6 +2705,80 @@ export const dictionaryID = {
       validationJumlah: "Jumlah wajib diisi.",
       validationJumlahNegatif: "Jumlah tidak boleh negatif.",
     },
+    hapusBuku: {
+      title: "Aset Produktif yang Dihapus Buku (Form 15.00)",
+      description:
+        "Daftar aset produktif yang telah dihapus buku — kredit maupun penempatan pada bank lain. Isi jenis aset (10 kredit / 20 penempatan), identitas pihak lawan, jenis debitur dan hubungan dengan bank, tanggal hapus buku, saldo pokok dan tunggakan bunga (saat hapus buku, akumulasi tertagih, dan posisi laporan), serta agunan saat hapus buku. Seluruh nominal adalah isian bank, tidak dihitung sistem.",
+      loadError:
+        "Gagal memuat daftar aset produktif yang dihapus buku Form 15.00.",
+      forbidden: "Anda tidak memiliki izin membaca daftar hapus buku (403).",
+      itemsTitle: "Aset produktif dihapus buku",
+      empty: "Belum ada aset produktif yang dihapus buku.",
+      saved: "Data hapus buku Form 15.00 tersimpan.",
+      deleted: "Data hapus buku Form 15.00 dihapus.",
+      addTitle: "Tambah baris hapus buku",
+      editTitle: "Ubah baris hapus buku",
+      deleteConfirm:
+        "Hapus baris hapus buku ini? Tindakan ini tidak dapat dibatalkan.",
+      colTanggal: "Tanggal Hapus Buku",
+      colJenisAset: "Jenis Aset",
+      colRekening: "No. Rekening",
+      colPokokPosisi: "Saldo Pokok Per Posisi",
+      colBungaPosisi: "Tunggakan Bunga Per Posisi",
+      fieldJenisAset: "Jenis Aset",
+      fieldJenisAsetHint:
+        "Sandi Form 15.00 kolom IV: 10 Kredit yang Diberikan, 20 Penempatan pada Bank Lain.",
+      fieldPihakLawan: "ID Pihak Lawan / Sandi Bank",
+      fieldPihakLawanHint:
+        "Kolom II: ID pihak lawan debitur untuk kredit, sandi bank untuk penempatan pada bank lain.",
+      fieldNomorRekening: "No. Rekening",
+      fieldNomorRekeningHint:
+        "Kolom III: nomor rekening saat dihapus buku (kredit) atau nomor rekening penempatan.",
+      fieldJenisDebitur: "Jenis Debitur (Lampiran 02)",
+      fieldJenisDebiturHint:
+        "Kolom V: hanya untuk kredit (jenis aset 10); boleh dikosongkan untuk penempatan.",
+      fieldHubungan: "Hubungan dengan Bank",
+      fieldHubunganHint:
+        "Sandi Form 15.00 kolom VI: 11 Terkait Dalam Rangka Kesejahteraan, 12 Terkait Lainnya, 20 Tidak Terkait.",
+      fieldTanggal: "Tanggal Hapus Buku",
+      fieldTanggalHint: "Kolom VII, format YYYY-MM-DD. Wajib.",
+      sectionPokok: "Saldo Pokok (kolom VIII)",
+      sectionBunga: "Tunggakan Bunga (kolom IX)",
+      sectionAgunan: "Agunan (kolom X)",
+      fieldPokokSaatHapus: "VIII.a Saat Hapus Buku",
+      fieldPokokAkumTertagih: "VIII.b Akumulasi Tertagih",
+      fieldPokokPerPosisi: "VIII.c Per Posisi Laporan",
+      fieldBungaSaatHapus: "IX.a Saat Hapus Buku",
+      fieldBungaAkumTertagih: "IX.b Akumulasi Tertagih",
+      fieldBungaAkumTambahan: "IX.c Akumulasi Tambahan Bunga Berjalan",
+      fieldBungaPerPosisi: "IX.d Per Posisi Laporan",
+      fieldAgunanJenis: "X.a Jenis Agunan (Lampiran 01)",
+      fieldAgunanJenisHint:
+        "Sandi Lampiran 01. Tanpa agunan diserahkan diisi 299.",
+      fieldAgunanAlamat: "X.b Alamat Agunan",
+      fieldAgunanAlamatHint:
+        'Alamat lengkap agunan. Tanpa agunan, form menulis tanda hubung "-".',
+      fieldAgunanNilai: "X.c Nilai Agunan",
+      fieldAgunanNilaiHint:
+        "Nominal nilai pasar hasil penilaian terakhir. Tanpa agunan diisi 0.",
+      nominalHint:
+        "Rupiah penuh; boleh 0. Kosong dianggap 0. Tidak boleh negatif.",
+      fieldNote: "Catatan internal",
+      fieldNoteHint:
+        "Catatan bank untuk diri sendiri; tidak ikut menjadi kolom form.",
+      jenisPlaceholder: "Pilih jenis aset",
+      hubunganPlaceholder: "Pilih hubungan",
+      jenisKredit: "10 - Kredit yang Diberikan",
+      jenisPenempatan: "20 - Penempatan pada Bank Lain",
+      hubunganKesejahteraan: "11 - Terkait Dalam Rangka Kesejahteraan",
+      hubunganTerkaitLain: "12 - Terkait Lainnya",
+      hubunganTidakTerkait: "20 - Tidak Terkait",
+      validationJenisAset: "Pilih jenis aset.",
+      validationHubungan: "Pilih hubungan dengan bank.",
+      validationTanggal: "Tanggal hapus buku wajib diisi.",
+      validationNominal: "Nominal harus berupa angka (rupiah penuh).",
+      validationNominalNegatif: "Nominal tidak boleh negatif.",
+    },
     form0011: {
       title: "Jaringan Kantor & TPE (Form 00.11)",
       description:

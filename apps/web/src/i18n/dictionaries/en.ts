@@ -2709,6 +2709,78 @@ export const dictionaryEN: Dictionary = {
       validationJumlah: "Amount is required.",
       validationJumlahNegatif: "Amount must not be negative.",
     },
+    hapusBuku: {
+      title: "Written-off Productive Assets (Form 15.00)",
+      description:
+        "Productive assets that have been written off — loans and placements with other banks. Enter asset type (10 loan / 20 placement), counterparty identity, debtor type and relationship with the bank, write-off date, principal balance and interest arrears (at write-off, cumulative recovered, and reporting position), and collateral at write-off. All amounts are entered by the bank, not computed by the system.",
+      loadError:
+        "Failed to load the Form 15.00 written-off productive asset list.",
+      forbidden: "You do not have permission to read the write-off list (403).",
+      itemsTitle: "Written-off productive assets",
+      empty: "No productive assets written off yet.",
+      saved: "Form 15.00 write-off data saved.",
+      deleted: "Form 15.00 write-off data deleted.",
+      addTitle: "Add write-off row",
+      editTitle: "Edit write-off row",
+      deleteConfirm: "Delete this write-off row? This action cannot be undone.",
+      colTanggal: "Write-off Date",
+      colJenisAset: "Asset Type",
+      colRekening: "Account No.",
+      colPokokPosisi: "Principal at Reporting Position",
+      colBungaPosisi: "Interest Arrears at Reporting Position",
+      fieldJenisAset: "Asset Type",
+      fieldJenisAsetHint:
+        "Form 15.00 column IV code: 10 Loan, 20 Placement with Other Bank.",
+      fieldPihakLawan: "Counterparty ID / Bank Code",
+      fieldPihakLawanHint:
+        "Column II: counterparty ID for loans, bank code for placements with other banks.",
+      fieldNomorRekening: "Account No.",
+      fieldNomorRekeningHint:
+        "Column III: account number at write-off (loan) or placement account number.",
+      fieldJenisDebitur: "Debtor Type (Lampiran 02)",
+      fieldJenisDebiturHint:
+        "Column V: only for loans (asset type 10); may be left empty for placements.",
+      fieldHubungan: "Relationship with the Bank",
+      fieldHubunganHint:
+        "Form 15.00 column VI code: 11 Related for Welfare, 12 Other Related, 20 Not Related.",
+      fieldTanggal: "Write-off Date",
+      fieldTanggalHint: "Column VII, format YYYY-MM-DD. Required.",
+      sectionPokok: "Principal Balance (column VIII)",
+      sectionBunga: "Interest Arrears (column IX)",
+      sectionAgunan: "Collateral (column X)",
+      fieldPokokSaatHapus: "VIII.a At Write-off",
+      fieldPokokAkumTertagih: "VIII.b Cumulative Recovered",
+      fieldPokokPerPosisi: "VIII.c At Reporting Position",
+      fieldBungaSaatHapus: "IX.a At Write-off",
+      fieldBungaAkumTertagih: "IX.b Cumulative Recovered",
+      fieldBungaAkumTambahan: "IX.c Cumulative Accrued Interest",
+      fieldBungaPerPosisi: "IX.d At Reporting Position",
+      fieldAgunanJenis: "X.a Collateral Type (Lampiran 01)",
+      fieldAgunanJenisHint:
+        "Lampiran 01 code. When no collateral was submitted, enter 299.",
+      fieldAgunanAlamat: "X.b Collateral Address",
+      fieldAgunanAlamatHint:
+        'Full collateral address. With no collateral, the report writes a hyphen "-".',
+      fieldAgunanNilai: "X.c Collateral Value",
+      fieldAgunanNilaiHint:
+        "Market value from the latest appraisal. With no collateral, enter 0.",
+      nominalHint:
+        "Full rupiah; zero is valid. Empty is treated as zero. Must not be negative.",
+      fieldNote: "Internal note",
+      fieldNoteHint: "The bank's own note; it does not become a form column.",
+      jenisPlaceholder: "Select an asset type",
+      hubunganPlaceholder: "Select a relationship",
+      jenisKredit: "10 - Loan",
+      jenisPenempatan: "20 - Placement with Other Bank",
+      hubunganKesejahteraan: "11 - Related for Welfare",
+      hubunganTerkaitLain: "12 - Other Related",
+      hubunganTidakTerkait: "20 - Not Related",
+      validationJenisAset: "Select an asset type.",
+      validationHubungan: "Select a relationship with the bank.",
+      validationTanggal: "Write-off date is required.",
+      validationNominal: "Amount must be a number (full rupiah).",
+      validationNominalNegatif: "Amount must not be negative.",
+    },
     form0011: {
       title: "Office Network & EDC/ATM (Form 00.11)",
       description:

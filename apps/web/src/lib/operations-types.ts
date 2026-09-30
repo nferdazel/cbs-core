@@ -938,3 +938,59 @@ export interface UpdateModalPayload {
   jumlah: string;
   note: string;
 }
+
+/**
+ * domain.HapusBukuItem (form15_00_hapus_buku.go), Form 15.00 Daftar Aset Produktif yang
+ * Dihapus Buku. Register pelaporan kredit maupun penempatan pada bank lain yang dihapus
+ * buku; bukan turunan dari loans. Kolom I Sandi Kantor tidak diserialisasi. Seluruh
+ * nominal isian bank (rupiah penuh). Semua nominal datang sebagai desimal shopspring.
+ */
+export interface HapusBukuItem {
+  id: string;
+  jenis_aset_code: string;
+  pihak_lawan_id: string;
+  nomor_rekening: string;
+  jenis_debitur_code: string;
+  hubungan_bank_code: string;
+  tanggal_hapus_buku: string;
+  saldo_pokok_saat_hapus: string | number;
+  saldo_pokok_akum_tertagih: string | number;
+  saldo_pokok_per_posisi: string | number;
+  bunga_saat_hapus: string | number;
+  bunga_akum_tertagih: string | number;
+  bunga_akum_tambahan: string | number;
+  bunga_per_posisi: string | number;
+  agunan_jenis_code: string;
+  agunan_alamat: string;
+  agunan_nilai: string | number;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/hapus-buku/items (kontrak pengisian Form 15.00). */
+export interface HapusBukuItemsData {
+  items: HapusBukuItem[] | null;
+}
+
+/** Payload PUT /reports/ojk/hapus-buku/items (Form 15.00). id kosong = buat baru. */
+export interface UpdateHapusBukuPayload {
+  id?: string;
+  jenis_aset_code: string;
+  pihak_lawan_id: string;
+  nomor_rekening: string;
+  jenis_debitur_code: string;
+  hubungan_bank_code: string;
+  tanggal_hapus_buku: string;
+  saldo_pokok_saat_hapus: string;
+  saldo_pokok_akum_tertagih: string;
+  saldo_pokok_per_posisi: string;
+  bunga_saat_hapus: string;
+  bunga_akum_tertagih: string;
+  bunga_akum_tambahan: string;
+  bunga_per_posisi: string;
+  agunan_jenis_code: string;
+  agunan_alamat: string;
+  agunan_nilai: string;
+  note: string;
+}
