@@ -904,3 +904,37 @@ export interface UpdatePihakTerkaitPayload {
   hubungan_code: string;
   note: string;
 }
+
+/**
+ * domain.ModalItem (form00_06_modal.go), Form 00.06 Daftar Modal Disetor, Modal
+ * Sumbangan, dan Dana Setoran Modal - Ekuitas. Register peristiwa modal: bank mencatat
+ * bentuk setoran (I), tanggal persetujuan otoritas (II), jenis modal (III), dan jumlah
+ * (IV). Kolom I Sandi Kantor tidak diserialisasi. Jumlah adalah isian bank; nol sah.
+ * tanggal_persetujuan boleh null (belum dicatat). Nominal datang sebagai desimal
+ * shopspring (string/number).
+ */
+export interface ModalItem {
+  id: string;
+  jenis_code: string;
+  tanggal_persetujuan: string | null;
+  jenis_modal_code: string;
+  jumlah: string | number;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/modal/items (kontrak pengisian Form 00.06). */
+export interface ModalItemsData {
+  items: ModalItem[] | null;
+}
+
+/** Payload PUT /reports/ojk/modal/items (Form 00.06). id kosong = buat baru. */
+export interface UpdateModalPayload {
+  id?: string;
+  jenis_code: string;
+  tanggal_persetujuan: string;
+  jenis_modal_code: string;
+  jumlah: string;
+  note: string;
+}

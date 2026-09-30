@@ -2660,6 +2660,51 @@ export const dictionaryID = {
       validationJenis: "Pilih jenis pihak terkait.",
       validationHubungan: "Pilih hubungan pihak terkait.",
     },
+    modal: {
+      title: "Daftar Modal Disetor, Modal Sumbangan & DSM (Form 00.06)",
+      description:
+        "Modal dalam bentuk dana, tanah/bangunan yang dapat atau tidak dapat diperhitungkan sebagai modal inti. Isi jenis (01/02/03), tanggal persetujuan otoritas, jenis modal (Modal Disetor / Modal Sumbangan / Dana Setoran Modal - Ekuitas), dan jumlah yang diakui sebagai modal. Nilai ini TIDAK diambil dari saldo bagan akun karena saldo tidak menyimpan bentuk setoran maupun tanggal persetujuan otoritas.",
+      loadError: "Gagal memuat daftar modal Form 00.06.",
+      forbidden: "Anda tidak memiliki izin membaca daftar modal (403).",
+      itemsTitle: "Daftar modal",
+      empty: "Belum ada modal yang tercatat.",
+      saved: "Data modal Form 00.06 tersimpan.",
+      deleted: "Data modal Form 00.06 dihapus.",
+      addTitle: "Tambah modal",
+      editTitle: "Ubah modal",
+      deleteConfirm:
+        "Hapus baris modal ini? Tindakan ini tidak dapat dibatalkan.",
+      colTanggal: "Tanggal Persetujuan Otoritas",
+      colJenisModal: "Jenis Modal",
+      colJumlah: "Jumlah",
+      fieldJenis: "Jenis",
+      fieldJenisHint:
+        "Sandi Form 00.06 kolom I: 01 Dana, 02 Tanah dan bangunan yang dapat diperhitungkan sebagai modal inti, 03 Tanah dan bangunan yang tidak dapat diperhitungkan sebagai modal inti.",
+      fieldTanggal: "Tanggal Persetujuan Otoritas",
+      fieldTanggalHint:
+        'Format YYYY-MM-DD. Boleh dikosongkan bila modal belum disetujui otoritas; form akan menulis "-".',
+      fieldJenisModal: "Jenis Modal",
+      fieldJenisModalHint:
+        "Sandi Form 00.06 kolom III: 01 Modal Disetor, 02 Modal Sumbangan, 03 Dana Setoran Modal - Ekuitas.",
+      fieldJumlah: "Jumlah (rupiah penuh)",
+      fieldJumlahHint:
+        "Nominal yang diakui sebagai modal. Rupiah penuh, tidak boleh negatif; nol sah.",
+      fieldNote: "Catatan internal",
+      fieldNoteHint:
+        "Catatan bank untuk diri sendiri; tidak ikut menjadi kolom form.",
+      jenisPlaceholder: "Pilih jenis",
+      jenisModalPlaceholder: "Pilih jenis modal",
+      jenisDana: "01 - Dana",
+      jenisTanahBangunanInti: "02 - Tanah/Bangunan (Modal Inti)",
+      jenisTanahBangunanNonInti: "03 - Tanah/Bangunan (Bukan Modal Inti)",
+      jenisModalDisetor: "01 - Modal Disetor",
+      jenisModalSumbangan: "02 - Modal Sumbangan",
+      jenisModalDanaSetoranEkuitas: "03 - Dana Setoran Modal - Ekuitas",
+      validationJenis: "Pilih jenis.",
+      validationJenisModal: "Pilih jenis modal.",
+      validationJumlah: "Jumlah wajib diisi.",
+      validationJumlahNegatif: "Jumlah tidak boleh negatif.",
+    },
     form0011: {
       title: "Jaringan Kantor & TPE (Form 00.11)",
       description:
