@@ -369,6 +369,12 @@ func main() {
 	modalRepo := postgres.NewModalRepository(db)
 	modalSvc := service.NewModalService(db, modalRepo, auditRepo)
 
+	// Register aset produktif yang dihapus buku Form 15.00: register pelaporan
+	// (hapus_buku_register, migrasi 000129), baca bank-wide + jalur tulis berizin
+	// system:config yang teraudit. Memuat kredit maupun penempatan pada bank lain.
+	hapusBukuRepo := postgres.NewHapusBukuRepository(db)
+	hapusBukuSvc := service.NewHapusBukuService(db, hapusBukuRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -404,11 +410,12 @@ func main() {
 		Agunan:          agunanRepo,
 		PihakTerkait:    pihakTerkaitRepo,
 		Modal:           modalRepo,
+		HapusBuku:       hapusBukuRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, pihakTerkaitSvc, modalSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, pihakTerkaitSvc, modalSvc, hapusBukuSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)

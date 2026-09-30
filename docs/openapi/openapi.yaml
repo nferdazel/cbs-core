@@ -3922,6 +3922,127 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/hapus-buku:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportHapusBuku
+      summary: Daftar Aset Produktif yang Dihapus Buku (Form 15.00)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan register aset produktif yang
+        dihapus buku beserta tabel Form 15.00 (10 kolom logis, DENGAN baris JUMLAH pada
+        kolom nominal). Memuat kredit (Jenis Aset 10) maupun penempatan pada bank lain
+        (20). Seluruh nominal adalah isian bank. Kolom I Sandi Kantor diambil dari kantor
+        pelapor tunggal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/hapus-buku/items:
+    get:
+      tags: [Laporan]
+      operationId: listHapusBukuItems
+      summary: Daftar baris register hapus buku Form 15.00 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `hapus_buku_register` untuk UI
+        edit dengan urutan deterministik, bukan tabel laporan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertHapusBukuItem
+      summary: Simpan satu baris register hapus buku Form 15.00
+      description: >-
+        Izin: `system:config`. Menyimpan satu baris: `jenis_aset_code` (kolom IV, sandi PDF
+        #220: 10/20), `pihak_lawan_id` + `nomor_rekening` (kolom II/III), `jenis_debitur_code`
+        (kolom V, Lampiran 02, hanya untuk 10), `hubungan_bank_code` (kolom VI: 11/12/20),
+        `tanggal_hapus_buku` (kolom VII, YYYY-MM-DD, wajib), saldo pokok VIII a/b/c dan
+        tunggakan bunga IX a/b/c/d (rupiah penuh sebagai string; tidak boleh negatif, nol
+        sah), dan agunan X (`agunan_jenis_code` Lampiran 01; tanpa agunan = 299 dan nilai 0).
+        Tanpa `id` berarti membuat baris baru. Teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid, description: "Kosong = buat baru." }
+                jenis_aset_code: { type: string, enum: ["10", "20"], description: "Kolom IV: 10 Kredit, 20 Penempatan pada Bank Lain." }
+                pihak_lawan_id: { type: string, description: "Kolom II: ID pihak lawan (kredit) atau sandi bank (penempatan)." }
+                nomor_rekening: { type: string, description: "Kolom III: nomor rekening saat dihapus buku." }
+                jenis_debitur_code: { type: string, description: "Kolom V: sandi Lampiran 02; hanya untuk jenis aset 10." }
+                hubungan_bank_code: { type: string, enum: ["11", "12", "20"], description: "Kolom VI: 11/12/20." }
+                tanggal_hapus_buku: { type: string, description: "Kolom VII: YYYY-MM-DD, wajib." }
+                saldo_pokok_saat_hapus: { type: string, description: "Kolom VIII.a (rupiah penuh)." }
+                saldo_pokok_akum_tertagih: { type: string, description: "Kolom VIII.b (rupiah penuh)." }
+                saldo_pokok_per_posisi: { type: string, description: "Kolom VIII.c (rupiah penuh)." }
+                bunga_saat_hapus: { type: string, description: "Kolom IX.a (rupiah penuh)." }
+                bunga_akum_tertagih: { type: string, description: "Kolom IX.b (rupiah penuh)." }
+                bunga_akum_tambahan: { type: string, description: "Kolom IX.c (rupiah penuh)." }
+                bunga_per_posisi: { type: string, description: "Kolom IX.d (rupiah penuh)." }
+                agunan_jenis_code: { type: string, description: "Kolom X.a: sandi Lampiran 01; tanpa agunan = 299." }
+                agunan_alamat: { type: string, description: "Kolom X.b." }
+                agunan_nilai: { type: string, description: "Kolom X.c (rupiah penuh); tanpa agunan = 0." }
+                note: { type: string, description: "Catatan internal bank; bukan kolom form." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/hapus-buku/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteHapusBukuItem
+      summary: Hapus baris register hapus buku Form 15.00
+      description: >-
+        Izin: `system:config`. DELETE FISIK: Form 15.00 tidak menetapkan nomor register
+        unik, sehingga baris tidak perlu dipertahankan untuk mencegah pemakaian ulang.
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]

@@ -777,6 +777,27 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register modal belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 15.00 Daftar Aset Produktif yang Dihapus Buku: register hapus_buku_register
+	// (migrasi 000129). Memuat kredit maupun penempatan pada bank lain yang dihapus buku;
+	// bukan turunan dari loans (baris loans tidak menyimpan dimensi pelaporan ini). Tanpa
+	// baris register, form dinyatakan belum tersedia, bukan ditulis kosong. PUNYA baris
+	// JUMLAH pada kolom nominal.
+	if hb, ok := b.source.(HapusBukuOJKSource); ok {
+		rows, err := hb.ListHapusBukuForOJK(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "15.00", Name: formName("15.00"),
+				UnavailableReason: "belum ada register aset produktif yang dihapus buku"})
+		} else {
+			tables = append(tables, BuildForm15_00(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "15.00", Name: formName("15.00"),
+			UnavailableReason: "sumber register hapus buku belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

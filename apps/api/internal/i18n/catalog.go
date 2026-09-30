@@ -394,6 +394,14 @@ const (
 	MsgModalInputInvalid                  Code = "modal_input_invalid"
 	MsgModalNotFound                      Code = "modal_not_found"
 	MsgModalBankWide                      Code = "modal_bank_wide"
+	MsgHapusBukuReport                    Code = "hapus_buku_report"
+	MsgHapusBukuItemsListed               Code = "hapus_buku_items_listed"
+	MsgHapusBukuSaved                     Code = "hapus_buku_saved"
+	MsgHapusBukuDeleted                   Code = "hapus_buku_deleted"
+	MsgHapusBukuIDInvalid                 Code = "hapus_buku_id_invalid"
+	MsgHapusBukuInputInvalid              Code = "hapus_buku_input_invalid"
+	MsgHapusBukuNotFound                  Code = "hapus_buku_not_found"
+	MsgHapusBukuBankWide                  Code = "hapus_buku_bank_wide"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -860,6 +868,14 @@ var codeList = []Code{
 	MsgModalInputInvalid,
 	MsgModalNotFound,
 	MsgModalBankWide,
+	MsgHapusBukuReport,
+	MsgHapusBukuItemsListed,
+	MsgHapusBukuSaved,
+	MsgHapusBukuDeleted,
+	MsgHapusBukuIDInvalid,
+	MsgHapusBukuInputInvalid,
+	MsgHapusBukuNotFound,
+	MsgHapusBukuBankWide,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2343,6 +2359,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgModalBankWide: {
 		ID: "register modal bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
 		EN: "the capital register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgHapusBukuReport: {
+		ID: "daftar aset produktif yang dihapus buku Form 15.00",
+		EN: "written-off productive asset list Form 15.00",
+	},
+	MsgHapusBukuItemsListed: {
+		ID: "daftar hapus buku untuk pengisian Form 15.00",
+		EN: "write-off list for Form 15.00 entry",
+	},
+	MsgHapusBukuSaved: {
+		ID: "data hapus buku Form 15.00 disimpan",
+		EN: "write-off Form 15.00 data saved",
+	},
+	MsgHapusBukuDeleted: {
+		ID: "data hapus buku Form 15.00 dihapus",
+		EN: "write-off Form 15.00 data deleted",
+	},
+	MsgHapusBukuIDInvalid: {
+		ID: "id hapus buku bukan UUID yang sah",
+		EN: "write-off id is not a valid UUID",
+	},
+	MsgHapusBukuInputInvalid: {
+		ID: "data hapus buku Form 15.00 tidak valid",
+		EN: "write-off Form 15.00 data is invalid",
+	},
+	MsgHapusBukuNotFound: {
+		ID: "data hapus buku tidak ditemukan",
+		EN: "write-off data was not found",
+	},
+	MsgHapusBukuBankWide: {
+		ID: "register hapus buku bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the write-off register is bank-wide and can only be read by cross-branch roles",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

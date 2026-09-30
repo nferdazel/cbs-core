@@ -105,6 +105,10 @@ type RepoSource struct {
 	// Bila nil, form dinyatakan belum tersedia; tidak ada data yang dikarang.
 	// Pembacaan bersifat bank-wide.
 	Modal domain.ModalRepository
+	// HapusBuku menyediakan register aset produktif yang dihapus buku Form 15.00
+	// (hapus_buku_register, migrasi 000129). Bila nil, form dinyatakan belum tersedia;
+	// tidak ada data yang dikarang. Pembacaan bersifat bank-wide.
+	HapusBuku domain.HapusBukuRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -632,6 +636,16 @@ func (s RepoSource) ListModalForOJK(ctx context.Context) ([]domain.ModalItem, er
 		return nil, nil
 	}
 	return s.Modal.ListModalForOJK(ctx)
+}
+
+// ListHapusBukuForOJK membaca register aset produktif yang dihapus buku untuk Form 15.00.
+// Register ini bank-wide; rute yang menyajikannya dijaga system:config, sehingga tidak ada
+// gerbang peran di sini.
+func (s RepoSource) ListHapusBukuForOJK(ctx context.Context) ([]domain.HapusBukuItem, error) {
+	if s.HapusBuku == nil {
+		return nil, nil
+	}
+	return s.HapusBuku.ListHapusBukuForOJK(ctx)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

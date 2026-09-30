@@ -120,6 +120,10 @@ type OJKReportHandler struct {
 	// Boleh nil pada uji; tanpa itu rute register modal tetap terpasang tetapi gagal saat
 	// dipanggil.
 	modal domain.ModalService
+	// hapusBuku menyediakan register aset produktif yang dihapus buku (Form 15.00)
+	// sekaligus operasi upsert/delete-nya. Boleh nil pada uji; tanpa itu rute register
+	// hapus buku tetap terpasang tetapi gagal saat dipanggil.
+	hapusBuku domain.HapusBukuService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -149,7 +153,7 @@ type OJKReportHandler struct {
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
 // dengan perilaku yang sama. kreditSindikasi menyediakan register kredit sindikasi
 // (Form 06.02) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, modal domain.ModalService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, modal domain.ModalService, hapusBuku domain.HapusBukuService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:         ojkreport.NewBuilder(source),
 		source:          source,
@@ -171,6 +175,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		agunan:          agunan,
 		pihakTerkait:    pihakTerkait,
 		modal:           modal,
+		hapusBuku:       hapusBuku,
 		bmpkAdmin:       bmpkAdmin,
 		placements:      placements,
 		reference:       reference,
@@ -393,6 +398,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/modal/items", h.UpsertModalItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/modal/items/{id}", h.DeleteModalItem)
+		// Form 15.00 Daftar Aset Produktif yang Dihapus Buku: baca cukup reports:export;
+		// daftar untuk UI dan jalur tulis memakai system:config, teraudit di service.
+		// Register pelaporan kredit maupun penempatan pada bank lain yang dihapus buku.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/hapus-buku", h.ExportHapusBuku)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/hapus-buku/items", h.ListHapusBukuItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/hapus-buku/items", h.UpsertHapusBukuItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/hapus-buku/items/{id}", h.DeleteHapusBukuItem)
 		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
 		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
 		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
@@ -2947,6 +2963,137 @@ func (h *OJKReportHandler) DeleteModalItem(w http.ResponseWriter, r *http.Reques
 func writeModalError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrModalNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportHapusBuku menyajikan Form 15.00 "Daftar Aset Produktif yang Dihapus Buku" sebagai
+// JSON untuk periode YYYY-MM: register hapus buku beserta tabel Form 15.00. Bank-wide;
+// aktor non-lintas cabang ditolak 403 oleh service. Punya baris JUMLAH pada kolom nominal;
+// seluruh angka adalah isian bank.
+func (h *OJKReportHandler) ExportHapusBuku(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.hapusBuku == nil {
+		InternalError(w, r, errors.New("sumber register hapus buku Form 15.00 belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.hapusBuku.ListHapusBuku(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrHapusBukuBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "register hapus buku bank-wide; kolom Sandi Kantor belum punya sumber tunggal"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgHapusBukuReport, map[string]any{
+		"period": period,
+		"items":  report.Items,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm15_00(report.Items, kantor)},
+	})
+}
+
+// ListHapusBukuItems menyajikan register hapus buku untuk UI pengisian
+// (GET /reports/ojk/hapus-buku/items). Urutan deterministik dari repositori. Izin
+// system:config.
+func (h *OJKReportHandler) ListHapusBukuItems(w http.ResponseWriter, r *http.Request) {
+	if h.hapusBuku == nil {
+		InternalError(w, r, errors.New("sumber register hapus buku Form 15.00 belum dikonfigurasi"))
+		return
+	}
+	items, err := h.hapusBuku.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register hapus buku Form 15.00: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgHapusBukuItemsListed, map[string]any{"items": items})
+}
+
+// UpsertHapusBukuItem menyimpan satu baris register hapus buku
+// (PUT /reports/ojk/hapus-buku/items). Payload tanpa id berarti membuat baris baru.
+// Decoder menolak bidang tak dikenal agar payload di luar kontrak ditolak 422. Izin
+// system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertHapusBukuItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateHapusBukuItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.hapusBuku == nil {
+		InternalError(w, r, errors.New("sumber register hapus buku Form 15.00 belum dikonfigurasi"))
+		return
+	}
+	item, err := h.hapusBuku.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeHapusBukuError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgHapusBukuSaved, map[string]any{"id": item.ID.String()})
+}
+
+// DeleteHapusBukuItem menghapus satu baris register hapus buku secara fisik
+// (DELETE /reports/ojk/hapus-buku/items/{id}). Form 15.00 tidak menetapkan nomor register
+// unik, sehingga DELETE fisik dibenarkan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) DeleteHapusBukuItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgHapusBukuIDInvalid)
+		return
+	}
+	if h.hapusBuku == nil {
+		InternalError(w, r, errors.New("sumber register hapus buku Form 15.00 belum dikonfigurasi"))
+		return
+	}
+	if err := h.hapusBuku.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeHapusBukuError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgHapusBukuDeleted, map[string]any{"id": id.String()})
+}
+
+// writeHapusBukuError memetakan galat register hapus buku: baris tak ada 404, sisanya 422.
+func writeHapusBukuError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrHapusBukuNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)
