@@ -445,10 +445,25 @@ export interface BankManagement {
  * GET /reports/ojk/kelembagaan mengirim { report, tables }, jadi daftar kantor
  * dan pengurus berada di data.report. Slice boleh null saat kosong.
  */
+export interface BankWorkUnit {
+  id: string;
+  code: string;
+  nama: string;
+  jenis?: string;
+  parent_code?: string;
+  kepala_unit?: string;
+  jumlah_pegawai?: number | null;
+  urutan: number;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface KelembagaanSummary {
   as_of: string;
   offices: BankOffice[] | null;
   management: BankManagement[] | null;
+  work_units?: BankWorkUnit[] | null;
   warnings?: string[];
 }
 

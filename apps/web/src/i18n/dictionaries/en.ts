@@ -1527,6 +1527,38 @@ export const dictionaryEN: Dictionary = {
       categoryDireksi: "Director",
       categoryKomisaris: "Commissioner",
       categoryPejabatEksekutif: "Executive Officer",
+      workUnitsTitle: "Divisions or Work Units",
+      workUnitsHint:
+        "Divisions/work units for the Form 00.19 document. Fill in a unique code, name, parent (if any), unit head, and headcount. This section is required in the organisational structure document.",
+      workUnitsEmpty: "No divisions/work units yet.",
+      addWorkUnit: "Add unit",
+      newWorkUnitTitle: "New unit",
+      editWorkUnitTitle: "Edit unit",
+      savedWorkUnit: "Division/work unit data saved.",
+      deletedWorkUnit: "Division/work unit data deleted.",
+      colUnitCode: "Code",
+      colUnitName: "Unit name",
+      colUnitJenis: "Type",
+      colUnitParent: "Parent unit",
+      colUnitKepala: "Unit head",
+      colUnitJumlah: "Headcount",
+      fieldUnitCode: "Unit code",
+      fieldUnitCodeHint:
+        "Unique code the bank defines, e.g. DIV-OPS. Required and unique, up to 32 characters.",
+      fieldUnitName: "Unit name",
+      fieldUnitJenis: "Type",
+      fieldUnitJenisHint:
+        "Bank-defined text, e.g. Division, Work Unit, Department, Section.",
+      fieldUnitParent: "Parent unit (code)",
+      fieldUnitParentHint:
+        "Code of the parent unit. Leave empty if this is a top-level unit.",
+      fieldUnitKepala: "Unit head",
+      fieldUnitJumlah: "Headcount",
+      fieldUnitJumlahHint:
+        "Permanent/non-permanent staff count. Leave empty if not yet filled.",
+      fieldUnitUrutan: "Display order",
+      fieldUnitUrutanHint:
+        "Order number in the document; empty is treated as 0.",
       statusAktif: "Active",
       statusTutup: "Closed",
       statusNonaktif: "Inactive",

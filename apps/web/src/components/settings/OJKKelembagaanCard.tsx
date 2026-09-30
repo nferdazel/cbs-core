@@ -5,6 +5,7 @@ import { ApiError, request } from "@/lib/api";
 import type {
   BankManagement,
   BankOffice,
+  BankWorkUnit,
   KelembagaanData,
 } from "@/lib/operations-types";
 import { formatDateISO } from "@/lib/format";
@@ -126,8 +127,47 @@ function managementFormFrom(row: BankManagement): ManagementForm {
   };
 }
 
+interface WorkUnitForm {
+  id: string;
+  code: string;
+  nama: string;
+  jenis: string;
+  parent_code: string;
+  kepala_unit: string;
+  jumlah_pegawai: string;
+  urutan: string;
+  note: string;
+}
+
+const EMPTY_WORK_UNIT: WorkUnitForm = {
+  id: "",
+  code: "",
+  nama: "",
+  jenis: "",
+  parent_code: "",
+  kepala_unit: "",
+  jumlah_pegawai: "",
+  urutan: "",
+  note: "",
+};
+
+function workUnitFormFrom(row: BankWorkUnit): WorkUnitForm {
+  return {
+    id: row.id,
+    code: row.code ?? "",
+    nama: row.nama ?? "",
+    jenis: row.jenis ?? "",
+    parent_code: row.parent_code ?? "",
+    kepala_unit: row.kepala_unit ?? "",
+    jumlah_pegawai:
+      row.jumlah_pegawai != null ? String(row.jumlah_pegawai) : "",
+    urutan: row.urutan ? String(row.urutan) : "",
+    note: row.note ?? "",
+  };
+}
+
 interface DeleteTarget {
-  kind: "office" | "management";
+  kind: "office" | "management" | "workunit";
   id: string;
   label: string;
 }
@@ -145,6 +185,7 @@ export function OJKKelembagaanCard() {
 
   const [offices, setOffices] = useState<BankOffice[]>([]);
   const [management, setManagement] = useState<BankManagement[]>([]);
+  const [workUnits, setWorkUnits] = useState<BankWorkUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -158,6 +199,7 @@ export function OJKKelembagaanCard() {
   const [managementForm, setManagementForm] = useState<ManagementForm | null>(
     null,
   );
+  const [workUnitForm, setWorkUnitForm] = useState<WorkUnitForm | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,6 +211,7 @@ export function OJKKelembagaanCard() {
       );
       setOffices(response.data?.report?.offices ?? []);
       setManagement(response.data?.report?.management ?? []);
+      setWorkUnits(response.data?.report?.work_units ?? []);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setForbidden(true);
@@ -212,6 +255,8 @@ export function OJKKelembagaanCard() {
     setOfficeForm((prev) => (prev ? { ...prev, ...patch } : prev));
   const updateManagement = (patch: Partial<ManagementForm>) =>
     setManagementForm((prev) => (prev ? { ...prev, ...patch } : prev));
+  const updateWorkUnit = (patch: Partial<WorkUnitForm>) =>
+    setWorkUnitForm((prev) => (prev ? { ...prev, ...patch } : prev));
 
   const resetMessages = () => {
     setFeedback(null);
@@ -293,6 +338,36 @@ export function OJKKelembagaanCard() {
     }
   };
 
+  const saveWorkUnit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!workUnitForm) return;
+    resetMessages();
+    setSaving(true);
+    try {
+      await request("/reports/ojk/kelembagaan/work-units", {
+        method: "PUT",
+        body: {
+          id: workUnitForm.id,
+          code: workUnitForm.code,
+          nama: workUnitForm.nama,
+          jenis: workUnitForm.jenis,
+          parent_code: workUnitForm.parent_code,
+          kepala_unit: workUnitForm.kepala_unit,
+          jumlah_pegawai: workUnitForm.jumlah_pegawai,
+          urutan: workUnitForm.urutan,
+          note: workUnitForm.note,
+        },
+      });
+      setFeedback(t.ojkData.kelembagaan.savedWorkUnit);
+      setWorkUnitForm(null);
+      await load();
+    } catch (err) {
+      applySaveError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     resetMessages();
@@ -300,13 +375,17 @@ export function OJKKelembagaanCard() {
     const path =
       deleteTarget.kind === "office"
         ? `/reports/ojk/kelembagaan/offices/${deleteTarget.id}`
-        : `/reports/ojk/kelembagaan/management/${deleteTarget.id}`;
+        : deleteTarget.kind === "management"
+          ? `/reports/ojk/kelembagaan/management/${deleteTarget.id}`
+          : `/reports/ojk/kelembagaan/work-units/${deleteTarget.id}`;
     try {
       await request(path, { method: "DELETE" });
       setFeedback(
         deleteTarget.kind === "office"
           ? t.ojkData.kelembagaan.deletedOffice
-          : t.ojkData.kelembagaan.deletedManagement,
+          : deleteTarget.kind === "management"
+            ? t.ojkData.kelembagaan.deletedManagement
+            : t.ojkData.kelembagaan.deletedWorkUnit,
       );
       setDeleteTarget(null);
       await load();
@@ -444,6 +523,62 @@ export function OJKKelembagaanCard() {
                 id: row.id,
                 label: row.name,
               })
+            }
+          >
+            {t.ojkData.delete}
+          </Button>
+        </div>
+      ),
+    });
+  }
+
+  const workUnitColumns: Column<BankWorkUnit>[] = [
+    {
+      header: t.ojkData.kelembagaan.colUnitCode,
+      cell: (row) => {
+        if (!row.code) return "-";
+        return <span className="font-mono">{row.code}</span>;
+      },
+    },
+    { header: t.ojkData.kelembagaan.colUnitName, accessorKey: "nama" },
+    { header: t.ojkData.kelembagaan.colUnitJenis, accessorKey: "jenis" },
+    {
+      header: t.ojkData.kelembagaan.colUnitParent,
+      cell: (row) => row.parent_code || "-",
+    },
+    {
+      header: t.ojkData.kelembagaan.colUnitKepala,
+      cell: (row) => row.kepala_unit || "-",
+    },
+    {
+      header: t.ojkData.kelembagaan.colUnitJumlah,
+      cell: (row) => {
+        if (row.jumlah_pegawai == null) return "-";
+        return String(row.jumlah_pegawai);
+      },
+    },
+  ];
+  if (canEdit) {
+    workUnitColumns.push({
+      header: t.common.actions,
+      align: "right",
+      cell: (row) => (
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              resetMessages();
+              setWorkUnitForm(workUnitFormFrom(row));
+            }}
+          >
+            {t.ojkData.edit}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() =>
+              setDeleteTarget({ kind: "workunit", id: row.id, label: row.nama })
             }
           >
             {t.ojkData.delete}
@@ -743,6 +878,129 @@ export function OJKKelembagaanCard() {
                 data={management}
                 keyExtractor={(row) => row.id}
                 emptyMessage={t.ojkData.kelembagaan.managementEmpty}
+                zebra
+              />
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <h4 className="text-title font-semibold text-ink-900">
+                  {t.ojkData.kelembagaan.workUnitsTitle}
+                </h4>
+                {canEdit && !workUnitForm && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      resetMessages();
+                      setWorkUnitForm({ ...EMPTY_WORK_UNIT });
+                    }}
+                  >
+                    {t.ojkData.kelembagaan.addWorkUnit}
+                  </Button>
+                )}
+              </div>
+
+              <p className="text-body text-ink-600">
+                {t.ojkData.kelembagaan.workUnitsHint}
+              </p>
+
+              {workUnitForm && (
+                <form
+                  onSubmit={saveWorkUnit}
+                  className="space-y-4 rounded-md border border-border p-4"
+                >
+                  <h5 className="text-meta font-medium uppercase tracking-wide text-ink-600">
+                    {workUnitForm.id
+                      ? t.ojkData.kelembagaan.editWorkUnitTitle
+                      : t.ojkData.kelembagaan.newWorkUnitTitle}
+                  </h5>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitCode}
+                      helperText={t.ojkData.kelembagaan.fieldUnitCodeHint}
+                      isMono
+                      value={workUnitForm.code}
+                      onChange={(event) =>
+                        updateWorkUnit({ code: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitName}
+                      value={workUnitForm.nama}
+                      onChange={(event) =>
+                        updateWorkUnit({ nama: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitJenis}
+                      helperText={t.ojkData.kelembagaan.fieldUnitJenisHint}
+                      value={workUnitForm.jenis}
+                      onChange={(event) =>
+                        updateWorkUnit({ jenis: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitParent}
+                      helperText={t.ojkData.kelembagaan.fieldUnitParentHint}
+                      isMono
+                      value={workUnitForm.parent_code}
+                      onChange={(event) =>
+                        updateWorkUnit({ parent_code: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitKepala}
+                      value={workUnitForm.kepala_unit}
+                      onChange={(event) =>
+                        updateWorkUnit({ kepala_unit: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitJumlah}
+                      helperText={t.ojkData.kelembagaan.fieldUnitJumlahHint}
+                      inputMode="numeric"
+                      value={workUnitForm.jumlah_pegawai}
+                      onChange={(event) =>
+                        updateWorkUnit({ jumlah_pegawai: event.target.value })
+                      }
+                    />
+                    <Input
+                      label={t.ojkData.kelembagaan.fieldUnitUrutan}
+                      helperText={t.ojkData.kelembagaan.fieldUnitUrutanHint}
+                      inputMode="numeric"
+                      value={workUnitForm.urutan}
+                      onChange={(event) =>
+                        updateWorkUnit({ urutan: event.target.value })
+                      }
+                    />
+                  </div>
+                  <Textarea
+                    label={t.ojkData.kelembagaan.fieldNote}
+                    value={workUnitForm.note}
+                    onChange={(event) =>
+                      updateWorkUnit({ note: event.target.value })
+                    }
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setWorkUnitForm(null)}
+                    >
+                      {t.common.cancel}
+                    </Button>
+                    <Button type="submit" loading={saving}>
+                      {saving ? t.ojkData.saving : t.ojkData.save}
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              <DataTable
+                columns={workUnitColumns}
+                data={workUnits}
+                keyExtractor={(row) => row.id}
+                emptyMessage={t.ojkData.kelembagaan.workUnitsEmpty}
                 zebra
               />
             </section>
