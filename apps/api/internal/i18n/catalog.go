@@ -386,6 +386,14 @@ const (
 	MsgPihakTerkaitSaved                  Code = "pihak_terkait_saved"
 	MsgPihakTerkaitDeleted                Code = "pihak_terkait_deleted"
 	MsgPihakTerkaitIDInvalid              Code = "pihak_terkait_id_invalid"
+	MsgModalReport                        Code = "modal_report"
+	MsgModalItemsListed                   Code = "modal_items_listed"
+	MsgModalSaved                         Code = "modal_saved"
+	MsgModalDeleted                       Code = "modal_deleted"
+	MsgModalIDInvalid                     Code = "modal_id_invalid"
+	MsgModalInputInvalid                  Code = "modal_input_invalid"
+	MsgModalNotFound                      Code = "modal_not_found"
+	MsgModalBankWide                      Code = "modal_bank_wide"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -844,6 +852,14 @@ var codeList = []Code{
 	MsgPihakTerkaitSaved,
 	MsgPihakTerkaitDeleted,
 	MsgPihakTerkaitIDInvalid,
+	MsgModalReport,
+	MsgModalItemsListed,
+	MsgModalSaved,
+	MsgModalDeleted,
+	MsgModalIDInvalid,
+	MsgModalInputInvalid,
+	MsgModalNotFound,
+	MsgModalBankWide,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2295,6 +2311,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgPihakTerkaitIDInvalid: {
 		ID: "id pihak terkait bukan UUID yang sah",
 		EN: "related party id is not a valid UUID",
+	},
+	MsgModalReport: {
+		ID: "daftar modal Form 00.06",
+		EN: "capital list Form 00.06",
+	},
+	MsgModalItemsListed: {
+		ID: "daftar modal untuk pengisian Form 00.06",
+		EN: "capital list for Form 00.06 entry",
+	},
+	MsgModalSaved: {
+		ID: "data modal Form 00.06 disimpan",
+		EN: "capital Form 00.06 data saved",
+	},
+	MsgModalDeleted: {
+		ID: "data modal Form 00.06 dihapus",
+		EN: "capital Form 00.06 data deleted",
+	},
+	MsgModalIDInvalid: {
+		ID: "id modal bukan UUID yang sah",
+		EN: "capital id is not a valid UUID",
+	},
+	MsgModalInputInvalid: {
+		ID: "data modal Form 00.06 tidak valid",
+		EN: "capital Form 00.06 data is invalid",
+	},
+	MsgModalNotFound: {
+		ID: "data modal tidak ditemukan",
+		EN: "capital data was not found",
+	},
+	MsgModalBankWide: {
+		ID: "register modal bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the capital register is bank-wide and can only be read by cross-branch roles",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

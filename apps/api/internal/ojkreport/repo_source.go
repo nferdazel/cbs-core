@@ -101,6 +101,10 @@ type RepoSource struct {
 	// (pihak_terkait_lainnya_register, migrasi 000127). Bila nil, form dinyatakan belum
 	// tersedia; tidak ada data yang dikarang. Pembacaan bersifat bank-wide.
 	PihakTerkait domain.PihakTerkaitRepository
+	// Modal menyediakan register modal Form 00.06 (modal_register, migrasi 000128).
+	// Bila nil, form dinyatakan belum tersedia; tidak ada data yang dikarang.
+	// Pembacaan bersifat bank-wide.
+	Modal domain.ModalRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -619,6 +623,15 @@ func (s RepoSource) ListPihakTerkaitForOJK(ctx context.Context) ([]domain.PihakT
 		return nil, nil
 	}
 	return s.PihakTerkait.ListPihakTerkaitForOJK(ctx)
+}
+
+// ListModalForOJK membaca register modal untuk Form 00.06. Register ini bank-wide; rute
+// yang menyajikannya dijaga system:config, sehingga tidak ada gerbang peran di sini.
+func (s RepoSource) ListModalForOJK(ctx context.Context) ([]domain.ModalItem, error) {
+	if s.Modal == nil {
+		return nil, nil
+	}
+	return s.Modal.ListModalForOJK(ctx)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

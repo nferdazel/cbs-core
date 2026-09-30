@@ -3813,6 +3813,115 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/modal:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportModal
+      summary: Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal (Form 00.06)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan register modal beserta tabel Form
+        00.06 (4 kolom, DENGAN baris JUMLAH pada kolom IV). Bank mencatat peristiwa modal
+        (bentuk setoran + tanggal persetujuan otoritas + jenis modal) yang tidak dapat
+        diturunkan dari saldo bagan akun. Kolom IV Jumlah adalah isian bank. Kolom I Sandi
+        Kantor diambil dari kantor pelapor tunggal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/modal/items:
+    get:
+      tags: [Laporan]
+      operationId: listModalItems
+      summary: Daftar baris register modal Form 00.06 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `modal_register` untuk UI edit
+        dengan urutan deterministik, bukan tabel laporan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertModalItem
+      summary: Simpan satu baris register modal Form 00.06
+      description: >-
+        Izin: `system:config`. Menyimpan satu baris: `jenis_code` (kolom I, sandi PDF
+        #246: 01 Dana, 02 Tanah/bangunan modal inti, 03 Tanah/bangunan bukan modal inti),
+        `tanggal_persetujuan` (kolom II, YYYY-MM-DD, boleh kosong), `jenis_modal_code`
+        (kolom III, sandi PDF #246: 01 Modal Disetor, 02 Modal Sumbangan, 03 Dana Setoran
+        Modal - Ekuitas), `jumlah` (kolom IV, rupiah penuh, wajib, tidak boleh negatif;
+        nol sah), `note` internal. Tanpa `id` berarti membuat baris baru. Teraudit satu
+        transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid, description: "Kosong = buat baru." }
+                jenis_code: { type: string, enum: ["01", "02", "03"], description: "Kolom I: 01 Dana, 02 Tanah/bangunan modal inti, 03 Tanah/bangunan bukan modal inti." }
+                tanggal_persetujuan: { type: string, description: "Kolom II: YYYY-MM-DD; kosong = belum dicatat." }
+                jenis_modal_code: { type: string, enum: ["01", "02", "03"], description: "Kolom III: 01 Modal Disetor, 02 Modal Sumbangan, 03 Dana Setoran Modal - Ekuitas." }
+                jumlah: { type: string, description: "Kolom IV: rupiah penuh (desimal sebagai string); wajib, tidak boleh negatif, nol sah." }
+                note: { type: string, description: "Catatan internal bank; bukan kolom form." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/modal/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deleteModalItem
+      summary: Hapus baris register modal Form 00.06
+      description: >-
+        Izin: `system:config`. DELETE FISIK: Form 00.06 tidak menetapkan nomor register
+        unik, sehingga baris tidak perlu dipertahankan untuk mencegah pemakaian ulang.
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]

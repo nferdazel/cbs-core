@@ -116,6 +116,10 @@ type OJKReportHandler struct {
 	// operasi upsert/delete-nya. Boleh nil pada uji; tanpa itu rute register pihak
 	// terkait tetap terpasang tetapi gagal saat dipanggil.
 	pihakTerkait domain.PihakTerkaitService
+	// modal menyediakan register modal (Form 00.06) sekaligus operasi upsert/delete-nya.
+	// Boleh nil pada uji; tanpa itu rute register modal tetap terpasang tetapi gagal saat
+	// dipanggil.
+	modal domain.ModalService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -145,7 +149,7 @@ type OJKReportHandler struct {
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
 // dengan perilaku yang sama. kreditSindikasi menyediakan register kredit sindikasi
 // (Form 06.02) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, modal domain.ModalService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:         ojkreport.NewBuilder(source),
 		source:          source,
@@ -166,6 +170,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		kreditSindikasi: kreditSindikasi,
 		agunan:          agunan,
 		pihakTerkait:    pihakTerkait,
+		modal:           modal,
 		bmpkAdmin:       bmpkAdmin,
 		placements:      placements,
 		reference:       reference,
@@ -377,6 +382,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/pihak-terkait/items", h.UpsertPihakTerkaitItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/pihak-terkait/items/{id}", h.DeletePihakTerkaitItem)
+		// Form 00.06 Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas:
+		// baca cukup reports:export; daftar untuk UI dan jalur tulis memakai system:config,
+		// teraudit di service. Register peristiwa modal; tidak diturunkan dari saldo COA.
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/modal", h.ExportModal)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/modal/items", h.ListModalItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/modal/items", h.UpsertModalItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/modal/items/{id}", h.DeleteModalItem)
 		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
 		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
 		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
@@ -2802,6 +2818,135 @@ func (h *OJKReportHandler) DeletePihakTerkaitItem(w http.ResponseWriter, r *http
 func writePihakTerkaitError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrPihakTerkaitNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportModal menyajikan Form 00.06 "Daftar Modal Disetor, Modal Sumbangan, dan Dana
+// Setoran Modal - Ekuitas" sebagai JSON untuk periode YYYY-MM: register modal beserta
+// tabel Form 00.06. Bank-wide; aktor non-lintas cabang ditolak 403 oleh service. Form ini
+// PUNYA baris JUMLAH pada kolom IV; nominal adalah isian bank, bukan turunan saldo COA.
+func (h *OJKReportHandler) ExportModal(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.modal == nil {
+		InternalError(w, r, errors.New("sumber register modal Form 00.06 belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.modal.ListModal(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrModalBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "register modal bank-wide; kolom Sandi Kantor belum punya sumber tunggal"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgModalReport, map[string]any{
+		"period": period,
+		"items":  report.Items,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm00_06(report.Items, kantor)},
+	})
+}
+
+// ListModalItems menyajikan register modal untuk UI pengisian (GET /reports/ojk/modal/items).
+// Urutan deterministik dari repositori. Izin system:config.
+func (h *OJKReportHandler) ListModalItems(w http.ResponseWriter, r *http.Request) {
+	if h.modal == nil {
+		InternalError(w, r, errors.New("sumber register modal Form 00.06 belum dikonfigurasi"))
+		return
+	}
+	items, err := h.modal.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register modal Form 00.06: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgModalItemsListed, map[string]any{"items": items})
+}
+
+// UpsertModalItem menyimpan satu baris register modal (PUT /reports/ojk/modal/items).
+// Payload tanpa id berarti membuat baris baru. Decoder menolak bidang tak dikenal agar
+// payload di luar kontrak ditolak 422. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertModalItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateModalItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.modal == nil {
+		InternalError(w, r, errors.New("sumber register modal Form 00.06 belum dikonfigurasi"))
+		return
+	}
+	item, err := h.modal.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeModalError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgModalSaved, map[string]any{"id": item.ID.String()})
+}
+
+// DeleteModalItem menghapus satu baris register modal secara fisik
+// (DELETE /reports/ojk/modal/items/{id}). Form 00.06 tidak menetapkan nomor register unik,
+// sehingga DELETE fisik dibenarkan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) DeleteModalItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgModalIDInvalid)
+		return
+	}
+	if h.modal == nil {
+		InternalError(w, r, errors.New("sumber register modal Form 00.06 belum dikonfigurasi"))
+		return
+	}
+	if err := h.modal.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeModalError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgModalDeleted, map[string]any{"id": id.String()})
+}
+
+// writeModalError memetakan galat register modal: baris tak ada 404, sisanya 422 lewat Fail.
+func writeModalError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrModalNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

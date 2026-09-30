@@ -207,8 +207,13 @@ var OJKBulananForms = []OJKFormDefinition{
 	// dengan alasan spesifik. Kolom II No. Identitas sengaja tidak disimpan (keputusan
 	// privasi) dan laporan menulisnya "-" beralasan.
 	{Form: "00.05", Name: "Data Pihak Terkait Lainnya", Buildable: true},
-	{Form: "00.06", Name: "Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas", Buildable: false,
-		UnavailableReason: "hanya saldo COA 30100/13100 yang dipetakan (coa_mapping.go:166,174); akun Modal Sumbangan dan Dana Setoran Modal serta kolom Jenis dan Tanggal Persetujuan OJK belum ada (PDF #245-247)"},
+	// Form 00.06 dibangun dari register modal per baris (modal_register, migrasi 000128)
+	// yang bank isi lewat API, bukan dari saldo bagan akun: saldo 30100/13100 tidak
+	// menyimpan bentuk setoran (dana vs tanah/bangunan), tanggal persetujuan otoritas,
+	// atau pemisahan Modal Sumbangan / Dana Setoran Modal - Ekuitas. Bila belum ada baris
+	// AKTIF, builder mencatatnya pada SkippedForms dengan alasan spesifik. Punya baris
+	// JUMLAH pada kolom IV.
+	{Form: "00.06", Name: "Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas", Buildable: true},
 	// Form 00.07 dibangun dari register pinjaman per kreditur (pinjaman_diterima_register,
 	// migrasi 000117) yang bank isi lewat API, bukan dari akun liabilitas 20100-20800
 	// yang tidak menyimpan identitas kreditur. Bila belum ada baris AKTIF, builder

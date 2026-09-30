@@ -756,6 +756,27 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register pihak terkait lainnya belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 00.06 Daftar Modal Disetor, Modal Sumbangan, dan Dana Setoran Modal - Ekuitas:
+	// register modal_register (migrasi 000128). Bank mencatat peristiwa modal (bentuk
+	// setoran + tanggal persetujuan otoritas + jenis modal) yang tidak dapat diturunkan
+	// dari saldo bagan akun. Tanpa baris register, form dinyatakan belum tersedia, bukan
+	// ditulis kosong. Form ini PUNYA baris JUMLAH pada kolom IV.
+	if md, ok := b.source.(ModalOJKSource); ok {
+		rows, err := md.ListModalForOJK(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.06", Name: formName("00.06"),
+				UnavailableReason: "belum ada register modal yang diisi bank"})
+		} else {
+			tables = append(tables, BuildForm00_06(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.06", Name: formName("00.06"),
+			UnavailableReason: "sumber register modal belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

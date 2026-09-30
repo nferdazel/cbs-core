@@ -362,6 +362,13 @@ func main() {
 	pihakTerkaitRepo := postgres.NewPihakTerkaitRepository(db)
 	pihakTerkaitSvc := service.NewPihakTerkaitService(db, pihakTerkaitRepo, auditRepo)
 
+	// Register modal Form 00.06: register peristiwa modal (modal_register, migrasi
+	// 000128), baca bank-wide + jalur tulis berizin system:config yang teraudit. Bank
+	// mencatat bentuk setoran dan tanggal persetujuan otoritas; tidak diturunkan dari
+	// saldo bagan akun.
+	modalRepo := postgres.NewModalRepository(db)
+	modalSvc := service.NewModalService(db, modalRepo, auditRepo)
+
 	// Peninjauan pemetaan memakai bagan akun untuk menampilkan nama akun dan repositori
 	// keputusan (migrasi 000050) supaya persetujuan bank bertahan dan dapat diaudit.
 	// Repositori penempatan juga dipakai pemilih UI sandi OJK (GET /reports/ojk/placements)
@@ -396,11 +403,12 @@ func main() {
 		KreditSindikasi: kreditSindikasiRepo,
 		Agunan:          agunanRepo,
 		PihakTerkait:    pihakTerkaitRepo,
+		Modal:           modalRepo,
 		Kelembagaan:     kelembagaanRepo,
 		// Layanan yang sama dengan LAPORAN_KELEMBAGAAN, dipakai agar Form
 		// 00.02/00.03/00.04 ikut bundel bulanan.
 		KelembagaanSvc: kelembagaanSvc,
-	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, pihakTerkaitSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
+	}, ledgerRepo, postgres.NewOJKMappingReviewRepository(db), configSvc, kelembagaanSvc, offBalanceSvc, aydaSvc, kepemilikanSvc, pinjamanSvc, propertiSvc, asetTetapSvc, penyertaanSvc, asetKeuanganSvc, suratBerhargaSvc, kasValasSvc, kreditSindikasiSvc, agunanSvc, pihakTerkaitSvc, modalSvc, bmpkSvc, ojkPlacementRepo, ojkReferenceRepo)
 	collectionHandler := httpHandler.NewCollectionHandler(collectionSvc)
 	integrationHandler := httpHandler.NewIntegrationHandler(slikGateway, dukcapilGateway)
 	batchHandler := httpHandler.NewBatchProcessHandler(batchSvc)
