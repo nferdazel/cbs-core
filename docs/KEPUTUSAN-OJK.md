@@ -319,11 +319,35 @@ ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di 
 - **Sisa milik bank**: mengisi baris register pihak lawan (identitas non-privasi, golongan,
   hubungan, pemeringkat, grup, kontak, alamat).
 
-**Ringkas**: `00.16` adalah form **terakhir** yang dapat dibangun tanpa bahan dari luar.
-Setelah 9.9, seluruh form `Buildable:false` sisanya bersifat dokumen manual/di luar sistem.
+**Ringkas**: `00.16` adalah form **terakhir** jenis register yang diperlukan untuk
+melengkapi form tanpa bahan dari luar.
+
+### 9.10 Form 00.19 — divisi/satuan kerja dimodelkan lewat register unit kerja (SELESAI)
+
+- **Penilaian triase lama**: `00.19` diklasifikasi `SEBAGIAN`/`DOKUMEN` dengan alasan
+  "bagian divisi/satuan kerja belum dimodelkan; form berupa dokumen struktur organisasi".
+- **Temuan (PDF)**: Form 00.19 memuat **daftar divisi/satuan kerja** (kode, nama, induk,
+  kepala unit, jumlah pegawai) sebagai bagian dokumen struktur organisasi. Datanya
+  operasional dan bank spesifik, bukan turunan tabel lain.
+- **Keputusan**: bangun **register baru** `bank_work_units` (migrasi `000131`) berisi
+  kolom unit kerja. Bagian divisi/satuan kerja kini dibangun dari data (`BuildForm00_19`
+  merender tabel unit); form tetap `Buildable:false` karena dokumen akhirnya — termasuk
+  bagian struktur/narasi lain — tetap dicetak sebagai HTML (`document_service.go`).
+- **Aturan**: `code` unik (maks 32), `parent_code` teks (bukan FK, agar bank bebas menyusun
+  hierarki walau baris induk belum diisi), `jumlah_pegawai` NULL≠0 (kosong = belum diisi,
+  laporan menulis "-"), `urutan` untuk urutan tampil.
+- **Aksi**: migrasi `000131`, `domain/kelembagaan.go` (`BankWorkUnit`, repo, service),
+  `repository/postgres/kelembagaan_repo.go`, `service/kelembagaan_service.go`,
+  `ojkreport/form00_19.go`, rute `PUT /reports/ojk/kelembagaan/work-units` +
+  `DELETE /reports/ojk/kelembagaan/work-units/{id}` (system:config), OpenAPI, i18n, kartu
+  web `OJKKelembagaanCard.tsx` (bagian "Divisi atau Satuan Kerja"), `operations-types.ts`.
+- **Sisa milik bank**: mengisi baris divisi/satuan kerja.
+
+**Ringkas**: setelah 9.10, seluruh form `Buildable:false` sisanya bersifat dokumen
+manual/di luar sistem — tidak ada lagi celah kode.
 
 ---
 
 Semua butir implementable kini dikerjakan; tidak ada lagi celah kode dan tidak ada
 pertanyaan produk tersisa dari audit as-of — sisa hanya milik bank (verifikasi pemetaan,
-ratifikasi parameter CKPN, partisipasi program).
+ratifikasi parameter CKPN, partisipasi program, pengisian register).
