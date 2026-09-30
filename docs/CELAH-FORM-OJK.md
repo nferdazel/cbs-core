@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **38 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **39 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,8 +26,8 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 24 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 4 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 25 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 3 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 0 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 3 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -49,7 +49,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 00.10 | Pejabat Eksekutif yang Berhenti | `KONDISIONAL` | Sumber `bank_management` + `license_number/date`; **tak ada perakit 00.10**; kurang Surat Pemberhentian (beda dari pengangkatan) | 264–269 |
 | 00.11 | Kantor Selain Pusat/Cabang + TPE | `SUDAH ADA` | **Dibangun 29 Sep 2026** (kolom Form 00.11 pada `bank_offices`, migrasi `000126`) dengan API `PUT .../kelembagaan/offices/{id}/form00-11` + `form00_11.go`. 14 kolom, **TIDAK ada baris JUMLAH**. Baris dipilih dari kantor yang bank TANDAI sandi Jenis (I) — kantor pusat/cabang tidak diberi sandi itu dan tidak masuk; penggolongan **tidak ditebak dari teks bebas `office_type`**. Sandi I 02-08/99, X 1-7 (baku PDF); XII Kendali hanya untuk Kantor Wilayah/SKK (PDF #274). Kolom Form 00.04 yang tumpang tindih tidak disentuh | 270–275 |
 | 00.12 | Penutupan Kantor & TPE | `KONDISIONAL` | `bank_offices.closed_at` + `status='TUTUP'`; kurang sandi Jenis OJK, sandi induk, koordinat; **tak ada perakit 00.12** | 276–280 |
-| 00.16 | Daftar Pihak Lawan | `SEBAGIAN` | `customers` + `customers.ojk_pihak_lawan_code` (`000104:26`) + `counterparty_cif` (`000106:37`); kurang jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, pemeringkat | 286–292 |
+| 00.16 | Daftar Pihak Lawan | `SUDAH ADA` | **Register keempatbelas — dibangun 30 Sep 2026** (`pihak_lawan_register`, migrasi `000130`). Register pelaporan, BUKAN kolom tambahan di `customers`: form memuat SELURUH pihak lawan termasuk bank/bukan bank yang **bukan nasabah**, dan butuh 20 kolom yang `customers` tak menutup (jenis identitas/kelamin, jenis kegiatan usaha, pemeringkat+peringkat+tanggalnya, grup, tanggal lahir). Kolom III Nomor Identitas (NIK/NPWP) dan VI NPWP sengaja tidak disimpan (keputusan privasi). Sandi II/IV/IX/X baku PDF #288. TANPA baris JUMLAH | 286–291 |
 | 00.17 | Laporan Perubahan Ekuitas | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form17.go`, versi jujur-parsial): 17 baris × 12 kolom, **hanya Desember** (gerbang sama dengan 00.18), tiga saldo akhir tahun dari COA. Hanya III Modal Disetor (`30100`/`13100`), X Cadangan Umum (`30400`), XI Saldo Laba (`30200`+`30300`/`13200`) yang bersumber; kolom IV–IX tanpa akun → `-`, baris mutasi TIDAK diisi delta, "Pos Penambah/Pengurang Lainnya" tidak diisi residu. 15 baris sandi × 9 komponen ekuitas × 3 tahun; COA ekuitas hanya 5 (`000005:211`) tanpa Cadangan Tujuan/Surplus Revaluasi/DSM/Dividen | 293–294 |
 | 00.18 | Laporan Arus Kas | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form18.go` + `COAMapping18Draft`): 41 sandi ditranskrip dari PDF, kolom T dan T-1 dihitung dari jurnal, neto per aktivitas dijaga test invarian; hanya posisi Desember, baris tanpa sumber ditulis `-`. Sebelumnya cuma `GetCashFlow` yang belum dipetakan ke sandi OJK | 295–297 |
 | 00.19 | Struktur Organisasi | `DOKUMEN` | Berkas PDF; **bahan sudah ada** (`bank_offices`, `bank_management`, `branches`) sehingga PDF-nya bisa dirakit otomatis | 298 |

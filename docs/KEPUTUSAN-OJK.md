@@ -202,7 +202,8 @@ logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa 
 kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri; 9.6 = `00.05` selesai
 dengan register baru (bukan menambah kolom di `bmpk_related_parties`); 9.7 = `00.06`
 selesai dengan register peristiwa modal (bukan turunan saldo bagan akun); 9.8 = `15.00`
-selesai dengan register pelaporan (bukan turunan `loans`). Verifikasi pemetaan COA &
+selesai dengan register pelaporan (bukan turunan `loans`); 9.9 = `00.16` selesai dengan
+register pihak lawan (bukan kolom tambahan di `customers`). Verifikasi pemetaan COA &
 ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
 
 ### 9.6 Form 00.05 — register baru, bukan menambah kolom di `bmpk_related_parties` (SELESAI)
@@ -289,6 +290,37 @@ ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di 
   saat menolkan `outstanding_principal` (lihat keterbatasan di `domain/loan.go`); perbaikan
   perlakuan akuntansinya tetap **milik bank/akuntan** dan tidak diklaim selesai di sini.
 - **Sisa milik bank**: mengisi baris register per aset produktif yang dihapus buku.
+
+### 9.9 Form 00.16 — register pihak lawan, bukan kolom tambahan di `customers` (SELESAI)
+
+- **Penilaian triase lama**: `00.16` diklasifikasi `SEBAGIAN` dengan alasan "`customers` +
+  `ojk_pihak_lawan_code` + `counterparty_cif` ada, tetapi kolom jenis identitas, jenis
+  kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada". Bacaan
+  itu menyiratkan cukup menambah kolom pada `customers`.
+- **Temuan (PDF #286–291)**: form memuat **seluruh pihak lawan baik bank maupun bukan bank
+  yang bertransaksi dengan BPR** (PDF #290), termasuk yang **bukan nasabah** (mis. bank
+  lawan). `customers` hanya menutup sebagian kolom (pihak lawan, hubungan bank, kabupaten,
+  telepon, alamat) dan tidak punya tujuh dimensi lain (II jenis identitas, IV jenis
+  kelamin, VII/VIII kewarganegaraan/negara, IX jenis kegiatan usaha, XII–XIV pemeringkat,
+  XV tanggal lahir, XVII/XVIII grup). Memaksa bank lawan masuk `customers` akan menuntut
+  baris nasabah palsu.
+- **Keputusan**: buat **register baru** `pihak_lawan_register` (migrasi `000130`) berisi
+  dua puluh kolom form. Sandi II (1/2/3/4), IV (1/2), IX (1/2), X (12/20) dari PDF #288
+  ditegakkan; VII/VIII/XI/XII/XIII/XVI disimpan sebagai teks sandi apa adanya (Lampiran
+  10/02/08/09/03, tidak ada tabel referensi untuk sebagian lampiran).
+- **Privasi**: kolom III **Nomor Identitas** (NIK/NPWP) dan VI **NPWP** sengaja **tidak
+  disimpan** (keputusan privasi §4 butir III dan §7 butir 6, pola Form 00.01/06.02); laporan
+  menulis keduanya "-" beralasan. Form **tanpa baris JUMLAH**.
+- **Aksi**: migrasi `000130`, `domain/form00_16_pihak_lawan.go`,
+  `repository/postgres/pihak_lawan_repo.go`, `service/pihak_lawan_service.go`,
+  `ojkreport/form00_16.go`, rute `GET /reports/ojk/pihak-lawan` (reports:export) +
+  `GET/PUT/DELETE /reports/ojk/pihak-lawan/items` (system:config), i18n, OpenAPI,
+  `definitions.go` `00.16` `Buildable:true` (38→39), kartu web `OJKPihakLawanCard.tsx`.
+- **Sisa milik bank**: mengisi baris register pihak lawan (identitas non-privasi, golongan,
+  hubungan, pemeringkat, grup, kontak, alamat).
+
+**Ringkas**: `00.16` adalah form **terakhir** yang dapat dibangun tanpa bahan dari luar.
+Setelah 9.9, seluruh form `Buildable:false` sisanya bersifat dokumen manual/di luar sistem.
 
 ---
 
