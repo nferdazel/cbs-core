@@ -74,3 +74,10 @@ scripts/.ssh-host
 
 # Backlog kerja (lokal, tidak untuk publikasi)
 /docs/BACKLOG.md
+
+# Rencana audit/review codebase (lokal, tidak untuk publikasi)
+AUDIT-PLAN.md
+AUDIT-P0.md
+AUDIT-P1.md
+AUDIT-P2.md
+AUDIT-P3.md

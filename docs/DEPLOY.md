@@ -4,10 +4,12 @@ Dokumen ini untuk operator yang memasang atau memperbarui CBS Core di VPS.
 Isinya sengaja konkret: perintah yang benar-benar dipakai repo ini, bukan
 gambaran umum. Sumber kebenaran tetap `scripts/migrate.sh` dan `scripts/preflight.sh`.
 
-> Sebelum membaca lebih jauh: **migrasi bersifat up-only.** Direktori
-> `packages/db-migrations/` hanya berisi `*.up.sql`; tidak ada `*.down.sql` dan
-> `migrate.sh` tidak mendukung rollback. Kesalahan yang sudah masuk produksi
-> hanya bisa dikembalikan lewat **restore backup**, bukan lewat migrasi balik.
+> Sebelum membaca lebih jauh: **migrasi bersifat up-only.** `migrate.sh` hanya
+> menerapkan `*.up.sql` dan **tidak mendukung rollback**; kesalahan yang sudah masuk
+> produksi hanya bisa dikembalikan lewat **restore backup**, bukan lewat migrasi balik.
+> Sebagian berkas `*.down.sql` masih ada di `packages/db-migrations/` sebagai sisa
+> historis, tetapi **tidak** dijalankan oleh `migrate.sh` maupun CI; jangan
+> mengandalkannya sebagai jalur rollback.
 
 ---
 

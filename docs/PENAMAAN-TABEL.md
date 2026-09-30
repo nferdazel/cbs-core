@@ -18,8 +18,10 @@ repo, dan laporan tidak perlu memetakan dua konvensi.
   `eom`, `eoy`, `ojk`, `ckpn`, `lps`, `njop`, `aro`, `cif`.
 - Migrasi bersifat aditif dan idempoten: tabel baru memakai
   `CREATE TABLE IF NOT EXISTS`, indeks `CREATE INDEX IF NOT EXISTS`, dan ditulis di
-  berkas migrasi baru berurutan (`packages/db-migrations/0000NN_*.up.sql`) beserta
-  pasangan `.down.sql`. Jangan mengubah migrasi yang sudah dirilis.
+  berkas migrasi baru berurutan (`packages/db-migrations/0000NN_*.up.sql`).
+  Pasangan `.down.sql` **tidak wajib** karena migrasi bersifat up-only (lihat
+  `docs/DEPLOY.md`); sebagian berkas `.down.sql` lama masih ada tetapi tidak
+  dijalankan `migrate.sh` maupun CI. Jangan mengubah migrasi yang sudah dirilis.
 - Nama indeks baru: `idx_<tabel>_<tujuan>` atau `idx_<singkatan>_<kolom>`
   (mis. `idx_deposits_maturity`, `idx_journal_idempotency`).
 
