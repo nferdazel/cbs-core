@@ -251,6 +251,93 @@ func nullableKelembagaanString(s string) any {
 	return s
 }
 
+// ListWorkUnits membaca seluruh divisi/satuan kerja (Form 00.19). Urutan deterministik:
+// urutan, lalu kode, lalu nama.
+func (r *KelembagaanRepository) ListWorkUnits(ctx context.Context) ([]domain.BankWorkUnit, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, code, nama, jenis, parent_code, kepala_unit, jumlah_pegawai,
+		       urutan, note, created_at, updated_at
+		FROM bank_work_units
+		ORDER BY urutan, code, nama`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.BankWorkUnit
+	for rows.Next() {
+		var (
+			u      domain.BankWorkUnit
+			jumlah sql.NullInt64
+		)
+		if err := rows.Scan(
+			&u.ID, &u.Code, &u.Nama, &u.Jenis, &u.ParentCode, &u.KepalaUnit,
+			&jumlah, &u.Urutan, &u.Note, &u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if jumlah.Valid {
+			n := int(jumlah.Int64)
+			u.JumlahPegawai = &n
+		}
+		out = append(out, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// UpsertWorkUnitTx menyimpan divisi/satuan kerja (idempotensi lewat PRIMARY KEY id).
+func (r *KelembagaanRepository) UpsertWorkUnitTx(ctx context.Context, tx any, u domain.BankWorkUnit, actorID uuid.UUID) error {
+	sqlTx, err := requireKelembagaanTx(tx)
+	if err != nil {
+		return err
+	}
+	var jumlah any
+	if u.JumlahPegawai != nil {
+		jumlah = *u.JumlahPegawai
+	}
+	_, err = sqlTx.ExecContext(ctx, `
+		INSERT INTO bank_work_units (
+			id, code, nama, jenis, parent_code, kepala_unit, jumlah_pegawai,
+			urutan, note, created_at, updated_at, created_by, updated_by
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), $10, $10
+		)
+		ON CONFLICT (id) DO UPDATE SET
+			code = EXCLUDED.code,
+			nama = EXCLUDED.nama,
+			jenis = EXCLUDED.jenis,
+			parent_code = EXCLUDED.parent_code,
+			kepala_unit = EXCLUDED.kepala_unit,
+			jumlah_pegawai = EXCLUDED.jumlah_pegawai,
+			urutan = EXCLUDED.urutan,
+			note = EXCLUDED.note,
+			updated_at = NOW(),
+			updated_by = EXCLUDED.updated_by`,
+		u.ID, u.Code, u.Nama, u.Jenis, u.ParentCode, u.KepalaUnit, jumlah,
+		u.Urutan, u.Note, nullableKelembagaanUUID(actorID))
+	return err
+}
+
+// DeleteWorkUnitTx menghapus satu divisi/satuan kerja; found=false bila barisnya tidak ada.
+func (r *KelembagaanRepository) DeleteWorkUnitTx(ctx context.Context, tx any, id uuid.UUID) (bool, error) {
+	sqlTx, err := requireKelembagaanTx(tx)
+	if err != nil {
+		return false, err
+	}
+	res, err := sqlTx.ExecContext(ctx, `DELETE FROM bank_work_units WHERE id = $1`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // nullableKelembagaanTime menulis NULL untuk tanggal yang belum diisi.
 func nullableKelembagaanTime(t *time.Time) any {
 	if t == nil {

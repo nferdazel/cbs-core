@@ -8,8 +8,34 @@ import (
 	"cbs-core/apps/core-api/internal/domain"
 )
 
+// Divisi/satuan kerja yang bank isi dicetak pada dokumen Form 00.19.
+func TestBuildForm00_19DocumentMemuatDivisi(t *testing.T) {
+	jml := 7
+	report := domain.KelembagaanReport{
+		WorkUnits: []domain.BankWorkUnit{
+			{Code: "DIV-OPS", Nama: "Divisi Operasional", Jenis: "Divisi", KepalaUnit: "Andi", JumlahPegawai: &jml, Urutan: 1},
+			{Code: "SAT-MARK", Nama: "Satuan Kerja Pemasaran", Jenis: "Satuan Kerja", ParentCode: "DIV-OPS", Urutan: 2},
+		},
+	}
+	doc := BuildForm00_19Document(report, "BPR Contoh Sejahtera")
+	for _, want := range []string{
+		"Divisi atau Satuan Kerja",
+		"DIV-OPS", "Divisi Operasional", "Andi", "7",
+		"SAT-MARK", "Satuan Kerja Pemasaran",
+		// Jumlah pegawai yang belum diisi ditulis "-", bukan nol.
+		"-",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("dokumen tidak memuat %q", want)
+		}
+	}
+	if strings.Contains(doc, "Belum ada divisi/satuan kerja") {
+		t.Error("dokumen tidak boleh menyatakan divisi kosong saat register terisi")
+	}
+}
+
 // Dokumen Form 00.19 memuat identitas bank, jaringan kantor, dan susunan pengurus per
-// kategori, serta menandai bagian yang belum dimodelkan (divisi/satuan kerja).
+// kategori, serta menandai bagian yang belum diisi (divisi/satuan kerja).
 func TestBuildForm00_19DocumentMemuatIsi(t *testing.T) {
 	started := time.Date(2025, time.March, 1, 0, 0, 0, 0, time.UTC)
 	report := domain.KelembagaanReport{
@@ -34,7 +60,7 @@ func TestBuildForm00_19DocumentMemuatIsi(t *testing.T) {
 		"Budi", "Siti",
 		"01-03-2025",
 		"Divisi atau Satuan Kerja",
-		"Belum dimodelkan",
+		"Belum ada divisi/satuan kerja yang diisi bank",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("dokumen tidak memuat %q", want)

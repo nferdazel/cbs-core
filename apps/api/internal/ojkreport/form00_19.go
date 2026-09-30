@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,8 +35,9 @@ import (
 //   - Nama pegawai pada direksi/dewan komisaris/pejabat eksekutif memakai bank_management
 //     (migrasi 000112) per kategori. NIK tidak disimpan (keputusan privasi) dan karena itu
 //     tidak dicetak.
-//   - "Divisi atau satuan kerja" belum dimodelkan di sistem. Bagian itu DITANDAI belum
-//     tersedia di dalam dokumen beserta alasannya, bukan dicetak kosong seolah lengkap.
+//   - "Divisi atau satuan kerja" dibaca dari bank_work_units (migrasi 000131). Bila bank
+//     belum mengisi, bagian itu ditandai belum diisi di dalam dokumen, bukan dicetak
+//     kosong seolah lengkap dan bukan diisi contoh.
 //   - Bila kelembagaan sama sekali kosong, dokumen tetap dirakit dengan peringatan bahwa
 //     bank belum mengisi data — bukan digagalkan dan bukan diisi contoh.
 
@@ -101,9 +103,8 @@ func BuildForm00_19Document(report domain.KelembagaanReport, bankName string) st
 	// Peringatan sumber: apa yang belum dimodelkan harus terlihat oleh pembaca dokumen,
 	// bukan disembunyikan.
 	b.WriteString("<div class=\"warn\"><strong>Catatan kelengkapan dokumen.</strong> ")
-	b.WriteString("Susunan hierarki mengikuti data jaringan kantor dan pejabat yang bank isi. ")
-	b.WriteString("Divisi atau satuan kerja belum dimodelkan pada sistem ini sehingga tidak dapat dicetak; ")
-	b.WriteString("lengkapi bagian itu secara manual sebelum dokumen dikirim ke OJK.")
+	b.WriteString("Susunan hierarki mengikuti data jaringan kantor, pejabat, dan divisi/satuan kerja yang bank isi. ")
+	b.WriteString("Lengkapi bagian yang masih kosong secara manual sebelum dokumen dikirim ke OJK.")
 	b.WriteString("</div>\n")
 	for _, w := range report.Warnings {
 		fmt.Fprintf(&b, "<div class=\"warn\">%s</div>\n", esc(w))
@@ -167,14 +168,53 @@ func BuildForm00_19Document(report domain.KelembagaanReport, bankName string) st
 		b.WriteString("</tbody>\n</table>\n")
 	}
 
-	// Bagian yang wajib ada menurut peraturan tetapi belum punya sumber di sistem.
+	// Divisi atau satuan kerja (sumber: bank_work_units, migrasi 000131).
 	b.WriteString("<h3>Divisi atau Satuan Kerja</h3>\n")
-	b.WriteString("<p class=\"empty\">Belum dimodelkan pada sistem (tidak ada register divisi/satuan kerja). ")
-	b.WriteString("Bagian ini harus dilengkapi manual sebelum dokumen dikirim ke OJK.</p>\n")
+	if len(report.WorkUnits) == 0 {
+		b.WriteString("<p class=\"empty\">Belum ada divisi/satuan kerja yang diisi bank (register kosong). ")
+		b.WriteString("Bagian ini harus dilengkapi manual sebelum dokumen dikirim ke OJK.</p>\n")
+	} else {
+		b.WriteString("<table>\n<thead><tr>")
+		for _, h := range []string{"Kode", "Jenis", "Nama Unit", "Unit Induk", "Kepala Unit", "Jumlah Pegawai"} {
+			fmt.Fprintf(&b, "<th>%s</th>", h)
+		}
+		b.WriteString("</tr></thead>\n<tbody>\n")
+		for _, u := range form00_19SortedWorkUnits(report.WorkUnits) {
+			fmt.Fprintf(&b, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+				esc(form00_19OrDash(u.Code)),
+				esc(form00_19OrDash(u.Jenis)),
+				esc(form00_19OrDash(u.Nama)),
+				esc(form00_19OrDash(u.ParentCode)),
+				esc(form00_19OrDash(u.KepalaUnit)),
+				esc(form00_19JumlahPegawai(u.JumlahPegawai)))
+		}
+		b.WriteString("</tbody>\n</table>\n")
+	}
 
 	b.WriteString("<div class=\"sign\">Dicetak dari CBS Core untuk dilengkapi dan disimpan sebagai PDF sebelum disampaikan ke OJK.</div>\n")
 	b.WriteString("</body>\n</html>\n")
 	return b.String()
+}
+
+// form00_19SortedWorkUnits mengurutkan divisi/satuan kerja: urutan lebih dulu, lalu kode.
+// Urutan deterministik supaya dokumen tidak berubah-ubah antar ekspor.
+func form00_19SortedWorkUnits(units []domain.BankWorkUnit) []domain.BankWorkUnit {
+	out := append([]domain.BankWorkUnit(nil), units...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Urutan != out[j].Urutan {
+			return out[i].Urutan < out[j].Urutan
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out
+}
+
+// form00_19JumlahPegawai menulis jumlah pegawai; nil berarti belum diisi (bukan nol).
+func form00_19JumlahPegawai(n *int) string {
+	if n == nil {
+		return "-"
+	}
+	return strconv.Itoa(*n)
 }
 
 // form00_19SortedOffices mengurutkan kantor: sandi lebih dulu (kosong di akhir), lalu nama.

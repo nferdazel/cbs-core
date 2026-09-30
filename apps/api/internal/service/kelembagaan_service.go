@@ -39,7 +39,7 @@ func NewKelembagaanService(db *sql.DB, repo domain.KelembagaanRepository, auditS
 // KelembagaanReport menyusun laporan kelembagaan untuk satu posisi. Bank-wide: aktor
 // yang tidak berwenang atas seluruh bank ditolak.
 func (s *kelembagaanService) KelembagaanReport(ctx context.Context, asOf time.Time, actor domain.Actor) (domain.KelembagaanReport, error) {
-	report := domain.KelembagaanReport{AsOf: asOf.UTC(), Offices: []domain.BankOffice{}, Management: []domain.BankManagement{}}
+	report := domain.KelembagaanReport{AsOf: asOf.UTC(), Offices: []domain.BankOffice{}, Management: []domain.BankManagement{}, WorkUnits: []domain.BankWorkUnit{}}
 	if !actor.IsCrossBranch() {
 		return report, fmt.Errorf("%w: peran %s tidak berwenang", domain.ErrKelembagaanBankWide, actor.Role)
 	}
@@ -54,11 +54,18 @@ func (s *kelembagaanService) KelembagaanReport(ctx context.Context, asOf time.Ti
 	if err != nil {
 		return report, fmt.Errorf("membaca direksi/komisaris/pejabat eksekutif: %w", err)
 	}
+	workUnits, err := s.repo.ListWorkUnits(ctx)
+	if err != nil {
+		return report, fmt.Errorf("membaca divisi/satuan kerja: %w", err)
+	}
 	if offices != nil {
 		report.Offices = offices
 	}
 	if management != nil {
 		report.Management = management
+	}
+	if workUnits != nil {
+		report.WorkUnits = workUnits
 	}
 	return report, nil
 }
@@ -168,6 +175,51 @@ func (s *kelembagaanService) DeleteManagement(ctx context.Context, id uuid.UUID,
 		return writeAudit(ctx, s.audit, tx, actor, "DELETE_BANK_MANAGEMENT", "bank_management",
 			id.String(), map[string]any{"id": id.String()})
 	})
+}
+
+// UpsertWorkUnit menyimpan satu divisi/satuan kerja (id kosong = buat baru) dan menulis
+// audit dalam satu transaksi.
+func (s *kelembagaanService) UpsertWorkUnit(ctx context.Context, input domain.UpdateBankWorkUnitInput, actor domain.Actor) (*domain.BankWorkUnit, error) {
+	u, err := domain.BuildBankWorkUnit(input)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	u.CreatedAt, u.UpdatedAt = now, now
+	if err := s.runner.Run(ctx, func(tx any) error {
+		if err := s.repo.UpsertWorkUnitTx(ctx, tx, u, actor.UserID); err != nil {
+			return err
+		}
+		return writeAudit(ctx, s.audit, tx, actor, "UPSERT_BANK_WORK_UNIT", "bank_work_unit",
+			u.ID.String(), bankWorkUnitAuditChanges(u))
+	}); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// DeleteWorkUnit menghapus satu divisi/satuan kerja dan menulis audit.
+func (s *kelembagaanService) DeleteWorkUnit(ctx context.Context, id uuid.UUID, actor domain.Actor) error {
+	return s.runner.Run(ctx, func(tx any) error {
+		found, err := s.repo.DeleteWorkUnitTx(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return domain.ErrKelembagaanNotFound
+		}
+		return writeAudit(ctx, s.audit, tx, actor, "DELETE_BANK_WORK_UNIT", "bank_work_unit",
+			id.String(), map[string]any{"id": id.String()})
+	})
+}
+
+// bankWorkUnitAuditChanges membangun catatan audit ringkas.
+func bankWorkUnitAuditChanges(u domain.BankWorkUnit) map[string]any {
+	return map[string]any{
+		"code":        u.Code,
+		"nama":        u.Nama,
+		"parent_code": u.ParentCode,
+	}
 }
 
 // periksaKabupaten menolak sandi kabupaten OJK yang tidak ada di tabel referensi

@@ -238,6 +238,11 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/kelembagaan/management", h.UpsertKelembagaanManagement)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/kelembagaan/management/{id}", h.DeleteKelembagaanManagement)
+		// Divisi/satuan kerja (Form 00.19) memakai system:config, teraudit di service.
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/kelembagaan/work-units", h.UpsertKelembagaanWorkUnit)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/kelembagaan/work-units/{id}", h.DeleteKelembagaanWorkUnit)
 		// Form 00.11 kolom jaringan kantor selain pusat/cabang dan TPE: isi memakai
 		// system:config, teraudit di service. Satu rute saja; daftar kantor untuk UI
 		// memakai rute kelembagaan yang sudah ada.
@@ -1041,6 +1046,57 @@ func (h *OJKReportHandler) DeleteKelembagaanManagement(w http.ResponseWriter, r 
 		return
 	}
 	if err := h.kelembagaan.DeleteManagement(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanDeleted, map[string]any{"id": id.String()})
+}
+
+// UpsertKelembagaanWorkUnit membuat/memperbarui satu divisi/satuan kerja (Form 00.19).
+func (h *OJKReportHandler) UpsertKelembagaanWorkUnit(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdateBankWorkUnitInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	u, err := h.kelembagaan.UpsertWorkUnit(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writeKelembagaanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgKelembagaanSaved, u)
+}
+
+// DeleteKelembagaanWorkUnit menghapus satu divisi/satuan kerja menurut id (Form 00.19).
+func (h *OJKReportHandler) DeleteKelembagaanWorkUnit(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgKelembagaanIDInvalid)
+		return
+	}
+	if h.kelembagaan == nil {
+		InternalError(w, r, ojkreport.ErrKelembagaanSourceUnavailable)
+		return
+	}
+	if err := h.kelembagaan.DeleteWorkUnit(r.Context(), id,
 		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
 		writeKelembagaanError(w, r, err)
 		return

@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,9 +116,96 @@ type KelembagaanReport struct {
 	AsOf       time.Time        `json:"as_of"`
 	Offices    []BankOffice     `json:"offices"`
 	Management []BankManagement `json:"management"`
+	// WorkUnits adalah divisi/satuan kerja untuk Form 00.19. Bagian ini WAJIB ada menurut
+	// PDF #298 ("divisi atau satuan kerja"); sebelum register ada, bagian itu hanya
+	// ditandai belum tersedia. Bila bank belum mengisi, daftar kosong dan dokumen
+	// menandainya belum diisi (bukan diberi contoh).
+	WorkUnits []BankWorkUnit `json:"work_units"`
 	// Warnings mencatat batas laporan yang perlu diketahui pembaca (mis. bagian form
 	// yang belum punya sumber), bukan menutupi kekurangan data.
 	Warnings []string `json:"warnings,omitempty"`
+}
+
+// BankWorkUnit adalah satu divisi/satuan kerja bank (sumber Form 00.19). Hierarki ditulis
+// sebagai ParentCode, bukan relasi objek. NIK pegawai tidak disimpan (keputusan privasi).
+type BankWorkUnit struct {
+	ID   uuid.UUID `json:"id"`
+	Code string    `json:"code"`
+	Nama string    `json:"nama"`
+	// Jenis unit (divisi/satuan kerja/...): teks bebas keputusan bank.
+	Jenis string `json:"jenis,omitempty"`
+	// ParentCode menunjuk kode unit induk; kosong = unit puncak.
+	ParentCode string `json:"parent_code,omitempty"`
+	// KepalaUnit adalah nama kepala unit; kosong = belum diisi.
+	KepalaUnit string `json:"kepala_unit,omitempty"`
+	// JumlahPegawai nil = belum diisi, dibedakan dari nol.
+	JumlahPegawai *int      `json:"jumlah_pegawai,omitempty"`
+	Urutan        int       `json:"urutan"`
+	Note          string    `json:"note,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// UpdateBankWorkUnitInput adalah isi upsert satu divisi/satuan kerja. ID kosong = buat baru.
+type UpdateBankWorkUnitInput struct {
+	ID         string `json:"id"`
+	Code       string `json:"code"`
+	Nama       string `json:"nama"`
+	Jenis      string `json:"jenis"`
+	ParentCode string `json:"parent_code"`
+	KepalaUnit string `json:"kepala_unit"`
+	// JumlahPegawai kosong = belum diisi (NULL), bukan nol.
+	JumlahPegawai string `json:"jumlah_pegawai"`
+	Urutan        string `json:"urutan"`
+	Note          string `json:"note"`
+}
+
+// BuildBankWorkUnit memvalidasi masukan dan membentuk baris yang siap disimpan.
+func BuildBankWorkUnit(in UpdateBankWorkUnitInput) (BankWorkUnit, error) {
+	out := BankWorkUnit{
+		Code:       strings.TrimSpace(in.Code),
+		Nama:       strings.TrimSpace(in.Nama),
+		Jenis:      strings.TrimSpace(in.Jenis),
+		ParentCode: strings.TrimSpace(in.ParentCode),
+		KepalaUnit: strings.TrimSpace(in.KepalaUnit),
+		Note:       strings.TrimSpace(in.Note),
+	}
+	if out.Code == "" {
+		return out, fmt.Errorf("%w: kode unit wajib diisi", ErrKelembagaanInputInvalid)
+	}
+	if len(out.Code) > 32 {
+		return out, fmt.Errorf("%w: kode unit maksimal 32 karakter", ErrKelembagaanInputInvalid)
+	}
+	if out.Nama == "" {
+		return out, fmt.Errorf("%w: nama unit wajib diisi", ErrKelembagaanInputInvalid)
+	}
+	if len(out.Nama) > 255 {
+		return out, fmt.Errorf("%w: nama unit maksimal 255 karakter", ErrKelembagaanInputInvalid)
+	}
+	if raw := strings.TrimSpace(in.JumlahPegawai); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return out, fmt.Errorf("%w: jumlah pegawai harus bilangan bulat tidak negatif", ErrKelembagaanInputInvalid)
+		}
+		out.JumlahPegawai = &n
+	}
+	if raw := strings.TrimSpace(in.Urutan); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return out, fmt.Errorf("%w: urutan harus bilangan bulat", ErrKelembagaanInputInvalid)
+		}
+		out.Urutan = n
+	}
+	if raw := strings.TrimSpace(in.ID); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return out, fmt.Errorf("%w: id bukan UUID yang sah", ErrKelembagaanInputInvalid)
+		}
+		out.ID = id
+	} else {
+		out.ID = uuid.New()
+	}
+	return out, nil
 }
 
 // UpdateBankOfficeInput adalah isi upsert satu kantor. ID kosong = buat baru (id
@@ -293,6 +381,10 @@ type KelembagaanRepository interface {
 	DeleteManagementTx(ctx context.Context, tx any, id uuid.UUID) (bool, error)
 	// UpdateForm00_11Tx menyimpan kolom Form 00.11 satu kantor; found=false bila tidak ada.
 	UpdateForm00_11Tx(ctx context.Context, tx any, id uuid.UUID, in UpdateOfficeForm00_11Input) (bool, error)
+	// Work units (Form 00.19): list + upsert/delete.
+	ListWorkUnits(ctx context.Context) ([]BankWorkUnit, error)
+	UpsertWorkUnitTx(ctx context.Context, tx any, u BankWorkUnit, actorID uuid.UUID) error
+	DeleteWorkUnitTx(ctx context.Context, tx any, id uuid.UUID) (bool, error)
 }
 
 // KelembagaanService merakit LAPORAN_KELEMBAGAAN dan melayani pengisian berizin.
@@ -309,4 +401,8 @@ type KelembagaanService interface {
 	DeleteManagement(ctx context.Context, id uuid.UUID, actor Actor) error
 	// UpdateOfficeForm00_11 menyimpan kolom Form 00.11 satu kantor, teraudit.
 	UpdateOfficeForm00_11(ctx context.Context, id uuid.UUID, in UpdateOfficeForm00_11Input, actor Actor) error
+	// UpsertWorkUnit menyimpan satu divisi/satuan kerja (id kosong = buat baru), teraudit.
+	UpsertWorkUnit(ctx context.Context, input UpdateBankWorkUnitInput, actor Actor) (*BankWorkUnit, error)
+	// DeleteWorkUnit menghapus satu divisi/satuan kerja, teraudit.
+	DeleteWorkUnit(ctx context.Context, id uuid.UUID, actor Actor) error
 }
