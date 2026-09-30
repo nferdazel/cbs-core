@@ -55,6 +55,10 @@ func (h *StaffHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/staff
 func (h *StaffHandler) List(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if page < 1 {
@@ -64,7 +68,7 @@ func (h *StaffHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	users, total, err := h.staffSvc.ListStaff(r.Context(), page, pageSize)
+	users, total, err := h.staffSvc.ListStaff(r.Context(), actor, page, pageSize)
 	if err != nil {
 		InternalError(w, r, err)
 		return

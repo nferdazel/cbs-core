@@ -233,14 +233,14 @@ func (s *staffService) GetStaff(ctx context.Context, id uuid.UUID) (*domain.Staf
 	return s.staffRepo.GetByID(ctx, id)
 }
 
-func (s *staffService) ListStaff(ctx context.Context, page, pageSize int) ([]domain.StaffUser, int, error) {
+func (s *staffService) ListStaff(ctx context.Context, actor domain.Actor, page, pageSize int) ([]domain.StaffUser, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.staffRepo.List(ctx, pageSize, (page-1)*pageSize)
+	return s.staffRepo.List(ctx, actor, pageSize, (page-1)*pageSize)
 }
 
 func (s *staffService) UpdateStaff(ctx context.Context, id uuid.UUID, input domain.UpdateStaffInput, actor domain.Actor) (*domain.StaffUser, error) {

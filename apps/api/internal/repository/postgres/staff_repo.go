@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
@@ -142,16 +143,29 @@ func (r *StaffRepository) GetByUsername(ctx context.Context, username string) (*
 	return u, err
 }
 
-func (r *StaffRepository) List(ctx context.Context, limit, offset int) ([]domain.StaffUser, int, error) {
+func (r *StaffRepository) List(ctx context.Context, actor domain.Actor, limit, offset int) ([]domain.StaffUser, int, error) {
+	// Cakupan cabang: peran terbatas cabang (ADMIN/SUPERVISOR) hanya melihat staf
+	// cabangnya; peran lintas cabang (SUPERADMIN/AUDITOR/SYSTEM) melihat seluruh bank.
+	// Baris tanpa branch_code tetap disertakan mengikuti CanAccessBranch.
+	where, args := branchCodeReadClause("branch_code", actor)
+	filter := ""
+	if where != "" {
+		filter = " WHERE " + where
+	}
+
 	var total int
-	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM staff_users").Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM staff_users"+filter, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	limitArg := len(args) + 1
+	offsetArg := len(args) + 2
 	q := `SELECT id, employee_id, username, full_name, email, password_hash, role, branch_code, book,
 		is_active, last_login_at, password_changed_at, failed_login_count, locked_until,
 		created_by, created_at, updated_at
-		FROM staff_users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
-	rows, err := r.db.QueryContext(ctx, q, limit, offset)
+		FROM staff_users` + filter + " ORDER BY created_at DESC LIMIT $" +
+		strconv.Itoa(limitArg) + " OFFSET $" + strconv.Itoa(offsetArg)
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := r.db.QueryContext(ctx, q, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -90,3 +90,49 @@ func TestBranchReadClause(t *testing.T) {
 		}
 	})
 }
+
+// branchCodeReadClause dipakai kolom yang menyimpan KODE cabang (VARCHAR), bukan id
+// uuid. Berbeda dari branchReadClause, kode dibandingkan langsung (tanpa subquery id),
+// dan baris dengan kode kosong ikut disertakan mengikuti CanAccessBranch.
+func TestBranchCodeReadClause(t *testing.T) {
+	t.Run("aktor lintas cabang tidak difilter", func(t *testing.T) {
+		for _, role := range []domain.StaffRole{domain.RoleSuperAdmin, domain.RoleAuditor, domain.RoleSystem} {
+			clause, args := branchCodeReadClause("branch_code", domain.Actor{Role: role, BranchCode: "001"})
+			if clause != "" || args != nil {
+				t.Fatalf("role %s seharusnya tanpa filter, dapat clause=%q args=%v", role, clause, args)
+			}
+		}
+	})
+
+	t.Run("aktor cabang memakai kode langsung dan baris kosong tetap terlihat", func(t *testing.T) {
+		clause, args := branchCodeReadClause("branch_code", domain.Actor{Role: domain.RoleSupervisor, BranchCode: "001"})
+		if !strings.Contains(clause, "branch_code = ''") {
+			t.Fatalf("klausa harus menyertakan baris kode kosong: %q", clause)
+		}
+		if !strings.Contains(clause, "branch_code = $1") {
+			t.Fatalf("klausa harus membandingkan kode langsung (bukan subquery id): %q", clause)
+		}
+		if strings.Contains(clause, "SELECT id FROM branches") {
+			t.Fatalf("kolom kode tidak boleh dipetakan ulang lewat subquery id: %q", clause)
+		}
+		if len(args) != 1 || args[0] != "001" {
+			t.Fatalf("args %v, ingin [001]", args)
+		}
+	})
+
+	t.Run("cakupan hierarki memakai himpunan kode", func(t *testing.T) {
+		actor := domain.Actor{
+			Role:        domain.RoleSupervisor,
+			BranchCode:  "810",
+			BranchScope: domain.NewBranchScope([]string{"810", "811"}),
+		}
+		clause, args := branchCodeReadClause("branch_code", actor)
+		if !strings.Contains(clause, "branch_code = ANY($1)") {
+			t.Fatalf("cakupan hierarki harus memakai ANY($1) atas kode: %q", clause)
+		}
+		codes, ok := args[0].([]string)
+		if !ok || len(codes) != 2 || codes[0] != "810" {
+			t.Fatalf("argumen %v, ingin [810 811]", args[0])
+		}
+	})
+}

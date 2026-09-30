@@ -34,7 +34,7 @@ func (r *pwdStaffRepo) GetByUsername(_ context.Context, username string) (*domai
 	}
 	return nil, errors.New("not found")
 }
-func (r *pwdStaffRepo) List(context.Context, int, int) ([]domain.StaffUser, int, error) {
+func (r *pwdStaffRepo) List(context.Context, domain.Actor, int, int) ([]domain.StaffUser, int, error) {
 	return nil, 0, nil
 }
 func (r *pwdStaffRepo) Update(context.Context, *domain.StaffUser) error         { return nil }

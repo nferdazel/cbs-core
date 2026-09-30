@@ -44,3 +44,23 @@ func branchReadClause(column string, actor domain.Actor) (string, []any) {
 	clause := fmt.Sprintf("(%s IS NULL OR %s = (SELECT id FROM branches WHERE code = $1))", column, column)
 	return clause, []any{actor.BranchCode}
 }
+
+// branchCodeReadClause menyusun klausa WHERE untuk kolom yang menyimpan KODE cabang
+// langsung (VARCHAR), bukan id cabang (uuid). Dipakai tabel seperti staff_users yang
+// memakai branch_code. Semantiknya sama dengan branchReadClause dan CanAccessBranch:
+//   - aktor lintas cabang (SUPERADMIN/AUDITOR/SYSTEM) tidak difilter;
+//   - cakupan unit teresolusi membatasi ke himpunan kode yang boleh diakses;
+//   - jalur lama (cakupan belum diresolusi) memakai satu kode cabang aktor;
+//   - baris dengan kode kosong/NULL sengaja tetap disertakan, mengikuti CanAccessBranch
+//     (data pra-migrasi tanpa cabang tidak boleh hilang dari operasional).
+func branchCodeReadClause(column string, actor domain.Actor) (string, []any) {
+	if actor.IsCrossBranch() {
+		return "", nil
+	}
+	if actor.HasResolvedBranchScope() {
+		clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = ANY($1))", column, column, column)
+		return clause, []any{actor.BranchScope.Codes()}
+	}
+	clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = $1)", column, column, column)
+	return clause, []any{actor.BranchCode}
+}

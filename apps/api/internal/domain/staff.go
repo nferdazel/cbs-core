@@ -498,7 +498,7 @@ type StaffRepository interface {
 	Create(ctx context.Context, user *StaffUser) error
 	GetByID(ctx context.Context, id uuid.UUID) (*StaffUser, error)
 	GetByUsername(ctx context.Context, username string) (*StaffUser, error)
-	List(ctx context.Context, limit, offset int) ([]StaffUser, int, error)
+	List(ctx context.Context, actor Actor, limit, offset int) ([]StaffUser, int, error)
 	Update(ctx context.Context, user *StaffUser) error
 	IncrementFailedLogin(ctx context.Context, id uuid.UUID) error
 	LockAccount(ctx context.Context, id uuid.UUID, until time.Time) error
@@ -558,7 +558,7 @@ type AuthService interface {
 type StaffService interface {
 	CreateStaff(ctx context.Context, input CreateStaffInput, actor Actor) (*StaffUser, error)
 	GetStaff(ctx context.Context, id uuid.UUID) (*StaffUser, error)
-	ListStaff(ctx context.Context, page, pageSize int) ([]StaffUser, int, error)
+	ListStaff(ctx context.Context, actor Actor, page, pageSize int) ([]StaffUser, int, error)
 	UpdateStaff(ctx context.Context, id uuid.UUID, input UpdateStaffInput, actor Actor) (*StaffUser, error)
 	ChangePassword(ctx context.Context, id uuid.UUID, input ChangePasswordInput, actor Actor) error
 	ResetPassword(ctx context.Context, id uuid.UUID, newPassword string, actor Actor) error

@@ -31,7 +31,7 @@ func (s *stubStaffRepo) GetByUsername(ctx context.Context, username string) (*do
 	}
 	return nil, errors.New("not found")
 }
-func (s *stubStaffRepo) List(ctx context.Context, limit, offset int) ([]domain.StaffUser, int, error) {
+func (s *stubStaffRepo) List(ctx context.Context, actor domain.Actor, limit, offset int) ([]domain.StaffUser, int, error) {
 	return nil, 0, nil
 }
 func (s *stubStaffRepo) Update(ctx context.Context, u *domain.StaffUser) error        { return nil }
