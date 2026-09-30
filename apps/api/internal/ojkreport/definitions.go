@@ -237,8 +237,12 @@ var OJKBulananForms = []OJKFormDefinition{
 	// office_type. Bila belum ada baris, builder mencatatnya pada SkippedForms.
 	{Form: "00.11", Name: "Data Kantor selain Kantor Pusat dan Kantor Cabang dan Terminal Perbankan Elektronik", Buildable: true},
 	{Form: "00.12", Name: "Data Penutupan Kantor dan Terminal Perbankan Elektronik", Buildable: true},
-	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: false,
-		UnavailableReason: "sumber customers + customers.ojk_pihak_lawan_code (migrasi 000104:26) + counterparty_cif (000106:37) ada, tetapi kolom jenis identitas, jenis kelamin, NPWP, kewarganegaraan, tanggal lahir, grup, dan pemeringkat belum ada (PDF #286-292)"},
+	// Form 00.16 dibangun dari register pihak lawan per baris (pihak_lawan_register,
+	// migrasi 000130) yang bank isi lewat API. Memuat seluruh pihak lawan bank maupun
+	// bukan bank; kolom III Nomor Identitas dan VI NPWP sengaja tidak disimpan (keputusan
+	// privasi). Bila belum ada baris, builder mencatatnya pada SkippedForms dengan alasan
+	// spesifik. TANPA baris JUMLAH.
+	{Form: "00.16", Name: "Daftar Pihak Lawan", Buildable: true},
 	// Form 00.17 "Laporan Perubahan Ekuitas" (PDF #page 293-294) disusun sebagai form
 	// parsial: 17 baris tetap x 12 kolom, hanya kolom yang punya akun COA ekuitas yang
 	// diisi (III 30100/13100, X 30400, XI 30200/30300/13200), baris "Saldo per 31 Des"

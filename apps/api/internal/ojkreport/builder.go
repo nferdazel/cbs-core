@@ -798,6 +798,26 @@ func (b *Builder) buildTables(ctx context.Context, periodEnd time.Time, actor do
 			UnavailableReason: "sumber register hapus buku belum dikonfigurasi pada ekspor ini"})
 	}
 
+	// Form 00.16 Daftar Pihak Lawan: register pihak_lawan_register (migrasi 000130).
+	// Memuat seluruh pihak lawan bank maupun bukan bank; kolom III Nomor Identitas dan VI
+	// NPWP tidak disimpan (keputusan privasi). Tanpa baris register, form dinyatakan belum
+	// tersedia, bukan ditulis kosong. TANPA baris JUMLAH.
+	if pl, ok := b.source.(PihakLawanOJKSource); ok {
+		rows, err := pl.ListPihakLawanForOJK(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(rows) == 0 {
+			skipped = append(skipped, OJKFormDefinition{Form: "00.16", Name: formName("00.16"),
+				UnavailableReason: "belum ada register pihak lawan yang diisi bank"})
+		} else {
+			tables = append(tables, BuildForm00_16(rows, kantor))
+		}
+	} else {
+		skipped = append(skipped, OJKFormDefinition{Form: "00.16", Name: formName("00.16"),
+			UnavailableReason: "sumber register pihak lawan belum dikonfigurasi pada ekspor ini"})
+	}
+
 	// Form 04.00 Daftar Surat Berharga: register surat berharga per surat berharga yang
 	// bank miliki (migrasi 000122). Bila belum ada baris AKTIF pada bulan periode, form
 	// dinyatakan belum tersedia, bukan ditulis kosong. Form ini punya baris JUMLAH dan

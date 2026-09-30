@@ -109,6 +109,10 @@ type RepoSource struct {
 	// (hapus_buku_register, migrasi 000129). Bila nil, form dinyatakan belum tersedia;
 	// tidak ada data yang dikarang. Pembacaan bersifat bank-wide.
 	HapusBuku domain.HapusBukuRepository
+	// PihakLawan menyediakan register pihak lawan Form 00.16 (pihak_lawan_register,
+	// migrasi 000130). Bila nil, form dinyatakan belum tersedia; tidak ada data yang
+	// dikarang. Pembacaan bersifat bank-wide.
+	PihakLawan domain.PihakLawanRepository
 	// Kelembagaan menyediakan jaringan kantor (bank_offices) untuk memilih kantor
 	// pelapor kolom I "Sandi Kantor" pada form bank-wide 09.00/01.01. Bila nil,
 	// kolom I dinyatakan tidak tersedia; sandinya tidak dikarang.
@@ -646,6 +650,16 @@ func (s RepoSource) ListHapusBukuForOJK(ctx context.Context) ([]domain.HapusBuku
 		return nil, nil
 	}
 	return s.HapusBuku.ListHapusBukuForOJK(ctx)
+}
+
+// ListPihakLawanForOJK membaca register pihak lawan untuk Form 00.16. Register ini
+// bank-wide; rute yang menyajikannya dijaga system:config, sehingga tidak ada gerbang
+// peran di sini.
+func (s RepoSource) ListPihakLawanForOJK(ctx context.Context) ([]domain.PihakLawanItem, error) {
+	if s.PihakLawan == nil {
+		return nil, nil
+	}
+	return s.PihakLawan.ListPihakLawanForOJK(ctx)
 }
 
 // ReportingOffice memilih satu kantor pelapor dari jaringan kantor bank (bank_offices,

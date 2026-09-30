@@ -402,6 +402,14 @@ const (
 	MsgHapusBukuInputInvalid              Code = "hapus_buku_input_invalid"
 	MsgHapusBukuNotFound                  Code = "hapus_buku_not_found"
 	MsgHapusBukuBankWide                  Code = "hapus_buku_bank_wide"
+	MsgPihakLawanReport                   Code = "pihak_lawan_report"
+	MsgPihakLawanItemsListed              Code = "pihak_lawan_items_listed"
+	MsgPihakLawanSaved                    Code = "pihak_lawan_saved"
+	MsgPihakLawanDeleted                  Code = "pihak_lawan_deleted"
+	MsgPihakLawanIDInvalid                Code = "pihak_lawan_id_invalid"
+	MsgPihakLawanInputInvalid             Code = "pihak_lawan_input_invalid"
+	MsgPihakLawanNotFound                 Code = "pihak_lawan_not_found"
+	MsgPihakLawanBankWide                 Code = "pihak_lawan_bank_wide"
 	MsgBranchNotFound                     Code = "branch_not_found"
 	MsgBranchCodeExists                   Code = "branch_code_exists"
 	MsgBranchNameRequired                 Code = "branch_name_required"
@@ -876,6 +884,14 @@ var codeList = []Code{
 	MsgHapusBukuInputInvalid,
 	MsgHapusBukuNotFound,
 	MsgHapusBukuBankWide,
+	MsgPihakLawanReport,
+	MsgPihakLawanItemsListed,
+	MsgPihakLawanSaved,
+	MsgPihakLawanDeleted,
+	MsgPihakLawanIDInvalid,
+	MsgPihakLawanInputInvalid,
+	MsgPihakLawanNotFound,
+	MsgPihakLawanBankWide,
 	MsgBranchNotFound,
 	MsgBranchCodeExists,
 	MsgBranchNameRequired,
@@ -2391,6 +2407,38 @@ var catalog = map[Code]map[Lang]string{
 	MsgHapusBukuBankWide: {
 		ID: "register hapus buku bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
 		EN: "the write-off register is bank-wide and can only be read by cross-branch roles",
+	},
+	MsgPihakLawanReport: {
+		ID: "daftar pihak lawan Form 00.16",
+		EN: "counterparty list Form 00.16",
+	},
+	MsgPihakLawanItemsListed: {
+		ID: "daftar pihak lawan untuk pengisian Form 00.16",
+		EN: "counterparty list for Form 00.16 entry",
+	},
+	MsgPihakLawanSaved: {
+		ID: "data pihak lawan Form 00.16 disimpan",
+		EN: "counterparty Form 00.16 data saved",
+	},
+	MsgPihakLawanDeleted: {
+		ID: "data pihak lawan Form 00.16 dihapus",
+		EN: "counterparty Form 00.16 data deleted",
+	},
+	MsgPihakLawanIDInvalid: {
+		ID: "id pihak lawan bukan UUID yang sah",
+		EN: "counterparty id is not a valid UUID",
+	},
+	MsgPihakLawanInputInvalid: {
+		ID: "data pihak lawan Form 00.16 tidak valid",
+		EN: "counterparty Form 00.16 data is invalid",
+	},
+	MsgPihakLawanNotFound: {
+		ID: "data pihak lawan tidak ditemukan",
+		EN: "counterparty data was not found",
+	},
+	MsgPihakLawanBankWide: {
+		ID: "register pihak lawan bersifat bank-wide dan hanya dapat dibaca peran lintas cabang",
+		EN: "the counterparty register is bank-wide and can only be read by cross-branch roles",
 	},
 	MsgBranchNotFound: {
 		ID: "cabang tidak ditemukan",

@@ -124,6 +124,10 @@ type OJKReportHandler struct {
 	// sekaligus operasi upsert/delete-nya. Boleh nil pada uji; tanpa itu rute register
 	// hapus buku tetap terpasang tetapi gagal saat dipanggil.
 	hapusBuku domain.HapusBukuService
+	// pihakLawan menyediakan register pihak lawan (Form 00.16) sekaligus operasi
+	// upsert/delete-nya. Boleh nil pada uji; tanpa itu rute register pihak lawan tetap
+	// terpasang tetapi gagal saat dipanggil.
+	pihakLawan domain.PihakLawanService
 	// placements menyediakan daftar penempatan pada bank lain untuk pemilih UI sandi
 	// OJK (Form 05.00). Boleh nil pada uji; tanpa itu rute daftar tetap terpasang
 	// tetapi gagal saat dipanggil.
@@ -153,7 +157,7 @@ type OJKReportHandler struct {
 // menyediakan daftar sandi referensi OJK Lampiran 02/03 untuk pemilih UI dan boleh nil
 // dengan perilaku yang sama. kreditSindikasi menyediakan register kredit sindikasi
 // (Form 06.02) dan boleh nil dengan perilaku yang sama.
-func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, modal domain.ModalService, hapusBuku domain.HapusBukuService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
+func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkreport.MappingReviewRepository, config domain.SystemConfigService, kelembagaan domain.KelembagaanService, offBalance domain.OffBalanceService, ayda domain.AYDARegisterService, kepemilikan domain.KepemilikanRegisterService, pinjaman domain.PinjamanRegisterService, properti domain.PropertiRegisterService, asetTetap domain.AsetTetapRegisterService, penyertaan domain.PenyertaanRegisterService, asetKeuangan domain.AsetKeuanganRegisterService, suratBerharga domain.SuratBerhargaRegisterService, kasValas domain.KasValasRegisterService, kreditSindikasi domain.SindikasiRegisterService, agunan domain.AgunanService, pihakTerkait domain.PihakTerkaitService, modal domain.ModalService, hapusBuku domain.HapusBukuService, pihakLawan domain.PihakLawanService, bmpkAdmin domain.BMPKService, placements OJKPlacementLister, reference OJKReferenceLister) *OJKReportHandler {
 	h := &OJKReportHandler{
 		builder:         ojkreport.NewBuilder(source),
 		source:          source,
@@ -176,6 +180,7 @@ func NewOJKReportHandler(source ojkreport.Source, coa OJKCOALister, reviews ojkr
 		pihakTerkait:    pihakTerkait,
 		modal:           modal,
 		hapusBuku:       hapusBuku,
+		pihakLawan:      pihakLawan,
 		bmpkAdmin:       bmpkAdmin,
 		placements:      placements,
 		reference:       reference,
@@ -409,6 +414,17 @@ func (h *OJKReportHandler) RegisterRoutes(r chi.Router) {
 			Put("/hapus-buku/items", h.UpsertHapusBukuItem)
 		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 			Delete("/hapus-buku/items/{id}", h.DeleteHapusBukuItem)
+		// Form 00.16 Daftar Pihak Lawan: baca cukup reports:export; daftar untuk UI dan
+		// jalur tulis memakai system:config, teraudit di service. Memuat pihak lawan bank
+		// maupun bukan bank; kolom III Nomor Identitas dan VI NPWP tidak disimpan (privasi).
+		r.With(middleware.RequirePermission(domain.PermReportsExport)).
+			Get("/pihak-lawan", h.ExportPihakLawan)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Get("/pihak-lawan/items", h.ListPihakLawanItems)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Put("/pihak-lawan/items", h.UpsertPihakLawanItem)
+		r.With(middleware.RequirePermission(domain.PermSystemConfig)).
+			Delete("/pihak-lawan/items/{id}", h.DeletePihakLawanItem)
 		// Form 00.19 Struktur Organisasi: dokumen cetak (HTML), bukan tabel angka. Izin
 		// reports:export karena ini bagian laporan yang disampaikan ke OJK. Bank mencetak
 		// dan menyimpannya sebagai PDF dari browser (repo tidak memakai generator PDF).
@@ -3094,6 +3110,137 @@ func (h *OJKReportHandler) DeleteHapusBukuItem(w http.ResponseWriter, r *http.Re
 func writeHapusBukuError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrHapusBukuNotFound):
+		Fail(w, r, http.StatusNotFound, err)
+	default:
+		Fail(w, r, http.StatusUnprocessableEntity, err)
+	}
+}
+
+// ExportPihakLawan menyajikan Form 00.16 "Daftar Pihak Lawan" sebagai JSON untuk periode
+// YYYY-MM: register pihak lawan beserta tabel Form 00.16. Bank-wide; aktor non-lintas
+// cabang ditolak 403 oleh service. TANPA baris JUMLAH; kolom III Nomor Identitas dan VI
+// NPWP tidak disimpan (keputusan privasi).
+func (h *OJKReportHandler) ExportPihakLawan(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	actor := claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))
+
+	period, err := parseOJKPeriod(strings.TrimSpace(r.URL.Query().Get("period")))
+	if err != nil {
+		Fail(w, r, http.StatusBadRequest, err)
+		return
+	}
+	if h.pihakLawan == nil {
+		InternalError(w, r, errors.New("sumber register pihak lawan Form 00.16 belum dikonfigurasi"))
+		return
+	}
+
+	report, err := h.pihakLawan.ListPihakLawan(r.Context(), actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrPihakLawanBankWide) {
+			Fail(w, r, http.StatusForbidden, err)
+			return
+		}
+		InternalError(w, r, err)
+		return
+	}
+
+	kantor := ojkreport.ReportingOffice{Reason: "register pihak lawan bank-wide; kolom Sandi Kantor belum punya sumber tunggal"}
+	if ros, ok := h.source.(ojkreport.ReportingOfficeSource); ok {
+		k, err := ros.ReportingOffice(r.Context())
+		if err != nil {
+			InternalError(w, r, err)
+			return
+		}
+		kantor = k
+	}
+
+	Success(w, http.StatusOK, i18n.MsgPihakLawanReport, map[string]any{
+		"period": period,
+		"items":  report.Items,
+		"tables": []ojkreport.TableSection{ojkreport.BuildForm00_16(report.Items, kantor)},
+	})
+}
+
+// ListPihakLawanItems menyajikan register pihak lawan untuk UI pengisian
+// (GET /reports/ojk/pihak-lawan/items). Urutan deterministik dari repositori. Izin
+// system:config.
+func (h *OJKReportHandler) ListPihakLawanItems(w http.ResponseWriter, r *http.Request) {
+	if h.pihakLawan == nil {
+		InternalError(w, r, errors.New("sumber register pihak lawan Form 00.16 belum dikonfigurasi"))
+		return
+	}
+	items, err := h.pihakLawan.ListItems(r.Context())
+	if err != nil {
+		InternalError(w, r, fmt.Errorf("membaca register pihak lawan Form 00.16: %w", err))
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPihakLawanItemsListed, map[string]any{"items": items})
+}
+
+// UpsertPihakLawanItem menyimpan satu baris register pihak lawan
+// (PUT /reports/ojk/pihak-lawan/items). Payload tanpa id berarti membuat baris baru.
+// Decoder menolak bidang tak dikenal agar payload di luar kontrak ditolak 422. Izin
+// system:config; teraudit di service.
+func (h *OJKReportHandler) UpsertPihakLawanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	var input domain.UpdatePihakLawanItemInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&input); err != nil {
+		ErrorCodef(w, http.StatusUnprocessableEntity, i18n.MsgInvalidRequestBodyWithErr, err.Error())
+		return
+	}
+	if h.pihakLawan == nil {
+		InternalError(w, r, errors.New("sumber register pihak lawan Form 00.16 belum dikonfigurasi"))
+		return
+	}
+	item, err := h.pihakLawan.UpsertItem(r.Context(), input,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context())))
+	if err != nil {
+		writePihakLawanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPihakLawanSaved, map[string]any{"id": item.ID.String()})
+}
+
+// DeletePihakLawanItem menghapus satu baris register pihak lawan secara fisik
+// (DELETE /reports/ojk/pihak-lawan/items/{id}). Form 00.16 tidak menetapkan nomor register
+// unik, sehingga DELETE fisik dibenarkan. Izin system:config; teraudit di service.
+func (h *OJKReportHandler) DeletePihakLawanItem(w http.ResponseWriter, r *http.Request) {
+	claims, ok := domain.ClaimsFromContext(r.Context())
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, i18n.MsgAuthenticationRequired)
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, i18n.MsgPihakLawanIDInvalid)
+		return
+	}
+	if h.pihakLawan == nil {
+		InternalError(w, r, errors.New("sumber register pihak lawan Form 00.16 belum dikonfigurasi"))
+		return
+	}
+	if err := h.pihakLawan.DeleteItem(r.Context(), id,
+		claims.ToActor(r.RemoteAddr, observability.RequestIDFromContext(r.Context()))); err != nil {
+		writePihakLawanError(w, r, err)
+		return
+	}
+	Success(w, http.StatusOK, i18n.MsgPihakLawanDeleted, map[string]any{"id": id.String()})
+}
+
+// writePihakLawanError memetakan galat register pihak lawan: baris tak ada 404, sisanya 422.
+func writePihakLawanError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrPihakLawanNotFound):
 		Fail(w, r, http.StatusNotFound, err)
 	default:
 		Fail(w, r, http.StatusUnprocessableEntity, err)

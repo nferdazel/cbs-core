@@ -4043,6 +4043,134 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-lawan:
+    get:
+      tags: [Laporan]
+      operationId: ojkReportPihakLawan
+      summary: Daftar Pihak Lawan (Form 00.16)
+      description: >-
+        Izin: `reports:export`. Bank-wide. Mengembalikan register pihak lawan beserta
+        tabel Form 00.16 (20 kolom, TANPA baris JUMLAH). Memuat seluruh pihak lawan bank
+        maupun bukan bank yang bertransaksi dengan BPR. Kolom III Nomor Identitas (NIK/
+        NPWP) dan VI NPWP sengaja tidak disimpan (keputusan privasi) dan selalu ditulis
+        "-" beralasan. Kolom I Sandi Kantor diambil dari kantor pelapor tunggal.
+      parameters:
+        - $ref: "#/components/parameters/OJKPeriod"
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-lawan/items:
+    get:
+      tags: [Laporan]
+      operationId: listPihakLawanItems
+      summary: Daftar baris register pihak lawan Form 00.16 (JSON)
+      description: >-
+        Izin: `system:config`. Mengembalikan baris mentah `pihak_lawan_register` untuk UI
+        edit dengan urutan deterministik, bukan tabel laporan. Kolom III Nomor Identitas
+        dan VI NPWP tidak ada karena sengaja tidak disimpan.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Laporan]
+      operationId: upsertPihakLawanItem
+      summary: Simpan satu baris register pihak lawan Form 00.16
+      description: >-
+        Izin: `system:config`. Menyimpan satu baris: `pihak_lawan_id` (kolom I) dan `nama`
+        (kolom V) wajib; `jenis_identitas_code` (II: 1/2/3/4 atau kosong),
+        `jenis_kelamin_code` (IV: 1/2 atau kosong), `kewarganegaraan_code` (VII, Lampiran
+        10), `negara_code` (VIII, Lampiran 10), `jenis_usaha_code` (IX: 1/2 atau kosong),
+        `hubungan_bank_code` (X: 12/20 atau kosong), `golongan_code` (XI, Lampiran 02),
+        `lembaga_pemeringkat_code` (XII, Lampiran 08; tanpa peringkat = 9),
+        `peringkat_code` (XIII, Lampiran 09; tanpa peringkat = 99), `tanggal_pemeringkatan`
+        (XIV, YYYY-MM-DD, boleh kosong), `tanggal_lahir` (XV, YYYY-MM-DD, boleh kosong),
+        `lokasi_code` (XVI, Lampiran 03), `grup_id`/`grup_nama` (XVII/XVIII), `telepon`
+        (XIX), `alamat` (XX), `note` internal. Kolom III Nomor Identitas dan VI NPWP tidak
+        diminta/di-simpan. Tanpa `id` berarti membuat baris baru. Teraudit satu transaksi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                id: { type: string, format: uuid, description: "Kosong = buat baru." }
+                pihak_lawan_id: { type: string, description: "Kolom I: ID pihak lawan; wajib." }
+                jenis_identitas_code: { type: string, enum: ["", "1", "2", "3", "4"], description: "Kolom II: 1 KTP, 2 Paspor, 3 KITAS/KITAP, 4 Kartu Keluarga; hanya perorangan." }
+                jenis_kelamin_code: { type: string, enum: ["", "1", "2"], description: "Kolom IV: 1 Laki-laki, 2 Perempuan." }
+                nama: { type: string, description: "Kolom V: nama lengkap/nama badan usaha; wajib, maksimal 255 karakter." }
+                kewarganegaraan_code: { type: string, description: "Kolom VII: sandi Lampiran 10." }
+                negara_code: { type: string, description: "Kolom VIII: sandi Lampiran 10." }
+                jenis_usaha_code: { type: string, enum: ["", "1", "2"], description: "Kolom IX: 1 Konvensional, 2 Syariah; hanya LJK." }
+                hubungan_bank_code: { type: string, enum: ["", "12", "20"], description: "Kolom X: 12 Pihak Terkait, 20 Tidak Terkait." }
+                golongan_code: { type: string, description: "Kolom XI: sandi Lampiran 02." }
+                lembaga_pemeringkat_code: { type: string, description: "Kolom XII: sandi Lampiran 08; tanpa peringkat = 9." }
+                peringkat_code: { type: string, description: "Kolom XIII: sandi Lampiran 09; tanpa peringkat = 99." }
+                tanggal_pemeringkatan: { type: string, description: "Kolom XIV: YYYY-MM-DD; boleh kosong." }
+                tanggal_lahir: { type: string, description: "Kolom XV: YYYY-MM-DD; boleh kosong (bukan perorangan)." }
+                lokasi_code: { type: string, description: "Kolom XVI: sandi Lampiran 03." }
+                grup_id: { type: string, description: "Kolom XVII: ID grup." }
+                grup_nama: { type: string, description: "Kolom XVIII: nama grup." }
+                telepon: { type: string, description: "Kolom XIX: no. telp/HP." }
+                alamat: { type: string, description: "Kolom XX: alamat lengkap." }
+                note: { type: string, description: "Catatan internal bank; bukan kolom form." }
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/v1/reports/ojk/pihak-lawan/items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [Laporan]
+      operationId: deletePihakLawanItem
+      summary: Hapus baris register pihak lawan Form 00.16
+      description: >-
+        Izin: `system:config`. DELETE FISIK: Form 00.16 tidak menetapkan nomor register
+        unik, sehingga baris tidak perlu dipertahankan untuk mencegah pemakaian ulang.
+        Terdokumentasi di audit log.
+      responses:
+        "200":
+          $ref: "#/components/responses/OK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v1/reports/ojk/struktur-organisasi:
     get:
       tags: [Laporan]
