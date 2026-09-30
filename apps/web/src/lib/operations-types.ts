@@ -994,3 +994,63 @@ export interface UpdateHapusBukuPayload {
   agunan_nilai: string;
   note: string;
 }
+
+/**
+ * domain.PihakLawanItem (form00_16_pihak_lawan.go), Form 00.16 Daftar Pihak Lawan. Memuat
+ * seluruh pihak lawan bank maupun bukan bank. Kolom I Sandi Kantor tidak diserialisasi.
+ * Kolom III Nomor Identitas (NIK/NPWP) dan VI NPWP sengaja tidak disimpan (keputusan
+ * privasi), jadi tidak ada di tipe ini. Tanggal boleh null.
+ */
+export interface PihakLawanItem {
+  id: string;
+  pihak_lawan_id: string;
+  jenis_identitas_code: string;
+  jenis_kelamin_code: string;
+  nama: string;
+  kewarganegaraan_code: string;
+  negara_code: string;
+  jenis_usaha_code: string;
+  hubungan_bank_code: string;
+  golongan_code: string;
+  lembaga_pemeringkat_code: string;
+  peringkat_code: string;
+  tanggal_pemeringkatan: string | null;
+  tanggal_lahir: string | null;
+  lokasi_code: string;
+  grup_id: string;
+  grup_nama: string;
+  telepon: string;
+  alamat: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Respons GET /reports/ojk/pihak-lawan/items (kontrak pengisian Form 00.16). */
+export interface PihakLawanItemsData {
+  items: PihakLawanItem[] | null;
+}
+
+/** Payload PUT /reports/ojk/pihak-lawan/items (Form 00.16). id kosong = buat baru. */
+export interface UpdatePihakLawanPayload {
+  id?: string;
+  pihak_lawan_id: string;
+  jenis_identitas_code: string;
+  jenis_kelamin_code: string;
+  nama: string;
+  kewarganegaraan_code: string;
+  negara_code: string;
+  jenis_usaha_code: string;
+  hubungan_bank_code: string;
+  golongan_code: string;
+  lembaga_pemeringkat_code: string;
+  peringkat_code: string;
+  tanggal_pemeringkatan: string;
+  tanggal_lahir: string;
+  lokasi_code: string;
+  grup_id: string;
+  grup_nama: string;
+  telepon: string;
+  alamat: string;
+  note: string;
+}
