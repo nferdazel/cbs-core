@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **36 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **37 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,8 +26,8 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 22 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 6 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 23 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 5 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 0 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 3 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -43,7 +43,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 00.03 | Data Pejabat Eksekutif | `SEBAGIAN` | Terbit di `LAPORAN_KELEMBAGAAN` (`kelembagaan.go:80`); kurang Alamat, NIK, fungsi, keanggotaan komite | 83–87 |
 | 00.04 | Data Kantor BPR | `SEBAGIAN` | Terbit di `LAPORAN_KELEMBAGAAN` (`kelembagaan.go:91`), sumber `bank_offices` (`000112:41`); **10 dari 15 blok** Unavailable | 88–95 |
 | 00.05 | Data Pihak Terkait Lainnya | `SUDAH ADA` | **Register kesebelas — dibangun 29 Sep 2026** (`pihak_terkait_lainnya_register`, migrasi `000127`). Semula dinilai cukup menambah sandi pada `bmpk_related_parties`; ternyata tabel itu menandai NASABAH untuk BMPK (`customer_id` NOT NULL), sedangkan form ini memuat pihak terkait **selain** pemegang saham/direksi/komisaris/pejabat yang **bisa bukan nasabah**. Register berdiri sendiri: kolom I Nama, III Alamat, IV Jenis (sandi PDF #97: 01/02/03), V Hubungan (sandi 01–06). Kolom II No. Identitas (NIK/NPWP) sengaja tidak disimpan (keputusan privasi). TANPA baris JUMLAH | 96–98 |
-| 00.06 | Modal Disetor/Sum bangan/DSM | `SEBAGIAN` | Hanya saldo `30100`/`13100` → `coa_mapping.go:166,174`; tidak ada akun Modal Sumbangan & DSM, tidak ada kolom Jenis & Tanggal Persetujuan OJK | 245–247 |
+| 00.06 | Modal Disetor/Sum bangan/DSM | `SUDAH ADA` | **Register keduabelas — dibangun 29 Sep 2026** (`modal_register`, migrasi `000128`). Register peristiwa modal, BUKAN turunan saldo bagan akun: saldo `30100`/`13100` tidak menyimpan bentuk setoran (dana vs tanah/bangunan), tanggal persetujuan otoritas, atau pemisahan Modal Sumbangan / Dana Setoran Modal. Kolom I Jenis (sandi PDF #246: 01 Dana, 02 Tanah/bangunan modal inti, 03 Tanah/ bangunan bukan modal inti), II Tanggal Persetujuan Otoritas (boleh kosong), III Jenis Modal (01/02/03), IV Jumlah (isian bank). ADA baris JUMLAH pada kolom IV | 245–247 |
 | 00.07 | Daftar Pinjaman yang Diterima | `SUDAH ADA` | **Register ketiga — dibangun 29 Sep 2026** (`pinjaman_diterima_register`, migrasi `000117`) dengan API `reports/ojk/pinjaman` + `form00_07.go`. Gol. Kreditur → FK `ojk_pihak_lawan` (Lampiran 02), Lokasi → FK `ojk_kabupaten` (Lampiran 03), aturan tanpa agunan ditegakkan dua arah (CHECK DB + domain), **XV Baki Debet Neto dihitung** `XII−XIII−XIV` (negatif → `-`), JUMLAH hanya bila lengkap. Kolom I = ID Pihak Lawan, jadi **tanpa Sandi Kantor** (sesuai transkrip). Tidak ada register pinjaman kreditur; akun liabilitas `20100–20800` tanpa pinjaman-kreditur (`000005:198`); `off_balance_items` hanya komitmen belum ditarik | 248–254 |
 | 00.09 | Direksi & DK yang Berhenti | `KONDISIONAL` | Sumber `bank_management` (ada `ended_at`/`note`), **tak ada perakit 00.09**; kurang NIK (keputusan privasi), komite, alasan vs penyebab | 258–263 |
 | 00.10 | Pejabat Eksekutif yang Berhenti | `KONDISIONAL` | Sumber `bank_management` + `license_number/date`; **tak ada perakit 00.10**; kurang Surat Pemberhentian (beda dari pengangkatan) | 264–269 |

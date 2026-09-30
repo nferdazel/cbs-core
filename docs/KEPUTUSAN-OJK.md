@@ -200,8 +200,10 @@ menegakkannya di kode.
 **Ringkas**: 9.1 = invarian tabel ditegakkan di kode (guard menolak duplikat penempatan
 logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa perubahan
 kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri; 9.6 = `00.05` selesai
-dengan register baru (bukan menambah kolom di `bmpk_related_parties`). Verifikasi pemetaan
-COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
+dengan register baru (bukan menambah kolom di `bmpk_related_parties`); 9.7 = `00.06`
+selesai dengan register peristiwa modal (bukan turunan saldo bagan akun). Verifikasi
+pemetaan COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim
+selesai di sini.
 
 ### 9.6 Form 00.05 — register baru, bukan menambah kolom di `bmpk_related_parties` (SELESAI)
 
@@ -229,6 +231,34 @@ COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim seles
   `definitions.go` `00.05` `Buildable:true` (35→36), kartu web `OJKPihakTerkaitCard.tsx`.
 - **Sisa milik bank**: mengisi baris register (nama, alamat, jenis, hubungan) per pihak
   terkait.
+
+### 9.7 Form 00.06 — register peristiwa modal, bukan turunan saldo bagan akun (SELESAI)
+
+- **Penilaian triase lama**: `00.06` diklasifikasi `SEBAGIAN` dengan alasan "hanya saldo
+  COA `30100`/`13100` yang dipetakan; akun Modal Sumbangan & DSM serta kolom Jenis dan
+  Tanggal Persetujuan OJK belum ada". Bacaan itu menyiratkan form diturunkan dari saldo.
+- **Temuan (PDF #245–247)**: form meminta **empat dimensi** yang tidak ada di saldo bagan
+  akun: I Jenis (bentuk setoran — dana vs **tanah/bangunan yang dapat/tidak dapat
+  diperhitungkan** sebagai modal inti), II **Tanggal Persetujuan Otoritas**, III Jenis
+  Modal (Modal Disetor / **Modal Sumbangan** / **Dana Setoran Modal - Ekuitas**), dan
+  IV Jumlah. `coa_mapping.go` memetakan saldo `30100`/`13100` ke kelas modal inti Form
+  01.00; saldo tunggal tidak membawa bentuk setoran, tanggal persetujuan, maupun pemisahan
+  Modal Sumbangan/DSM.
+- **Keputusan**: buat **register baru** `modal_register` (migrasi `000128`), pola sama
+  dengan `pihak_terkait_lainnya_register`. Menurunkan form dari saldo tunggal akan
+  **mengarang** dimensi yang tidak ada. Sandi I dan III dari PDF #246 disimpan apa adanya;
+  definisi rincinya (PDF #247) tidak disalin ke kode.
+- **Kolom II boleh kosong** (modal belum disetujui otoritas) → `NULL`, laporan menulis "-".
+  **Kolom IV** rupiah penuh, wajib, tidak negatif, **nol sah** (bukan "belum diisi"). Form
+  **PUNYA baris JUMLAH** pada kolom IV.
+- **Aksi**: migrasi `000128`, `domain/form00_06_modal.go`,
+  `repository/postgres/modal_repo.go`, `service/modal_service.go`,
+  `ojkreport/form00_06.go`, rute `GET /reports/ojk/modal` (reports:export) +
+  `GET/PUT/DELETE /reports/ojk/modal/items` (system:config), i18n, OpenAPI, `definitions.go`
+  `00.06` `Buildable:true` (36→37), kartu web `OJKModalCard.tsx`.
+- **Sisa milik bank**: mengisi baris register per setoran/sumbangan (jenis, tanggal
+  persetujuan, jenis modal, jumlah) dan memastikan nilainya selaras dengan pencatatan
+  ekuitas/akuntansi.
 
 ---
 
