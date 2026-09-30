@@ -18,7 +18,7 @@ domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
 Kantor cetak -8-, dikurangi irisan `01.00`/`01.01`/`02.00`; diverifikasi dengan memindai
-seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **37 di antaranya `Buildable:true`**
+seluruh 528 halaman PDF). **Seluruh 45 kini terdaftar di `OJKBulananForms`**, **38 di antaranya `Buildable:true`**
 (angka resmi dijaga `definitions_test.go`); yang belum terbit `Buildable:false` + alasan dan ikut tercetak di
 berkas ekspor sebagai `# FORM <kode> TIDAK DIBANGUN`. **`00.14` tidak ditemukan di SEOJK
 16/2024** dan sudah ditarik dari manifest — lihat §6. Tabel di bawah merinci 34 form yang
@@ -26,8 +26,8 @@ waktu triase belum terdaftar; kolom klasifikasinya sudah diperbarui sejak itu.
 
 | Klasifikasi | Jumlah | Arti |
 |---|---:|---|
-| `SUDAH ADA` | 23 | sudah terbit (dengan catatan cakupan) |
-| `SEBAGIAN` | 5 | sebagian sumber sudah ada, sebagian kolom belum |
+| `SUDAH ADA` | 24 | sudah terbit (dengan catatan cakupan) |
+| `SEBAGIAN` | 4 | sebagian sumber sudah ada, sebagian kolom belum |
 | `BELUM DIMODELKAN` | 0 | tidak ada tabel/kolom/sumber sama sekali |
 | `KONDISIONAL` | 3 | hanya dilaporkan bila terjadi X (syaratnya dikutip) |
 | `DOKUMEN` | 3 | berkas manual/PDF, bukan angka |
@@ -67,7 +67,7 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
 | 12.00 | Daftar Deposito | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form12.go`): baris per-kontrak dari `time_deposits`×`customers`, `start_date <= periodEnd` dan belum ditutup. **17 kolom** — sama dengan 11.00 **tanpa kolom "Jenis"** (penomoran bergeser satu). 10 kolom bersumber; `-` + alasan untuk X–XI blokir, XII biaya, XIV NIK, XV–XVII PEP/Risiko/Status Data. Kolom "diblokir" tetap tidak dikarang (`bank_deposit_repo.go:30`) | 200–206 |
 | 14.00 | Rincian Liabilitas Lainnya | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14.go`): 17 pos tetap (koreksi dari catatan lama "16 pos"). `COAMapping14Draft` hanya memetakan `20500`→`2299020000` Utang Pajak dan `20700`→`2299990000` Lainnya; 15 pos lain belum punya akun COA → alasan, bukan nol, dan `20300`/`12500`/`12900` sengaja tidak ditebak ke pos mana pun. Akibatnya **tidak ada tie otomatis ke `2299000000` Form 01.00** — hal ini ditulis eksplisit di `Notes` bersama aturan >25% → Form 14.01 | 213–215 |
 | 14.01 | Rincian Liabilitas Lainnya – Lain-lain | `SUDAH ADA` | **Dibangun 28 Sep 2026** (`form14_01.go`): kondisional, penyebut = pos `2299000000` Form 01.00; PDF tidak menegaskan ikatan total seperti 09.01 — dicatat di `Notes`; Syarat **25%** dari jumlah liabilitas lainnya; bergantung Form 14.00 lebih dulu | **217**, 216 |
-| 15.00 | Daftar Aset Produktif yang Dihapus Buku | `SEBAGIAN` | Status `WRITTEN_OFF` + `written_off_amount` (`000085:29`); **tidak ada tanggal hapus buku**, nominal gabungan (pokok+bunga+denda) tak bisa dipisah per kolom; penempatan tak punya status hapus buku | 218–221 |
+| 15.00 | Daftar Aset Produktif yang Dihapus Buku | `SUDAH ADA` | **Register ketigabelas — dibangun 29 Sep 2026** (`hapus_buku_register`, migrasi `000129`). Register pelaporan, BUKAN turunan `loans`: baris `loans.written_off_amount` hanya menopang agenda pemulihan dan tidak menyimpan dimensi Form 15.00 (tanggal hapus buku, jenis aset 10/20, pemisahan pokok/bunga, akumulasi tertagih, agunan saat hapus buku). Memuat kredit MAUPUN penempatan pada bank lain. 10 kolom logis, sandi IV 10/20, VI 11/12/20. ADA baris JUMLAH pada kolom nominal | 218–222 |
 | 16.00 | Daftar Penyertaan Modal | `SUDAH ADA` | **Register keenam — dibangun 29 Sep 2026** (`penyertaan_modal_register`, migrasi `000120`) dengan API `reports/ojk/penyertaan` + `form16_00.go`. **No. Register no-reuse** (UNIQUE + soft-delete, sama dengan 17.00); sandi Kualitas/Metode/Tujuan/blok CKPN/Jenis CKPN **diisi bank** (aturan "Desember 2024 = Kolektif 2" tidak diterapkan — masa berlakunya lewat); kolom X "Jumlah Bulan Laporan" ternyata didefinisikan PDF sebagai **nilai tercatat pada bulan laporan tanpa rumus** → isian bank, bukan turunan; tanpa baris JUMLAH; label kolom mengikuti tabel sandi `#225` (header `#224` typo `XII` dua kali). Tidak ada tabel register penyertaan dan tidak ada akun COA "Penyertaan Modal" | 223–227 |
 | 17.00 | Daftar Properti Terbengkalai | `SUDAH ADA` | **Register keempat — dibangun 29 Sep 2026** (`properti_terbengkalai_register`, migrasi `000118`) dengan API `reports/ojk/properti` + `form17_00.go`. **No. Register unik & no-reuse**: `UNIQUE` penuh + hapus = soft-delete (`NONAKTIF`), baris NONAKTIF tetap memegang nomor (diuji guard + integrasi). Kolom I Sandi Kantor dan IX Jumlah (`VII−VIII`) turunan; tanpa baris JUMLAH (sesuai PDF). Tidak ada tabel/flag properti terbengkalai (grep nihil; hanya penyebutan dokumentatif) | 229–231 |
 | 18.00 | Daftar Aset Keuangan Lainnya | `SUDAH ADA` | **Register kedelapan — dibangun 29 Sep 2026** (`aset_keuangan_lainnya_register`, migrasi `000121`) dengan API `reports/ojk/aset-keuangan` + `form18_00.go`. Satu baris = satu rekening, **tanpa baris JUMLAH**; II No. Rekening unik ("tidak boleh sama", PDF #237) → UNIQUE penuh + soft-delete NONAKTIF; tanggal memakai format form `TT-MM-TTTT` (PDF #235); sandi IV 10/99, XIV 1-3, XV 1/2 isian bank; IX nilai agunan pengurang PPKA. Tidak ada register per rekening, tidak ada akun COA, kata "fraud" tidak muncul di kode | 233–237 |

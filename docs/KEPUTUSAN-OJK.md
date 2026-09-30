@@ -201,9 +201,9 @@ menegakkannya di kode.
 logis; tanpa pertanyaan produk tersisa); 9.2/9.3/9.4 = penetapan semantik tanpa perubahan
 kode; 9.5 = `06.01` selesai, inkonsistensi PDF diputuskan sendiri; 9.6 = `00.05` selesai
 dengan register baru (bukan menambah kolom di `bmpk_related_parties`); 9.7 = `00.06`
-selesai dengan register peristiwa modal (bukan turunan saldo bagan akun). Verifikasi
-pemetaan COA & ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim
-selesai di sini.
+selesai dengan register peristiwa modal (bukan turunan saldo bagan akun); 9.8 = `15.00`
+selesai dengan register pelaporan (bukan turunan `loans`). Verifikasi pemetaan COA &
+ratifikasi parameter CKPN tetap milik bank/akuntan dan tidak diklaim selesai di sini.
 
 ### 9.6 Form 00.05 — register baru, bukan menambah kolom di `bmpk_related_parties` (SELESAI)
 
@@ -259,6 +259,36 @@ selesai di sini.
 - **Sisa milik bank**: mengisi baris register per setoran/sumbangan (jenis, tanggal
   persetujuan, jenis modal, jumlah) dan memastikan nilainya selaras dengan pencatatan
   ekuitas/akuntansi.
+
+### 9.8 Form 15.00 — register pelaporan, bukan turunan `loans` (SELESAI)
+
+- **Penilaian triase lama**: `15.00` diklasifikasi `SEBAGIAN` dengan alasan "status
+  `WRITTEN_OFF` + `written_off_amount` ada, tetapi tanggal hapus buku tidak ada, nominal
+  gabungan (pokok+bunga+denda) tak bisa dipisah, dan penempatan tak punya status hapus
+  buku".
+- **Temuan**: modul hapus buku memang ada (kredit → `WRITTEN_OFF` + `written_off_amount`,
+  migrasi `000085`), tetapi itu untuk agenda **pemulihan** (recovery), bukan pelaporan.
+  Form 15.00 (PDF #218–222) meminta sepuluh kolom termasuk yang tidak disimpan pada baris
+  `loans`: **VII Tanggal Hapus Buku**, **IV Jenis Aset** (10 kredit / 20 **penempatan pada
+  bank lain** — penempatan bukan kredit, tak bisa masuk `loans`), **V Jenis Debitur**,
+  **VI Hubungan dengan Bank**, pemisahan **VIII Saldo Pokok** dan **IX Tunggakan Bunga**
+  per tahap (saat hapus buku / akumulasi tertagih / posisi laporan), serta **X Agunan**
+  saat hapus buku. `written_off_amount` hanya satu angka gabungan.
+- **Keputusan**: buat **register baru** `hapus_buku_register` (migrasi `000129`), pola sama
+  dengan register lain. Menurunkannya dari `loans` akan **mengarang** dimensi yang tidak
+  ada, dan tidak dapat memuat penempatan pada bank lain sama sekali.
+- **Kolom X Agunan**: tanpa agunan diserahkan → jenis **299** dan nilai **0**, alamat
+  tanda hubung "-" (PDF #222). Kolom V Jenis Debitur hanya untuk kredit. Nominal rupiah
+  penuh, nol sah; field kosong dianggap 0. Form **PUNYA baris JUMLAH** pada kolom nominal.
+- **Aksi**: migrasi `000129`, `domain/form15_00_hapus_buku.go`,
+  `repository/postgres/hapus_buku_repo.go`, `service/hapus_buku_service.go`,
+  `ojkreport/form15_00.go`, rute `GET /reports/ojk/hapus-buku` (reports:export) +
+  `GET/PUT/DELETE /reports/ojk/hapus-buku/items` (system:config), i18n, OpenAPI,
+  `definitions.go` `15.00` `Buildable:true` (37→38), kartu web `OJKHapusBukuCard.tsx`.
+- **Catatan integrasi (bukan blocker)**: modul operasional hapus buku melepas pokok bruto
+  saat menolkan `outstanding_principal` (lihat keterbatasan di `domain/loan.go`); perbaikan
+  perlakuan akuntansinya tetap **milik bank/akuntan** dan tidak diklaim selesai di sini.
+- **Sisa milik bank**: mengisi baris register per aset produktif yang dihapus buku.
 
 ---
 
