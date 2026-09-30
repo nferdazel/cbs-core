@@ -52,6 +52,11 @@ type Config struct {
 	LoginRateLimitIPWindow      time.Duration
 }
 
+// defaultDBPassword adalah kata sandi DB bawaan untuk lingkungan pengembangan.
+// Ditolak saat APP_ENV=production (lihat Load), agar server tidak pernah start di
+// production dengan kredensial yang terdokumentasi publik.
+const defaultDBPassword = "cbs_password"
+
 func Load() *Config {
 	_ = godotenv.Load()
 
@@ -60,7 +65,7 @@ func Load() *Config {
 		DBHost:      getEnv("DB_HOST", "localhost"),
 		DBPort:      getEnv("DB_PORT", "5432"),
 		DBUser:      getEnv("DB_USER", "cbs_user"),
-		DBPassword:  getEnv("DB_PASSWORD", "cbs_password"),
+		DBPassword:  getEnv("DB_PASSWORD", defaultDBPassword),
 		DBName:      getEnv("DB_NAME", "cbs_db"),
 		DBSSLMode:   getEnv("DB_SSLMODE", "disable"),
 		RedisHost:   getEnv("REDIS_HOST", "localhost"),
@@ -104,7 +109,27 @@ func Load() *Config {
 		log.Println("PERINGATAN: ENCRYPTION_MASTER_KEY tidak di-set. Endpoint nasabah akan gagal sampai kunci diisi.")
 	}
 
+	// Kata sandi DB punya bawaan pengembangan "cbs_password". Bawaan itu TIDAK boleh
+	// ikut ke production: bila env lupa diisi, server akan start dengan kredensial yang
+	// terdokumentasi publik. Gagal-cepat di production, sama seperti JWT_SECRET.
+	if msg := productionDBPasswordFatal(cfg.Environment, cfg.DBPassword); msg != "" {
+		log.Fatal(msg)
+	}
+
 	return cfg
+}
+
+// productionDBPasswordFatal mengembalikan pesan galat bila kata sandi DB tidak boleh
+// dipakai di production (kosong atau masih default). Kosong berarti aman. Dipisah dari
+// Load agar bisa diuji tanpa memicu log.Fatal.
+func productionDBPasswordFatal(environment, password string) string {
+	if environment != "production" {
+		return ""
+	}
+	if password == "" || password == defaultDBPassword {
+		return "DB_PASSWORD wajib di-set eksplisit di environment production; server tidak dijalankan dengan kata sandi DB default"
+	}
+	return ""
 }
 
 // parsePreviousKeys membaca daftar kunci lama untuk dekripsi, format "k0:<base64>,k-1:<base64>".
