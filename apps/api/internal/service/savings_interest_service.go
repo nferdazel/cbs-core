@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,10 +131,20 @@ func (s *savingsInterestService) AccrueAll(ctx context.Context, period time.Time
 	pool := s.configDecimal(ctx, configMudharabahProfitPool, decimal.Zero)
 	summary := &domain.SavingsInterestSummary{Period: from.Format("2006-01"), Book: book}
 
+	// Alokasi bagi hasil dihitung SEKALI untuk seluruh rekening mudharabah agar sisa
+	// pembulatan terserap ke rekening terakhir (MudharabahAllocate) dan jumlah alokasi
+	// sama persis dengan laba yang didistribusikan menurut nisbah. Perhitungan per
+	// rekening (MudharabahShare) menyimpang beberapa rupiah dari target.
+	mudharabahAmounts := mudharabahBatchAllocations(candidates, avgs, totalMudharabah, pool)
+
 	for _, a := range candidates {
 		summary.ProcessedAccounts++
 		daily := buildDailyBalances(a, opening, byAccount, from, to)
-		res, err := s.accrue(ctx, a, daily, avgs[a.AccountID], totalMudharabah, pool, daysInYear, createdBy)
+		var allocated *decimal.Decimal
+		if amt, ok := mudharabahAmounts[a.AccountID]; ok {
+			allocated = &amt
+		}
+		res, err := s.accrue(ctx, a, daily, avgs[a.AccountID], totalMudharabah, pool, daysInYear, createdBy, allocated)
 		if err != nil {
 			res = domain.SavingsInterestResult{
 				AccountNumber:  a.AccountNumber,
@@ -195,12 +206,19 @@ func (s *savingsInterestService) AccrueAccount(ctx context.Context, accountNumbe
 	daily := buildDailyBalances(*info, opening, byAccount, from, to)
 	avg := domain.AverageDailyBalance(daily)
 
+	// Alokasi bagi hasil dihitung kolektif (sama seperti AccrueAll) agar jalur satu
+	// rekening dan jalur batch menghasilkan nominal yang identik; tanpa ini, akrual
+	// per rekening kembali menyimpang beberapa rupiah dari target pool.
+	var allocated *decimal.Decimal
 	totalMudharabah := decimal.Zero
+	pool := s.configDecimal(ctx, configMudharabahProfitPool, decimal.Zero)
 	if isMudharabah(info.ProfitScheme) {
 		accounts, err := s.repo.ListSavingsAccounts(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("membaca rekan mudharabah: %w", err)
 		}
+		peers := make([]domain.SavingsAccountInfo, 0, len(accounts))
+		avgs := make(map[uuid.UUID]decimal.Decimal, len(accounts))
 		for _, a := range accounts {
 			if a.Status != domain.AccountStatusActive || a.Family != domain.FamilySavings {
 				continue
@@ -209,12 +227,19 @@ func (s *savingsInterestService) AccrueAccount(ctx context.Context, accountNumbe
 				continue
 			}
 			d := buildDailyBalances(a, opening, byAccount, from, to)
-			totalMudharabah = totalMudharabah.Add(domain.AverageDailyBalance(d))
+			peerAvg := domain.AverageDailyBalance(d)
+			avgs[a.AccountID] = peerAvg
+			totalMudharabah = totalMudharabah.Add(peerAvg)
+			peers = append(peers, a)
+		}
+		if amounts := mudharabahBatchAllocations(peers, avgs, totalMudharabah, pool); len(amounts) > 0 {
+			if amt, ok := amounts[info.AccountID]; ok {
+				allocated = &amt
+			}
 		}
 	}
 
-	pool := s.configDecimal(ctx, configMudharabahProfitPool, decimal.Zero)
-	result, err := s.accrue(ctx, *info, daily, avg, totalMudharabah, pool, daysInYear, createdBy)
+	result, err := s.accrue(ctx, *info, daily, avg, totalMudharabah, pool, daysInYear, createdBy, allocated)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +247,9 @@ func (s *savingsInterestService) AccrueAccount(ctx context.Context, accountNumbe
 }
 
 // accrue menghitung nominal satu rekening lalu memposting jurnalnya dalam satu
-// transaksi bersama penanda idempotensi.
+// transaksi bersama penanda idempotensi. allocatedMudharabah, bila tidak nil, adalah
+// alokasi bagi hasil yang sudah dihitung kolektif (batch) sehingga tidak dihitung ulang
+// per rekening; nil berarti hitung sendiri (jalur satu rekening / non-mudharabah).
 func (s *savingsInterestService) accrue(
 	ctx context.Context,
 	info domain.SavingsAccountInfo,
@@ -232,6 +259,7 @@ func (s *savingsInterestService) accrue(
 	pool decimal.Decimal,
 	daysInYear int,
 	createdBy string,
+	allocatedMudharabah *decimal.Decimal,
 ) (domain.SavingsInterestResult, error) {
 	res := domain.SavingsInterestResult{
 		AccountNumber:  info.AccountNumber,
@@ -247,7 +275,17 @@ func (s *savingsInterestService) accrue(
 		res.Message = "tabungan wadiah tanpa imbalan"
 		return res, nil
 	case domain.SchemeMudharabah, domain.SchemeMusyarakah:
-		amount = domain.MudharabahShare(pool, info.ProfitSharingRatio, averageBalance, totalMudharabah)
+		if allocatedMudharabah != nil {
+			amount = *allocatedMudharabah
+		} else {
+			amount = domain.MudharabahShare(pool, info.ProfitSharingRatio, averageBalance, totalMudharabah)
+		}
+		if amount.IsNegative() {
+			// Alokasi kolektif bisa (secara teori) negatif akibat pembulatan ekstrem;
+			// jangan pernah memposting nominal negatif sebagai bagi hasil.
+			res.Message = "alokasi bagi hasil negatif akibat pembulatan; periksa parameter laba/nisbah"
+			return res, nil
+		}
 		if amount.IsZero() {
 			res.Message = "bagi hasil nihil (laba didistribusikan, nisbah, atau saldo nol)"
 			return res, nil
@@ -788,6 +826,53 @@ func buildDailyBalances(
 			}
 		}
 		out = append(out, domain.DailyBalance{Date: d, Balance: balance})
+	}
+	return out
+}
+
+// mudharabahBatchAllocations menghitung alokasi bagi hasil seluruh rekening mudharabah
+// dalam satu langkah, sehingga sisa pembulatan terserap ke rekening terakhir. Hanya
+// rekening mudharabah/musyarakah yang ikut; urutan ditetapkan per nomor rekening agar
+// penerima sisa deterministik (tidak bergantung urutan hasil query).
+func mudharabahBatchAllocations(
+	candidates []domain.SavingsAccountInfo,
+	avgs map[uuid.UUID]decimal.Decimal,
+	totalMudharabah decimal.Decimal,
+	pool decimal.Decimal,
+) map[uuid.UUID]decimal.Decimal {
+	out := make(map[uuid.UUID]decimal.Decimal)
+	if pool.IsZero() || totalMudharabah.IsZero() {
+		return out
+	}
+
+	ordered := make([]domain.SavingsAccountInfo, 0, len(candidates))
+	for _, a := range candidates {
+		if isMudharabah(a.ProfitScheme) {
+			ordered = append(ordered, a)
+		}
+	}
+	if len(ordered) == 0 {
+		return out
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].AccountNumber < ordered[j].AccountNumber
+	})
+
+	inputs := make([]domain.MudharabahAllocationInput, len(ordered))
+	for i, a := range ordered {
+		inputs[i] = domain.MudharabahAllocationInput{
+			Nisbah:         a.ProfitSharingRatio,
+			AverageBalance: avgs[a.AccountID],
+		}
+	}
+	amounts := domain.MudharabahAllocate(pool, totalMudharabah, inputs)
+	for i, a := range ordered {
+		// Simpan juga nilai yang (secara teori) bisa negatif akibat pembulatan ekstrem,
+		// agar accrue tidak diam-diam jatuh ke MudharabahShare dan menyimpang dari
+		// alokasi kolektif. Nilai nol dibiarkan kosong (dianggap tanpa porsi).
+		if !amounts[i].IsZero() {
+			out[a.AccountID] = amounts[i]
+		}
 	}
 	return out
 }

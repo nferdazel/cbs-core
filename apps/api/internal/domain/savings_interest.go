@@ -165,12 +165,76 @@ func SavingsInterest(daily []DailyBalance, rateAnnual decimal.Decimal, daysInYea
 // MudharabahShare menghitung bagi hasil satu rekening: nisbah dikali laba yang
 // didistribusikan, dialokasikan proporsional terhadap rata-rata saldo harian rekening
 // dibanding total saldo seluruh rekening mudharabah. Dibulatkan per rekening.
+//
+// Fungsi ini dipakai untuk perhitungan satu rekening yang berdiri sendiri
+// (AccrueAccount). Untuk akrual batch, pakai MudharabahAllocate agar jumlah alokasi
+// seluruh rekening sama persis dengan laba yang didistribusikan menurut nisbah.
 func MudharabahShare(distributableProfit, nisbah, averageBalance, totalAverageBalance decimal.Decimal) decimal.Decimal {
 	if totalAverageBalance.IsZero() || distributableProfit.IsZero() || nisbah.IsZero() {
 		return decimal.Zero
 	}
 	share := distributableProfit.Mul(nisbah).Mul(averageBalance).Div(totalAverageBalance)
 	return RoundToRupiah(share)
+}
+
+// MudharabahAllocationInput adalah satu rekening dalam alokasi bagi hasil batch.
+type MudharabahAllocationInput struct {
+	// Nisbah dan AverageBalance menentukan porsi proporsional rekening.
+	Nisbah         decimal.Decimal
+	AverageBalance decimal.Decimal
+}
+
+// MudharabahAllocate membagi laba yang didistribusikan ke seluruh rekening mudharabah
+// secara proporsional, lalu menyerap sisa pembulatan pada rekening TERAKHIR sehingga
+// SUM(hasil) sama persis dengan RoundToRupiah(Σ pool×nisbah_i×bal_i / totalBal).
+//
+// Tanpa penyerapan ini, pembulatan tiap rekening membuat total alokasi menyimpang
+// beberapa rupiah dari laba yang seharusnya didistribusikan (bank bisa kelebihan atau
+// kekurangan bayar). Pola penyerapan sisa yang sama dipakai di loan_service.go untuk
+// pembagian proporsional. Urutan input menentukan siapa penerima sisa: rekening
+// terakhir harus deterministik (pemanggil mengurutkan, mis. per account_id).
+//
+// Mengembalikan slice sepanjang inputs; rekening yang porsinya nol menerima nol.
+func MudharabahAllocate(distributableProfit, totalAverageBalance decimal.Decimal, inputs []MudharabahAllocationInput) []decimal.Decimal {
+	out := make([]decimal.Decimal, len(inputs))
+	if len(inputs) == 0 || totalAverageBalance.IsZero() || distributableProfit.IsZero() {
+		return out
+	}
+
+	// Target total dibulatkan sekali, agar konsisten dengan nilai yang dibebankan.
+	target := decimal.Zero
+	raw := make([]decimal.Decimal, len(inputs))
+	lastNegative := -1
+	for i, in := range inputs {
+		if in.Nisbah.IsZero() {
+			continue
+		}
+		raw[i] = distributableProfit.Mul(in.Nisbah).Mul(in.AverageBalance).Div(totalAverageBalance)
+		target = target.Add(raw[i])
+	}
+	target = RoundToRupiah(target)
+
+	// Penerima sisa: rekening terakhir yang benar-benar punya porsi.
+	for i := len(inputs) - 1; i >= 0; i-- {
+		if !raw[i].IsZero() {
+			lastNegative = i
+			break
+		}
+	}
+	if lastNegative < 0 {
+		return out
+	}
+
+	total := decimal.Zero
+	for i := range inputs {
+		if i == lastNegative {
+			continue
+		}
+		out[i] = RoundToRupiah(raw[i])
+		total = total.Add(out[i])
+	}
+	out[lastNegative] = target.Sub(total)
+	return out
 }
 
 // SavingsInterestRepository menyediakan data rekening simpanan, saldo harian, dan
