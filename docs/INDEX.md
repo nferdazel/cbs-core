@@ -7,6 +7,7 @@ dokumen lain hanya meringkas atau merujuk balik ke sini.
 |---|---|---|
 | Ikhtisar, tata letak repo, cara jalan, uji | [`README.md`](../README.md) | Titik masuk untuk pengembang baru |
 | Deploy, role DB, bootstrap, pemulihan, batas laju | [`DEPLOY.md`](DEPLOY.md) | §7 = keputusan batas laju lintas instance |
+| Onboarding bank (peta jalan isi-data sebelum lapor OJK) | [`ONBOARDING-BANK.md`](ONBOARDING-BANK.md) | Menautkan, bukan mengulang angka; titik masuk bagi operator bank |
 | Keputusan produk & perilaku (lintas topik) | [`KEPUTUSAN.md`](KEPUTUSAN.md) | Indeks keputusan; sub-dokumen di bagian atasnya |
 | Angka kanonik CKPN/PD/LGD, ta'zir, agunan, identitas bank | [`KEPUTUSAN-PANEL-RISIKO-CKPN.md`](KEPUTUSAN-PANEL-RISIKO-CKPN.md) | §1.2 = nilai PD/LGD SEMENTARA; §2 = ta'zir |
 | Kesiapan rilis CKPN & runbook menyalakan | [`CKPN-SIAP-RILIS.md`](CKPN-SIAP-RILIS.md) | §(e)/(i) = langkah aktivasi; §(f) = KPMM |
