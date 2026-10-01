@@ -230,15 +230,31 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 		t.Fatal("total kredit bank-wide nol; ekspektasi NPL neto tidak dapat dihitung")
 	}
 	gross := ojkFindLine(b, "00.08", "0204")
-	if gross.UnavailableReason != "" {
-		t.Fatalf("NPL gross belum tersedia: %s", gross.UnavailableReason)
-	}
-	if !gross.Amount.Equal(wantGross) {
-		t.Errorf("NPL gross = %s, ingin %s (dihitung dari baris kredit bank-wide)", gross.Amount, wantGross)
-	}
 	neto := ojkFindLine(b, "00.08", "0203")
-	if !neto.Amount.Equal(wantNet) {
-		t.Errorf("NPL neto = %s, ingin %s (dihitung dari baris kredit bank-wide)", neto.Amount, wantNet)
+
+	// Form 00.08 hanya DIISI pada posisi kuartal (Maret/Juni/September/Desember,
+	// Lampiran II hlm. 204); periode tes memakai bulan berjalan agar Form 06.00 memuat
+	// kredit uji. Jadi asersi harus sadar-bulan: pada bulan kuartal nilai NPL diuji,
+	// pada bulan lain diuji bahwa baris memang DIKOSONGKAN beserta alasannya. Tanpa ini
+	// tes rapuh terhadap kalender (hijau pada bulan kuartal, merah di luar itu).
+	if posisiKuartalUntukNPL(now.Month()) {
+		if gross.UnavailableReason != "" {
+			t.Fatalf("NPL gross belum tersedia: %s", gross.UnavailableReason)
+		}
+		if !gross.Amount.Equal(wantGross) {
+			t.Errorf("NPL gross = %s, ingin %s (dihitung dari baris kredit bank-wide)", gross.Amount, wantGross)
+		}
+		if !neto.Amount.Equal(wantNet) {
+			t.Errorf("NPL neto = %s, ingin %s (dihitung dari baris kredit bank-wide)", neto.Amount, wantNet)
+		}
+	} else {
+		if gross.UnavailableReason == "" || neto.UnavailableReason == "" {
+			t.Fatalf("di luar posisi kuartal, NPL harus dikosongkan beralasan (bulan %s): gross=%q neto=%q",
+				now.Month(), gross.UnavailableReason, neto.UnavailableReason)
+		}
+		if !gross.Amount.IsZero() || !neto.Amount.IsZero() {
+			t.Errorf("di luar posisi kuartal, NPL harus nol, dapat gross=%s neto=%s", gross.Amount, neto.Amount)
+		}
 	}
 
 	// Tetap buktikan angka yang dimaksud: kontribusi data uji ini adalah kredit kurang
@@ -267,6 +283,17 @@ func TestIntegrasiOJKFormDaftarDanNPL(t *testing.T) {
 	deltaNet, ok := ojkreport.RumusNPLNeto(deltaKurangLancar, deltaDiragukan, deltaMacet, deltaCKPN, deltaTotal)
 	if !ok || !deltaNet.Equal(decimal.NewFromInt(36)) {
 		t.Fatalf("kontribusi NPL neto data uji %s, ingin 36", deltaNet)
+	}
+}
+
+// posisiKuartalUntukNPL melaporkan apakah bulan merupakan posisi laporan kuartal yang
+// mengisi rasio NPL Form 00.08 (Maret/Juni/September/Desember, Lampiran II hlm. 204).
+func posisiKuartalUntukNPL(m time.Month) bool {
+	switch m {
+	case time.March, time.June, time.September, time.December:
+		return true
+	default:
+		return false
 	}
 }
 
