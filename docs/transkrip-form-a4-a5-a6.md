@@ -20,6 +20,11 @@ dibaca dengan PyMuPDF (`fitz`). Status: **BACA-SAJA**, tidak ada perubahan kode/
 
 # A4 — `BELUM DIMODELKAN`
 
+> **Catatan (1 Okt 2026):** label "`BELUM DIMODELKAN`" adalah **kategori triase saat
+> transkrip dibuat** (28–29 Sep 2026), bukan status kode hari ini. Seluruh form di grup
+> ini **sudah dimodelkan** lewat register (lihat `CELAH-FORM-OJK.md §2`). Transkrip PDF di
+> bawah tetap disimpan apa adanya sebagai rujukan kolom resmi.
+
 ## 1. FORM 00.01 — Data Kepemilikan BPR
 - Nama persis: **FORM 00.01 – Data Kepemilikan BPR**. Form `PDF #72` (cetak 20);
   sandi `PDF #73` (cetak 21); penjelasan `PDF #74` (cetak 22). Rentang `72–74`.

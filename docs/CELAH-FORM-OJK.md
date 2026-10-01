@@ -14,6 +14,20 @@ Metode: empat pemeriksaan paralel — halaman `-1` (susunan), `SANDI`, dan `PENJ
 tiap form dibaca dari PDF, lalu dicocokkan dengan skema (`packages/db-migrations/*.sql`),
 domain, `internal/ojkreport/**`, dan kode `LAPORAN_*`.
 
+**Isi** (§5–§8 sengaja tidak berurutan nomor: nomornya dirujuk dari dokumen lain, jadi
+dipertahankan; bab ini menjadi penunjuknya):
+
+| § | Isi |
+|---|---|
+| [1](#1-ringkasan) | Ringkasan jumlah form & klasifikasi |
+| [2](#2-tabel-triase-34-form) | Tabel triase 34 form yang waktu itu belum terdaftar |
+| [3](#3-temuan-lintas-potong) | Temuan lintas potong |
+| [4](#4-aksi-semua-selesai-per-30-sep-2026) | Aksi triase (semua SELESAI) |
+| [5](#5-yang-menjadi-milik-bank-bukan-celah-kode) | Yang menjadi milik bank |
+| [6](#6-selisih-form-0014--terverifikasi-bukan-form-seojk-162024) | Selisih Form 00.14 |
+| [7](#7-anomali-transkrip-a4a5a6--semua-terpecahkan-dari-pdf-28-sep-2026) | Anomali transkrip A4/A5/A6 |
+| [8](#8-audit-query-as-of-28-sep-2026--mana-yang-aman-mana-yang-sudah-diputuskan) | Audit query as-of |
+
 ## 1. Ringkasan
 
 Form unik di regulasi: **45** (daftar Laporan Gabungan cetak -7- digabung Laporan per
@@ -143,11 +157,14 @@ Klasifikasi `PERLU CEK` tidak ada — tidak ada form yang gagal disimpulkan.
    berikutnya. **Masih belum ada**: tabel daftar Lampiran 01 (jenis agunan) dan Lampiran 04
    (valuta) — keduanya jadi prasyarat bila `03.00` (valuta asing) dibangun.
 
-## 4. Aksi berikutnya (diurutkan)
+## 4. Aksi (semua SELESAI per 30 Sep 2026)
+
+Seluruh aksi triase di bawah sudah dikerjakan; tidak ada lagi form `BELUM DIMODELKAN`.
+Yang tersisa hanya form `DOKUMEN`/`KONDISIONAL` manual dan pengisian data oleh bank.
 
 | # | Aksi | Sifat |
 |---|---|---|
-| A1 | Daftarkan ke-34 form di `definitions.go` dengan `Buildable:false` + alasan konkret dari triase ini, supaya bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
+| A1 | ~~Daftarkan ke-34 form di `definitions.go`~~ **SELESAI 28 Sep 2026**: `OJKBulananForms` kini memuat seluruh 45 form SEOJK 16/2024 (`Buildable:false` + alasan bila belum dibangun), sehingga bundel menyebut form yang tidak ikut terbit | kode murni, tanpa keputusan regulasi |
 | A2 | ~~Sumberkan kolom Sandi Kantor + snapshot saldo akhir bulan~~ **SELESAI 28 Sep 2026** — `bank_offices.code` + query as-of (rincian di §3 poin 3 dan 4) | prasyarat banyak form |
 | A3 | ~~Bentuk form `SEBAGIAN`~~ **SELESAI SELURUHNYA 29 Sep 2026**: `11.00`, `12.00`, `14.00` (28 Sep) dan `06.01` (29 Sep) — inkonsistensi PDF 06.01 diputuskan sendiri (Likuid/Non Likuid = kategori dalam kolom IV), tidak lagi menunggu OJK. Rujukan: `KEPUTUSAN-OJK.md §9.5` | — |
 | A4 | Modul baru untuk `BELUM DIMODELKAN` — **SELESAI SELURUHNYA 29 Sep 2026**: pola register kini terbukti **sepuluh kali** (`ayda`, `kepemilikan_bpr`, `pinjaman_diterima`, `properti_terbengkalai`, `aset_tetap`, `penyertaan_modal`, `surat_berharga`, `aset_keuangan_lainnya`, `kas_valas`, `kredit_sindikasi`). `06.02` selesai lewat register `kredit_sindikasi_register` (migrasi `000124`) — transkrip di `docs/transkrip-form-a4-a5-a6.md`. **Tidak ada lagi form `BELUM DIMODELKAN`** | skema baru; urutkan menurut kebutuhan bank |
@@ -180,9 +197,11 @@ Tambahan: `PDF #486` menyebut "Kolom V (Kualitas) pada Form 04.00 – Daftar Sur
 Berharga" padahal konteksnya Penyertaan Modal (Form **16.00**) — salah cetak regulasi,
 jangan diikuti.
 
-Satu-satunya butir yang masih menunggu pihak luar adalah **§3 poin 6 (Form 06.01)**,
-yaitu inkonsistensi internal PDF soal sel "Likuid | Non Likuid", bukan salah satu dari
-delapan anomali ini.
+Delapan anomali transkrip di atas semuanya sudah terpecahkan dari PDF. Satu butir yang
+dulu ditandai "menunggu pihak luar" — **§3 poin 6 (Form 06.01)**, inkonsistensi internal
+PDF soal sel "Likuid | Non Likuid" — **sudah diputuskan 29 Sep 2026** tanpa menunggu OJK:
+sel itu BUKAN kolom kesembilan melainkan rincian di dalam kolom IV kategori induk
+(Lampiran 01). Tidak ada lagi butir triase yang menunggu pihak luar.
 
 ## 8. Audit query as-of (28 Sep 2026) — mana yang aman, mana yang sudah diputuskan
 
