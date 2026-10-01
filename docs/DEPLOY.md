@@ -7,9 +7,9 @@ gambaran umum. Sumber kebenaran tetap `scripts/migrate.sh` dan `scripts/prefligh
 > Sebelum membaca lebih jauh: **migrasi bersifat up-only.** `migrate.sh` hanya
 > menerapkan `*.up.sql` dan **tidak mendukung rollback**; kesalahan yang sudah masuk
 > produksi hanya bisa dikembalikan lewat **restore backup**, bukan lewat migrasi balik.
-> Sebagian berkas `*.down.sql` masih ada di `packages/db-migrations/` sebagai sisa
-> historis, tetapi **tidak** dijalankan oleh `migrate.sh` maupun CI; jangan
-> mengandalkannya sebagai jalur rollback.
+> Migrasi baru (sejak `000099`) tetap ditulis dengan pasangan `*.down.sql` sebagai
+> dokumentasi pembalikan yang simetris, tetapi berkas itu **tidak dijalankan** oleh
+> `migrate.sh` maupun CI; jangan mengandalkannya sebagai jalur rollback.
 
 ---
 

@@ -83,8 +83,8 @@ scripts/migrate.sh --remote             # run psql on the production host over S
 files in `schema_migrations`, one transaction per file. On a Docker-only machine
 you would run the same `*.up.sql` files with `psql` directly, or use a Podman
 container. Migrations are **up-only**: `migrate.sh` runs only `*.up.sql` and offers no
-rollback (some legacy `*.down.sql` files remain but are never executed); recovery is
-from a backup.
+rollback. New migrations are still written with a symmetric `*.down.sql` (practice since
+`000099`), but that file is never executed; recovery is from a backup.
 
 ### 2. API
 
@@ -203,8 +203,9 @@ Pasal 23 (LPS placement) module, and password expiry
 - Comments and docs are written in **Indonesian**, and they explain *why* a
   decision was made, not just what the code does. Keep that style.
 - **Migrations are up-only.** Add a new `NNNNNN_description.up.sql`; never edit a
-  migration that has been applied, and do not add `.down.sql` (they are not run).
-  Apply them with `scripts/migrate.sh`. A mistake in production is recovered from a backup.
+  migration that has been applied. Pair new migrations with a symmetric `.down.sql`
+  (repo practice since `000099`), but note it is not executed by `scripts/migrate.sh`.
+  A mistake in production is recovered from a backup.
 - Run the tests affected by your change (`go test ./...` in `apps/api`).
 - Never commit secrets, credentials, host names, or IP addresses. Install
   `scripts/check-secrets.sh` as a pre-commit hook, or run it manually.

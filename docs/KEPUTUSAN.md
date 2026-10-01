@@ -366,7 +366,8 @@ Aplikasi berjalan di container `cbs-api` dan `cbs-web` di belakang Caddy
 - `scripts/migrate.sh` adalah **satu-satunya** cara menerapkan migrasi; ada
   tabel pelacak `schema_migrations` dan mode `--remote` untuk DB di VPS.
 - **Migrasi up-only**: `migrate.sh` tidak menjalankan `*.down.sql` dan tidak ada
-  rollback; sebagian berkas `.down.sql` lama masih ada tetapi tidak dipakai. Kesalahan
+  rollback; migrasi baru tetap ditulis dengan pasangan `.down.sql` yang simetris
+  (praktik sejak `000099`) tetapi berkas itu tidak dijalankan. Kesalahan
   hanya bisa dikembalikan lewat restore backup.
 - Rahasia: `JWT_SECRET` dan `ENCRYPTION_MASTER_KEY` dibuat di VPS dan disimpan
   di `/srv/qouver/apps/cbs/env/cbs-prod.env` (mode 600, di luar repo). Host SSH

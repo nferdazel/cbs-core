@@ -19,9 +19,9 @@ repo, dan laporan tidak perlu memetakan dua konvensi.
 - Migrasi bersifat aditif dan idempoten: tabel baru memakai
   `CREATE TABLE IF NOT EXISTS`, indeks `CREATE INDEX IF NOT EXISTS`, dan ditulis di
   berkas migrasi baru berurutan (`packages/db-migrations/0000NN_*.up.sql`).
-  Pasangan `.down.sql` **tidak wajib** karena migrasi bersifat up-only (lihat
-  `docs/DEPLOY.md`); sebagian berkas `.down.sql` lama masih ada tetapi tidak
-  dijalankan `migrate.sh` maupun CI. Jangan mengubah migrasi yang sudah dirilis.
+  Migrasi baru ditulis beserta pasangan `*.down.sql` yang simetris (praktik sejak
+  `000099`), meski migrasi bersifat up-only dan `migrate.sh` tidak menjalankan `.down.sql`
+  (lihat `docs/DEPLOY.md`). Jangan mengubah migrasi yang sudah dirilis.
 - Nama indeks baru: `idx_<tabel>_<tujuan>` atau `idx_<singkatan>_<kolom>`
   (mis. `idx_deposits_maturity`, `idx_journal_idempotency`).
 
