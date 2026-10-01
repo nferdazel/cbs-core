@@ -79,12 +79,12 @@ scripts/migrate.sh --remote             # run psql on the production host over S
 ```
 
 `scripts/migrate.sh` invokes `psql` inside a container through **`podman exec`**
-(the script is written for the Podman host used in production) and tracks applied
-files in `schema_migrations`, one transaction per file. On a Docker-only machine
-you would run the same `*.up.sql` files with `psql` directly, or use a Podman
-container. Migrations are **up-only**: `migrate.sh` runs only `*.up.sql` and offers no
-rollback. New migrations are still written with a symmetric `*.down.sql` (practice since
-`000099`), but that file is never executed; recovery is from a backup.
+(over SSH with `--remote`), one transaction per file (`ON_ERROR_STOP=1`, `-1`), and
+records each applied `*.up.sql` in `schema_migrations`. Migrations are **up-only by
+default**. New migrations are written with a symmetric `*.down.sql` (practice since
+`000099`), and an opt-in rollback path is available via
+`scripts/migrate.sh --down --yes [N]` (see `docs/DEPLOY.md`); it is never run
+automatically. For production incidents, restoring a backup is still preferred.
 
 ### 2. API
 
@@ -202,10 +202,10 @@ Pasal 23 (LPS placement) module, and password expiry
 
 - Comments and docs are written in **Indonesian**, and they explain *why* a
   decision was made, not just what the code does. Keep that style.
-- **Migrations are up-only.** Add a new `NNNNNN_description.up.sql`; never edit a
-  migration that has been applied. Pair new migrations with a symmetric `.down.sql`
-  (repo practice since `000099`), but note it is not executed by `scripts/migrate.sh`.
-  A mistake in production is recovered from a backup.
+- **Migrations are up-only by default.** Add a new `NNNNNN_description.up.sql`; never
+  edit a migration that has been applied. Pair new migrations with a symmetric
+  `.down.sql` (repo practice since `000099`); an opt-in rollback exists via
+  `scripts/migrate.sh --down --yes [N]`. A mistake in production is recovered from a backup.
 - Run the tests affected by your change (`go test ./...` in `apps/api`).
 - Never commit secrets, credentials, host names, or IP addresses. Install
   `scripts/check-secrets.sh` as a pre-commit hook, or run it manually.

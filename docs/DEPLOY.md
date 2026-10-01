@@ -4,12 +4,13 @@ Dokumen ini untuk operator yang memasang atau memperbarui CBS Core di VPS.
 Isinya sengaja konkret: perintah yang benar-benar dipakai repo ini, bukan
 gambaran umum. Sumber kebenaran tetap `scripts/migrate.sh` dan `scripts/preflight.sh`.
 
-> Sebelum membaca lebih jauh: **migrasi bersifat up-only.** `migrate.sh` hanya
-> menerapkan `*.up.sql` dan **tidak mendukung rollback**; kesalahan yang sudah masuk
-> produksi hanya bisa dikembalikan lewat **restore backup**, bukan lewat migrasi balik.
-> Migrasi baru (sejak `000099`) tetap ditulis dengan pasangan `*.down.sql` sebagai
-> dokumentasi pembalikan yang simetris, tetapi berkas itu **tidak dijalankan** oleh
-> `migrate.sh` maupun CI; jangan mengandalkannya sebagai jalur rollback.
+> Sebelum membaca lebih jauh: **migrasi bersifat up-only secara default.** `migrate.sh`
+> hanya menerapkan `*.up.sql`; kesalahan yang sudah masuk produksi sebaiknya
+> dikembalikan lewat **restore backup**. Migrasi baru (sejak `000099`) tetap ditulis
+> dengan pasangan `*.down.sql` yang simetris. Sejak 1 Okt 2026 tersedia **jalur rollback
+> opt-in** (`scripts/migrate.sh --down --yes [N]`) yang membalik N migrasi terakhir
+> memakai berkas `.down.sql` — lihat bagian "Rollback migrasi" di bawah. Jalur ini
+> destruktif dan **tidak** dijalankan otomatis oleh deploy maupun CI.
 
 ---
 
@@ -107,6 +108,23 @@ tidak punya default di repo karena repo publik.
 `ssh … podman exec -i -u postgres`, satu transaksi per berkas
 (`ON_ERROR_STOP=1`, `-1`) sehingga migrasi yang gagal di-rollback utuh. Setiap
 berkas yang sukses dicatat di `schema_migrations`.
+
+### 3.1.1 Rollback migrasi (opt-in, destruktif)
+
+```bash
+./scripts/migrate.sh --down --dry-run        # lihat migrasi terakhir yang akan dibalik
+./scripts/migrate.sh --down --yes            # balik 1 migrasi terakhir
+./scripts/migrate.sh --down --yes 3          # balik 3 migrasi terakhir
+./scripts/migrate.sh --remote --down --yes 1 # di produksi lewat SSH
+```
+
+- Membalik N migrasi **terakhir yang tercatat**, terbaru lebih dulu, dengan menjalankan
+  berkas `.down.sql` pasangannya dan menghapus baris `schema_migrations` di
+  **transaksi yang sama** (tidak ada state "sudah dibalik tetapi masih tercatat").
+- Berhenti bila `.down.sql` tidak ada — hanya migrasi sejak `000099` yang punya pasangan.
+- **Wajib `--yes`** (tanpa itu skrip menolak) karena operasi ini menghapus objek.
+- Tetap utamakan **restore backup** untuk insiden produksi; rollback hanya untuk koreksi
+  terkendali (mis. migrasi terakhir yang jelas keliru dan belum dipakai luas).
 
 ### 3.2 Environment benar-benar baru (bootstrap)
 

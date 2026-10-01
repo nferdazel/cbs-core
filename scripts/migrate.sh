@@ -15,6 +15,10 @@
 #   scripts/migrate.sh --remote        # jalankan psql di VPS lewat SSH (DB live ada di sana)
 #   scripts/migrate.sh --container X   # nama container postgres (default: qouver-postgres)
 #
+#   scripts/migrate.sh --down --yes [N]   # ROLLBACK opt-in: balik N migrasi terakhir
+#                                          # (default 1). Wajib --yes agar tidak tak sengaja.
+#   scripts/migrate.sh --down --dry-run   # tampilkan migrasi yang akan dibalik
+#
 # Variabel lingkungan:
 #   CBS_DB_CONTAINER  nama container (default qouver-postgres)
 #   CBS_DB_NAME       nama database   (default cbs)
@@ -45,13 +49,25 @@ SSH_USER="${CBS_SSH_USER:-sachiel}"
 SSH_KEY="${CBS_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 DRY_RUN=false
 REMOTE=false
+DOWN=false
+CONFIRM=false
+DOWN_COUNT=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --remote) REMOTE=true; shift ;;
+    --down) DOWN=true; shift ;;
+    --yes|-y) CONFIRM=true; shift ;;
     --container) CONTAINER="$2"; shift 2 ;;
-    *) echo "opsi tidak dikenal: $1" >&2; exit 2 ;;
+    *)
+      # Angka setelah --down berarti jumlah migrasi yang dibalik.
+      if [[ "$DOWN" == true && "$1" =~ ^[0-9]+$ ]]; then
+        DOWN_COUNT="$1"; shift
+      else
+        echo "opsi tidak dikenal: $1" >&2; exit 2
+      fi
+      ;;
   esac
 done
 
@@ -89,6 +105,52 @@ psql_query "
 
 applied=0
 skipped=0
+
+if [[ "$DOWN" == true ]]; then
+  # Rollback opt-in: membalik N migrasi TERAKHIR yang tercatat, terbaru lebih dulu.
+  # Berhenti bila berkas .down.sql tidak ada — mencerminkan kebijakan repo bahwa hanya
+  # migrasi yang punya pasangan down yang dapat dibalik. Satu transaksi per berkas,
+  # dan baris schema_migrations dihapus di transaksi yang SAMA, sehingga tidak ada
+  # state "sudah dibalik tetapi masih tercatat".
+  if [[ "$DRY_RUN" != true && "$CONFIRM" != true ]]; then
+    echo "rollback destruktif: jalankan ulang dengan --yes untuk melanjutkan." >&2
+    exit 3
+  fi
+
+  # Daftar migrasi terakhir dari yang paling baru diterapkan.
+  latest="$(psql_query "SELECT filename FROM schema_migrations ORDER BY applied_at DESC, filename DESC LIMIT $DOWN_COUNT" -tA)"
+  if [[ -z "$latest" ]]; then
+    echo "tidak ada migrasi tercatat untuk dibalik."
+    exit 0
+  fi
+
+  rolled=0
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    down_file="$MIGRATIONS_DIR/${name%.up.sql}.down.sql"
+    if [[ ! -f "$down_file" ]]; then
+      echo "berhenti: tidak ada berkas down untuk $name ($down_file)" >&2
+      break
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+      echo "akan dibalik: $name"
+      continue
+    fi
+    echo "membalik: $name"
+    {
+      cat "$down_file"
+      printf "\nDELETE FROM schema_migrations WHERE filename = '%s';\n" "$name"
+    } | psql_exec -q -1 -f -
+    rolled=$((rolled + 1))
+  done <<< "$latest"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "dry-run rollback selesai."
+  else
+    echo "rollback selesai: $rolled dibalik."
+  fi
+  exit 0
+fi
 
 for file in "$MIGRATIONS_DIR"/*.up.sql; do
   [[ -e "$file" ]] || continue

@@ -20,8 +20,9 @@ repo, dan laporan tidak perlu memetakan dua konvensi.
   `CREATE TABLE IF NOT EXISTS`, indeks `CREATE INDEX IF NOT EXISTS`, dan ditulis di
   berkas migrasi baru berurutan (`packages/db-migrations/0000NN_*.up.sql`).
   Migrasi baru ditulis beserta pasangan `*.down.sql` yang simetris (praktik sejak
-  `000099`), meski migrasi bersifat up-only dan `migrate.sh` tidak menjalankan `.down.sql`
-  (lihat `docs/DEPLOY.md`). Jangan mengubah migrasi yang sudah dirilis.
+  `000099`), dan jalur rollback opt-in tersedia lewat `scripts/migrate.sh --down --yes`
+  (lihat `docs/DEPLOY.md`). `migrate.sh` tetap up-only secara default. Jangan mengubah
+  migrasi yang sudah dirilis.
 - Nama indeks baru: `idx_<tabel>_<tujuan>` atau `idx_<singkatan>_<kolom>`
   (mis. `idx_deposits_maturity`, `idx_journal_idempotency`).
 
