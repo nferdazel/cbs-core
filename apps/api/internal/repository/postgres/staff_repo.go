@@ -147,7 +147,7 @@ func (r *StaffRepository) List(ctx context.Context, actor domain.Actor, limit, o
 	// Cakupan cabang: peran terbatas cabang (ADMIN/SUPERVISOR) hanya melihat staf
 	// cabangnya; peran lintas cabang (SUPERADMIN/AUDITOR/SYSTEM) melihat seluruh bank.
 	// Baris tanpa branch_code tetap disertakan mengikuti CanAccessBranch.
-	where, args := branchCodeReadClause("branch_code", actor)
+	where, args := branchCodeReadClause("branch_code", actor, 1)
 	filter := ""
 	if where != "" {
 		filter = " WHERE " + where

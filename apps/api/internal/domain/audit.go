@@ -10,16 +10,19 @@ import (
 // objek apa, dan apa yang berubah. Berbeda dari application log yang bersifat teknis,
 // audit log disimpan di database, bersifat append-only, dan menjadi bukti kepatuhan.
 type AuditEvent struct {
-	ActorID       string         `json:"actor_id"`
-	ActorRole     string         `json:"actor_role"`
-	ActorUsername string         `json:"actor_username,omitempty"`
-	Action        string         `json:"action"`
-	ResourceType  string         `json:"resource_type"`
-	ResourceID    string         `json:"resource_id"`
-	IPAddress     string         `json:"ip_address,omitempty"`
-	UserAgent     string         `json:"user_agent,omitempty"`
-	RequestID     string         `json:"request_id,omitempty"`
-	Changes       map[string]any `json:"changes,omitempty"`
+	ActorID       string `json:"actor_id"`
+	ActorRole     string `json:"actor_role"`
+	ActorUsername string `json:"actor_username,omitempty"`
+	Action        string `json:"action"`
+	ResourceType  string `json:"resource_type"`
+	ResourceID    string `json:"resource_id"`
+	IPAddress     string `json:"ip_address,omitempty"`
+	UserAgent     string `json:"user_agent,omitempty"`
+	RequestID     string `json:"request_id,omitempty"`
+	// BranchCode adalah kode cabang pelaku saat peristiwa dicatat (migrasi 000132).
+	// Kosong untuk log lama (pra-000132) atau aksi sistem yang tidak terikat satu cabang.
+	BranchCode string         `json:"branch_code,omitempty"`
+	Changes    map[string]any `json:"changes,omitempty"`
 	// Metadata menyimpan konteks bebas yang tidak muat sebagai diff terstruktur,
 	// mis. alasan penolakan kredit. Pembaca audit lama membaca kolom ini, sedangkan
 	// changes tetap menjadi diff terstruktur. Baris pra-migrasi boleh kosong.
@@ -67,6 +70,7 @@ func AuditEventFromActor(actor Actor, action, resourceType, resourceID string, c
 		ResourceID:    resourceID,
 		IPAddress:     actor.IPAddress,
 		RequestID:     actor.RequestID,
+		BranchCode:    actor.BranchCode,
 		Changes:       changes,
 		CreatedAt:     time.Now().UTC(),
 	}

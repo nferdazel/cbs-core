@@ -55,9 +55,9 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 		INSERT INTO audit_logs (
 			actor_id, actor_role, action, resource_type, resource_id,
 			ip_address, changes, metadata, staff_user_id, staff_role,
-			request_id, user_agent, created_at
+			request_id, user_agent, branch_code, created_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 	_, err := exec.ExecContext(ctx, query,
 		actorLabel,
@@ -72,6 +72,7 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 		event.ActorRole,
 		nullIfEmpty(event.RequestID),
 		nullIfEmpty(event.UserAgent),
+		nullIfEmpty(event.BranchCode),
 		event.CreatedAt,
 	)
 	if err != nil {
@@ -90,7 +91,7 @@ const (
 
 // Query membaca audit log dengan filter opsional, terbaru lebih dulu. Semua nilai filter
 // dikirim sebagai parameter; tidak ada nilai yang dirangkai ke dalam SQL.
-func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilter) ([]domain.AuditEvent, error) {
+func (r *AuditRepository) Query(ctx context.Context, actor domain.Actor, filter domain.AuditLogFilter) ([]domain.AuditEvent, error) {
 	limit := filter.Limit
 	if limit < 1 || limit > AuditLogMaxPageSize {
 		limit = AuditLogDefaultPageSize
@@ -126,10 +127,17 @@ func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilte
 	if filter.To != nil {
 		add("created_at < $?", *filter.To)
 	}
+	// Cakupan cabang: peran terbatas cabang hanya melihat audit cabangnya; peran lintas
+	// cabang (SUPERADMIN/AUDITOR/SYSTEM) melihat seluruh bank. Baris tanpa cabang (log
+	// lama pra-000132 / aksi sistem) tetap ditampilkan mengikuti CanAccessBranch.
+	if clause, bargs := branchCodeReadClause("branch_code", actor, len(args)+1); clause != "" {
+		args = append(args, bargs...)
+		conditions = append(conditions, clause)
+	}
 
 	query := `SELECT actor_id, COALESCE(actor_role, ''), action, resource_type, resource_id,
 		       COALESCE(ip_address, ''), COALESCE(changes, '{}'::jsonb), COALESCE(metadata, '{}'::jsonb),
-		       COALESCE(request_id, ''), COALESCE(user_agent, ''), created_at
+		       COALESCE(request_id, ''), COALESCE(user_agent, ''), COALESCE(branch_code, ''), created_at
 		FROM audit_logs`
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
@@ -150,7 +158,7 @@ func (r *AuditRepository) Query(ctx context.Context, filter domain.AuditLogFilte
 		var changes, metadata []byte
 		if err := rows.Scan(
 			&e.ActorID, &e.ActorRole, &e.Action, &e.ResourceType, &e.ResourceID,
-			&e.IPAddress, &changes, &metadata, &e.RequestID, &e.UserAgent, &e.CreatedAt,
+			&e.IPAddress, &changes, &metadata, &e.RequestID, &e.UserAgent, &e.BranchCode, &e.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

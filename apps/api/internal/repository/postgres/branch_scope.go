@@ -46,21 +46,25 @@ func branchReadClause(column string, actor domain.Actor) (string, []any) {
 }
 
 // branchCodeReadClause menyusun klausa WHERE untuk kolom yang menyimpan KODE cabang
-// langsung (VARCHAR), bukan id cabang (uuid). Dipakai tabel seperti staff_users yang
-// memakai branch_code. Semantiknya sama dengan branchReadClause dan CanAccessBranch:
+// langsung (VARCHAR), bukan id cabang (uuid). Dipakai tabel seperti staff_users dan
+// audit_logs yang memakai branch_code. Semantiknya sama dengan branchReadClause dan
+// CanAccessBranch:
 //   - aktor lintas cabang (SUPERADMIN/AUDITOR/SYSTEM) tidak difilter;
 //   - cakupan unit teresolusi membatasi ke himpunan kode yang boleh diakses;
 //   - jalur lama (cakupan belum diresolusi) memakai satu kode cabang aktor;
 //   - baris dengan kode kosong/NULL sengaja tetap disertakan, mengikuti CanAccessBranch
 //     (data pra-migrasi tanpa cabang tidak boleh hilang dari operasional).
-func branchCodeReadClause(column string, actor domain.Actor) (string, []any) {
+//
+// startArg adalah nomor parameter pertama yang boleh dipakai klausa; satu parameter
+// dikembalikan. Pemanggil yang sudah memakai $1..$n mengirim startArg = n+1.
+func branchCodeReadClause(column string, actor domain.Actor, startArg int) (string, []any) {
 	if actor.IsCrossBranch() {
 		return "", nil
 	}
 	if actor.HasResolvedBranchScope() {
-		clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = ANY($1))", column, column, column)
+		clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = ANY($%d))", column, column, column, startArg)
 		return clause, []any{actor.BranchScope.Codes()}
 	}
-	clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = $1)", column, column, column)
+	clause := fmt.Sprintf("(%s IS NULL OR %s = '' OR %s = $%d)", column, column, column, startArg)
 	return clause, []any{actor.BranchCode}
 }

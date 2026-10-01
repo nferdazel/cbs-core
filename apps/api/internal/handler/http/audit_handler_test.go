@@ -20,7 +20,15 @@ type stubAuditReader struct {
 	err      error
 }
 
-func (s *stubAuditReader) Query(ctx context.Context, filter domain.AuditLogFilter) ([]domain.AuditEvent, error) {
+// auditReqWithClaims membangun permintaan GET /audit-logs dengan identitas di context,
+// karena handler kini mengambil actor untuk memfilter cabang.
+func auditReqWithClaims(target string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	return req.WithContext(context.WithValue(req.Context(), domain.ContextKeyClaims,
+		&domain.JWTClaims{Role: domain.RoleSuperAdmin, BranchCode: "001"}))
+}
+
+func (s *stubAuditReader) Query(ctx context.Context, actor domain.Actor, filter domain.AuditLogFilter) ([]domain.AuditEvent, error) {
 	s.received = filter
 	if s.err != nil {
 		return nil, s.err
@@ -45,8 +53,7 @@ func TestAuditHandler_ListMeneruskanFilter(t *testing.T) {
 	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet,
-		"/api/v1/audit-logs?resource_type=LOAN&actor=teller1&action=PAY_INSTALLMENT&from=2026-09-01&to=2026-09-20&limit=10&offset=20", nil)
+	r := auditReqWithClaims("/api/v1/audit-logs?resource_type=LOAN&actor=teller1&action=PAY_INSTALLMENT&from=2026-09-01&to=2026-09-20&limit=10&offset=20")
 
 	handler.List(rec, r)
 
@@ -93,7 +100,7 @@ func TestAuditHandler_ListMengirimMetadataAlasan(t *testing.T) {
 	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?resource_type=loan&action=REJECT_LOAN", nil)
+	r := auditReqWithClaims("/api/v1/audit-logs?resource_type=loan&action=REJECT_LOAN")
 
 	handler.List(rec, r)
 
@@ -117,7 +124,7 @@ func TestAuditHandler_ListMembatasiPermintaanBerlebihan(t *testing.T) {
 	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?limit=99999&offset=-5", nil)
+	r := auditReqWithClaims("/api/v1/audit-logs?limit=99999&offset=-5")
 
 	handler.List(rec, r)
 
@@ -147,7 +154,7 @@ func TestAuditHandler_ListMenolakWaktuDanRentangTidakSah(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?"+tc.query, nil)
+			r := auditReqWithClaims("/api/v1/audit-logs?" + tc.query)
 
 			handler.List(rec, r)
 
@@ -163,7 +170,7 @@ func TestAuditHandler_ListMenerimaBatasWaktuRFC3339(t *testing.T) {
 	handler := httpHandler.NewAuditHandler(reader, nil)
 
 	rec := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/audit-logs?from=2026-09-20T07:30:00Z", nil)
+	r := auditReqWithClaims("/api/v1/audit-logs?from=2026-09-20T07:30:00Z")
 
 	handler.List(rec, r)
 

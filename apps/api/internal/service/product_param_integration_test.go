@@ -97,7 +97,7 @@ func TestIntegrasiUbahParameterProduk(t *testing.T) {
 	}
 
 	// Audit harus memuat nilai sebelum -> sesudah pada resource produk ini.
-	events, err := auditRepo.Query(ctx, domain.AuditLogFilter{
+	events, err := auditRepo.Query(ctx, domain.Actor{Role: domain.RoleSystem}, domain.AuditLogFilter{
 		ResourceType: "product",
 		ResourceID:   before.ID.String(),
 		Action:       "UPDATE_PRODUCT_PARAMS",

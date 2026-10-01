@@ -18,7 +18,7 @@ import (
 // auditReader adalah kebutuhan handler ini saja: membaca audit log. Antarmuka sempit
 // dipilih agar handler tidak ikut bergantung pada kontrak repositori yang lebih luas.
 type auditReader interface {
-	Query(ctx context.Context, filter domain.AuditLogFilter) ([]domain.AuditEvent, error)
+	Query(ctx context.Context, actor domain.Actor, filter domain.AuditLogFilter) ([]domain.AuditEvent, error)
 }
 
 type AuditHandler struct {
@@ -88,6 +88,10 @@ func (h *AuditHandler) ListTransactionLimits(w http.ResponseWriter, r *http.Requ
 // RFC3339), limit (bawaan 50, maksimum 200), offset. Tanpa filter, hasilnya adalah aksi
 // terbaru lebih dulu — menjawab "apa yang baru terjadi" bagi pengawas.
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
+	actor, ok := requireActor(w, r)
+	if !ok {
+		return
+	}
 	q := r.URL.Query()
 
 	from, err := parseAuditTime(q.Get("from"), false)
@@ -128,7 +132,7 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		Offset:       offset,
 	}
 
-	events, err := h.repo.Query(r.Context(), filter)
+	events, err := h.repo.Query(r.Context(), actor, filter)
 	if err != nil {
 		InternalError(w, r, err)
 		return
