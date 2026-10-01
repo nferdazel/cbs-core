@@ -105,6 +105,10 @@ type RouterParams struct {
 	// LoginRateLimiter membatasi percobaan login per akun dan per IP. Bila nil,
 	// rute login dibiarkan tanpa pembatasan (mis. pada test).
 	LoginRateLimiter *middleware.LoginRateLimiter
+	// BatchRateLimiter membatasi laju EOD/EOM/EOY per IP. Bila nil, rute batch
+	// dibiarkan tanpa pembatasan (mis. pada test). Ambangnya longgar agar operator
+	// tetap dapat mengulang tutup buku.
+	BatchRateLimiter *middleware.BatchRateLimiter
 }
 
 func NewRouter(p RouterParams) *chi.Mux {
@@ -471,6 +475,10 @@ func NewRouter(p RouterParams) *chi.Mux {
 				p.OJKPlacementCodesHandler.RegisterRoutes(r)
 			}
 			r.Route("/batch", func(r chi.Router) {
+				// Endpoint berat: dibatasi lajunya per IP bila limiter tersedia.
+				if p.BatchRateLimiter != nil {
+					r.Use(p.BatchRateLimiter.Middleware)
+				}
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).
 					Post("/eod", p.BatchProcessHandler.RunEOD)
 				r.With(middleware.RequirePermission(domain.PermSystemConfig)).

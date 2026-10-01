@@ -242,6 +242,11 @@ func main() {
 		IPWindow:      cfg.LoginRateLimitIPWindow,
 	})
 	defer loginLimiter.Close()
+
+	// Pembatasan laju endpoint batch berat (EOD/EOM/EOY) per IP, ambang longgar agar
+	// operator tetap bisa menjalankan ulang tutup buku saat gagal.
+	batchLimiter := middleware.NewBatchRateLimiter(cfg.BatchRateLimitMax, cfg.BatchRateLimitWindow)
+	defer batchLimiter.Close()
 	custHandler := httpHandler.NewCustomerHandler(customerSvc)
 	accHandler := httpHandler.NewAccountHandler(accountSvc)
 	branchHandler := httpHandler.NewBranchHandler(branchSvc)
@@ -512,6 +517,7 @@ func main() {
 		Cookies:             cookies,
 		Logger:              logger,
 		LoginRateLimiter:    loginLimiter,
+		BatchRateLimiter:    batchLimiter,
 	})
 
 	server := &http.Server{

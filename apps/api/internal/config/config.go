@@ -50,6 +50,8 @@ type Config struct {
 	LoginRateLimitAccountWindow time.Duration
 	LoginRateLimitIPMax         int
 	LoginRateLimitIPWindow      time.Duration
+	BatchRateLimitMax           int
+	BatchRateLimitWindow        time.Duration
 }
 
 // defaultDBPassword adalah kata sandi DB bawaan untuk lingkungan pengembangan.
@@ -92,6 +94,8 @@ func Load() *Config {
 		LoginRateLimitAccountWindow: getEnvDuration("LOGIN_RATE_LIMIT_ACCOUNT_WINDOW", 15*time.Minute),
 		LoginRateLimitIPMax:         getEnvInt("LOGIN_RATE_LIMIT_IP_MAX", 20),
 		LoginRateLimitIPWindow:      getEnvDuration("LOGIN_RATE_LIMIT_IP_WINDOW", 15*time.Minute),
+		BatchRateLimitMax:           getEnvInt("BATCH_RATE_LIMIT_MAX", 30),
+		BatchRateLimitWindow:        getEnvDuration("BATCH_RATE_LIMIT_WINDOW", time.Minute),
 	}
 
 	if cfg.JWTSecret == "" {
