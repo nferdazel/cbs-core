@@ -34,6 +34,10 @@ Ini **tidak boleh ditebak sistem**. Urutannya:
 3. **Ratifikasi** Direksi + akuntan (DPS untuk BPRS): isi bukti berita acara
    (`ckpn.ratification.*`). Tanpa bukti lengkap, perubahan ke status `FINAL` **ditolak**
    (ditegakkan trigger DB, bukan hanya API).
+   > **Terbukti di produksi (1 Okt 2026):** percobaan `UPDATE system_config SET
+   > value='FINAL' WHERE key='ckpn.parameters.status'` tanpa bukti ditolak oleh trigger
+   > `ckpn_ratification_guard` dengan pesan yang menyebut kelima bukti yang kurang,
+   > dan status tetap `SEMENTARA`. Sistem tidak meratifikasi atas nama bank.
 4. Setel `ckpn.parameters.status=FINAL`, lalu nyalakan `ckpn.enabled`.
    Prosedur lengkap & verifikasi: `CKPN-SIAP-RILIS.md` §(e), §(g).
 
