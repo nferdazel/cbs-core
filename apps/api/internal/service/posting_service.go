@@ -208,7 +208,14 @@ func (s *postingService) buildLines(
 			return nil, fmt.Errorf("%w: rekening %s tidak mencukupi", domain.ErrInsufficientFunds, pl.AccountNumber)
 		}
 
-		newAvailable := newBalance
+		// Saldo tersedia = saldo − dana diblokir (hold). Saat ini hold selalu nol
+		// (belum ada API/UI pemblokiran), sehingga nilainya sama dengan saldo; tetapi
+		// kalkulasi ini menjaga kebenaran bila hold diisi lewat jalur lain (mis. seed
+		// bank), alih-alih diam-diam menyamakan available dengan saldo penuh.
+		// Pemeriksaan batas bawah saldo di atas sengaja TETAP memakai saldo penuh:
+		// apakah dana yang diblokir mengurangi plafon penarikan/kredit adalah kebijakan
+		// bank yang belum ditetapkan, jadi tidak diubah di sini.
+		newAvailable := newBalance.Sub(acc.HoldBalance)
 		if err := s.accountRepo.UpdateBalance(ctx, tx, acc.ID, newBalance, newAvailable, acc.Version); err != nil {
 			return nil, fmt.Errorf("update saldo akun %s: %w", pl.AccountNumber, err)
 		}

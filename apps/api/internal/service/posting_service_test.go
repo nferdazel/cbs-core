@@ -32,6 +32,10 @@ func (s *stubPostingRepo) FindJournalByIdempotencyKey(ctx context.Context, key s
 type stubPostingAccountRepo struct {
 	domain.AccountRepository
 	accounts map[string]*domain.Account
+	// Rekaman argumen terakhir agar tes dapat memeriksa saldo & saldo tersedia.
+	lastAccountID uuid.UUID
+	lastBalance   decimal.Decimal
+	lastAvailable decimal.Decimal
 }
 
 func (s *stubPostingAccountRepo) GetByNumberForUpdate(ctx context.Context, tx any, accountNumber string) (*domain.Account, error) {
@@ -43,6 +47,9 @@ func (s *stubPostingAccountRepo) GetByNumberForUpdate(ctx context.Context, tx an
 }
 
 func (s *stubPostingAccountRepo) UpdateBalance(ctx context.Context, tx any, accountID uuid.UUID, balance, available decimal.Decimal, version int) error {
+	s.lastAccountID = accountID
+	s.lastBalance = balance
+	s.lastAvailable = available
 	return nil
 }
 
@@ -62,15 +69,23 @@ func (stubReferenceGen) NextLoanNumber(ctx context.Context, product *domain.Bank
 }
 
 func newPostingServiceForTest(repo *stubPostingRepo) *postingService {
+	svc, _ := newPostingServiceForTestWithAccountRepo(repo)
+	return svc
+}
+
+// newPostingServiceForTestWithAccountRepo mengembalikan juga repositori akun agar tes
+// dapat memeriksa argumen UpdateBalance (saldo dan saldo tersedia).
+func newPostingServiceForTestWithAccountRepo(repo *stubPostingRepo) (*postingService, *stubPostingAccountRepo) {
+	accRepo := &stubPostingAccountRepo{accounts: map[string]*domain.Account{
+		"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
+		"20100": {ID: uuid.New(), AccountNumber: "20100", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
+	}}
 	return &postingService{
-		postingRepo: repo,
-		accountRepo: &stubPostingAccountRepo{accounts: map[string]*domain.Account{
-			"10101": {ID: uuid.New(), AccountNumber: "10101", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeDebit},
-			"20100": {ID: uuid.New(), AccountNumber: "20100", AccountType: domain.AccountTypeInternalGL, Status: domain.AccountStatusActive, NormalBalance: domain.BalanceTypeCredit},
-		}},
+		postingRepo:  repo,
+		accountRepo:  accRepo,
 		referenceGen: stubReferenceGen{},
 		dates:        &reversalDateRepo{date: tanggalBisnisUji},
-	}
+	}, accRepo
 }
 
 func balancedPostingRequest() domain.PostingRequest {
@@ -282,6 +297,55 @@ func TestStatusGuardForDirection(t *testing.T) {
 			}
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("arah %s status %s: ingin %v, dapat %v", tc.direction, tc.status, tc.wantErr, err)
+			}
+		})
+	}
+}
+
+// Saldo tersedia harus mengikuti saldo dikurangi dana diblokir. Dengan hold nol
+// (keadaan saat ini) hasilnya sama dengan saldo; bila hold diisi lewat jalur lain
+// (mis. seed bank), available_balance tidak boleh menyamai saldo penuh.
+func TestPostTxAvailableBalanceSubtractsHold(t *testing.T) {
+	const customer = "2010010002"
+	cases := []struct {
+		nama      string
+		hold      int64
+		wantAvail int64
+	}{
+		{"tanpa blokir", 0, 100},
+		{"dengan blokir", 30, 70},
+	}
+	for _, tc := range cases {
+		t.Run(tc.nama, func(t *testing.T) {
+			repo := &stubPostingRepo{}
+			svc, accRepo := newPostingServiceForTestWithAccountRepo(repo)
+			// Rekening nasabah menerima KREDIT 100 (setoran) dari saldo awal 0, hold
+			// sesuai skenario.
+			accRepo.accounts[customer] = &domain.Account{
+				ID: uuid.New(), AccountNumber: customer,
+				AccountType: domain.AccountTypeSavings, Status: domain.AccountStatusActive,
+				NormalBalance: domain.BalanceTypeCredit,
+				Balance:       decimal.Zero,
+				HoldBalance:   decimal.NewFromInt(tc.hold),
+			}
+			req := domain.PostingRequest{
+				TransactionType: domain.TxTypeDeposit,
+				Description:     "uji saldo tersedia",
+				CreatedBy:       "tester",
+				Lines: []domain.PostingLine{
+					{AccountNumber: "10101", Direction: domain.DirectionDebit, Amount: decimal.NewFromInt(100)},
+					{AccountNumber: customer, Direction: domain.DirectionCredit, Amount: decimal.NewFromInt(100)},
+				},
+			}
+			if _, err := svc.PostTx(context.Background(), (*sql.Tx)(nil), req); err != nil {
+				t.Fatalf("posting gagal: %v", err)
+			}
+			if !accRepo.lastBalance.Equal(decimal.NewFromInt(100)) {
+				t.Fatalf("saldo = %s, ingin 100", accRepo.lastBalance)
+			}
+			if !accRepo.lastAvailable.Equal(decimal.NewFromInt(tc.wantAvail)) {
+				t.Fatalf("saldo tersedia = %s, ingin %d (saldo 100 − hold %d)",
+					accRepo.lastAvailable, tc.wantAvail, tc.hold)
 			}
 		})
 	}
