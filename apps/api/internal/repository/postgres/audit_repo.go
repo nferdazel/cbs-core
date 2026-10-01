@@ -81,6 +81,36 @@ func (r *AuditRepository) Write(ctx context.Context, tx any, event domain.AuditE
 	return nil
 }
 
+// crossBranchAuditRoles adalah peran pelaku yang aksinya berskala bank, sehingga jejak
+// auditnya harus terlihat oleh semua cabang walau branch_code barisnya cabang lain.
+// Selaras dengan domain.Actor.IsCrossBranch.
+var crossBranchAuditRoles = []string{
+	string(domain.RoleSuperAdmin),
+	string(domain.RoleAuditor),
+	string(domain.RoleSystem),
+}
+
+// auditBranchCondition menyusun klausa cakupan cabang untuk GET /audit-logs. Aktor
+// lintas cabang tidak difilter (klausa kosong). Aktor terbatas cabang melihat baris:
+//   - yang branch_code-nya kosong/NULL (log lama pra-000132 atau aksi sistem), atau
+//   - yang branch_code-nya termasuk cakupan unit aktor, atau
+//   - yang PELAKUNYA peran lintas cabang.
+//
+// Butir terakhir penting: aktor lintas cabang bertindak atas nama seluruh bank (mis.
+// SUPERADMIN pusat mengubah data cabang 002, tercatat branch_code 001). Menyembunyikan
+// baris itu dari manajer cabang 002 akan menghilangkan jejak audit atas datanya. Peran
+// pelaku dibaca dari kolom actor_role yang sudah tersimpan. startArg adalah nomor
+// parameter pertama yang boleh dipakai.
+func auditBranchCondition(actor domain.Actor, startArg int) (string, []any) {
+	clause, args := branchCodeReadClause("branch_code", actor, startArg)
+	if clause == "" {
+		return "", nil
+	}
+	roleArg := startArg + len(args)
+	args = append(args, crossBranchAuditRoles)
+	return fmt.Sprintf("(%s OR actor_role = ANY($%d))", clause, roleArg), args
+}
+
 // List mengambil audit log untuk satu objek, terbaru lebih dahulu.
 // AuditLogPageSize membatasi jumlah baris yang dapat diminta dari audit log dalam satu
 // permintaan. Batas atas ini menjaga agar laporan audit tidak menarik seluruh tabel.
@@ -127,11 +157,9 @@ func (r *AuditRepository) Query(ctx context.Context, actor domain.Actor, filter 
 	if filter.To != nil {
 		add("created_at < $?", *filter.To)
 	}
-	// Cakupan cabang: peran terbatas cabang hanya melihat audit cabangnya; peran lintas
-	// cabang (SUPERADMIN/AUDITOR/SYSTEM) melihat seluruh bank. Baris tanpa cabang (log
-	// lama pra-000132 / aksi sistem) tetap ditampilkan mengikuti CanAccessBranch.
-	if clause, bargs := branchCodeReadClause("branch_code", actor, len(args)+1); clause != "" {
-		args = append(args, bargs...)
+	// Cakupan cabang audit (lihat auditBranchCondition untuk alasan lengkap).
+	if clause, cargs := auditBranchCondition(actor, len(args)+1); clause != "" {
+		args = append(args, cargs...)
 		conditions = append(conditions, clause)
 	}
 

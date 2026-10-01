@@ -150,3 +150,50 @@ func TestBranchCodeReadClause(t *testing.T) {
 		}
 	})
 }
+
+// auditBranchCondition menggabungkan cakupan cabang dengan pengecualian peran lintas
+// cabang, sehingga jejak aksi bank-wide tetap terlihat oleh cabang mana pun.
+func TestAuditBranchCondition(t *testing.T) {
+	t.Run("aktor lintas cabang tanpa filter", func(t *testing.T) {
+		clause, args := auditBranchCondition(domain.Actor{Role: domain.RoleSuperAdmin, BranchCode: "001"}, 1)
+		if clause != "" || args != nil {
+			t.Fatalf("superadmin seharusnya tanpa filter, dapat clause=%q args=%v", clause, args)
+		}
+	})
+
+	t.Run("aktor cabang: cabang cocok ATAU pelaku lintas cabang", func(t *testing.T) {
+		clause, args := auditBranchCondition(domain.Actor{Role: domain.RoleSupervisor, BranchCode: "001"}, 1)
+		if !strings.Contains(clause, "branch_code = $1") {
+			t.Fatalf("harus memakai placeholder startArg: %q", clause)
+		}
+		if !strings.Contains(clause, "actor_role = ANY($2)") {
+			t.Fatalf("harus mengecualikan peran lintas cabang di $2: %q", clause)
+		}
+		if len(args) != 2 {
+			t.Fatalf("args %v, ingin satu kode cabang + satu himpunan peran", args)
+		}
+		if args[0] != "001" {
+			t.Fatalf("args[0] = %v, ingin 001", args[0])
+		}
+		roles, ok := args[1].([]string)
+		if !ok || len(roles) != 3 {
+			t.Fatalf("args[1] = %v, ingin himpunan 3 peran lintas cabang", args[1])
+		}
+	})
+
+	t.Run("startArg digeser agar tidak bertabrakan dengan filter lain", func(t *testing.T) {
+		clause, args := auditBranchCondition(domain.Actor{Role: domain.RoleSupervisor, BranchCode: "002"}, 5)
+		if !strings.Contains(clause, "branch_code = $5") {
+			t.Fatalf("placeholder cabang harus $5: %q", clause)
+		}
+		if !strings.Contains(clause, "actor_role = ANY($6)") {
+			t.Fatalf("placeholder peran harus $6: %q", clause)
+		}
+		if strings.Contains(clause, "$1") {
+			t.Fatalf("tidak boleh memakai $1 saat startArg=5: %q", clause)
+		}
+		if len(args) != 2 {
+			t.Fatalf("args %v, ingin 2", args)
+		}
+	})
+}
