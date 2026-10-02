@@ -104,6 +104,9 @@ export default function LaporanPage() {
     } finally {
       setLoading(false);
     }
+    // reloadKey memang tidak dibaca di dalam load(); ia ada di deps hanya agar
+    // useCallback ini ter-recreate saat tombol muat ulang ditekan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, from, to, asOf, reloadKey, t]);
 
   useEffect(() => {

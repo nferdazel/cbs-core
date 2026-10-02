@@ -102,6 +102,9 @@ export function AccountOpening({
       cancelled = true;
       clearTimeout(timer);
     };
+    // sengaja hanya bergantung pada searchTerm: `t` dipakai semata sebagai pesan
+    // cadangan, dan menambahkannya akan memicu ulang pencarian tiap ganti bahasa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm]);
 
   // Produk diambil sekali. Hanya keluarga simpanan/giro yang bisa dibuka di sini;
@@ -134,6 +137,8 @@ export function AccountOpening({
     return () => {
       cancelled = true;
     };
+    // ambil sekali saat mount; `t` hanya pesan cadangan, jangan jadikan pemicu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedProduct = products.find((product) => product.id === productId);
