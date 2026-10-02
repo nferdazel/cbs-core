@@ -616,8 +616,7 @@ export const dictionaryID = {
     colBalance: "Saldo",
     colLastActivity: "Aktivitas Terakhir",
     /** "%s" diisi nomor rekening. */
-    reactivated:
-      "Rekening %s berhasil direaktivasi. Status kini ACTIVE.",
+    reactivated: "Rekening %s berhasil direaktivasi. Status kini ACTIVE.",
     filterStatus: "Filter Status",
     emptyFilteredStatus:
       "Tidak ada rekening dengan status ini pada halaman ini.",

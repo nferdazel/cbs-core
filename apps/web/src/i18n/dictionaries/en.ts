@@ -621,8 +621,7 @@ export const dictionaryEN: Dictionary = {
     colBalance: "Balance",
     colLastActivity: "Last Activity",
     /** "%s" is the account number. */
-    reactivated:
-      "Account %s was reactivated. Status is now ACTIVE.",
+    reactivated: "Account %s was reactivated. Status is now ACTIVE.",
     filterStatus: "Filter Status",
     emptyFilteredStatus: "No accounts with this status on this page.",
     showingPrefix: "Showing",
