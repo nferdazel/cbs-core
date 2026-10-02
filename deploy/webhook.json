@@ -1,37 +1,27 @@
 [
   {
-    "id": "cbs-deploy",
+    "id": "cbs-core",
     "execute-command": "/srv/qouver/apps/cbs/scripts/deploy-vps.sh",
     "command-working-directory": "/srv/qouver/apps/cbs",
     "pass-arguments-to-command": [
       {
-        "source": "string",
-        "name": "cbs-core"
+        "source": "payload",
+        "name": "repository.name"
+      },
+      {
+        "source": "payload",
+        "name": "ref"
       }
     ],
     "trigger-rule": {
-      "and": [
-        {
-          "match": {
-            "type": "payload-hash",
-            "secret": "YOUR_WEBHOOK_HMAC_SECRET",
-            "parameter": {
-              "source": "header",
-              "name": "X-Hub-Signature-256"
-            }
-          }
-        },
-        {
-          "match": {
-            "type": "value",
-            "value": "refs/heads/main",
-            "parameter": {
-              "source": "payload",
-              "name": "ref"
-            }
-          }
+      "match": {
+        "type": "payload-hmac-sha1",
+        "secret": "YOUR_WEBHOOK_HMAC_SECRET",
+        "parameter": {
+          "source": "header",
+          "name": "X-Hub-Signature"
         }
-      ]
+      }
     }
   }
 ]

@@ -2,9 +2,16 @@
 set -euo pipefail
 
 REPO="${1:-cbs-core}"
+REF="${2:-}"
 LOG="/srv/qouver/apps/cbs/logs/deploy.log"
 mkdir -p /srv/qouver/apps/cbs/logs
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Deploy trigger received for: $REPO" | tee -a "$LOG"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Deploy trigger received for: $REPO ref=$REF" | tee -a "$LOG"
+
+# Fail-closed: hanya deploy untuk push ke branch main
+if [ -n "$REF" ] && [ "$REF" != "refs/heads/main" ]; then
+  echo "==> skip: ref=$REF (bukan main)" | tee -a "$LOG"
+  exit 0
+fi
 
 MONO_DIR="/srv/qouver/apps/cbs/monorepo"
 IS_FIRST=0
