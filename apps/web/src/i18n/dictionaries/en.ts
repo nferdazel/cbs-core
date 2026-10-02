@@ -582,10 +582,13 @@ export const dictionaryEN: Dictionary = {
   bookScope: {
     syariah: "sharia",
     conventional: "conventional",
-    reasonPrefix: "The",
-    reasonMiddle: "book is not active on this installation (book scope:",
-    reasonSuffix:
-      "). Contact an administrator if this line of business should be active.",
+    /**
+     * First "%s" is the book label (sharia/conventional); second is the
+     * installation book scope. One complete sentence per language, not
+     * assembled fragments, so word order survives translation.
+     */
+    reasonInactive:
+      "The %s book is not active on this installation (book scope: %s). Contact an administrator if this line of business should be active.",
   },
   customerPage: {
     title: "Customers",

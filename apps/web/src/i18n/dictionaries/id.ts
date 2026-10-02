@@ -577,10 +577,13 @@ export const dictionaryID = {
   bookScope: {
     syariah: "syariah",
     conventional: "konvensional",
-    reasonPrefix: "Buku",
-    reasonMiddle: "tidak aktif pada instalasi ini (cakupan buku:",
-    reasonSuffix:
-      "). Hubungi administrator bila lini usaha ini seharusnya aktif.",
+    /**
+     * "%s" pertama diisi label buku (syariah/konvensional), "%s" kedua diisi
+     * cakupan buku instalasi. Satu kalimat utuh per bahasa, bukan rakitan
+     * fragmen, agar urutan kata tetap benar saat diterjemahkan.
+     */
+    reasonInactive:
+      "Buku %s tidak aktif pada instalasi ini (cakupan buku: %s). Hubungi administrator bila lini usaha ini seharusnya aktif.",
   },
   customerPage: {
     title: "Nasabah",

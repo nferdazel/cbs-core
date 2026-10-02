@@ -40,11 +40,15 @@ export const BookScopeGuard: React.FC<BookScopeGuardProps> = ({
   if (activeBooks && !activeBooks.includes(book)) {
     const label =
       book === "SYARIAH" ? t.bookScope.syariah : t.bookScope.conventional;
+    // Template "%s" diisi berurutan: label buku, lalu cakupan buku instalasi.
+    let reason = t.bookScope.reasonInactive;
+    reason = reason.replace("%s", label);
+    reason = reason.replace("%s", user?.book_scope ?? "DUAL");
     return (
       <FeatureUnavailable
         title={title}
         description={description}
-        reason={`${t.bookScope.reasonPrefix} ${label} ${t.bookScope.reasonMiddle} ${user?.book_scope ?? "DUAL"}${t.bookScope.reasonSuffix}`}
+        reason={reason}
       />
     );
   }
