@@ -200,14 +200,22 @@ export default function CabangPage() {
     },
     {
       header: t.orgUnits.colStatus,
-      cell: (row) =>
-        row.is_head_office ? (
-          <Badge variant="accent">{t.orgUnits.headOffice}</Badge>
-        ) : row.is_active ? (
-          <Badge variant="credit">{t.orgUnits.active}</Badge>
-        ) : (
-          <Badge variant="outline">{t.orgUnits.inactive}</Badge>
-        ),
+      // Dua dimensi terpisah: jenis unit (kantor pusat atau bukan) dan status
+      // aktif/nonaktif. Ditampilkan sebagai dua badge agar status nonaktif tidak
+      // tertutup oleh label kantor pusat. Saat ini unit tak bisa dinonaktifkan
+      // lewat UI, tetapi datanya tetap membawa kedua field ini secara bebas.
+      cell: (row) => (
+        <div className="flex flex-wrap items-center gap-1">
+          {row.is_head_office && (
+            <Badge variant="accent">{t.orgUnits.headOffice}</Badge>
+          )}
+          {row.is_active ? (
+            <Badge variant="credit">{t.orgUnits.active}</Badge>
+          ) : (
+            <Badge variant="outline">{t.orgUnits.inactive}</Badge>
+          )}
+        </div>
+      ),
     },
   ];
 
