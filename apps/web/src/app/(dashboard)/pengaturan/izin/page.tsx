@@ -80,7 +80,7 @@ export default function IzinPage() {
     () =>
       groups.map((group) => ({
         value: group.code,
-        label: `${group.code} - ${group.name}`,
+        label: `${group.code} · ${group.name}`,
       })),
     [groups],
   );

@@ -89,7 +89,7 @@ export default function CabangPage() {
       )
       .map((unit) => ({
         value: unit.code,
-        label: `${unit.code} - ${unit.name}`,
+        label: `${unit.code} · ${unit.name}`,
       }));
   }, [units, form.level]);
 
@@ -98,7 +98,7 @@ export default function CabangPage() {
     return (unit: Branch) => {
       if (!unit.parent_id) return null;
       const parent = byId.get(unit.parent_id);
-      return parent ? `${parent.code} - ${parent.name}` : null;
+      return parent ? `${parent.code} · ${parent.name}` : null;
     };
   }, [units]);
 

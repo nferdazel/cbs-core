@@ -229,7 +229,7 @@ function LoanApplyForm({
 
   const customerOptions = customers.map((c) => ({
     value: c.id,
-    label: `${c.cif_number} - ${c.full_name}`,
+    label: `${c.cif_number} · ${c.full_name}`,
   }));
   const accountOptions = accounts.map((a) => ({
     value: a.id,
@@ -237,7 +237,7 @@ function LoanApplyForm({
   }));
   const productOptions = products.map((p) => ({
     value: p.id,
-    label: `${p.code} - ${p.name}`,
+    label: `${p.code} · ${p.name}`,
   }));
 
   return (
@@ -608,7 +608,7 @@ function LoanDetailPanel({
             },
             {
               label: t.loans.labelProduct,
-              value: product ? `${product.code} - ${product.name}` : "-",
+              value: product ? `${product.code} · ${product.name}` : "-",
             },
             { label: t.common.status, value: loan.status },
             {

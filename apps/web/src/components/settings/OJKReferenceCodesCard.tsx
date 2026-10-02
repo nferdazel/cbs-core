@@ -550,7 +550,7 @@ function LoanCodesSection({ canEdit }: { canEdit: boolean }) {
               value={selected?.id ?? ""}
               options={loans.map((loan) => ({
                 value: loan.id,
-                label: `${loan.loan_number} - ${loan.status}`,
+                label: `${loan.loan_number} · ${loan.status}`,
               }))}
               onChange={(event) => selectLoan(event.target.value)}
             />
