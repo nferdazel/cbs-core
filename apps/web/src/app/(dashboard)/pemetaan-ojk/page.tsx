@@ -392,7 +392,7 @@ export default function PemetaanOJKPage() {
                       className="text-body text-ink-900"
                     >
                       <span className="font-mono">{item.coa_code}</span>
-                      {item.coa_name ? ` — ${item.coa_name}` : ""}
+                      {item.coa_name ? ` · ${item.coa_name}` : ""}
                       <span className="text-meta text-ink-600">
                         {" "}
                         ({item.form})
@@ -423,7 +423,7 @@ export default function PemetaanOJKPage() {
                       key={`${item.form}/${item.sandi}`}
                       className="text-body text-ink-900"
                     >
-                      <span className="font-mono">{item.sandi}</span> —{" "}
+                      <span className="font-mono">{item.sandi}</span> ·{" "}
                       {item.pos_name}
                       <span className="text-meta text-ink-600">
                         {" "}

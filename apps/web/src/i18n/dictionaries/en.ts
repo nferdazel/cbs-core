@@ -2744,7 +2744,7 @@ export const dictionaryEN: Dictionary = {
     hapusBuku: {
       title: "Written-off Productive Assets (Form 15.00)",
       description:
-        "Productive assets that have been written off — loans and placements with other banks. Enter asset type (10 loan / 20 placement), counterparty identity, debtor type and relationship with the bank, write-off date, principal balance and interest arrears (at write-off, cumulative recovered, and reporting position), and collateral at write-off. All amounts are entered by the bank, not computed by the system.",
+        "Productive assets that have been written off, loans and placements with other banks. Enter asset type (10 loan / 20 placement), counterparty identity, debtor type and relationship with the bank, write-off date, principal balance and interest arrears (at write-off, cumulative recovered, and reporting position), and collateral at write-off. All amounts are entered by the bank, not computed by the system.",
       loadError:
         "Failed to load the Form 15.00 written-off productive asset list.",
       forbidden: "You do not have permission to read the write-off list (403).",
@@ -2816,7 +2816,7 @@ export const dictionaryEN: Dictionary = {
     pihakLawan: {
       title: "Counterparty List (Form 00.16)",
       description:
-        'All counterparties — banks and non-banks — that transact with the BPR. Enter identity, class code (Lampiran 02), relationship with the bank, rating, group, and address. The identity number (NIK/NPWP) and NPWP are not requested because they are not stored; on the report both are written "-" for privacy reasons.',
+        'All counterparties (banks and non-banks) that transact with the BPR. Enter identity, class code (Lampiran 02), relationship with the bank, rating, group, and address. The identity number (NIK/NPWP) and NPWP are not requested because they are not stored; on the report both are written "-" for privacy reasons.',
       loadError: "Failed to load the Form 00.16 counterparty list.",
       forbidden:
         "You do not have permission to read the counterparty list (403).",

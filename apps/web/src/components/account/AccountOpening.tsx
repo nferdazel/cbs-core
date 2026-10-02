@@ -195,7 +195,7 @@ export function AccountOpening({
   };
 
   const customerLabel = selected
-    ? `${selected.cifNumber} — ${selected.fullName}`
+    ? `${selected.cifNumber} · ${selected.fullName}`
     : "-";
 
   return (
@@ -352,7 +352,7 @@ export function AccountOpening({
                 onChange={(event) => setProductId(event.target.value)}
                 options={products.map((product) => ({
                   value: product.id,
-                  label: `${product.code} — ${product.name}`,
+                  label: `${product.code} · ${product.name}`,
                 }))}
                 placeholder={
                   productsLoading
@@ -433,7 +433,7 @@ export function AccountOpening({
                 <dt className="text-ink-600">{t.accountOpening.product}</dt>
                 <dd className="text-right text-ink-900">
                   {selectedProduct
-                    ? `${selectedProduct.code} — ${selectedProduct.name}`
+                    ? `${selectedProduct.code} · ${selectedProduct.name}`
                     : "-"}
                 </dd>
               </div>

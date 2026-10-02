@@ -2739,7 +2739,7 @@ export const dictionaryID = {
     hapusBuku: {
       title: "Aset Produktif yang Dihapus Buku (Form 15.00)",
       description:
-        "Daftar aset produktif yang telah dihapus buku — kredit maupun penempatan pada bank lain. Isi jenis aset (10 kredit / 20 penempatan), identitas pihak lawan, jenis debitur dan hubungan dengan bank, tanggal hapus buku, saldo pokok dan tunggakan bunga (saat hapus buku, akumulasi tertagih, dan posisi laporan), serta agunan saat hapus buku. Seluruh nominal adalah isian bank, tidak dihitung sistem.",
+        "Daftar aset produktif yang telah dihapus buku, kredit maupun penempatan pada bank lain. Isi jenis aset (10 kredit / 20 penempatan), identitas pihak lawan, jenis debitur dan hubungan dengan bank, tanggal hapus buku, saldo pokok dan tunggakan bunga (saat hapus buku, akumulasi tertagih, dan posisi laporan), serta agunan saat hapus buku. Seluruh nominal adalah isian bank, tidak dihitung sistem.",
       loadError:
         "Gagal memuat daftar aset produktif yang dihapus buku Form 15.00.",
       forbidden: "Anda tidak memiliki izin membaca daftar hapus buku (403).",
@@ -2813,7 +2813,7 @@ export const dictionaryID = {
     pihakLawan: {
       title: "Daftar Pihak Lawan (Form 00.16)",
       description:
-        'Seluruh pihak lawan — bank maupun bukan bank — yang bertransaksi dengan BPR. Isi identitas, sandi golongan (Lampiran 02), hubungan dengan bank, pemeringkat, grup, dan alamat. Nomor identitas (NIK/NPWP) dan NPWP tidak diminta karena tidak disimpan; pada laporan keduanya ditulis "-" karena alasan privasi.',
+        'Seluruh pihak lawan (bank maupun bukan bank) yang bertransaksi dengan BPR. Isi identitas, sandi golongan (Lampiran 02), hubungan dengan bank, pemeringkat, grup, dan alamat. Nomor identitas (NIK/NPWP) dan NPWP tidak diminta karena tidak disimpan; pada laporan keduanya ditulis "-" karena alasan privasi.',
       loadError: "Gagal memuat daftar pihak lawan Form 00.16.",
       forbidden: "Anda tidak memiliki izin membaca daftar pihak lawan (403).",
       itemsTitle: "Daftar pihak lawan",
