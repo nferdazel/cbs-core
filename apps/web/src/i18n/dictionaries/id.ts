@@ -311,6 +311,9 @@ export const dictionaryID = {
     colLevel: "Jenjang",
     colParent: "Atasan",
     colStatus: "Status",
+    headOffice: "Kantor Pusat",
+    active: "Aktif",
+    inactive: "Nonaktif",
     levelBranch: "Cabang",
     levelArea: "Area",
     levelRegion: "Wilayah",
@@ -612,6 +615,9 @@ export const dictionaryID = {
     colCurrency: "Mata Uang",
     colBalance: "Saldo",
     colLastActivity: "Aktivitas Terakhir",
+    /** "%s" diisi nomor rekening. */
+    reactivated:
+      "Rekening %s berhasil direaktivasi. Status kini ACTIVE.",
     filterStatus: "Filter Status",
     emptyFilteredStatus:
       "Tidak ada rekening dengan status ini pada halaman ini.",

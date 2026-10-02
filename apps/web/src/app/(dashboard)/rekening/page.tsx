@@ -122,7 +122,7 @@ export default function RekeningPage() {
       prev.map((account) => (account.id === updated.id ? updated : account)),
     );
     setSuccessMessage(
-      `Rekening ${updated.account_number} berhasil direaktivasi. Status kini ACTIVE.`,
+      t.accountPage.reactivated.replace("%s", updated.account_number),
     );
     load(page, query);
   };

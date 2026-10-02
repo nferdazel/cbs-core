@@ -202,11 +202,11 @@ export default function CabangPage() {
       header: t.orgUnits.colStatus,
       cell: (row) =>
         row.is_head_office ? (
-          <Badge variant="accent">{t.nav.cabang}</Badge>
+          <Badge variant="accent">{t.orgUnits.headOffice}</Badge>
         ) : row.is_active ? (
-          <Badge variant="credit">{t.common.status}</Badge>
+          <Badge variant="credit">{t.orgUnits.active}</Badge>
         ) : (
-          <Badge variant="outline">{t.common.notAvailable}</Badge>
+          <Badge variant="outline">{t.orgUnits.inactive}</Badge>
         ),
     },
   ];

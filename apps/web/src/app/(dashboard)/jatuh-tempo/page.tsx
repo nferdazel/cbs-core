@@ -47,9 +47,6 @@ export default function JatuhTempoPage() {
   const [days, setDays] = useState("30");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Hanya nilai yang dibaca; tidak ada aksi muat ulang di halaman ini, jadi setter
-  // tidak pernah dipakai (temuan @typescript-eslint/no-unused-vars).
-  const [reloadKey] = useState(0);
   const [customerNames, setCustomerNames] = useState<Record<string, string>>(
     {},
   );
@@ -91,7 +88,7 @@ export default function JatuhTempoPage() {
 
   useEffect(() => {
     load(days);
-  }, [days, reloadKey, load]);
+  }, [days, load]);
 
   // Nama nasabah tidak dikembalikan endpoint agar backend tidak mendekripsi sekaligus
   // banyak baris; peta nama diambil dari daftar nasabah yang sudah dipakai halaman lain.

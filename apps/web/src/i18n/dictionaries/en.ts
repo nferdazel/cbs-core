@@ -314,6 +314,9 @@ export const dictionaryEN: Dictionary = {
     colLevel: "Level",
     colParent: "Parent",
     colStatus: "Status",
+    headOffice: "Head Office",
+    active: "Active",
+    inactive: "Inactive",
     levelBranch: "Branch",
     levelArea: "Area",
     levelRegion: "Region",
@@ -617,6 +620,9 @@ export const dictionaryEN: Dictionary = {
     colCurrency: "Currency",
     colBalance: "Balance",
     colLastActivity: "Last Activity",
+    /** "%s" is the account number. */
+    reactivated:
+      "Account %s was reactivated. Status is now ACTIVE.",
     filterStatus: "Filter Status",
     emptyFilteredStatus: "No accounts with this status on this page.",
     showingPrefix: "Showing",
