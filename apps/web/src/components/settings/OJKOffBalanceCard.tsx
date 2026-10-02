@@ -24,19 +24,7 @@ import { Select } from "@/components/ui/Select";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { Textarea } from "@/components/ui/Textarea";
 import { CustomerPicker } from "@/components/settings/CustomerPicker";
-
-type Option = { value: string; label: string };
-
-function withCurrent(options: Option[], current: string): Option[] {
-  if (!current || options.some((option) => option.value === current)) {
-    return options;
-  }
-  return [...options, { value: current, label: current }];
-}
-
-function labelOf(options: Option[], value: string): string {
-  return options.find((option) => option.value === value)?.label ?? value;
-}
+import { withCurrent, labelOf, type Option } from "./register-options";
 
 interface OffBalanceForm {
   id: string;

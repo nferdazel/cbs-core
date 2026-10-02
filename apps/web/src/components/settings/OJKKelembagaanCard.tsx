@@ -23,21 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { Textarea } from "@/components/ui/Textarea";
-
-type Option = { value: string; label: string };
-
-/** Tambahkan nilai saat ini bila belum ada di pilihan, agar nilai tak dikenal tetap tampil apa adanya. */
-function withCurrent(options: Option[], current: string): Option[] {
-  if (!current || options.some((option) => option.value === current)) {
-    return options;
-  }
-  return [...options, { value: current, label: current }];
-}
-
-/** Label Indonesia untuk nilai yang dikenal; nilai lain dikembalikan apa adanya. */
-function labelOf(options: Option[], value: string): string {
-  return options.find((option) => option.value === value)?.label ?? value;
-}
+import { withCurrent, labelOf, type Option } from "./register-options";
 
 interface OfficeForm {
   id: string;
