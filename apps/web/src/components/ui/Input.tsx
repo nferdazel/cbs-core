@@ -30,7 +30,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={`h-9 w-full rounded-md border bg-surface px-3 text-body text-ink-900 placeholder:text-ink-400 transition-colors duration-fast focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-400 ${
+          className={`h-9 w-full rounded-md border bg-surface px-3 text-body text-ink-900 placeholder:text-ink-600 transition-colors duration-fast focus:border-navy-600 focus:outline-none focus:ring-1 focus:ring-navy-600 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-600 ${
             isMono ? "font-mono" : "font-sans"
           } ${error ? "border-debit-700 focus:border-debit-700 focus:ring-debit-700" : "border-border-strong"} ${className}`}
           {...props}
