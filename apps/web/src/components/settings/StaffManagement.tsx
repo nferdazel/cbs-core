@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { hasPermission } from "@/lib/permissions";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { useTranslation } from "@/i18n/context";
 import type { Dictionary } from "@/i18n/dictionaries/id";
 import type {
@@ -831,6 +832,8 @@ function ModalShell({
   children,
 }: ModalShellProps) {
   const { t } = useTranslation();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -848,6 +851,7 @@ function ModalShell({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}

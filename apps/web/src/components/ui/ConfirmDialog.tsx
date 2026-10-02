@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { useTranslation } from "@/i18n/context";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -41,6 +42,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   const { t } = useTranslation();
   const [keyword, setKeyword] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
 
   useEffect(() => {
     setKeyword("");
@@ -67,6 +70,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}

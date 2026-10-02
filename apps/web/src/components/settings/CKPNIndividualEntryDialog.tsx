@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type {
   CKPNIndividualCandidate,
   CKPNIndividualEntryMarkInput,
   CKPNIndividualMethod,
 } from "@/lib/types";
 import { useTranslation } from "@/i18n/context";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { DefinitionList } from "@/components/ui/DefinitionList";
@@ -41,6 +42,8 @@ export function CKPNIndividualEntryDialog({
   onSubmit,
 }: CKPNIndividualEntryDialogProps) {
   const { t } = useTranslation();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
   const [step, setStep] = useState<"form" | "review">("form");
   const [method, setMethod] = useState<CKPNIndividualMethod>(() =>
     isMethod(candidate.entry.suggested_method)
@@ -106,6 +109,7 @@ export function CKPNIndividualEntryDialog({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t.ckpnIndividual.dialogTitle}
