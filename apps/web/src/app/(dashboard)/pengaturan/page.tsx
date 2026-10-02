@@ -11,6 +11,7 @@ import { useTranslation } from "@/i18n/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DefinitionList } from "@/components/ui/DefinitionList";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { TransactionLimits } from "@/components/settings/TransactionLimits";
@@ -112,7 +113,15 @@ export default function PengaturanPage() {
                   value: formatDate(businessDate.current_date),
                   isMono: true,
                 },
-                { label: t.common.status, value: businessDate.status },
+                {
+                  label: t.common.status,
+                  value: (
+                    <StatusBadge
+                      status={businessDate.status}
+                      domain="businessDate"
+                    />
+                  ),
+                },
                 {
                   label: t.settingsPage.lastUpdated,
                   value: formatDateTime(businessDate.updated_at),
