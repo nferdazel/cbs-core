@@ -285,3 +285,19 @@ Saat itu terjadi, pindahkan pembatas ke salah satu dari:
   diakses pembatas, dengan kunci per akun dan per IP.
 
 Sampai salah satu dipilih, jangan menjalankan lebih dari satu instance API.
+
+### Pemantauan terpusat (VictoriaMetrics)
+
+Sejak 8 Okt 2026, VPS menjalankan **VictoriaMetrics** sebagai penyimpan metrik untuk
+**semua project** (cbs, fond, majadu, sds), bukan cbs saja. Manifestnya di
+`deploy/observability/`.
+
+- Port `127.0.0.1:8428`, **tidak publik**. UI (vmui) lewat SSH tunnel:
+  `ssh -L 8428:127.0.0.1:8428 <vps>` lalu buka `http://127.0.0.1:8428/vmui`.
+- Scrape menunjuk ke **nama container** di network podman `qouver`
+  (mis. `cbs-api:8080`), interval 30 dtk, retensi 90 hari.
+- RAM: ~20-50 MB. Aman di VPS 3,5 GB (SigNoz dinilai tidak muat).
+- `/metrics` cbs-api (W18) belum ter-deploy saat pemasangan; target akan UP
+  otomatis setelah rilis W18.
+
+Screenshot/query contoh: `sum(rate(cbs_http_requests_total[5m])) by (route, status)`.

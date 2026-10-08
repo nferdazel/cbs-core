@@ -1,0 +1,35 @@
+# Konfigurasi scrape VictoriaMetrics untuk seluruh project di network podman "qouver".
+# Semua target memakai NAMA container (bukan 127.0.0.1), karena VictoriaMetrics
+# berjalan di network yang sama. Endpoint /metrics tidak diekspos ke publik.
+
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+
+scrape_configs:
+  # CBS Core (Go). Label memakai pola rute, tanpa data nasabah.
+  - job_name: cbs-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cbs-api:8080"]
+        labels:
+          project: cbs
+          env: prod
+
+  # Majadu API. Metrik granular in-memory.
+  - job_name: majadu-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["majadu-api:8080"]
+        labels:
+          project: majadu
+          env: prod
+
+  # SDS API. Diaktifkan bila endpoint /metrics tersedia (sekarang 503).
+  - job_name: sds-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["sds-api:8092"]
+        labels:
+          project: sds
+          env: prod

@@ -1,0 +1,31 @@
+# Quadlet unit untuk VictoriaMetrics — pusat metrik seluruh project Qouver.
+# Rootless podman + systemd user, mengikuti pola cbs-api.container.
+#
+# Kenapa VictoriaMetrics, bukan Prometheus/SigNoz: RAM VPS terbatas (3,5 GB, dipakai
+# bersama cbs/fond/sds/majadu). VictoriaMetrics single-binary (~20 MB saat idle),
+# dan 100% kompatibel dengan /metrics format Prometheus yang sudah dipakai project.
+#
+# Akses: bind ke 127.0.0.1:8428 (TIDAK publik). UI (vmui) diakses lewat SSH tunnel:
+#   ssh -L 8428:127.0.0.1:8428 sachiel@<vps>   lalu buka http://127.0.0.1:8428/vmui
+[Unit]
+Description=VictoriaMetrics (metrics store untuk semua project Qouver)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/victoriametrics/victoria-metrics:v1.153.0
+ContainerName=victoriametrics
+Network=qouver
+PublishPort=127.0.0.1:8428:8428
+Volume=/srv/qouver/apps/observability/data:/victoria-metrics-data:Z
+Volume=/srv/qouver/apps/observability/config/promscrape.yml:/etc/vm/promscrape.yml:Z
+# Satu Exec= memuat seluruh flag (quadlet hanya menerapkan satu Exec; flag terpisah
+# di Exec= berulang akan terabaikan, menyisakan hanya yang terakhir).
+Exec=-retentionPeriod=90d -promscrape.config=/etc/vm/promscrape.yml -storageDataPath=/victoria-metrics-data -httpListenAddr=:8428
+
+[Service]
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
