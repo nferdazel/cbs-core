@@ -74,3 +74,5 @@ scripts/.ssh-host
 
 # Backlog kerja (lokal, tidak untuk publikasi)
 /docs/BACKLOG.md
+# Techspec lokal (rencana kerja, tidak untuk publikasi)
+/docs/TECHSPEC-*.md

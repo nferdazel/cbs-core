@@ -52,6 +52,12 @@ type Config struct {
 	LoginRateLimitIPWindow      time.Duration
 	BatchRateLimitMax           int
 	BatchRateLimitWindow        time.Duration
+
+	// Distributed tracing (OpenTelemetry). OTELExporterEndpoint kosong berarti tracing
+	// dimatikan (tanpa collector, tanpa overhead). TraceSampleRatio mengendalikan rasio
+	// sampling (0..1); default 1.0 di non-produksi, 0.1 di produksi.
+	OTELExporterEndpoint string
+	TraceSampleRatio     float64
 }
 
 // defaultDBPassword adalah kata sandi DB bawaan untuk lingkungan pengembangan.
@@ -96,6 +102,9 @@ func Load() *Config {
 		LoginRateLimitIPWindow:      getEnvDuration("LOGIN_RATE_LIMIT_IP_WINDOW", 15*time.Minute),
 		BatchRateLimitMax:           getEnvInt("BATCH_RATE_LIMIT_MAX", 30),
 		BatchRateLimitWindow:        getEnvDuration("BATCH_RATE_LIMIT_WINDOW", time.Minute),
+
+		// Tracing opsional: kosong = mati. Rasio default mengikuti environment.
+		OTELExporterEndpoint: strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -118,6 +127,18 @@ func Load() *Config {
 	// terdokumentasi publik. Gagal-cepat di production, sama seperti JWT_SECRET.
 	if msg := productionDBPasswordFatal(cfg.Environment, cfg.DBPassword); msg != "" {
 		log.Fatal(msg)
+	}
+
+	// Rasio sampling tracing: 0.1 di produksi (hemat), 1.0 selain itu (diagnosis penuh).
+	// Env OTEL_TRACE_SAMPLE_RATIO dapat menimpanya; di luar 0..1 diabaikan ke default.
+	cfg.TraceSampleRatio = 1.0
+	if cfg.Environment == "production" {
+		cfg.TraceSampleRatio = 0.1
+	}
+	if raw := strings.TrimSpace(os.Getenv("OTEL_TRACE_SAMPLE_RATIO")); raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v >= 0 && v <= 1 {
+			cfg.TraceSampleRatio = v
+		}
 	}
 
 	return cfg

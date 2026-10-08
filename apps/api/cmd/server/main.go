@@ -5,12 +5,15 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"cbs-core/apps/core-api/internal/config"
 	"cbs-core/apps/core-api/internal/crypto"
 	"cbs-core/apps/core-api/internal/domain"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
+	"cbs-core/apps/core-api/internal/metrics"
 	"cbs-core/apps/core-api/internal/middleware"
 	"cbs-core/apps/core-api/internal/monitoring"
 	"cbs-core/apps/core-api/internal/observability"
@@ -475,6 +478,32 @@ func main() {
 	kpmmHandler := httpHandler.NewKPMMHandler(kpmmSvc)
 
 	// 6. Router
+	metricsRegistry := metrics.New()
+
+	// Tracing bersifat opt-in: tanpa OTEL_EXPORTER_OTLP_ENDPOINT, ini no-op tanpa
+	// overhead. Span terakhir di-flush saat shutdown (defer di bawah).
+	shutdownTracing, err := observability.SetupTracing(context.Background(), observability.TracerConfig{
+		ServiceName: "cbs-core-api",
+		Endpoint:    cfg.OTELExporterEndpoint,
+		Environment: cfg.Environment,
+		SampleRatio: cfg.TraceSampleRatio,
+	})
+	if err != nil {
+		logger.Error("gagal menyiapkan tracing; melanjutkan tanpa tracing", "error", err)
+		shutdownTracing = func(context.Context) error { return nil }
+	}
+	if cfg.OTELExporterEndpoint != "" {
+		logger.Info("tracing aktif", "endpoint", cfg.OTELExporterEndpoint, "rasio_sampling", cfg.TraceSampleRatio)
+	}
+	defer func() {
+		// Beri kesempatan span terakhir terkirim sebelum proses berhenti.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			logger.Error("gagal menutup tracing", "error", err)
+		}
+	}()
+
 	router := httpHandler.NewRouter(httpHandler.RouterParams{
 		CustomerHandler:           custHandler,
 		AccountHandler:            accHandler,
@@ -518,6 +547,12 @@ func main() {
 		Logger:              logger,
 		LoginRateLimiter:    loginLimiter,
 		BatchRateLimiter:    batchLimiter,
+		// Probe /ready benar-benar menguji basis data, bukan sekadar proses hidup.
+		Readiness: db.PingContext,
+		// Metrik Prometheus: label memakai pola rute (bukan path mentah), tanpa PII.
+		MetricsHandler:    metricsRegistry.Handler(),
+		MetricsMiddleware: metricsRegistry.Middleware,
+		TracingMiddleware: middleware.Tracing("cbs-core-api"),
 	})
 
 	server := &http.Server{
@@ -535,8 +570,53 @@ func main() {
 		// Hanya status boolean; nilai kunci tidak pernah ditulis ke log.
 		"indeks_terpisah", cfg.EncryptionIndexKey != "",
 	)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("server berhenti dengan error", "error", err)
+
+	// Shutdown rapi saat SIGINT/SIGTERM: permintaan yang sedang berjalan (termasuk
+	// pembukuan jurnal dan laporan) diselesaikan lebih dulu, bukan diputus di tengah.
+	// Tanpa ini, restart/deploy memotong transaksi keuangan yang sedang diproses.
+	// Batas 20 detik dipilih agar laporan berat masih sempat selesai, tetap di bawah
+	// IdleTimeout (60 detik) supaya koneksi menganggur tidak menahan proses.
+	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := serveWithShutdown(server, logger, shutdownCtx.Done(), shutdownTimeout); err != nil {
 		os.Exit(1)
 	}
+}
+
+// shutdownTimeout adalah batas waktu penyelesaian permintaan berjalan saat berhenti.
+const shutdownTimeout = 20 * time.Second
+
+// serveWithShutdown menjalankan server lalu, begitu channel stop tertutup/sinyal tiba,
+// menghentikan server dengan rapi. Dipisah dari main agar dapat diuji tanpa sinyal OS.
+// Fungsi ini tidak memanggil os.Exit: keputusan menghentikan proses ada di pemanggil,
+// sehingga helper tetap dapat diuji dan tidak menjatuhkan proses uji. Error dikembalikan
+// hanya bila server gagal start atau shutdown melewati batas waktu.
+func serveWithShutdown(server *http.Server, logger *slog.Logger, stop <-chan struct{}, timeout time.Duration) error {
+	serveErr := make(chan error, 1)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server berhenti dengan error", "error", err)
+			serveErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-stop:
+	}
+
+	logger.Info("sinyal berhenti diterima; menutup server dengan rapi")
+
+	// Context terpisah: channel stop sudah ditutup saat sinyal tiba, sehingga tidak
+	// bisa dipakai membatasi Shutdown.
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error("server shutdown melewati batas waktu", "error", err)
+		return err
+	}
+	logger.Info("server berhenti dengan rapi")
+	return nil
 }

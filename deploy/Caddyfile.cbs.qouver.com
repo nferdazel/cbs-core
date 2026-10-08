@@ -13,6 +13,12 @@
 
 # 1. API gateway untuk konsumen non-browser
 api.qouver.com {
+	# Metrik Prometheus BUKAN untuk publik. Tolak di edge; Prometheus melakukan
+	# scrape langsung ke 127.0.0.1:8095/metrics (mis. lewat jaringan internal atau
+	# SSH tunnel), tidak lewat domain publik.
+	handle /cbs/metrics* {
+		respond 403
+	}
 	handle /cbs/* {
 		uri strip_prefix /cbs
 		reverse_proxy 127.0.0.1:8095

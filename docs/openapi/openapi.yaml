@@ -103,6 +103,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Envelope"
+  /ready:
+    get:
+      tags: [Kesehatan]
+      operationId: ready
+      summary: Readiness check (dependensi)
+      description: |-
+        Publik, tanpa autentikasi (izin: —). Berbeda dari `/healthz`: di sini basis
+        data benar-benar diuji (ping). Membalas `{"status":"READY"}` bila siap, atau
+        `503` bila dependensi tidak sehat.
+      security: []
+      responses:
+        "200":
+          description: Layanan siap melayani.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "503":
+          description: Dependensi tidak sehat; layanan belum siap.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+  /metrics:
+    get:
+      tags: [Kesehatan]
+      operationId: metrics
+      summary: Metrik Prometheus
+      description: |-
+        Publik, tanpa autentikasi (izin: —). Format exposition Prometheus (teks).
+        Label memakai POLA rute (mis. `/api/v1/loans/{id}`), bukan path mentah, dan
+        tidak memuat data nasabah. Batasi akses di lapisan jaringan/ingress.
+      security: []
+      responses:
+        "200":
+          description: Metrik dalam format exposition Prometheus.
+          content:
+            text/plain:
+              schema:
+                type: string
   /api/v1/app-info:
     get:
       tags: [Aplikasi]

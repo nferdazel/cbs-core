@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"cbs-core/apps/core-api/internal/domain"
 	httpHandler "cbs-core/apps/core-api/internal/handler/http"
+	"cbs-core/apps/core-api/internal/metrics"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -124,6 +126,10 @@ func routerRoutes(t *testing.T) map[string]bool {
 		OJKPlacementCodesHandler:  &httpHandler.OJKPlacementCodesHandler{},
 		PermissionHandler:         &httpHandler.PermissionHandler{},
 		MonitoringHandler:         &httpHandler.MonitoringHandler{},
+		// Rute /metrics dan /ready kondisional; isi agar ikut terdaftar di chi.Walk.
+		MetricsHandler:    metrics.New().Handler(),
+		MetricsMiddleware: metrics.New().Middleware,
+		Readiness:         func(context.Context) error { return nil },
 	})
 
 	routes := make(map[string]bool)

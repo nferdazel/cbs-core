@@ -49,6 +49,18 @@ var configKeyRuntimeExceptions = map[string]string{
 	"ppap.last_run_business_date": "penanda run PPAP ditulis batch saat PPAP berjalan (migrasi 000052 milik perubahan lain)",
 }
 
+// telemetryAttributeKeys adalah nama atribut span OpenTelemetry yang kebetulan
+// berbentuk seperti kunci konfigurasi padahal bukan. Atribut ini tidak pernah dibaca
+// dari system_config dan tidak boleh di-seed. Nama berspasi-titik dipakai karena
+// mengikuti konvensi semantik OTel (http.*); atribut internal CBS memakai prefix
+// cbs_. Menambah atribut baru: cukup tambahkan di sini bila bentuknya seperti kunci.
+var telemetryAttributeKeys = map[string]bool{
+	"cbs.request_id":            true,
+	"http.request.method":       true,
+	"http.response.status_code": true,
+	"http.route":                true,
+}
+
 // configKeySeedExceptions sudah tidak diperlukan. Satu-satunya pengecualian dulu
 // adalah auth.password_expiry_days, yang di-seed tetapi belum dibaca kode. Setelah
 // penegakan kedaluwarsa diimplementasikan (auth_service.go membacanya), kunci itu
@@ -192,6 +204,12 @@ func collectCodeConfigKeys(t *testing.T, moduleDir string) map[string]string {
 		if !configKeyShape.MatchString(key) ||
 			strings.HasSuffix(key, ".branch_id") ||
 			strings.HasSuffix(key, ".book") {
+			return
+		}
+		// Atribut telemetri (span OpenTelemetry) juga berbentuk seperti kunci
+		// konfigurasi, padahal bukan. Ia tidak dibaca dari system_config dan tidak
+		// boleh di-seed. Lihat telemetryAttributeKeys.
+		if telemetryAttributeKeys[key] {
 			return
 		}
 		if _, exists := found[key]; !exists {

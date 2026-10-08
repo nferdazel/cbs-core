@@ -149,7 +149,25 @@ podman exec -u postgres qouver-postgres psql -U qouver -d cbs -tA \
 # Kesehatan API. /healthz ada di root API; lewat edge diakses di api.qouver.com/cbs/.
 # (cbs.qouver.com hanya me-rewrite /api/* ke API, jadi /healthz tidak lewat sana.)
 curl -fsS https://api.qouver.com/cbs/healthz >/dev/null && echo "API OK"
+
+# Readiness (dependensi, termasuk ping DB). 503 bila basis data tidak sehat.
+curl -fsS https://api.qouver.com/cbs/ready >/dev/null && echo "API READY"
 ```
+
+### Metrik & tracing (W18)
+
+- **`GET /metrics`** (Prometheus, teks) dan **`GET /ready`** berada di root API.
+- **`/metrics` sengaja DIBLOKIR di edge publik**: Caddy membalas `403` untuk
+  `api.qouver.com/cbs/metrics`. Prometheus harus melakukan scrape **langsung** ke
+  `http://127.0.0.1:8095/metrics` (di host yang sama) atau lewat jaringan internal /
+  SSH tunnel, bukan lewat domain publik. Label metrik memakai POLA rute, bukan path
+  berisi id, dan tidak memuat data nasabah.
+- **Tracing opt-in**: set `OTEL_EXPORTER_OTLP_ENDPOINT` (mis. `localhost:4318`) untuk
+  menyalakan. Kosong = tracing mati (tanpa overhead). `OTEL_TRACE_SAMPLE_RATIO`
+  (0..1) menimpa; bawaan 0.1 di produksi, 1.0 di non-produksi. Span terakhir di-flush
+  saat shutdown rapi.
+- **Graceful shutdown**: SIGINT/SIGTERM menghentikan server dengan rapi (permintaan
+  berjalan diselesaikan, batas 20 detik) sebelum `db.Close()`.
 
 Selain itu `preflight.sh` memeriksa baris `system.business_date`:
 

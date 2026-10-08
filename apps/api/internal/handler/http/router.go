@@ -1,10 +1,12 @@
 package http
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"cbs-core/apps/core-api/internal/domain"
 	"cbs-core/apps/core-api/internal/i18n"
@@ -16,6 +18,10 @@ import (
 // allowedOrigins membaca CORS_ALLOWED_ORIGINS (dipisah koma). Default pengembangan
 // hanya localhost, tidak ada wildcard: go-chi/cors mencocokkan origin secara literal,
 // sehingga "https://*.domain" tidak pernah cocok dan hanya menyesatkan.
+// readinessTimeout membatasi lama pemeriksaan kesiapan agar /ready tidak menggantung
+// saat basis data lambat atau tidak responsif.
+const readinessTimeout = 2 * time.Second
+
 func allowedOrigins() []string {
 	raw := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	if raw == "" {
@@ -109,6 +115,18 @@ type RouterParams struct {
 	// dibiarkan tanpa pembatasan (mis. pada test). Ambangnya longgar agar operator
 	// tetap dapat mengulang tutup buku.
 	BatchRateLimiter *middleware.BatchRateLimiter
+	// Readiness memeriksa kesiapan layanan (mis. ping basis data) untuk probe /ready.
+	// Dipisah dari /healthz: proses bisa hidup sementara basis data belum siap. Bila nil,
+	// /ready dianggap siap (berguna pada test yang tidak menyuntik basis data).
+	Readiness func(ctx context.Context) error
+	// MetricsHandler menyajikan metrik Prometheus di `/metrics`. Bila nil, rutenya tidak
+	// dipasang. Publik dan hanya boleh dicapai dari jaringan tepercaya (lihat catatan
+	// di pemanggil); ia tidak memuat data nasabah.
+	MetricsHandler http.Handler
+	// MetricsMiddleware mencatat metrik HTTP (jumlah & durasi). Bila nil, dilewati.
+	MetricsMiddleware func(http.Handler) http.Handler
+	// TracingMiddleware membuka span server per permintaan. Bila nil, dilewati.
+	TracingMiddleware func(http.Handler) http.Handler
 }
 
 func NewRouter(p RouterParams) *chi.Mux {
@@ -130,6 +148,16 @@ func NewRouter(p RouterParams) *chi.Mux {
 	r.Use(middleware.LimitBodySize(middleware.MaxBodyBytes))
 	r.Use(middleware.AccessLog(logger))
 	r.Use(middleware.Recoverer(logger))
+	// Metrik HTTP dipasang setelah Recoverer agar status akhir (termasuk 500 akibat
+	// panic) tetap tercatat, memakai POLA rute chi sebagai label, bukan path mentah.
+	if p.MetricsMiddleware != nil {
+		r.Use(p.MetricsMiddleware)
+	}
+	// Tracing dipasang paling luar di antara observabilitas agar span mencakup
+	// seluruh pipeline yang diukur metrik.
+	if p.TracingMiddleware != nil {
+		r.Use(p.TracingMiddleware)
+	}
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins(),
@@ -144,6 +172,30 @@ func NewRouter(p RouterParams) *chi.Mux {
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		Success(w, http.StatusOK, i18n.MsgHealthOK, map[string]string{"status": "UP"})
 	})
+
+	// Readiness check — public, no auth. Berbeda dari /healthz (proses hidup):
+	// di sini dependensi yang menentukan kesiapan melayani (basis data) benar-benar
+	// diuji. Balas 503 bila dependensi tidak sehat, agar load balancer menahan lalu
+	// lintas, bukan mengirim permintaan ke instance yang belum siap.
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if p.Readiness == nil {
+			Success(w, http.StatusOK, i18n.MsgHealthOK, map[string]string{"status": "READY"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
+		defer cancel()
+		if err := p.Readiness(ctx); err != nil {
+			ErrorCode(w, http.StatusServiceUnavailable, i18n.MsgServiceNotReady)
+			return
+		}
+		Success(w, http.StatusOK, i18n.MsgHealthOK, map[string]string{"status": "READY"})
+	})
+
+	// Metrik Prometheus. Tidak memuat data nasabah; tetap hanya boleh dicapai dari
+	// jaringan/ingress tepercaya (batasan di lapisan deploy, bukan auth aplikasi).
+	if p.MetricsHandler != nil {
+		r.Method(http.MethodGet, "/metrics", p.MetricsHandler)
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 
